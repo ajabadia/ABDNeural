@@ -9,9 +9,14 @@
   ==============================================================================
 */
 
+#include <memory>
+#include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_extra/juce_gui_extra.h>
 #include <juce_audio_plugin_client/juce_audio_plugin_client.h>
+#include <juce_audio_utils/juce_audio_utils.h>
 #include "PluginProcessor.h"
+
+#if JucePlugin_Build_Standalone
 
 namespace Nexus
 {
@@ -27,13 +32,10 @@ public:
 
     void initialise(const juce::String& /*commandLine*/) override
     {
-        // Use JUCE's default StandaloneFilterWindow but we could customize it further here
-        // The flag STANDALONE_SHOW_SETTINGS_BUTTON=FALSE in CMake usually works with the default app,
-        // but by using a custom app we ensure total control.
         standaloneWindow.reset(new juce::StandaloneFilterWindow(getApplicationName(), 
                                                                juce::Colours::black, 
                                                                nullptr, 
-                                                               false)); // Show settings button = false
+                                                               false));
 
         standaloneWindow->setTitleBarButtonsRequired(juce::StandaloneFilterWindow::allButtons, false);
         standaloneWindow->setVisible(true);
@@ -58,5 +60,6 @@ private:
 
 } // namespace Nexus
 
-// This macro generates the main() function
 START_JUCE_APPLICATION(Nexus::NexusStandaloneApplication)
+
+#endif
