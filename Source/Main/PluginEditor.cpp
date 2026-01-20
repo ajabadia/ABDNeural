@@ -10,7 +10,7 @@ PluginEditor::PluginEditor(PluginProcessor& p)
     addAndMakeVisible(mainTabs);
     
     addAndMakeVisible(titleLabel);
-    titleLabel.setFont(juce::Font(24.0f, juce::Font::bold));
+    titleLabel.setFont(juce::FontOptions(24.0f).withStyle(juce::Font::bold));
     titleLabel.setJustificationType(juce::Justification::centred);
     
     addAndMakeVisible(versionLabel);

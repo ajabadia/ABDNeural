@@ -9,10 +9,6 @@
   ==============================================================================
 */
 
-#include <memory>
-#include <juce_audio_processors/juce_audio_processors.h>
-#include <juce_gui_extra/juce_gui_extra.h>
-#include <juce_audio_plugin_client/juce_audio_plugin_client.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "PluginProcessor.h"
 
@@ -32,10 +28,10 @@ public:
 
     void initialise(const juce::String& /*commandLine*/) override
     {
-        standaloneWindow.reset(new juce::StandaloneFilterWindow(getApplicationName(), 
-                                                               juce::Colours::black, 
-                                                               nullptr, 
-                                                               false));
+        standaloneWindow = std::make_unique<juce::StandaloneFilterWindow>(getApplicationName(), 
+                                                                         juce::Colours::black, 
+                                                                         nullptr, 
+                                                                         false);
 
         standaloneWindow->setTitleBarButtonsRequired(juce::StandaloneFilterWindow::allButtons, false);
         standaloneWindow->setVisible(true);
