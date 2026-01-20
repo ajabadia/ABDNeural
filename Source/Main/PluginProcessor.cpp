@@ -7,7 +7,7 @@ PluginProcessor::PluginProcessor()
 {
 }
 
-void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
+void PluginProcessor::prepareToPlay(double /*sampleRate*/, int /*samplesPerBlock*/)
 {
 }
 
@@ -15,7 +15,7 @@ void PluginProcessor::releaseResources()
 {
 }
 
-void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& /*midiMessages*/)
 {
     buffer.clear();
 }
@@ -41,11 +41,11 @@ const juce::String PluginProcessor::getName() const
     return JucePlugin_Name;
 }
 
-void PluginProcessor::getStateInformation(juce::MemoryBlock& destData)
+void PluginProcessor::getStateInformation(juce::MemoryBlock& /*destData*/)
 {
 }
 
-void PluginProcessor::setStateInformation(const void* data, int sizeInBytes)
+void PluginProcessor::setStateInformation(const void* /*data*/, int /*sizeInBytes*/)
 {
 }
 

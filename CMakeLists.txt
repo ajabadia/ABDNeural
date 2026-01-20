@@ -17,10 +17,21 @@ else()
 endif()
 
 # ============================================================================
-# FIND JUCE
+# FIND OR INCLUDE JUCE
 # ============================================================================
 
-find_package(JUCE CONFIG REQUIRED)
+# Allow passing JUCE_PATH from command line/script
+if(NOT JUCE_PATH AND EXISTS "C:/JUCE")
+    set(JUCE_PATH "C:/JUCE")
+endif()
+
+if(JUCE_PATH AND EXISTS "${JUCE_PATH}/CMakeLists.txt")
+    message(STATUS "Including JUCE from local path: ${JUCE_PATH}")
+    add_subdirectory("${JUCE_PATH}" JUCE)
+else()
+    message(STATUS "Searching for JUCE as a system package...")
+    find_package(JUCE CONFIG REQUIRED)
+endif()
 
 # ============================================================================
 # ADD SOURCE FILES (DSP CORE)
@@ -35,6 +46,14 @@ set(NEXUS_SOURCES
     
     # State
     Source/State/ParameterDefinitions.h
+    
+    # DSP - CoreModules
+    Source/DSP/CoreModules/Oscillator.h
+    Source/DSP/CoreModules/Oscillator.cpp
+    Source/DSP/CoreModules/Envelope.h
+    Source/DSP/CoreModules/Envelope.cpp
+    Source/DSP/CoreModules/FilterBank.h
+    Source/DSP/CoreModules/FilterBank.cpp
 )
 
 # ============================================================================
@@ -46,8 +65,9 @@ juce_add_plugin(NEXUS
     DESCRIPTION "NEXUS Synthesizer Plugin"
     PLUGIN_MANUFACTURER_CODE Nxs1
     PLUGIN_CODE Nxs1
-    FORMATS VST3 AU
+    FORMATS VST3 AU Standalone
     IS_SYNTH TRUE
+    STANDALONE_SHOW_SETTINGS_BUTTON FALSE
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
@@ -71,5 +91,4 @@ target_link_libraries(NEXUS PRIVATE
     juce::juce_graphics
     juce::juce_gui_basics
     juce::juce_gui_extra
-    juce::juce_parameters
 )

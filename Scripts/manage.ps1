@@ -36,45 +36,88 @@ function Show-Header {
     Write-Host ""
 }
 
+function Find-VSPath {
+    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    if (Test-Path $vswhere) {
+        $path = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.CMake.Project -property installationPath
+        return $path
+    }
+    return $null
+}
+
 function Find-CMake {
+    # 1. Try PATH
+    if (Get-Command cmake -ErrorAction SilentlyContinue) { return "cmake" }
+
+    # 2. Try vswhere
+    $vsPath = Find-VSPath
+    if ($vsPath) {
+        $potentialCMake = Join-Path $vsPath "Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
+        if (Test-Path $potentialCMake) { return $potentialCMake }
+    }
+
+    # 3. Try standard paths
     $PotentialPaths = @(
-        "cmake",
-        "${env:ProgramFiles}\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe",
-        "${env:ProgramFiles}\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe",
-        "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe",
+        "${env:ProgramFiles}\CMake\bin\cmake.exe",
         "C:\Program Files\CMake\bin\cmake.exe"
     )
 
     foreach ($path in $PotentialPaths) {
-        if ($path -eq "cmake") {
-            if (Get-Command cmake -ErrorAction SilentlyContinue) { return "cmake" }
-        }
-        elseif (Test-Path $path) {
-            return $path
-        }
+        if (Test-Path $path) { return $path }
     }
     return $null
 }
 
 function Find-VSVars {
+    $vsPath = Find-VSPath
+    if ($vsPath) {
+        $vsvars = Join-Path $vsPath "Common7\Tools\VsDevCmd.bat"
+        if (Test-Path $vsvars) { return $vsvars }
+    }
+
     $PotentialPaths = @(
         "${env:ProgramFiles}\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat",
-        "${env:ProgramFiles}\Microsoft Visual Studio\2022\Professional\Common7\Tools\VsDevCmd.bat",
-        "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat",
         "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Community\Common7\Tools\VsDevCmd.bat"
     )
 
     foreach ($path in $PotentialPaths) {
-        if (Test-Path $path) {
-            return $path
-        }
+        if (Test-Path $path) { return $path }
     }
     return $null
+}
+
+function Update-BuildVersion {
+    $versionFile = Join-Path $ProjectRoot.FullName "build_no.txt"
+    $headerDir = Join-Path $ProjectRoot.FullName "Source/Core"
+    if (!(Test-Path $headerDir)) { New-Item -ItemType Directory -Path $headerDir -Force | Out-Null }
+    $headerFile = Join-Path $headerDir "BuildVersion.h"
+
+    $buildNo = 0
+    if (Test-Path $versionFile) {
+        $buildNo = [int](Get-Content $versionFile)
+    }
+    $buildNo++
+    $buildNo | Set-Content $versionFile
+
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $headerContent = @'
+/* Auto-generated build version file */
+#pragma once
+
+#define NEXUS_BUILD_VERSION "@BUILD_NO@"
+#define NEXUS_BUILD_TIMESTAMP "@TIMESTAMP@"
+'@ -replace "@BUILD_NO@", $buildNo -replace "@TIMESTAMP@", $timestamp
+
+    $headerContent | Set-Content $headerFile -Encoding UTF8
+    Write-Host "[INFO] Build #$buildNo updated at $timestamp" -ForegroundColor Cyan
 }
 
 function Invoke-TaskBuild {
     Write-Host "Starting Build Process..." -ForegroundColor Green
     
+    # Force clean build if requested/needed to avoid cache issues with JUCE settings
+    Invoke-TaskClean
+
     # Find CMake
     $CMakePath = Find-CMake
     if (!$CMakePath) { throw "CMake not found. Please install CMake or run from VS Developer Command Prompt." }
@@ -83,6 +126,13 @@ function Invoke-TaskBuild {
     # Initialize Environment
     $vsVars = Find-VSVars
     $GeneratorParams = @("-B", $BuildDir)
+    
+    # Add JUCE Path if found
+    if ($JuceDir) {
+        Write-Host "Setting JUCE Path: $JuceDir"
+        $GeneratorParams += "-DCMAKE_PREFIX_PATH=`"$JuceDir`""
+        $GeneratorParams += "-DJUCE_PATH=`"$JuceDir`""
+    }
     
     # Simple logic to detect generator based on available VS
     if ($vsVars -and $vsVars -match "2022") {
@@ -102,23 +152,16 @@ function Invoke-TaskBuild {
     }
 
     Write-Host "Configuring CMake..."
-    & $CMakePath @GeneratorParams
+    & $CMakePath @GeneratorParams "$($ProjectRoot.FullName)"
     if ($LASTEXITCODE -ne 0) { throw "CMake Configuration Failed" }
 
+    # Build Project
     Write-Host "Building Project ($config)..."
-    & $CMakePath --build $BuildDir --config $config
+    & $CMakePath --build $BuildDir --config $config --target NEXUS_Standalone
     if ($LASTEXITCODE -ne 0) { throw "Build Failed" }
 
-    # Copy Standalone executable to root
-    # Adjust path based on JUCE defaults: build/NEXUS_artefacts/Release/Standalone/NEXUS.exe
-    $StandalonePath = "$BuildDir\NEXUS_artefacts\$config\Standalone\NEXUS.exe"
-    if (Test-Path $StandalonePath) {
-        Copy-Item $StandalonePath "$($ProjectRoot.FullName)\NEXUS.exe" -Force
-        Write-Host "Standalone executable copied to root: NEXUS.exe" -ForegroundColor Green
-    }
-    else {
-        Write-Warning "Standalone executable not found at expected path: $StandalonePath"
-    }
+    # Versioning
+    Update-BuildVersion
 
     Write-Host "Build Completed Successfully!" -ForegroundColor Green
 }
