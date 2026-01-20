@@ -31,8 +31,10 @@ public:
     void setStateInformation(const void*, int) override;
 
     juce::AudioProcessorValueTreeState& getAPVTS() { return apvts; }
+    juce::MidiKeyboardState& getKeyboardState() { return keyboardState; }
 
 private:
     juce::AudioProcessorValueTreeState apvts;
+    juce::MidiKeyboardState keyboardState;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PluginProcessor)
 };

@@ -43,6 +43,7 @@ set(NEXUS_SOURCES
     Source/Main/PluginProcessor.cpp
     Source/Main/PluginEditor.h
     Source/Main/PluginEditor.cpp
+    Source/Main/Main.cpp
     
     # State
     Source/State/ParameterDefinitions.h
@@ -69,12 +70,11 @@ juce_add_plugin(NEXUS
     IS_SYNTH TRUE
 )
 
-# Target-specific properties for Standalone
-if (TARGET NEXUS_Standalone)
-    set_target_properties(NEXUS_Standalone PROPERTIES 
-        JUCE_STANDALONE_SHOW_SETTINGS_BUTTON FALSE
-    )
-endif()
+# Custom Standalone App Support
+target_compile_definitions(NEXUS PUBLIC
+    JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1
+)
+
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE

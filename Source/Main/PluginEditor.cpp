@@ -2,9 +2,29 @@
 #include "../Core/BuildVersion.h"
 
 PluginEditor::PluginEditor(PluginProcessor& p)
-    : AudioProcessorEditor(p), processor(p), menuBar(this)
+    : AudioProcessorEditor(p), processor(p), menuBar(this),
+      keyboardComponent(p.getKeyboardState(), juce::MidiKeyboardComponent::horizontalKeyboard)
 {
     addAndMakeVisible(menuBar);
+    addAndMakeVisible(keyboardComponent);
+    addAndMakeVisible(mainTabs);
+    
+    addAndMakeVisible(titleLabel);
+    titleLabel.setFont(juce::Font(24.0f, juce::Font::bold));
+    titleLabel.setJustificationType(juce::Justification::centred);
+    
+    addAndMakeVisible(versionLabel);
+    versionLabel.setJustificationType(juce::Justification::centred);
+
+    // Initial Tabs
+    mainTabs.addTab("DASHBOARD", juce::Colours::darkgrey, new juce::Component(), true);
+    mainTabs.addTab("OSCILLATORS", juce::Colours::darkgrey, new juce::Component(), true);
+    mainTabs.addTab("FILTER/ENV", juce::Colours::darkgrey, new juce::Component(), true);
+    mainTabs.addTab("FX", juce::Colours::darkgrey, new juce::Component(), true);
+
+    keyboardComponent.setAvailableRange(24, 96);
+    
+    setWantsKeyboardFocus(true);
     setSize(800, 600);
 }
 
@@ -29,7 +49,21 @@ void PluginEditor::paint(juce::Graphics& g)
 
 void PluginEditor::resized()
 {
-    menuBar.setBounds(getLocalBounds().removeFromTop(25));
+    auto area = getLocalBounds();
+    
+    // 1. Top Menu (Fixed 25)
+    menuBar.setBounds(area.removeFromTop(25));
+    
+    // 2. Header (Title / Logo / Global controls)
+    auto headerArea = area.removeFromTop(80);
+    titleLabel.setBounds(headerArea.removeFromTop(40));
+    versionLabel.setBounds(headerArea);
+    
+    // 3. Keyboard (Bottom 100)
+    keyboardComponent.setBounds(area.removeFromBottom(100));
+    
+    // 4. Main Body (Tabs)
+    mainTabs.setBounds(area.reduced(10));
 }
 
 juce::StringArray PluginEditor::getMenuBarNames()

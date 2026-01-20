@@ -21,6 +21,14 @@ private:
     PluginProcessor& processor;
     
     juce::MenuBarComponent menuBar;
+    juce::MidiKeyboardComponent keyboardComponent;
+
+    // UI Structure
+    juce::TabbedComponent mainTabs { juce::TabbedButtonBar::TabsAtTop };
+    
+    // Header Components (Placeholders for now)
+    juce::Label titleLabel { "title", "NEXUS" };
+    juce::Label versionLabel { "version", "Neural Hybrid Synth" };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PluginEditor)
 };

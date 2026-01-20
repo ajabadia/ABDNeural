@@ -15,9 +15,20 @@ void PluginProcessor::releaseResources()
 {
 }
 
-void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& /*midiMessages*/)
+void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
-    buffer.clear();
+    juce::ScopedNoDenormals noDenormals;
+    auto totalNumInputChannels  = getTotalNumInputChannels();
+    auto totalNumOutputChannels = getTotalNumOutputChannels();
+
+    // Clear buffer to avoid loud noise or unexpected sound
+    for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
+        buffer.clear (i, 0, buffer.getNumSamples());
+
+    // Handle on-screen keyboard events and external MIDI
+    keyboardState.processNextMidiBuffer(midiMessages, 0, buffer.getNumSamples(), true);
+
+    // TODO: Iterate through voices and fill the buffer here
 }
 
 void PluginProcessor::processBlock(juce::AudioBuffer<double>& buffer, juce::MidiBuffer& midi)
