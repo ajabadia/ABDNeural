@@ -1,0 +1,333 @@
+---
+trigger: always_on
+---
+
+LAS  REGLAS CLAVE (Nunca romper)
+- CUANDO HAGAS UN IMPLEMENTATION_PLAN, hazlo con mucho detalle, paso a paso y, si es posible, haz referencias a la documentación de dónde se ha originado para poder consultarla cuando se llegue a esa parte o si se ha obtenido de alguna fuente o razonamiento o creas un archivo para que sirva de fuente o lo añades al propio plan, para no perder información valiosa. Además el contenido AÑÁDELO AL FICHERO ROADMAP.MD EN DOCS\PLANS\ PARA QUE QUEDE TRAZA DE LO REALIZADO Y ANTES DE AÑADIRLO, ACTUALIZA LO ANTERIOR PARA DEJAR REFLEJADO LO YA REALIZADO.
+
+- LOGS EN LOGS/ (nunca en raíz)
+-  MAX 300 LÍNEAS POR ARCHIVO
+-  ZERO ALLOCATIONS EN AUDIO THREAD
+-  QUALITY GATES NON-NEGOTIABLE (0 warnings, 100% tests, CPU targets)
+-  DOCUMENTACIÓN REQUIRED (doc comments + git format)
+- SI TIENES QUE CREAR SCRIPTS, PONLOS EN LA CARPETA SCRIPTS, SI VAN A SER TEMPORALES O DE UN SOLO USO O SOLO POR UN TIEMPO, PONLOS EN SCRIPTS/TEMP/
+
+## I. ORGANIZACIÓN DE ARCHIVOS Y DIRECTORIOS
+
+### A. ESTRUCTURA DE CARPETAS: INVIOLABLE
+
+nexus/
+├── LOGS/                          # ⚠️ TODOS los logs aquí, NUNCA en raíz
+│   ├── build/                     # CMake build logs
+│   ├── compilation/               # Errores/warnings de compilación
+│   ├── runtime/                   # Errores en ejecución
+│   ├── profiling/                 # CPU, memory profiling
+│   ├── tests/                     # Test results
+│   └── git/                       # Git operations, merges
+├── Source/
+│   ├── Main/
+│   ├── State/
+│   ├── DSP/
+│   ├── UI/
+│   ├── MIDI/
+│   ├── Serialization/
+│   └── Platform/
+├── Models/
+├── Resources/
+├── Presets/
+├── Tests/
+├── build/                         # CMake output (gitignored)
+└── .gitignore
+
+### B. REGLA DE TAMAÑO DE ARCHIVO: MÁXIMO 300 LÍNEAS
+
+NUNCA crees archivos > 300 líneas. Si alcanzas 300:
+
+1. Identifica responsabilidades claras en el archivo
+2. Divide en múltiples archivos temáticos
+3. Cada archivo = una responsabilidad principal
+
+EJEMPLO BAD (violación):
+// Source/DSP/Oscillator.h: 450 líneas
+class Oscillator { ... };           // 100 líneas
+class WavetableOscillator { ... };  // 150 líneas
+class FMOscillator { ... };         // 200 líneas
+
+EJEMPLO GOOD (separado):
+Source/DSP/CoreModules/
+├── Oscillator.h/cpp           # 95 líneas
+├── WavetableOscillator.h/cpp   # 120 líneas
+└── FMOscillator.h/cpp         # 110 líneas
+
+## II. CREACIÓN DE LOGS: PROCEDIMIENTO OBLIGATORIO
+
+### A. LOG LEVELS Y ESTRUCTURA
+
+Cada log DEBE incluir:
+- Timestamp (ISO 8601 format)
+- Log level (ERROR, WARNING, INFO, DEBUG)
+- Component/Module
+- Message
+- Context (line number, function name)
+
+EJEMPLO:
+[2026-01-20T18:30:45.123Z] [ERROR] [DSP/Oscillator] Failed to set frequency
+  Context: Oscillator::setFrequency() line 142
+  Reason: Frequency 0.0 Hz is invalid (must be > 0)
+  Stack: oscillator.cpp:142 -> synthesizer.cpp:98
+
+### B. CARPETAS DE LOGS ESPECÍFICAS
+
+Crear subdirectorios por categoría:
+
+LOGS/
+├── build/
+│   ├── YYYY-MM-DD_HH-MM-SS_cmake.log
+│   ├── YYYY-MM-DD_HH-MM-SS_ninja_build.log
+│   └── build_summary.txt
+├── compilation/
+│   ├── YYYY-MM-DD_errors.log
+│   ├── YYYY-MM-DD_warnings.log
+│   ├── compiler_version.txt
+│   └── compilation_summary.txt
+├── runtime/
+│   ├── YYYY-MM-DD_HH-MM-SS_dsp_crash.log
+│   ├── YYYY-MM-DD_HH-MM-SS_ui_error.log
+│   └── runtime_summary.txt
+├── profiling/
+│   ├── YYYY-MM-DD_cpu_profile.txt
+│   ├── YYYY-MM-DD_memory_profile.txt
+│   ├── YYYY-MM-DD_latency_analysis.txt
+│   └── perf_targets.txt
+├── tests/
+│   ├── YYYY-MM-DD_unit_tests.log
+│   ├── YYYY-MM-DD_integration_tests.log
+│   ├── test_results.txt
+│   └── coverage_report.txt
+└── git/
+    ├── YYYY-MM-DD_commits.log
+    ├── merge_conflicts.log
+    └── branch_status.txt
+
+### C. NUNCA LOGUEAR EN ARCHIVO RAÍZ
+
+❌ PROHIBIDO:
+std::ofstream log_file("error.log");  // Crea en raíz
+log_file << "Error occurred";
+log_file.close();
+
+✅ CORRECTO:
+juce::File logs_dir = juce::File::getCurrentWorkingDirectory()
+    .getChildFile("LOGS")
+    .getChildFile("compilation");
+
+if (!logs_dir.exists()) {
+    logs_dir.createDirectory();
+}
+
+juce::File error_log = logs_dir.getChildFile(
+    timestamp + "_compilation_error.log"
+);
+
+juce::FileOutputStream stream(error_log);
+stream.writeText("Error: ...\n");
+
+## III. CREACIÓN Y DIVISIÓN DE CÓDIGO
+
+### A. MÁXIMO 300 LÍNEAS POR ARCHIVO
+
+Si un archivo alcanza 280 líneas:
+
+1. Detén y revisa responsabilidades
+2. Separa cada responsabilidad
+3. El orchestrator liga todo
+
+### B. ESTRUCTURA TÍPICA DE ARCHIVO (Template)
+
+// Source/DSP/Synthesis/Oscillator.h
+#pragma once
+
+#include <juce_core/juce_core.h>
+#include <array>
+#include <memory>
+
+namespace Nexus::DSP::Synthesis {
+
+/**
+ * Brief description: One sentence
+ * 
+ * Detailed description: Paragraph explaining what this does,
+ * why it exists, and any assumptions about usage.
+ * 
+ * Thread-safety: [Specify clearly]
+ * - processSample(): Audio thread safe, no allocations
+ * - setParameter(): UI thread, may allocate
+ * 
+ * Example:
+ *   Oscillator osc;
+ *   osc.setFrequency(440.0f);
+ *   float sample = osc.processSample();
+ */
+class Oscillator {
+public:
+    // --- Lifecycle
+    Oscillator() noexcept;
+    ~Oscillator() = default;
+    
+    // Prevent copying (if audio state)
+    Oscillator(const Oscillator&) = delete;
+    Oscillator& operator=(const Oscillator&) = delete;
+    
+    // --- Configuration (non-real-time safe)
+    void setSampleRate(double sr) noexcept;
+    
+    // --- Real-time safe processing
+    void setFrequency(float hz) noexcept;
+    float processSample(float phase_mod = 0.0f) const noexcept;
+    void reset() noexcept;
+    
+private:
+    // --- State
+    std::atomic<float> frequency_hz_{440.0f};
+    float phase_ = 0.0f;
+    double sample_rate_ = 48000.0;
+    
+    // --- Constants
+    static constexpr float NYQUIST_RATIO = 0.99f;
+};
+
+}  // namespace Nexus::DSP::Synthesis
+
+// Source/DSP/Synthesis/Oscillator.cpp
+#include "Oscillator.h"
+#include <cmath>
+
+namespace Nexus::DSP::Synthesis {
+
+Oscillator::Oscillator() noexcept
+    : frequency_hz_(440.0f), phase_(0.0f), sample_rate_(48000.0) {
+}
+
+void Oscillator::setSampleRate(double sr) noexcept {
+    jassert(sr > 0.0);
+    sample_rate_ = sr;
+}
+
+void Oscillator::setFrequency(float hz) noexcept {
+    // Validate
+    hz = juce::jlimit(20.0f, 20000.0f, hz);
+    frequency_hz_.store(hz, std::memory_order_release);
+}
+
+float Oscillator::processSample(float phase_mod) const noexcept {
+    float freq = frequency_hz_.load(std::memory_order_acquire);
+    float mod_phase = phase_ + phase_mod;
+    if (mod_phase >= 1.0f) mod_phase -= 1.0f;
+    if (mod_phase < 0.0f) mod_phase += 1.0f;
+    
+    return std::sin(2.0f * M_PI * mod_phase);
+}
+
+void Oscillator::reset() noexcept {
+    phase_ = 0.0f;
+}
+
+}  // namespace Nexus::DSP::Synthesis
+
+## IV. MANEJO DE ERRORES DE COMPILACIÓN
+
+### A. CLASIFICACIÓN DE ERRORES
+
+Cuando encuentres error de compilación, clasifica ANTES de decidir solución:
+
+| Tipo | Ejemplo | Solución Correcta |
+|------|---------|-------------------|
+| Undefined Reference | `undefined reference to 'Symbol'` | Verificar linkage en CMakeLists.txt |
+| Header Mismatch | `no matching function for call` | Revisar firma en .h vs .cpp |
+| Template Error | `template instantiation failed` | Simplificar template o mover a .cpp |
+| Include Loop | `circular dependency detected` | Refactor interfaces, forward declarations |
+| Memory Model | `cannot use atomic in constant expression` | Revisar context (compile-time vs runtime) |
+
+### B. ERRORES COMUNES: SOLUCIONES RECOMENDADAS
+
+#### Error 1: "Undefined reference to Symbol"
+
+❌ INCORRECTO:
+target_link_libraries(nexus PRIVATE
+    /usr/lib/libsomething.so  # Path hardcoded
+)
+
+✅ CORRECTO:
+find_package(LibSomething REQUIRED)
+target_link_libraries(nexus PRIVATE LibSomething::LibSomething)
+
+Acciones:
+1. Verifica que el .cpp está listado en CMakeLists.txt
+2. Verifica que el .h está siendo incluido
+3. Usa nm -C libfile.a | grep Symbol para verificar símbolo
+
+#### Error 2: "No matching function for call"
+
+❌ INCORRECTO:
+// .h
+void setFrequency(float hz);
+
+// .cpp
+void Oscillator::setFrequency(double hz) {  // ❌ Mismatch
+}
+
+✅ CORRECTO:
+// .h
+void setFrequency(float hz) noexcept;
+
+// .cpp
+void Oscillator::setFrequency(float hz) noexcept {  // ✅ Match exacto
+}
+
+Acciones:
+1. Copia firma EXACTA del .h al .cpp
+2. Usa clang-format para asegurar consistencia
+3. Activa warnings: -Woverloaded-virtual
+
+## V. BEST PRACTICES: 10 REGLAS CLAVE
+
+✅ Rule 1: Clamp all external inputs
+float frequency = juce::jlimit(20.0f, 20000.0f, user_frequency);
+
+✅ Rule 2: Initialize all variables
+float phase = 0.0f;  // Never: float phase;
+
+✅ Rule 3: Use smart pointers
+std::unique_ptr<Filter> filter_;  // Never: Filter* filter_;
+
+✅ Rule 4: Pre-allocate in prepareToPlay
+void prepareToPlay(int max_samples) {
+    temp_buffer_.resize(max_samples);
+}
+
+✅ Rule 5: No allocations in processSample
+void processBlock(AudioBuffer<float>& buffer) {
+    // Use pre-allocated temp_buffer_, don't new/malloc
+}
+
+✅ Rule 6: No locks in audio thread
+float processSample() {
+    // Use atomic.load() not std::lock_guard
+}
+
+✅ Rule 7: Use volatile/atomic for thread-shared data
+std::atomic<float> frequency_{440.0f};
+
+✅ Rule 8: Explicit type conversions
+int samples = static_cast<int>(duration_sec * sample_rate);
+
+✅ Rule 9: Handle edge cases
+if (divisor < 0.001f) divisor = 0.001f;  // Before divide
+
+✅ Rule 10: Document thread-safety
+/**
+ * Real-time safe. Can be called from audio callback.
+ * Uses lock-free atomics.
+ */
+void setFrequency(float hz) noexcept;
+
