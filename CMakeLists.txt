@@ -67,7 +67,14 @@ juce_add_plugin(NEXUS
     PLUGIN_CODE Nxs1
     FORMATS VST3 AU Standalone
     IS_SYNTH TRUE
-    STANDALONE_SHOW_SETTINGS_BUTTON FALSE
+)
+
+# Target-specific properties for Standalone
+if (TARGET NEXUS_Standalone)
+    set_target_properties(NEXUS_Standalone PROPERTIES 
+        JUCE_STANDALONE_SHOW_SETTINGS_BUTTON FALSE
+    )
+endif()
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE

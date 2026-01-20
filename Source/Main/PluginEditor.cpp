@@ -69,13 +69,23 @@ void PluginEditor::menuItemSelected(int menuItemID, int /*topLevelMenuIndex*/)
 {
     if (menuItemID == 14) // Options
     {
-        // For Standalone, we'd typically trigger the StandaloneFilterWindow's settings.
-        // For now, we show a message. In Phase 5 we can implement a custom settings panel.
-        juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,
-                                               "NEXUS Options",
-                                               "Audio/MIDI settings are managed by your Host in Plugin mode.\n" +
-                                               juce::String("In Standalone mode, use the native 'Options' button if visible."),
-                                               "OK");
+        if (juce::AudioProcessor::wrapperType_Standalone == processor.wrapperType)
+        {
+            // In a future step, we can pass the device manager here. 
+            // For now, we show a professional dialog.
+            juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,
+                "NEXUS Options",
+                "To configure Audio/MIDI devices in Standalone mode, we will implement a custom panel in Phase 5.\n\n"
+                "Note: The native JUCE options button has been disabled to keep the UI clean.",
+                "OK");
+        }
+        else
+        {
+            juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,
+                "NEXUS Options",
+                "Audio/MIDI settings are managed by your DAW/Host when running as a plugin.",
+                "OK");
+        }
     }
     else if (menuItemID == 101) // About
     {
