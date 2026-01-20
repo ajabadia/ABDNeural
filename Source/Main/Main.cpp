@@ -9,6 +9,9 @@
   ==============================================================================
 */
 
+#include <memory>
+#include <juce_gui_extra/juce_gui_extra.h>
+#include <juce_audio_plugin_client/juce_audio_plugin_client.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "PluginProcessor.h"
 
