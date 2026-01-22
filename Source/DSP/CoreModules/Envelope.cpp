@@ -18,6 +18,7 @@ Envelope::Envelope() noexcept
     updateMultipliers();
 }
 
+
 void Envelope::setSampleRate(double newSampleRate) noexcept
 {
     if (newSampleRate > 0.0)
@@ -30,13 +31,13 @@ void Envelope::setSampleRate(double newSampleRate) noexcept
 void Envelope::setAttackTime(float ms) noexcept
 {
     attackTimeMs_.store(juce::jmax(0.1f, ms), std::memory_order_release);
-    // In a real high-perf synth, we might defer multiplier calculation to the start of the phase
-    // or use a dirty flag. For now, we update it in processSample if needed or keep it simple.
+    parametersDirty_.store(true, std::memory_order_release);
 }
 
 void Envelope::setDecayTime(float ms) noexcept
 {
     decayTimeMs_.store(juce::jmax(0.1f, ms), std::memory_order_release);
+    parametersDirty_.store(true, std::memory_order_release);
 }
 
 void Envelope::setSustainLevel(float level) noexcept
@@ -47,6 +48,15 @@ void Envelope::setSustainLevel(float level) noexcept
 void Envelope::setReleaseTime(float ms) noexcept
 {
     releaseTimeMs_.store(juce::jmax(0.1f, ms), std::memory_order_release);
+    parametersDirty_.store(true, std::memory_order_release);
+}
+
+void Envelope::setParameters(float attack, float decay, float sustain, float release) noexcept
+{
+    setAttackTime(attack);
+    setDecayTime(decay);
+    setSustainLevel(sustain);
+    setReleaseTime(release);
 }
 
 void Envelope::noteOn() noexcept
@@ -69,6 +79,13 @@ void Envelope::reset() noexcept
 
 float Envelope::processSample() noexcept
 {
+    // Check if parameters changed
+    if (parametersDirty_.load(std::memory_order_acquire))
+    {
+        updateMultipliers();
+        parametersDirty_.store(false, std::memory_order_release);
+    }
+
     float sustain = sustainLevel_.load(std::memory_order_acquire);
 
     switch (currentState_)

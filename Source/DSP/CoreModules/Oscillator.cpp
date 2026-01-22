@@ -109,12 +109,9 @@ float Oscillator::processSample(float phaseMod) noexcept
             break;
 
         case Waveform::Noise:
-            // Simple white noise (not strictly thread safe if using shared rand, 
-            // but this is a placeholder. Better to use a deterministic LCG here)
-            // Using a simple LCG for thread safety and zero allocation:
-            static uint32_t seed = 123456789;
-            seed = 1664525 * seed + 1013904223;
-            output = (static_cast<float>(seed) / static_cast<float>(UINT32_MAX)) * 2.0f - 1.0f;
+            // Deterministic LCG for thread safety per instance and zero allocation
+            noiseSeed_ = 1664525 * noiseSeed_ + 1013904223;
+            output = (static_cast<float>(noiseSeed_) / static_cast<float>(0xFFFFFFFF)) * 2.0f - 1.0f;
             break;
     }
 

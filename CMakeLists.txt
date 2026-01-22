@@ -39,11 +39,16 @@ endif()
 
 set(NEXUS_SOURCES
     # Main
-    Source/Main/PluginProcessor.h
-    Source/Main/PluginProcessor.cpp
-    Source/Main/PluginEditor.h
-    Source/Main/PluginEditor.cpp
-    Source/Main/Main.cpp
+    Source/Main/NEXUSProcessor.h
+    Source/Main/NEXUSProcessor.cpp
+    Source/Main/NEXUSEditor.h
+    Source/Main/NEXUSEditor.cpp
+    
+    # UI
+    Source/UI/ParameterPanel.h
+    Source/UI/ParameterPanel.cpp
+    Source/UI/SpectralVisualizer.h
+    Source/UI/SpectralVisualizer.cpp
     
     # State
     Source/State/ParameterDefinitions.h
@@ -51,11 +56,19 @@ set(NEXUS_SOURCES
     # DSP - CoreModules
     Source/DSP/CoreModules/Oscillator.h
     Source/DSP/CoreModules/Oscillator.cpp
+    Source/DSP/CoreModules/Resonator.h
+    Source/DSP/CoreModules/Resonator.cpp
     Source/DSP/CoreModules/Envelope.h
     Source/DSP/CoreModules/Envelope.cpp
     Source/DSP/CoreModules/FilterBank.h
     Source/DSP/CoreModules/FilterBank.cpp
+    
+    # DSP - Synthesis
+    Source/DSP/Synthesis/ResonatorSound.h
+    Source/DSP/Synthesis/ResonatorVoice.h
+    Source/DSP/Synthesis/ResonatorVoice.cpp
 )
+message(STATUS "NEXUS_SOURCES: ${NEXUS_SOURCES}")
 
 # ============================================================================
 # CREATE PLUGIN TARGET
@@ -71,14 +84,17 @@ juce_add_plugin(NEXUS
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
+    SOURCES ${NEXUS_SOURCES}
 )
 
-# Custom Standalone App Support
-target_compile_definitions(NEXUS PUBLIC
-    JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1
-)
+# Custom Standalone App Support - Force all sources into Standalone target
+# to resolve persistent linkage issues with createPluginFilter and dependencies.
+if(TARGET NEXUS_Standalone)
+    target_sources(NEXUS_Standalone PRIVATE ${NEXUS_SOURCES})
+endif()
 
-target_sources(NEXUS PRIVATE ${NEXUS_SOURCES})
+# Reverted to standard to avoid linker conflicts with custom options button
+# target_compile_definitions(NEXUS PUBLIC JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
 
 target_compile_features(NEXUS PRIVATE cxx_std_17)
 

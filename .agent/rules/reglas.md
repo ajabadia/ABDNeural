@@ -5,12 +5,14 @@ trigger: always_on
 LAS  REGLAS CLAVE (Nunca romper)
 - CUANDO HAGAS UN IMPLEMENTATION_PLAN, hazlo con mucho detalle, paso a paso y, si es posible, haz referencias a la documentación de dónde se ha originado para poder consultarla cuando se llegue a esa parte o si se ha obtenido de alguna fuente o razonamiento o creas un archivo para que sirva de fuente o lo añades al propio plan, para no perder información valiosa. Además el contenido AÑÁDELO AL FICHERO ROADMAP.MD EN DOCS\PLANS\ PARA QUE QUEDE TRAZA DE LO REALIZADO Y ANTES DE AÑADIRLO, ACTUALIZA LO ANTERIOR PARA DEJAR REFLEJADO LO YA REALIZADO.
 
+
 - LOGS EN LOGS/ (nunca en raíz)
 -  MAX 300 LÍNEAS POR ARCHIVO
 -  ZERO ALLOCATIONS EN AUDIO THREAD
 -  QUALITY GATES NON-NEGOTIABLE (0 warnings, 100% tests, CPU targets)
 -  DOCUMENTACIÓN REQUIRED (doc comments + git format)
 - SI TIENES QUE CREAR SCRIPTS, PONLOS EN LA CARPETA SCRIPTS, SI VAN A SER TEMPORALES O DE UN SOLO USO O SOLO POR UN TIEMPO, PONLOS EN SCRIPTS/TEMP/
+- Si en algún momento encuentras un comflicto entre las reglas y lo que tienes que hacer, por ejemplo, por limitaciones técnicas, pregunta al usuario si te puedes saltar la regla temporalmente.
 
 ## I. ORGANIZACIÓN DE ARCHIVOS Y DIRECTORIOS
 

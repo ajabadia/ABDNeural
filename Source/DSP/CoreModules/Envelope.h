@@ -49,6 +49,8 @@ public:
     void setDecayTime(float ms) noexcept;
     void setSustainLevel(float level) noexcept; // 0.0 to 1.0
     void setReleaseTime(float ms) noexcept;
+    // New: set all ADSR parameters at once (thread‑safe)
+    void setParameters(float attack, float decay, float sustain, float release) noexcept;
 
     // --- Control ---
     void noteOn() noexcept;
@@ -81,6 +83,7 @@ private:
     std::atomic<float> decayTimeMs_{ 100.0f };
     std::atomic<float> sustainLevel_{ 0.7f };
     std::atomic<float> releaseTimeMs_{ 200.0f };
+    std::atomic<bool> parametersDirty_{ true };
 
     // Targets for exponential curves
     // To reach 1.0 exponentially, we target slightly above 1.0 (e.g. 1.1) 

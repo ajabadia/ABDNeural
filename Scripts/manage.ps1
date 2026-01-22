@@ -23,7 +23,7 @@ $ErrorActionPreference = "Stop"
 
 # --- Configuration ---
 $ProjectRoot = Get-Item $PSScriptRoot\..
-$BuildDir = "$($ProjectRoot.FullName)\build"
+$BuildDir = "$($ProjectRoot.FullName)\build_nexus"
 # Try to find JUCE in common locations if not set
 $JuceDirCandidate = "C:\JUCE" 
 if (Test-Path $JuceDirCandidate) { $JuceDir = $JuceDirCandidate }

@@ -1,0 +1,22 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="D:\desarrollos\ABDNeural\build_nexus\CMakeFiles\a26082e80948317dbde3fe2ebd550017\NEXUS_resources.rc.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="D:\desarrollos\ABDNeural\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="D:\desarrollos\ABDNeural\build_nexus\NEXUS_artefacts\JuceLibraryCode\NEXUS_resources.rc">
+      <Filter>Source Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{C5ED2627-8FB7-39D6-82C5-6B8D13A6E8FC}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{90A6AD1A-F49E-3C6D-82F9-C4691A1AD403}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

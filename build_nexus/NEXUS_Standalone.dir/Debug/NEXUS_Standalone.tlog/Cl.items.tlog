@@ -1,0 +1,17 @@
+D:\desarrollos\ABDNeural\Source\Main\NEXUSProcessor.cpp;D:\desarrollos\ABDNeural\build_nexus\NEXUS_Standalone.dir\Debug\NEXUSProcessor.obj
+D:\desarrollos\ABDNeural\Source\Main\NEXUSEditor.cpp;D:\desarrollos\ABDNeural\build_nexus\NEXUS_Standalone.dir\Debug\NEXUSEditor.obj
+D:\desarrollos\ABDNeural\Source\UI\ParameterPanel.cpp;D:\desarrollos\ABDNeural\build_nexus\NEXUS_Standalone.dir\Debug\ParameterPanel.obj
+D:\desarrollos\ABDNeural\Source\UI\SpectralVisualizer.cpp;D:\desarrollos\ABDNeural\build_nexus\NEXUS_Standalone.dir\Debug\SpectralVisualizer.obj
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\Oscillator.cpp;D:\desarrollos\ABDNeural\build_nexus\NEXUS_Standalone.dir\Debug\Oscillator.obj
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\Resonator.cpp;D:\desarrollos\ABDNeural\build_nexus\NEXUS_Standalone.dir\Debug\Resonator.obj
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\Envelope.cpp;D:\desarrollos\ABDNeural\build_nexus\NEXUS_Standalone.dir\Debug\Envelope.obj
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\FilterBank.cpp;D:\desarrollos\ABDNeural\build_nexus\NEXUS_Standalone.dir\Debug\FilterBank.obj
+D:\desarrollos\ABDNeural\Source\DSP\Synthesis\ResonatorVoice.cpp;D:\desarrollos\ABDNeural\build_nexus\NEXUS_Standalone.dir\Debug\ResonatorVoice.obj
+C:\JUCE\modules\juce_audio_plugin_client\juce_audio_plugin_client_AAX.cpp;D:\desarrollos\ABDNeural\build_nexus\NEXUS_Standalone.dir\Debug\juce_audio_plugin_client_AAX.obj
+C:\JUCE\modules\juce_audio_plugin_client\juce_audio_plugin_client_AAX_utils.cpp;D:\desarrollos\ABDNeural\build_nexus\NEXUS_Standalone.dir\Debug\juce_audio_plugin_client_AAX_utils.obj
+C:\JUCE\modules\juce_audio_plugin_client\juce_audio_plugin_client_ARA.cpp;D:\desarrollos\ABDNeural\build_nexus\NEXUS_Standalone.dir\Debug\juce_audio_plugin_client_ARA.obj
+C:\JUCE\modules\juce_audio_plugin_client\juce_audio_plugin_client_LV2.cpp;D:\desarrollos\ABDNeural\build_nexus\NEXUS_Standalone.dir\Debug\juce_audio_plugin_client_LV2.obj
+C:\JUCE\modules\juce_audio_plugin_client\juce_audio_plugin_client_Standalone.cpp;D:\desarrollos\ABDNeural\build_nexus\NEXUS_Standalone.dir\Debug\juce_audio_plugin_client_Standalone.obj
+C:\JUCE\modules\juce_audio_plugin_client\juce_audio_plugin_client_Unity.cpp;D:\desarrollos\ABDNeural\build_nexus\NEXUS_Standalone.dir\Debug\juce_audio_plugin_client_Unity.obj
+C:\JUCE\modules\juce_audio_plugin_client\juce_audio_plugin_client_VST2.cpp;D:\desarrollos\ABDNeural\build_nexus\NEXUS_Standalone.dir\Debug\juce_audio_plugin_client_VST2.obj
+C:\JUCE\modules\juce_audio_plugin_client\juce_audio_plugin_client_VST3.cpp;D:\desarrollos\ABDNeural\build_nexus\NEXUS_Standalone.dir\Debug\juce_audio_plugin_client_VST3.obj

@@ -35,7 +35,10 @@ void FilterBank::setCutoff(float frequencyHz) noexcept
 
 void FilterBank::setResonance(float q) noexcept
 {
-    resonance_.store(juce::jlimit(0.1f, 10.0f, q), std::memory_order_release);
+    // Mapping 0.0 - 1.0 to a musical Q range (0.5 to 15.0)
+    // Quadratic curve for better resolution at low resonance
+    float mappedQ = 0.5f + (q * q * 14.5f); 
+    resonance_.store(mappedQ, std::memory_order_release);
     coefficientsDirty_.store(true, std::memory_order_release);
 }
 

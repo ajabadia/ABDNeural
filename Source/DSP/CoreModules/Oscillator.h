@@ -13,6 +13,7 @@
 #include <juce_core/juce_core.h>
 #include <atomic>
 #include <cmath>
+#include <cstdint>
 
 namespace Nexus::DSP::Core {
 
@@ -74,6 +75,7 @@ private:
     double sampleRate_ = 48000.0;
     float currentPhase_ = 0.0f;
     float phaseIncrement_ = 0.0f;
+    uint32_t noiseSeed_ = 123456789;
 
     // --- Internal Helpers ---
     void updatePhaseIncrement() noexcept;
