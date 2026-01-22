@@ -1,0 +1,290 @@
+
+Te doy ahora otro de los importantes para que ya tengas un “triángulo base” muy sólido: NEXUS_CodeStandards_Examples.md (versión condensada pero útil y coherente con todo lo anterior). Si luego quieres, sigo con alguno de features.
+
+NEXUS_CodeStandards_Examples.md (versión usable)
+text
+# NEXUS: Code Standards & Examples
+Guía de estilo y patrones para C++/JUCE/DSP en NEXUS.  
+Objetivo: que todo el código sea coherente, mantenible y RT-safe.
+---
+## 1. NOMBRES Y ESTRUCTURA
+### 1.1 Nombres de clases y archivos
+- Clases: `PascalCase`  
+- Archivos: `NombreClase.h` / `NombreClase.cpp`  
+- Namespaces: `Nexus::DSP::Synthesis`, `Nexus::UI`, etc.
+Ejemplos:
+- `Oscillator.h` / `Oscillator.cpp`
+- `VoiceAllocator.h` / `VoiceAllocator.cpp`
+- `PresetManager.h` / `PresetManager.cpp`
+Evitar:
+- `osc.h`, `misc.cpp`, `utils.hpp`, `myclass.cc`
+---
+### 1.2 Estructura de un header típico
+```cpp
+#pragma once
+#include <juce_core/juce_core.h>
+namespace Nexus::DSP::Synthesis {
+/**
+ * Breve descripción de la clase.
+ *
+ * Detalles:
+ * - Qué hace.
+ * - Para qué se usa.
+ * - Supuestos importantes.
+ *
+ * Thread-safety:
+ * - processSample(): RT-safe (no allocs, no locks).
+ * - setXxx(): sólo UI thread / setup.
+ */
+class Oscillator
+{
+public:
+    Oscillator() noexcept;
+    ~Oscillator() = default;
+    Oscillator(const Oscillator&) = delete;
+    Oscillator& operator=(const Oscillator&) = delete;
+    void setSampleRate(double sampleRate) noexcept;
+    void setFrequency(float hz) noexcept;
+    float processSample(float phaseMod = 0.0f) noexcept;
+    void reset() noexcept;
+private:
+    std::atomic<float> frequencyHz_{ 440.0f };
+    float phase_ = 0.0f;
+    double sampleRate_ = 48000.0;
+};
+} // namespace Nexus::DSP::Synthesis
+
+1.3 Estructura de un .cpp típico
+cpp
+#include "Oscillator.h"
+#include <cmath>
+namespace Nexus::DSP::Synthesis {
+Oscillator::Oscillator() noexcept = default;
+void Oscillator::setSampleRate(double sr) noexcept
+{
+    jassert(sr > 0.0);
+    sampleRate_ = sr;
+}
+void Oscillator::setFrequency(float hz) noexcept
+{
+    // Validar y limitar
+    hz = juce::jlimit(20.0f, 20000.0f, hz);
+    frequencyHz_.store(hz, std::memory_order_release);
+}
+float Oscillator::processSample(float phaseMod) noexcept
+{
+    const float freq = frequencyHz_.load(std::memory_order_acquire);
+    float phase = phase_ + phaseMod;
+    if (phase >= 1.0f) phase -= 1.0f;
+    if (phase < 0.0f) phase += 1.0f;
+    const float sample = std::sin(juce::MathConstants<float>::twoPi * phase);
+    phase_ = phase + freq / static_cast<float>(sampleRate_);
+    if (phase_ >= 1.0f) phase_ -= 1.0f;
+    return sample;
+}
+void Oscillator::reset() noexcept
+{
+    phase_ = 0.0f;
+}
+} // namespace Nexus::DSP::Synthesis
+
+2. THREAD-SAFETY Y AUDIO THREAD
+2.1 Reglas
+processBlock() y processSample():
+No asignar memoria.
+No locks (mutex).
+No I/O (disco, red, stdout).
+Comunicación UI ↔ audio:
+Usar std::atomic o estructuras lock-free.
+Ejemplo GOOD:
+cpp
+class Voice
+{
+public:
+    void setTargetFrequency(float hz) noexcept
+    {
+        hz = juce::jlimit(20.0f, 20000.0f, hz);
+        targetFrequencyHz_.store(hz, std::memory_order_release);
+    }
+    float processSample() noexcept
+    {
+        const float target = targetFrequencyHz_.load(std::memory_order_acquire);
+        currentFrequencyHz_ = 0.99f * currentFrequencyHz_ + 0.01f * target;
+        // ... usar currentFrequencyHz_ ...
+        return 0.0f;
+    }
+private:
+    std::atomic<float> targetFrequencyHz_{ 440.0f };
+    float currentFrequencyHz_ = 440.0f;
+};
+Ejemplo BAD:
+cpp
+// ❌ NO
+std::mutex m;
+float freq;
+void setFrequency(float hz)
+{
+    std::lock_guard<std::mutex> lock(m);
+    freq = hz;
+}
+float processSample()
+{
+    std::lock_guard<std::mutex> lock(m); // lock en audio thread
+    return osc(freq);
+}
+
+3. MEMORIA Y ALLOCATIONS
+3.1 Regla general
+Preparar memoria en prepareToPlay() o constructor.
+No crear/destruir objetos en audio thread.
+Ejemplo BAD:
+cpp
+void Voice::processBlock(juce::AudioBuffer<float>& buffer)
+{
+    std::vector<float> temp(buffer.getNumSamples()); // ❌ alloc por llamada
+    // ...
+}
+Ejemplo GOOD:
+cpp
+void Voice::prepareToPlay(int maxSamplesPerBlock)
+{
+    tempBuffer_.resize(static_cast<size_t>(maxSamplesPerBlock));
+}
+void Voice::processBlock(juce::AudioBuffer<float>& buffer)
+{
+    // reutilizar tempBuffer_
+}
+
+4. COMENTARIOS Y DOC COMMENTS
+4.1 Regla de oro
+Comentarios explican por qué, no qué.
+No comentar obviedades.
+Ejemplo BAD:
+cpp
+// increment phase
+phase_ += phaseIncrement;
+// check wrap
+if (phase_ > 1.0f) phase_ -= 1.0f;
+Ejemplo GOOD:
+cpp
+// Mantener fase en [0, 1) para evitar overflow en largos periodos
+phase_ += phaseIncrement;
+if (phase_ > 1.0f)
+    phase_ -= 1.0f;
+Doc comment típica:
+cpp
+/**
+ * Set the cutoff frequency of the filter in Hz.
+ *
+ * Thread-safety:
+ * - Safe to call from UI thread.
+ * - Uses atomics for communication with audio thread.
+ *
+ * @param hz Frequency in Hz, clamped.[1]
+ */
+void setCutoff(float hz) noexcept;
+
+5. MANEJO DE ERRORES Y ASSERTS
+Usar jassert para condiciones que no deben fallar en debug.
+Evitar asserts en audio thread que puedan ser muy costosas en release.
+Validar inputs de usuario (no asumir nada).
+Ejemplo:
+cpp
+void setResonance(float q) noexcept
+{
+    jassert(q > 0.0f);
+    q = juce::jlimit(0.1f, 20.0f, q);
+    resonance_ = q;
+}
+
+6. ORGANIZACIÓN EN MÓDULOS
+Source/DSP/CoreModules/:
+Oscillator, Envelope, Filter básicos.
+Source/DSP/Synthesis/:
+Voice, VoiceAllocator, SynthEngine.
+Source/DSP/Effects/:
+Reverb, Delay, Distortion, etc.
+Source/DSP/ML/:
+FeatureExtractor, ModelWrapper, etc.
+Regla: una clase principal por archivo, archivos cortos y enfocados.
+
+7. EJEMPLO COMPLETO: VOICE + ALLOCATOR (RESUMIDO)
+cpp
+// Voice.h
+#pragma once
+#include <juce_audio_basics/juce_audio_basics.h>
+#include "Oscillator.h"
+#include "Envelope.h"
+namespace Nexus::DSP::Synthesis {
+class Voice
+{
+public:
+    Voice() = default;
+    void prepareToPlay(double sampleRate, int maxSamples);
+    void startNote(int midiNoteNumber, float velocity) noexcept;
+    void stopNote(float velocity, bool allowTailOff) noexcept;
+    void renderNextBlock(juce::AudioBuffer<float>& buffer, int startSample, int numSamples);
+    bool isActive() const noexcept { return isActive_; }
+private:
+    Oscillator osc_;
+    Envelope env_;
+    bool isActive_ = false;
+};
+} // namespace Nexus::DSP::Synthesis
+cpp
+// Voice.cpp
+#include "Voice.h"
+namespace Nexus::DSP::Synthesis {
+void Voice::prepareToPlay(double sampleRate, int maxSamples)
+{
+    osc_.setSampleRate(sampleRate);
+    env_.setSampleRate(sampleRate);
+    // prealloc si hace falta
+}
+void Voice::startNote(int midiNoteNumber, float velocity) noexcept
+{
+    const float freq = juce::MidiMessage::getMidiNoteInHertz(midiNoteNumber);
+    osc_.setFrequency(freq);
+    env_.noteOn();
+    isActive_ = true;
+}
+void Voice::stopNote(float, bool allowTailOff) noexcept
+{
+    if (allowTailOff)
+        env_.noteOff();
+    else
+        isActive_ = false;
+}
+void Voice::renderNextBlock(juce::AudioBuffer<float>& buffer, int startSample, int numSamples)
+{
+    if (! isActive_)
+        return;
+    auto* left = buffer.getWritePointer(0, startSample);
+    auto* right = buffer.getNumChannels() > 1 ? buffer.getWritePointer(1, startSample) : nullptr;
+    for (int i = 0; i < numSamples; ++i)
+    {
+        const float envSample = env_.getNextSample();
+        if (! env_.isActive())
+        {
+            isActive_ = false;
+            break;
+        }
+        const float sample = osc_.processSample() * envSample;
+        left[i] += sample;
+        if (right != nullptr)
+            right[i] += sample;
+    }
+}
+} // namespace Nexus::DSP::Synthesis
+
+8. RESUMEN DE REGLAS CLAVE
+Un archivo por clase principal, máx. ~300 líneas.
+Headers con #pragma once, namespace correcto y doc comments.
+Audio thread sin allocations, sin locks, sin I/O.
+Comunicación UI ↔ audio con std::atomic.
+Comentarios explican “por qué”.
+Validar inputs, usar jlimit.
+Tests para módulos DSP críticos.
+Cualquier patrón repetido → factorizar y documentar.
+FIN
+

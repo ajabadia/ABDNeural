@@ -1,0 +1,457 @@
+
+Te los doy entonces por pantalla, listos para copiar. Empiezo con los 3 más críticos. Si quieres luego sigo con más.
+
+1) AI_OPERATIONAL_GUIDELINES.md
+text
+# NEXUS: Instrucciones Operacionales para AI Developer
+Reglas, prácticas y procedimientos que DEBE seguir la IA developer para garantizar calidad, mantenibilidad y éxito del proyecto.
+---
+## I. ORGANIZACIÓN DE ARCHIVOS Y DIRECTORIOS
+### A. ESTRUCTURA DE CARPETAS INVIOLABLE
+nexus/
+├── LOGS/                          # ⚠ TODOS los logs aquí, NUNCA en raíz
+│   ├── build/                     # CMake build logs
+│   ├── compilation/               # Errores/warnings de compilación
+│   ├── runtime/                   # Errores en ejecución
+│   ├── profiling/                 # CPU, memory profiling
+│   ├── tests/                     # Test results
+│   └── blockers/                  # Blockers críticos
+├── Source/
+│   ├── Main/
+│   ├── State/
+│   ├── DSP/
+│   ├── UI/
+│   ├── MIDI/
+│   ├── Serialization/
+│   └── Platform/
+├── Models/
+├── Resources/
+├── Presets/
+├── Tests/
+├── Documentation/
+├── build/                         # CMake output (gitignored)
+└── .gitignore
+### B. REGLA DE TAMAÑO: MÁXIMO 300 LÍNEAS POR ARCHIVO
+- Nunca crear archivos > 300 líneas.
+- Si un archivo se acerca a 280 líneas:
+  1. Para y revisa responsabilidades.
+  2. Divide en varios archivos coherentes.
+  3. Cada archivo = una responsabilidad principal.
+Ejemplo BAD:
+// Source/DSP/Oscillator.h (450 líneas)
+class Oscillator { ... };
+class WavetableOscillator { ... };
+class FMOscillator { ... };
+Ejemplo GOOD:
+Source/DSP/CoreModules/
+├── Oscillator.h/cpp
+├── WavetableOscillator.h/cpp
+└── FMOscillator.h/cpp
+### C. NOMENCLATURA DE ARCHIVOS
+- Formato: `NombreEnPascalCase.[h|cpp]`
+- Ejemplos correctos:
+  - Oscillator.h / Oscillator.cpp
+  - FilterBank.h / FilterBank.cpp
+  - PresetManager.h / PresetManager.cpp
+---
+## II. LOGS: REGLAS OBLIGATORIAS
+### A. TODO LOG EN `LOGS/`, NUNCA EN RAÍZ
+Prohibido:
+```cpp
+// ❌ NO
+std::ofstream logFile("error.log");
+Correcto:
+cpp
+juce::File logsDir = juce::File::getCurrentWorkingDirectory()
+    .getChildFile("LOGS")
+    .getChildFile("compilation");
+if (!logsDir.exists())
+    logsDir.createDirectory();
+juce::File logFile = logsDir.getChildFile(timestamp + "_errors.log");
+juce::FileOutputStream out(logFile);
+out.writeText(errorMessage + "\n", false, false, "\n");
+B. ESTRUCTURA DE LOGS/
+LOGS/├── build/│ ├── YYYY-MM-DD_HH-MM-SS_cmake.log│ └── YYYY-MM-DD_HH-MM-SS_build.log├── compilation/│ ├── YYYY-MM-DD_errors.log│ └── YYYY-MM-DD_warnings.log├── runtime/│ ├── YYYY-MM-DD_HH-MM-SS_crash.log│ └── runtime_summary.txt├── profiling/│ ├── cpu_YYYY-MM-DD.txt│ ├── memory_YYYY-MM-DD.txt│ └── latency_YYYY-MM-DD.txt├── tests/│ ├── unit_YYYY-MM-DD.log│ ├── integration_YYYY-MM-DD.log│ └── coverage_YYYY-MM-DD.txt└── blockers/└── YYYY-MM-DD_HH-MM-SS_BLOCKER.md
+C. CONTENIDO MÍNIMO DE CADA LOG
+Fecha y hora
+Entorno (OS, compilador, config)
+Descripción breve
+Pasos para reproducir (si aplica)
+Stacktrace/errores relevantes
+Acción tomada o propuesta
+
+III. CREACIÓN Y DIVISIÓN DE CÓDIGO
+A. PLANTILLA PARA HEADERS
+cpp
+#pragma once
+#include <juce_core/juce_core.h>
+namespace Nexus::DSP::Synthesis {
+/**
+ * Breve descripción de la clase.
+ *
+ * Detalle: para qué sirve, cómo se usa, y supuestos importantes.
+ *
+ * Thread-safety:
+ * - Métodos RT-safe: processSample()
+ * - Métodos no RT-safe: setSampleRate(), setFrequency()
+ */
+class Oscillator {
+public:
+    Oscillator() noexcept;
+    ~Oscillator() = default;
+    Oscillator(const Oscillator&) = delete;
+    Oscillator& operator=(const Oscillator&) = delete;
+    void setSampleRate(double sr) noexcept;
+    void setFrequency(float hz) noexcept;
+    float processSample(float phaseMod = 0.0f) noexcept;
+    void reset() noexcept;
+private:
+    std::atomic<float> frequencyHz_{ 440.0f };
+    float phase_ = 0.0f;
+    double sampleRate_ = 48000.0;
+};
+} // namespace Nexus::DSP::Synthesis
+B. PLANTILLA PARA IMPLEMENTACIÓN
+cpp
+#include "Oscillator.h"
+#include <cmath>
+namespace Nexus::DSP::Synthesis {
+Oscillator::Oscillator() noexcept = default;
+void Oscillator::setSampleRate(double sr) noexcept {
+    jassert(sr > 0.0);
+    sampleRate_ = sr;
+}
+void Oscillator::setFrequency(float hz) noexcept {
+    hz = juce::jlimit(20.0f, 20000.0f, hz);
+    frequencyHz_.store(hz, std::memory_order_release);
+}
+float Oscillator::processSample(float phaseMod) noexcept {
+    const float freq = frequencyHz_.load(std::memory_order_acquire);
+    float phase = phase_ + phaseMod;
+    if (phase >= 1.0f) phase -= 1.0f;
+    if (phase < 0.0f) phase += 1.0f;
+    const float sample = std::sin(juce::MathConstants<float>::twoPi * phase);
+    phase_ = phase + freq / static_cast<float>(sampleRate_);
+    if (phase_ >= 1.0f) phase_ -= 1.0f;
+    return sample;
+}
+void Oscillator::reset() noexcept {
+    phase_ = 0.0f;
+}
+} // namespace Nexus::DSP::Synthesis
+
+IV. ERRORES DE COMPILACIÓN: POLÍTICA
+A. CLASIFICAR ANTES DE TOCAR NADA
+Tipos:
+Undefined reference
+No matching function for call
+Template instantiation failed
+Circular dependency
+Cannot use atomic in constant expression
+B. EJEMPLOS Y BUENAS PRÁCTICAS
+Undefined reference:
+Comprueba que el .cpp está en CMakeLists.txt.
+Comprueba que la firma en .cpp coincide con .h.
+Evita meter librerías random en target_link_libraries para “silenciar” el error.
+No matching function:
+Nunca cambies la firma del header para “adaptarla al error”.
+Copia la firma exacta del .h al .cpp y corrige el uso.
+
+V. AUDIO THREAD: REGLAS DURAS
+processBlock() / processSample():
+Sin new, delete, std::vector::push_back, std::string dinámicos.
+Sin std::mutex, std::lock_guard, std::unique_lock.
+Sin I/O (disco, red, stdout/stderr).
+Pre-aloca en prepareToPlay(int samples, double sr) y usa buffers fijos.
+
+VI. QUALITY GATES POR PHASE (RESUMEN)
+0 errores de compilación.
+0 warnings nuevos.
+100% tests pasan.
+CPU bajo objetivo.
+Sin memory leaks (ASAN).
+Sin UB (UBSAN).
+Archivos < 300 líneas.
+
+VII. LAS 10 REGLAS MÁS IMPORTANTES
+Logs siempre en LOGS/, nunca en raíz.
+Máximo 300 líneas por archivo.
+Cero asignaciones en audio thread.
+Cero locks en audio thread.
+std::atomic para comunicación UI ↔ audio.
+Documentar thread-safety en cada clase pública.
+Tratar warnings como errors durante desarrollo.
+Cada feature nueva → tests unitarios.
+No mergear si no pasan los quality gates.
+Cada commit: [PhaseX] [TYPE] Mensaje claro.
+FIN
+text
+***
+## 2) `DAILY_DEVELOPER_CHECKLIST.md`
+```markdown
+# NEXUS: Daily Developer Checklist
+Checklist que debe completarse cada día de desarrollo, antes de mergear o hacer push.
+---
+## 1. STARTUP CHECKLIST (mañana)
+- [ ] `git status` limpio o entendido.
+- [ ] `git pull origin develop` ejecutado.
+- [ ] Dependencias presentes (JUCE, CMake, compilador).
+- [ ] Estructura `LOGS/` existe:
+  - [ ] LOGS/build
+  - [ ] LOGS/compilation
+  - [ ] LOGS/runtime
+  - [ ] LOGS/profiling
+  - [ ] LOGS/tests
+  - [ ] LOGS/blockers
+Opcional:
+- [ ] Crear `LOGS/daily_YYYY-MM-DD.md` con:
+  - Objetivos del día.
+  - Tareas previstas.
+---
+## 2. PRE-COMPILATION CHECKLIST
+Antes de lanzar `cmake --build`:
+- [ ] No hay archivos > 300 líneas (revisar los tocados hoy).
+- [ ] Todos los nuevos `.h` tienen `#pragma once`.
+- [ ] No hay includes circulares evidentes.
+- [ ] `namespace` correcto (`Nexus::DSP::...`, etc.).
+- [ ] No se ha puesto ningún log en raíz: buscar `"error.log"`, `"log.txt"`, etc.
+- [ ] `clang-format` aplicado a los archivos modificados.
+---
+## 3. COMPILATION CHECKLIST
+Ejecutar:
+```bash
+mkdir -p LOGS/build
+./build.sh 2>&1 | tee LOGS/build/$(date +%Y-%m-%d_%H-%M-%S).log
+ Compilación termina sin error.
+ Número de warning no ha subido (idealmente 0).
+ Si hay errores:
+ Guardados en LOGS/compilation/FECHA_errors.log.
+ Clasificados (undefined ref, template, etc).
+ No seguir si hay errores de compilación.
+
+4. RUNTIME CHECKLIST
+Tras compilar:
+ El binario/plugin arranca sin crash.
+ Prueba mínima de audio: genera un sine y suena.
+ No hay mensajes de NaN/Inf en logs.
+ Memoria al inicio razonable (< 256 MB desktop).
+Si hay crash:
+ Crear LOGS/runtime/FECHA_crash.log con:
+Stacktrace.
+Pasos para reproducir.
+Cambios recientes relevantes.
+
+5. TESTING CHECKLIST
+ Ejecutar tests:
+bash
+cd Tests
+./run_tests.sh 2>&1 | tee ../LOGS/tests/$(date +%Y-%m-%d).log
+cd ..
+ 100% de tests pasan.
+ No hay tests nuevos sin coverage.
+ Si falla algo: NO mergear, arreglar primero.
+
+6. PROFILING CHECKLIST (cuando hay trabajo DSP)
+CPU:
+bash
+perf record -F 99 -g ./nexus_test --voices 8 --duration 10
+perf report --stdio > LOGS/profiling/cpu_$(date +%Y-%m-%d).txt
+ CPU < 25% (desktop, 8 voces).
+ En RPi < 30% (6 voces).
+Memoria (si has tocado allocations):
+bash
+clang++ -fsanitize=address -g test.cpp -o test
+./test 2>&1 | tee LOGS/profiling/asan_$(date +%Y-%m-%d).txt
+ 0 memory leaks.
+
+7. CODE REVIEW CHECKLIST (self-review)
+Antes de hacer git push:
+ git diff revisado (sin debug leftover).
+ No hay std::cout, printf de debugging permanentes.
+ No hay rutas hardcodeadas.
+ Comentarios explican por qué, no qué.
+ Cada método público tiene doc comment razonable.
+ Todos los cambios se ajustan a NEXUS_CodeStandards_Examples.md.
+
+8. GIT WORKFLOW CHECKLIST
+ Rama correcta (feature/x, phase/x, no en main directamente).
+ git status limpio.
+ git pull --rebase origin develop hecho si toca.
+ Conflictos resueltos y recompilado después.
+ Commits con formato: [PhaseX] [TYPE] Mensaje.
+ No hay commits gigantescos monolíticos si se pueden trocear.
+
+9. BLOCKER DETECTION
+Si ocurre cualquiera de estos:
+Compilación falla.
+Tests no pasan.
+Audio glitch/xrun continuado en test simple.
+CPU -> +10% vs baseline.
+ASAN detecta leaks.
+UBSAN detecta UB.
+Entonces:
+Parar trabajo en esa parte.
+Crear LOGS/blockers/FECHA_HORA_BLOCKER.md con:
+Descripción.
+Pasos para reproducir.
+Log y commit relacionado.
+Avisar y NO seguir avanzando con parche rápido chapuza.
+
+10. FIN DE DÍA
+En LOGS/daily_YYYY-MM-DD.md añadir:
+ Qué se ha completado.
+ Qué queda pendiente.
+ Blockers encontrados.
+ Tareas para mañana.
+FIN
+text
+***
+## 3) `ERROR_PATTERNS_AND_SOLUTIONS.md`
+```markdown
+# NEXUS: Error Patterns & Solutions
+Errores típicos de C++/JUCE/DSP en este proyecto y cómo resolverlos sin chapuzas.
+---
+## 1. Undefined reference to `Symbol`
+**Síntoma:**
+undefined reference to `Nexus::DSP::Oscillator::processSample(float)`
+### Causas típicas
+- .cpp no está en CMakeLists.
+- Firma de función distinta en .h y .cpp.
+- Namespace distinto en .h y .cpp.
+- Target no linkea el módulo que debe.
+### Solución paso a paso
+1. Comprobar que el `.cpp` está en `add_library(...)` o `target_sources(...)`.
+2. Abrir .h y .cpp y copiar exactamente la firma.
+3. Asegurar que el namespace coincide.
+4. Verificar que el target plugin linkea con `nexus_core` (o el que proceda).
+---
+## 2. No matching function for call
+**Síntoma:**
+no matching function for call to `setFrequency(double)`
+### Causas
+- Firma distinta (float vs double, const vs no const, etc).
+- Parámetros extra o faltan.
+### Solución
+- No tocar el .h a lo loco.
+- Copiar la firma EXACTA de .h en .cpp.
+- Ajustar la llamada, no la definición, salvo error de diseño.
+---
+## 3. Template instantiation failed
+**Causa habitual:** template demasiado genérico o tamaño de array mal.
+Soluciones típicas:
+- Limitar plantillas a los usos necesarios (explicit instantiation).
+- Usar `std::vector` en lugar de `std::array<N>` cuando N no está tan claro.
+- Mover implementación de templates complejos a .cpp y hacer instanciaciones explícitas.
+---
+## 4. Circular dependency
+**Síntoma:**
+A.h incluye B.h y B.h incluye A.h (directa o transitiva).
+### Solución canónica
+- Usar forward declarations en .h cuando sólo necesitas puntero/ref.
+- Incluir el header completo **sólo** en el .cpp.
+Ejemplo:
+// Oscillator.h
+class Filter; // forward decl
+class Oscillator {
+    std::unique_ptr<Filter> filter_;
+};
+// Oscillator.cpp
+#include "Filter.h"
+---
+## 5. Memory leak (ASAN)
+### Causas frecuentes
+- Uso de `new`/`delete` en lugar de `std::unique_ptr`.
+- Allocations en processBlock que nunca se liberan.
+- `std::vector` que crece sin control.
+### Solución
+- Convertir raw pointers en `std::unique_ptr` o `std::shared_ptr`.
+- Pre-alocar buffers en `prepareToPlay`.
+- Limpiar estructuras en destructores.
+---
+## 6. Audio crash / xrun
+### Causas típicas
+- `std::mutex` en audio thread.
+- `new`/`delete` dentro de `processBlock`.
+- Llamadas a disco/red en audio thread.
+- CPU por encima del presupuesto.
+### Solución
+- Quitar todos los locks del audio thread.
+- Pre-alocar en `prepareToPlay`.
+- Mover I/O a hilos secundarios.
+- Reducir coste DSP (profiling + optimización).
+---
+## 7. Floating point exception / NaN
+### Causas típicas
+- División entre 0.
+- Frecuencias sin clamp.
+- Variables no inicializadas.
+### Solución
+- Clamp valores de entrada (juce::jlimit).
+- Inicializar todas las variables miembro.
+- Añadir checks de NaN si hace falta en debug.
+---
+## 8. CPU exceed target
+- Desktop: objetivo < 25% (8 voces).
+- RPi: objetivo < 30% (6 voces).
+### Solución estándar
+- Hacer profiling (perf, etc).
+- Localizar función más pesada.
+- Sustituir sin() por wavetable cuando tenga sentido.
+- Bajar orden de filtros si se han pasado.
+- Evitar llamadas virtuales en loop caliente.
+---
+FIN
+
+4) QUICK_START_AI_DEVELOPER.md
+text
+# NEXUS: Quick Start for AI Developer
+Guía rápida para que la IA trabaje bien desde el minuto 1.
+---
+## A. LAS 5 GOLDEN RULES
+1. Todos los logs en `LOGS/`, nunca en raíz.
+2. Máximo 300 líneas por archivo de código.
+3. Cero `new/delete` y cero `std::mutex` en audio thread.
+4. No se mergea nada con warnings o tests fallando.
+5. Cada método público documentado, commits con formato `[Phase] [TYPE] Mensaje`.
+---
+## B. PRIMERA HORA DE TRABAJO
+1. Leer:
+   - `NEXUS_Architecture_Specification.md` (al menos overview + Phase actual).
+   - `AI_OPERATIONAL_GUIDELINES.md` (secciones de estructura y logs).
+2. Crear estructura de carpetas (LOGS, Source si no existe).
+3. Configurar CMake y `build.sh`.
+---
+## C. RUTINA DIARIA
+### Mañana
+- `git pull origin develop`.
+- Revisar `DAILY_DEVELOPER_CHECKLIST.md` → Startup.
+- Compilar una vez para asegurar que la base sigue ok.
+### Durante el día
+- Implementar features según spec.
+- Mantener archivos < 300 líneas.
+- Seguir patrones de `NEXUS_CodeStandards_Examples.md`.
+### Antes de acabar
+- Ejecutar tests.
+- Hacer profiling si se ha tocado DSP.
+- Revisar código (`git diff`) y limpiar restos de debug.
+- `git push` sólo si TODO lo anterior está OK.
+---
+## D. CUANDO HAY ERRORES
+1. Copiar el mensaje de error completo.
+2. Buscar patrón en `ERROR_PATTERNS_AND_SOLUTIONS.md`.
+3. Seguir la solución paso a paso.
+4. Si no hay patrón:
+   - Crear fichero en `LOGS/blockers/...`.
+   - Documentar síntoma, pasos, ideas.
+   - Parar trabajo en esa zona y escalar.
+---
+## E. ÉXITO = CUMPLIR ESTAS MÉTRICAS
+- Build sin errores ni warnings.
+- 100% tests pasan.
+- CPU por debajo de objetivo.
+- Memoria sin leaks.
+- Audio sin xruns.
+- Sin archivos gigantes monolíticos.
+- Logs siempre ordenados en `LOGS/`.
+FIN
+

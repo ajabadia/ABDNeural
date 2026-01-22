@@ -49,6 +49,14 @@ set(NEXUS_SOURCES
     Source/UI/ParameterPanel.cpp
     Source/UI/SpectralVisualizer.h
     Source/UI/SpectralVisualizer.cpp
+    Source/UI/XYPad.h
+    Source/UI/XYPad.cpp
+    Source/UI/Panels/OscillatorPanel.h
+    Source/UI/Panels/OscillatorPanel.cpp
+    Source/UI/Panels/FilterEnvPanel.h
+    Source/UI/Panels/FilterEnvPanel.cpp
+    Source/UI/Panels/FXPanel.h
+    Source/UI/Panels/FXPanel.cpp
     
     # State
     Source/State/ParameterDefinitions.h
@@ -87,16 +95,15 @@ juce_add_plugin(NEXUS
     SOURCES ${NEXUS_SOURCES}
 )
 
-# Custom Standalone App Support - Force all sources into Standalone target
-# to resolve persistent linkage issues with createPluginFilter and dependencies.
-if(TARGET NEXUS_Standalone)
-    target_sources(NEXUS_Standalone PRIVATE ${NEXUS_SOURCES})
-endif()
 
 # Reverted to standard to avoid linker conflicts with custom options button
 # target_compile_definitions(NEXUS PUBLIC JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
 
-target_compile_features(NEXUS PRIVATE cxx_std_17)
+
+
+if(TARGET NEXUS_Standalone)
+    target_sources(NEXUS_Standalone PRIVATE ${NEXUS_SOURCES})
+endif()
 
 target_link_libraries(NEXUS PRIVATE
     juce::juce_audio_basics

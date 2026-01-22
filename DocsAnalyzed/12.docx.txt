@@ -1,0 +1,272 @@
+
+Te paso ahora otros 2 completos y útiles para ti: MASTER_DOCUMENT_INDEX.md y DELIVERY_CHECKLIST.md. Luego, si quieres, seguimos con más.
+
+1) MASTER_DOCUMENT_INDEX.md
+text
+# NEXUS: Master Document Index
+Índice maestro de todos los documentos y guías para desarrollo.
+---
+## 1. DOCUMENTOS PRINCIPALES
+### 1.1 Arquitectura y diseño
+1) `NEXUS_Architecture_Specification.md`  
+- Qué es: Especificación técnica completa del sintetizador.  
+- Contiene:
+  - Arquitectura por módulos (DSP, UI, MIDI, State, Serialization, Platform).
+  - Flujo de audio y control.
+  - Desglose por fases (Phase 1-5).
+  - Métricas objetivo (CPU, memoria, latencia).
+- Cuándo leerlo:
+  - Al empezar el proyecto.
+  - Antes de arrancar una Phase nueva.
+2) `NEXUS_Advanced_Features.md`  
+- Qué es: Descripción de features avanzadas NO-ML (Phase 2-5).  
+- Contiene:
+  - Wavetable morphing.
+  - Modulation Matrix (32 conexiones).
+  - Macro Controls.
+  - Convolution Reverb.
+  - Arpeggiator / Sequencer.
+- Cuándo leerlo:
+  - Al planificar o implementar features de esas fases.
+3) `NEXUS_ML_Advanced_Features.md`  
+- Qué es: Features avanzadas ML / síntesis híbrida.  
+- Contiene:
+  - Timbre VAE, Style Transfer.
+  - Advanced Wavetable + PWM.
+  - FM Synthesis, Physical Modeling.
+  - Neural Vocoder, Inverse Synthesis, etc.
+- Cuándo leerlo:
+  - Al empezar Phase ML.
+  - Para ver posicionamiento vs otros sintes.
+---
+### 1.2 Estándares de código y plantillas
+4) `NEXUS_CodeStandards_Examples.md`  
+- Qué es: Guía de estilo C++/JUCE/DSP específica para NEXUS.  
+- Contiene:
+  - Naming conventions.
+  - Estructura de .h / .cpp.
+  - Ejemplos BAD/GOOD.
+  - Patrones de thread-safety.
+- Cuándo usarlo:
+  - Mientras escribes código.
+  - Para revisar PRs.
+5) `NEXUS_ParameterDefinitions_Template.h`  
+- Qué es: Header template para definir parámetros APVTS.  
+- Contiene:
+  - 50+ parámetros predefinidos (pitch, filtro, envolventes, efectos, ML).
+  - Rango, default y IDs consistentes.
+- Cuándo usarlo:
+  - Para inicializar APVTS en PluginProcessor.
+  - Como base para ampliaciones.
+---
+## 2. GUÍAS OPERACIONALES
+### 2.1 Reglas y procedimientos
+6) `AI_OPERATIONAL_GUIDELINES.md`  
+- Qué es: Manual operacional de la IA developer.  
+- Contiene:
+  - Estructura de carpetas (LOGS, Source, Tests, etc.).
+  - Regla de máximo 300 líneas por archivo.
+  - Políticas de logging (NUNCA en raíz).
+  - Manejo de errores de compilación.
+  - CMake/build, testing, profiling.
+  - Git workflow.
+- Cuándo usarlo:
+  - Como referencia continua.
+  - Para decidir “qué es correcto hacer”.
+7) `DAILY_DEVELOPER_CHECKLIST.md`  
+- Qué es: Checklist diario.  
+- Contiene:
+  - Startup checklist.
+  - Pre-compilation checklist.
+  - Testing checklist.
+  - Profiling checklist.
+  - Code review checklist.
+  - Git workflow checklist.
+- Cuándo usarlo:
+  - Cada mañana y cada tarde antes de hacer push.
+8) `ERROR_PATTERNS_AND_SOLUTIONS.md`  
+- Qué es: Guía de errores típicos con soluciones.  
+- Contiene:
+  - Undefined reference.
+  - No matching function.
+  - Template instantiation.
+  - Circular dependency.
+  - Memory leaks, NaN, CPU excesiva.
+- Cuándo usarlo:
+  - Cada vez que haya error de compilación/runtime.
+9) `DELIVERY_CHECKLIST.md`  
+- Qué es: Checklist de “Phase DONE”.  
+- Contiene:
+  - Criterios para cerrar Phase 1-5.
+  - Requisitos de calidad (tests, CPU, etc.).
+- Cuándo usarlo:
+  - Justo antes de declarar una phase completa.
+---
+## 3. ONBOARDING Y RESÚMENES
+10) `AI_DEVELOPER_BRIEFING.md`  
+- Qué es: Briefing de alto nivel.  
+- Uso:
+  - Onboarding inicial.
+  - Contexto del proyecto.
+11) `QUICK_START_AI_DEVELOPER.md`  
+- Qué es: Guía rápida de 5–10 minutos.  
+- Uso:
+  - Primer día de la IA developer.
+  - Recordatorio de reglas clave.
+12) `MASTER_DOCUMENT_INDEX.md` (este archivo)  
+- Qué es: Índice y mapa mental.  
+- Uso:
+  - Saber qué abrir en cada momento.
+13) `ENTREGA_FINAL_RESUMEN.md`  
+- Qué es: Resumen largo de toda la entrega.  
+- Uso:
+  - Visión global, por si alguien entra “desde fuera”.
+14) `FILES_CHECKLIST.md`  
+- Qué es: Verificación de que todo lo anterior existe.  
+- Uso:
+  - Comprobar que no falta nada en el repo.
+---
+## 4. FLUJO DE LECTURA RECOMENDADO
+### Día 1 (Onboarding)
+1. `AI_DEVELOPER_BRIEFING.md`
+2. `QUICK_START_AI_DEVELOPER.md`
+3. `NEXUS_Architecture_Specification.md` (overview + Phase actual)
+4. `AI_OPERATIONAL_GUIDELINES.md` (secciones de estructura/logs)
+5. `NEXUS_CodeStandards_Examples.md` (skim + ejemplos)
+### Día a día
+- Por la mañana: `DAILY_DEVELOPER_CHECKLIST.md`.
+- Mientras codificas: `NEXUS_CodeStandards_Examples.md`.
+- Cuando hay errores: `ERROR_PATTERNS_AND_SOLUTIONS.md`.
+- Antes de cerrar una Phase: `DELIVERY_CHECKLIST.md`.
+---
+## 5. DÓNDE BUSCAR SEGÚN LA PREGUNTA
+- “¿Cómo estructuro los logs?”  
+  → `AI_OPERATIONAL_GUIDELINES.md` (sección LOGS).
+- “¿Puedo poner esto en processBlock?”  
+  → `NEXUS_CodeStandards_Examples.md` + `AI_OPERATIONAL_GUIDELINES.md`.
+- “¿Por qué peta el link con undefined reference?”  
+  → `ERROR_PATTERNS_AND_SOLUTIONS.md` (undefined reference).
+- “¿Qué features trae la Phase 3 exactamente?”  
+  → `NEXUS_Architecture_Specification.md` + `NEXUS_Advanced_Features.md`.
+- “¿Cómo sé que he acabado la Phase 2?”  
+  → `DELIVERY_CHECKLIST.md`.
+---
+## 6. REGLAS QUE APLICAN A TODOS LOS DOCUMENTOS
+- No contradicir `AI_OPERATIONAL_GUIDELINES.md`.
+- Mantener naming y estructuras según `NEXUS_CodeStandards_Examples.md`.
+- Cualquier cosa no cubierta → documentarla y añadirla al doc adecuado.
+FIN
+
+2) DELIVERY_CHECKLIST.md
+text
+# NEXUS: Delivery Checklist por Phase
+Checklist para decidir cuándo una Phase está realmente “DONE” y se puede cerrar.
+---
+## REGLAS GENERALES
+Una Phase sólo se considera completa si:
+- [ ] Compila en todas las plataformas objetivo.
+- [ ] No hay warnings de compilación nuevos.
+- [ ] 100% de los tests relevantes pasan.
+- [ ] No hay memory leaks (ASAN).
+- [ ] No hay UB detectado (UBSAN).
+- [ ] CPU dentro de objetivos (desktop + RPi si aplica).
+- [ ] Documentación actualizada.
+- [ ] Commits limpios y revisados.
+- [ ] Logs importantes guardados en `LOGS/`.
+---
+## PHASE 1 — SETUP & SKELETON
+Objetivo: Proyecto compila y funciona a nivel esqueleto.
+- [ ] Estructura de directorios creada (`Source/`, `LOGS/`, `Tests/`, etc.).
+- [ ] CMakeLists.txt minimal funcionando.
+- [ ] PluginProcessor/PluginEditor bases generadas (JUCE).
+- [ ] `NEXUS_ParameterDefinitions_Template.h` integrado (aunque sea subset).
+- [ ] Un test mínimo que verifique que el proyecto se construye y arranca.
+- [ ] `build.sh` script funcional.
+- [ ] README básico creado.
+- [ ] Compila en al menos 1 plataforma (tu dev principal) sin warnings.
+---
+## PHASE 2 — DSP CORE
+Objetivo: Motor de síntesis base funcionando.
+- [ ] Oscilador básico (sine / saw / square) implementado.
+- [ ] Envolvente ADSR funcionando (con tests).
+- [ ] Voice class que combine oscilador + envolvente.
+- [ ] Voice allocator (nota-on/off, stealing básico).
+- [ ] Integración con AudioProcessor: se oye algo controlado.
+- [ ] Zero allocations en `processBlock`.
+- [ ] Sin `std::mutex` en audio thread.
+- [ ] Tests:
+  - [ ] Frecuencia de oscilador ~ correcta (< 0.5% error).
+  - [ ] ADSR respeta tiempos aproximados.
+  - [ ] Voice allocator no crashea con muchas notas.
+- [ ] Profiling:
+  - [ ] CPU < 5–10% en desktop con N voces (según spec).
+- [ ] Logs de profiling en `LOGS/profiling/`.
+---
+## PHASE 3 — NEURAL CONTROL
+Objetivo: Integración de control ML (sin necesidad de tener todos los modelos finales).
+- [ ] Pipeline de feature extraction (pitch, espectro) implementado.
+- [ ] Integración básica con LibTorch (carga de modelo dummy).
+- [ ] Llamada a inferencia asíncrona o al menos no bloqueante para audio.
+- [ ] Interfaz clara parameter → feature → modelo → control síntesis.
+- [ ] Test unitarios que verifiquen:
+  - [ ] Feature extractor devuelve valores en rangos coherentes.
+  - [ ] Modelo dummy se ejecuta sin crashear.
+- [ ] Latencia añadida por ML < límite definido en spec.
+- [ ] Documentación:
+  - [ ] Explica cómo añadir/actualizar modelos.
+  - [ ] Explica cómo se alimentan los parámetros desde ML.
+---
+## PHASE 4 — UI
+Objetivo: Interfaz usable que controle lo implementado.
+- [ ] Layout base funcional (tabs o paneles según spec).
+- [ ] Param sliders/knobs conectados a APVTS.
+- [ ] Visual feedback de al menos un parámetro “importante”.
+- [ ] Resize manejado correctamente (no UI rota).
+- [ ] Ningún crash por cerrar/abrir la ventana repetidas veces.
+- [ ] Tests:
+  - [ ] Pruebas automatizadas donde sea posible (Snapshot tests, etc.).
+- [ ] UX mínimo:
+  - [ ] Parámetros tienen nombres entendibles.
+  - [ ] Rango y pasos correctos.
+- [ ] Documentación:
+  - [ ] Sección en README o doc dedicada a UI.
+---
+## PHASE 5 — MIDI + POLISH
+Objetivo: Plugin usable en DAW “de verdad”.
+- [ ] MIDI note on/off funcionando con el motor de voces.
+- [ ] Velocity y pitch bend operativos.
+- [ ] Preset system (save/load) funcionando.
+- [ ] Integración con automatización del host:
+  - [ ] Parámetros clave automatizables.
+- [ ] CPU objetivo:
+  - [ ] Desktop: < 25%.
+  - [ ] RPi: < 30% (si aplica).
+- [ ] Sin xruns en uso razonable.
+- [ ] Tests:
+  - [ ] MIDI end-to-end (nota → audio).
+  - [ ] Presets (guardar/cargar no rompe nada).
+- [ ] Documentación:
+  - [ ] Cómo mapear MIDI.
+  - [ ] Cómo usar presets.
+---
+## PHASES DE FEATURES AVANZADAS
+Para cada fase de features (ej. Wavetable, Mod Matrix, etc.):
+- [ ] Feature principal implementada y accesible por UI.
+- [ ] Tests unitarios de los componentes DSP.
+- [ ] CPU no se dispara (profiling actualizado).
+- [ ] No rompe API pública (o si rompe, versionado y documentado).
+- [ ] Documentación de uso (al menos en README/CHANGELOG).
+---
+## CIERRE DE CADA PHASE
+Antes de marcar Phase X como DONE:
+- [ ] Checklist de Phase X completada al 100%.
+- [ ] `DAILY_DEVELOPER_CHECKLIST` del último día sin pendientes graves.
+- [ ] Logs relevantes guardados:
+  - [ ] `LOGS/build/`
+  - [ ] `LOGS/tests/`
+  - [ ] `LOGS/profiling/`
+- [ ] Tag en git:
+  - `git tag -a phaseX-complete -m "Phase X complete"`
+- [ ] Notas de release internas (qué se ha conseguido).
+FIN
+

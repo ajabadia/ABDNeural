@@ -6,6 +6,9 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "NEXUSProcessor.h"
 #include "../UI/ParameterPanel.h"
+#include "../UI/Panels/OscillatorPanel.h"
+#include "../UI/Panels/FilterEnvPanel.h"
+#include "../UI/Panels/FXPanel.h"
 
 class NEXUSEditor : public juce::AudioProcessorEditor,
                      public juce::MenuBarModel
@@ -35,7 +38,10 @@ private:
     juce::Label titleLabel { "title", "NEXUS" };
     juce::Label versionLabel { "version", "Neural Hybrid Synth" };
 
-    Nexus::UI::ParameterPanel parameterPanel;
+    Nexus::UI::ParameterPanel dashboardPanel;
+    Nexus::UI::OscillatorPanel oscPanel;
+    Nexus::UI::FilterEnvPanel filterEnvPanel;
+    Nexus::UI::FXPanel fxPanel;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NEXUSEditor)
 };

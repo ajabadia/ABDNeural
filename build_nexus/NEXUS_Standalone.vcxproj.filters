@@ -13,6 +13,18 @@
     <ClCompile Include="D:\desarrollos\ABDNeural\Source\UI\SpectralVisualizer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="D:\desarrollos\ABDNeural\Source\UI\XYPad.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\desarrollos\ABDNeural\Source\UI\Panels\OscillatorPanel.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\desarrollos\ABDNeural\Source\UI\Panels\FilterEnvPanel.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\desarrollos\ABDNeural\Source\UI\Panels\FXPanel.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="D:\desarrollos\ABDNeural\Source\DSP\CoreModules\Oscillator.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -64,6 +76,18 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="D:\desarrollos\ABDNeural\Source\UI\SpectralVisualizer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\UI\XYPad.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\UI\Panels\OscillatorPanel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\UI\Panels\FilterEnvPanel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\UI\Panels\FXPanel.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="D:\desarrollos\ABDNeural\Source\State\ParameterDefinitions.h">

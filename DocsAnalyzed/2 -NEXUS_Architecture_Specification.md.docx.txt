@@ -1,0 +1,952 @@
+
+Perfecto. Voy a entregar el primer archivo completo sin cambios, tal como lo creé.
+
+NEXUS: Arquitectura Completa para Desarrollo en JUCE + C++
+I. VISIÓN GENERAL DEL PROYECTO
+NEXUS es un sintetizador neural moderno basado en DDSP (Differentiable Digital Signal Processing) con capacidades de disentanglement timbre/estructura, timbre transfer, y síntesis por voz independiente. Diseñado para ser modular, portable (Mac, Windows, Linux, Raspberry Pi) y eficiente en CPU.
+Especificaciones técnicas base:
+Plugin Format: VST3 + AU (Mac), VST3 (Windows/Linux), standalone pseudo-plugin (Raspberry Pi)
+Arquitectura: Multi-voice (8-16 voces por defecto, configurable)
+CPU Target: <30% en Raspberry Pi 4, <15% en CPU moderno
+Latencia: <10ms end-to-end
+Interfaz: Tabbed (5 pestañas funcionales), responsive scaling para diferentes displays
+MIDI: MIDI 1.0 completo + MIDI 2.0 per Revisions (sin comprometer compatibilidad legacy)
+
+II. ESTRUCTURA DE DIRECTORIOS PROPUESTA
+text
+NEXUS/
+├── CMakeLists.txt                          # Build system (JUCE modules)
+├── Source/
+│   ├── Main/
+│   │   ├── PluginProcessor.h               # Audio processing, state mgmt
+│   │   ├── PluginProcessor.cpp
+│   │   ├── PluginEditor.h                  # Main UI, tabbed interface
+│   │   └── PluginEditor.cpp
+│   │
+│   ├── State/
+│   │   ├── ParameterDefinitions.h          # const definitions, enums, identifiers
+│   │   ├── ParameterDefinitions.cpp
+│   │   ├── PresetManager.h                 # Presets, state serialization
+│   │   └── PresetManager.cpp
+│   │
+│   ├── DSP/
+│   │   ├── CoreModules/
+│   │   │   ├── Oscillator.h                # Sine oscillator with phase management
+│   │   │   ├── Oscillator.cpp
+│   │   │   ├── NoiseGenerator.h
+│   │   │   ├── NoiseGenerator.cpp
+│   │   │   ├── FilterBank.h                # Subtractive filter for noise
+│   │   │   ├── FilterBank.cpp
+│   │   │   ├── Envelope.h                  # ADSR envelopes
+│   │   │   └── Envelope.cpp
+│   │   │
+│   │   ├── Synthesis/
+│   │   │   ├── DDSPSynthesizer.h           # Core harmonic+noise synth
+│   │   │   ├── DDSPSynthesizer.cpp
+│   │   │   ├── ResonatorVoice.h            # Single voice with all modulators
+│   │   │   ├── ResonatorVoice.cpp
+│   │   │   ├── VoiceAllocator.h            # Voice management, note allocation
+│   │   │   └── VoiceAllocator.cpp
+│   │   │
+│   │   ├── Analysis/
+│   │   │   ├── FeatureExtractor.h          # CQT, pitch, loudness extraction
+│   │   │   ├── FeatureExtractor.cpp
+│   │   │   ├── CQTAnalyzer.h               # Constant-Q Transform
+│   │   │   ├── CQTAnalyzer.cpp
+│   │   │   └── AudioMetrics.h              # Spectral descriptors
+│   │   │
+│   │   ├── Neural/
+│   │   │   ├── NeuralControlNetwork.h      # LibTorch inference wrapper
+│   │   │   ├── NeuralControlNetwork.cpp
+│   │   │   ├── ModelLoader.h               # Load/manage .pt models
+│   │   │   └── ModelLoader.cpp
+│   │   │
+│   │   ├── Effects/
+│   │   │   ├── EffectsChain.h              # Global effects processor
+│   │   │   ├── EffectsChain.cpp
+│   │   │   ├── ResonantFilter.h            # Multimode resonant filter
+│   │   │   ├── ResonantFilter.cpp
+│   │   │   ├── HiFiGANVocoder.h            # Neural vocoder (if used)
+│   │   │   ├── HiFiGANVocoder.cpp
+│   │   │   ├── TimbreTransfer.h            # Latent diffusion timbre xfer
+│   │   │   └── TimbreTransfer.cpp
+│   │   │
+│   │   └── Utils/
+│   │       ├── DSPMath.h                   # Math utilities, constants
+│   │       ├── DSPMath.cpp
+│   │       ├── LookupTables.h              # Pre-computed tables (sin, etc)
+│   │       └── LookupTables.cpp
+│   │
+│   ├── UI/
+│   │   ├── Tabs/
+│   │   │   ├── SynthesizerTab.h            # Main synthesis panel
+│   │   │   ├── SynthesizerTab.cpp
+│   │   │   ├── ModulationTab.h             # LFO, envelopes, matrix
+│   │   │   ├── ModulationTab.cpp
+│   │   │   ├── TimbreTab.h                 # Timbre selection, morphing
+│   │   │   ├── TimbreTab.cpp
+│   │   │   ├── EffectsTab.h                # EQ, compression, effects
+│   │   │   ├── EffectsTab.cpp
+│   │   │   ├── AnalysisTab.h               # Spectrum analyzer, waveform display
+│   │   │   └── AnalysisTab.cpp
+│   │   │
+│   │   ├── Components/
+│   │   │   ├── XYPad.h                     # 2D joystick control
+│   │   │   ├── XYPad.cpp
+│   │   │   ├── SpectrumAnalyzer.h          # Real-time FFT visualization
+│   │   │   ├── SpectrumAnalyzer.cpp
+│   │   │   ├── WaveformDisplay.h           # Oscilloscope view
+│   │   │   ├── WaveformDisplay.cpp
+│   │   │   ├── VerticalSlider.h            # Custom slider component
+│   │   │   ├── VerticalSlider.cpp
+│   │   │   ├── LabeledSlider.h             # Slider + label combo
+│   │   │   ├── LabeledSlider.cpp
+│   │   │   ├── EnvelopeDisplay.h           # ADSR visualization
+│   │   │   └── EnvelopeDisplay.cpp
+│   │   │
+│   │   ├── Styling/
+│   │   │   ├── Colors.h                    # Color palette constants
+│   │   │   ├── Colors.cpp
+│   │   │   ├── Fonts.h                     # Font definitions
+│   │   │   ├── Fonts.cpp
+│   │   │   └── Theme.h                     # Global theme settings
+│   │   │
+│   │   └── Utils/
+│   │       ├── UIScaling.h                 # DPI/scaling helpers
+│   │       ├── UIScaling.cpp
+│   │       └── ComponentFactory.h          # Helper to create consistent components
+│   │
+│   ├── MIDI/
+│   │   ├── MIDIProcessor.h                 # MIDI 1.0 handler
+│   │   ├── MIDIProcessor.cpp
+│   │   ├── MIDI2Handler.h                  # MIDI 2.0 support (optional)
+│   │   ├── MIDI2Handler.cpp
+│   │   └── MIDIConstants.h                 # MIDI CC definitions, velocities
+│   │
+│   ├── Serialization/
+│   │   ├── ChunkHandler.h                  # DAW state serialization
+│   │   ├── ChunkHandler.cpp
+│   │   ├── FileIO.h                        # File operations (presets, configs)
+│   │   └── FileIO.cpp
+│   │
+│   └── Platform/
+│       ├── PlatformDetection.h             # Compile-time platform detection
+│       ├── RPiOptimizations.h              # Raspberry Pi-specific optimizations
+│       ├── RPiOptimizations.cpp
+│       └── StandaloneWrapper.h             # Pseudo-plugin wrapper for RPi
+│
+├── Models/
+│   ├── control_network.pt                  # Pre-trained feature→controls NN
+│   ├── hifi_gan_vocoder.pt                 # HiFi-GAN model (optional)
+│   └── timbre_transfer.pt                  # Diffusion model for timbre xfer (optional)
+│
+├── Presets/
+│   └── factory/                            # Factory presets
+│       ├── Warm_Pad.nex
+│       ├── Bright_Pluck.nex
+│       └── ...
+│
+├── Tests/
+│   ├── DSPTests.cpp                        # Unit tests for DSP modules
+│   ├── MIDITests.cpp
+│   └── PerformanceTests.cpp                # CPU profiling, latency tests
+│
+├── Documentation/
+│   ├── Architecture.md                     # High-level design
+│   ├── DevelopmentGuide.md                 # How to extend
+│   ├── API.md                              # Public API documentation
+│   └── Parameters.md                       # Parameter list + ranges
+│
+└── Tools/
+    ├── model_converter.py                  # Convert trained models to .pt
+    ├── preset_generator.py                 # Generate presets from analysis
+    └── performance_profiler.py             # CPU/latency measurements
+
+III. PRINCIPIOS ARQUITECTÓNICOS CORE
+A. Separación de Responsabilidades (SoC)
+1. Processor (Audio Logic)
+Archivo: Source/Main/PluginProcessor.h/cpp
+Responsabilidades:
+Gestionar ciclo de vida del plugin (prepare, release)
+Coordinar el processBlock() sin lógica de síntesis directa
+Mantener referencia a APVTS (única fuente de verdad)
+Delegación a VoiceAllocator, EffectsChain, etc.
+Thread-safe communication con UI via FIFO lock-free
+Prohibido:
+Lógica DSP directa (osciladores, filtros)
+Dibujo de UI
+Allocaciones de memoria en processBlock()
+2. Editor (UI)
+Archivo: Source/Main/PluginEditor.h/cpp
+Responsabilidades:
+Gestión de componentes visuales (tabbed interface)
+Respuesta a interacciones de usuario (mouse, teclado)
+Lectura de parámetros desde APVTS para visualización
+Envío de actualizaciones de UI → Processor via FIFO
+Prohibido:
+Procesamiento de audio
+Cálculos matemáticos pesados
+Bloqueos o acceso directo a audio thread
+3. ParameterDefinitions (Estado Centralizado)
+Archivo: Source/State/ParameterDefinitions.h/cpp
+Responsabilidades:
+Definición de TODOS los parámetros en un único lugar
+Enums para modos, selecciones categoriales
+Const identifiers para evitar magic strings
+Factory methods para crear APVTS
+Ejemplo estructura:
+cpp
+namespace NexusParams {
+    // Parameter IDs (centralizadas)
+    const juce::Identifier PARAM_PITCH_COARSE = "pitchCoarse";
+    const juce::Identifier PARAM_HARMONIC_AMP = "harmonicAmp";
+    // ... 100+ parámetros
+    
+    enum class VoiceMode { Additive, FM, Hybrid };
+    enum class FilterType { LP24, LP12, HP6, BP };
+    
+    // Factory para APVTS
+    static juce::AudioProcessorValueTreeState createAPVTS(...);
+}
+4. DSP (Algoritmos Puros)
+Archivos: Source/DSP/*
+Responsabilidades:
+Algoritmos independientes (osciladores, filtros, envolventes)
+Zero allocations después de construcción
+No conocen de APVTS, MIDI, UI
+Reciben parámetros como argumentos (clean API)
+Ejemplo:
+cpp
+class Oscillator {
+    float process(float frequency, float phaseModulation = 0.0f) noexcept;
+    void reset() noexcept { phase_ = 0.0f; }
+};
+5. Voice (Síntesis por Voz)
+Archivo: Source/DSP/Synthesis/ResonatorVoice.h/cpp
+Responsabilidades:
+Una voz monofónica (DDSP + efectos locales)
+Gestión de envelope ADSR
+Modulación per-voice (LFO local)
+No maneja asignación de notas (eso es VoiceAllocator)
+6. VoiceAllocator (Orquestación)
+Archivo: Source/DSP/Synthesis/VoiceAllocator.h/cpp
+Responsabilidades:
+Recibir notas MIDI → asignar a voces libres
+Round-robin, oldest-note-stealing, etc.
+Llamar process() en todas las voces activas
+Mezclar outputs
+
+B. Gestión de Estado con APVTS
+Ningún parámetro debe existir fuera de APVTS.
+Patrón correcto:
+cpp
+// En PluginProcessor
+void PluginProcessor::prepareToPlay(...) {
+    apvts.addParameterListener("pitchCoarse", this);
+}
+void PluginProcessor::parameterValueChanged(int parameterIndex, float newValue) {
+    // Actualizar parámetros internos si es necesario (pero APVTS es source of truth)
+}
+void PluginProcessor::processBlock(AudioBuffer<float>& buffer, MidiBuffer& midiMessages) {
+    // Leer parámetros directamente de APVTS sin mutex (es thread-safe)
+    float pitch = *apvts.getRawParameterValue("pitchCoarse");
+    
+    // Procesar audio
+    for (auto& voice : voices) {
+        voice.process(pitch, ...);
+    }
+}
+APVTS automáticamente proporciona:
+Sincronización host ↔ plugin
+Gestión de presets (save/load)
+Undo/Redo
+Automation DAW
+Thread-safe parameter reading
+
+C. Thread-Safety: El Hilo de Audio es Sagrado
+Regla de Oro
+En processBlock() y funciones llamadas desde audio thread:
+❌ No locks/mutexes
+❌ No allocations (new, std::vector::resize)
+❌ No system calls (file I/O, logging)
+❌ No virtual function calls (except Audio thread safe ones)
+Comunicación UI → Audio
+Use std::atomic<> para parámetros simples:
+cpp
+class Voice {
+private:
+    std::atomic<float> filter_cutoff_hz{1000.0f};
+    
+public:
+    void set_filter_cutoff(float hz) {
+        filter_cutoff_hz.store(hz, std::memory_order_release);
+    }
+    
+    float process_sample() noexcept {
+        float cutoff = filter_cutoff_hz.load(std::memory_order_acquire);
+        // Usar cutoff
+    }
+};
+Comunicación Audio → UI (Visualization)
+Use juce::AbstractFifo para enviar buffers de análisis:
+cpp
+class SpectrumAnalyzer {
+private:
+    juce::AbstractFifo spectrum_fifo{4096};  // Lock-free queue
+    std::array<float, 256> spectrum_buffer;
+    
+public:
+    void push_spectrum(const std::array<float, 256>& spec) noexcept {
+        int written = 0;
+        auto write_ptr = spectrum_fifo.write(256);
+        if (write_ptr > 0) {
+            std::copy(spec.begin(), spec.end(), spectrum_buffer.begin());
+            spectrum_fifo.finishWrite(256);
+        }
+    }
+    
+    void pull_spectrum(juce::Graphics& g) {
+        int available = spectrum_fifo.getNumReady();
+        if (available > 0) {
+            spectrum_fifo.read(256);
+            // Dibujar spectrum_buffer
+        }
+    }
+};
+
+D. C++ Moderno: RAII y Smart Pointers
+Nunca uses new o delete directamente.
+cpp
+// ❌ BAD
+Voice* voice = new Voice();
+delete voice;  // ¿Y si hay excepción?
+// ✅ GOOD
+std::unique_ptr<Voice> voice = std::make_unique<Voice>();
+// Destruido automáticamente al salir de scope
+// ❌ BAD (casi nunca necesario)
+std::shared_ptr<Voice> voice = std::make_shared<Voice>();
+// ✅ Raw pointers solo como observadores
+Voice* observer_voice = voice.get();  // Non-owning view
+const Correctness:
+cpp
+class Oscillator {
+    float get_phase() const noexcept { return phase_; }
+    void set_frequency(float hz) noexcept { freq_hz_ = hz; }
+};
+noexcept donde sea posible:
+cpp
+float process_sample() noexcept {  // Promete no lanzar excepciones
+    return std::sin(2.0f * M_PI * phase_);
+}
+override en métodos virtuales:
+cpp
+class Voice : public juce::SynthesiserVoice {
+    void startNote(...) override;  // Error si startNote no existe en base
+    void stopNote(...) override;
+    void renderNextBlock(...) override;
+};
+
+IV. GESTIÓN DE PARÁMETROS (APVTS EXTENDED)
+Estructura de Parámetros Organizada
+Dividir parámetros en grupos funcionales:
+cpp
+namespace NexusParams {
+    namespace Oscillator {
+        const juce::Identifier PITCH_COARSE = "oscPitchCoarse";
+        const juce::Identifier PITCH_FINE = "oscPitchFine";
+        const juce::Identifier HARMONIC_COUNT = "oscHarmonicCount";
+    }
+    
+    namespace Envelope {
+        const juce::Identifier ATTACK = "envAttack";
+        const juce::Identifier DECAY = "envDecay";
+        const juce::Identifier SUSTAIN = "envSustain";
+        const juce::Identifier RELEASE = "envRelease";
+    }
+    
+    namespace Filter {
+        const juce::Identifier CUTOFF = "filterCutoff";
+        const juce::Identifier RESONANCE = "filterResonance";
+        const juce::Identifier TYPE = "filterType";
+    }
+    
+    namespace LFO {
+        const juce::Identifier RATE = "lfoRate";
+        const juce::Identifier DEPTH = "lfoDepth";
+        const juce::Identifier WAVEFORM = "lfoWaveform";
+    }
+    
+    namespace Timbre {
+        const juce::Identifier TRANSFER_ENABLED = "timbreTransferEnabled";
+        const juce::Identifier MORPHING = "timbremorphing";  // 0-1, morph amount
+    }
+    
+    namespace Effects {
+        const juce::Identifier FILTER_CUTOFF = "effectsFilterCutoff";
+        const juce::Identifier COMPRESSION_RATIO = "effectsCompRatio";
+        const juce::Identifier REVERB_MIX = "effectsReverbMix";
+    }
+    
+    namespace Voice {
+        const juce::Identifier COUNT = "voiceCount";  // 1-16
+        const juce::Identifier MODE = "voiceMode";    // Poly, mono, unison
+    }
+}
+Factory APVTS
+cpp
+static juce::AudioProcessorValueTreeState 
+createAudioProcessorValueTreeState(juce::AudioProcessor& processor) {
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
+    
+    // Pitch
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        NexusParams::Oscillator::PITCH_COARSE,
+        "Pitch Coarse",
+        juce::NormalisableRange<float>(-24.0f, 24.0f, 1.0f),
+        0.0f  // Default
+    ));
+    
+    // Cutoff Filter
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        NexusParams::Filter::CUTOFF,
+        "Filter Cutoff",
+        juce::NormalisableRange<float>(20.0f, 20000.0f, 1.0f, 0.35f),  // Logarítmico
+        5000.0f
+    ));
+    
+    // Voice Count
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        NexusParams::Voice::COUNT,
+        "Voice Count",
+        1, 16, 8
+    ));
+    
+    // Timbre Transfer Enable
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        NexusParams::Timbre::TRANSFER_ENABLED,
+        "Timbre Transfer",
+        false
+    ));
+    
+    // Filter Type (Choice)
+    juce::StringArray choices{"LP24", "LP12", "HP6", "BP"};
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        NexusParams::Filter::TYPE,
+        "Filter Type",
+        choices,
+        0  // Default LP24
+    ));
+    
+    return juce::AudioProcessorValueTreeState(
+        processor,
+        nullptr,  // UndoManager, nullptr si no quieres Undo
+        "PARAMETERS",  // root element name
+        std::move(params)
+    );
+}
+
+V. ARQUITECTURA DSP DETALLADA
+1. ResonatorVoice (Núcleo por Voz)
+Responsabilidad: Una voz sintetizada completa.
+Estructura interna:
+text
+MIDI Note In
+    ↓
+Pitch Conversion (MIDI → Hz)
+    ↓
+┌─────────────────────────────┐
+│   DDSP Synthesis Block      │
+├─────────────────────────────┤
+│ ├─ 64× Oscillators (harmonic) 
+│ │   └─ Phase management
+│ ├─ Noise Generator
+│ │   └─ Subtractive Filter (variable)
+│ └─ Mixer (harmonic + noise)
+└─────────────────────────────┘
+    ↓
+┌─────────────────────────────┐
+│   Per-Voice Modulation      │
+├─────────────────────────────┤
+│ ├─ LFO (rate, depth, waveform)
+│ ├─ Envelopes ADSR (amp, filter, mod)
+│ └─ Pitch Modulation (vibrato)
+└─────────────────────────────┘
+    ↓
+Output (to Voice Allocator)
+API mínimal:
+cpp
+class ResonatorVoice {
+public:
+    // Lifecycle
+    void startNote(int midiNoteNumber, float velocity) noexcept;
+    void stopNote(float velocity, bool allowTailOff) noexcept;
+    
+    // Processing
+    float processSample(const ControlSignals& controls) noexcept;
+    
+    // State query
+    bool isVoiceActive() const noexcept;
+    int getMidiNote() const noexcept { return midi_note_; }
+    
+private:
+    // DSP modules
+    std::array<Oscillator, 64> oscillators_;
+    NoiseGenerator noise_gen_;
+    FilterBank filter_;
+    std::array<Envelope, 4> envelopes_;  // amp, filter, pitch, mod
+    
+    // State
+    int midi_note_ = -1;
+    float velocity_ = 0.0f;
+    bool is_active_ = false;
+};
+2. VoiceAllocator (Orquestación)
+Responsabilidad: Asignar notas MIDI a voces libres.
+Algoritmo:
+Recibir MIDI note on → buscar voice libre
+Si no hay → aplicar "note stealing" (oldest active)
+Recibir MIDI note off → marcar voice para release
+Procesar todas las voces en orden
+API:
+cpp
+class VoiceAllocator {
+public:
+    void noteOn(int midiNote, float velocity) noexcept;
+    void noteOff(int midiNote, float velocity) noexcept;
+    
+    float processBlock(const ControlSignals& controls) noexcept;
+    
+    void setVoiceCount(int count) noexcept;  // 1-16
+    void setVoiceMode(VoiceMode mode) noexcept;  // Poly, Mono, Unison
+    
+private:
+    std::vector<std::unique_ptr<ResonatorVoice>> voices_;
+    std::vector<int> note_stack_;  // Para mono mode
+};
+3. FeatureExtractor (Análisis)
+Responsabilidad: Extraer features para red neuronal (offline + real-time).
+Features extraídos:
+CQT (Constant-Q Transform): resolución frecuencial perceptual
+Pitch (F0): detector CREPE o autocorrelación simple
+Loudness: RMS por frame o loudness perceptual ITU-R
+Spectral Centroid: promedio ponderado de frecuencias
+Spectral Contrast: diferencia entre picos/valles
+cpp
+class FeatureExtractor {
+public:
+    struct Features {
+        float pitch_hz = 0.0f;
+        float loudness_db = -80.0f;
+        float spectral_centroid = 0.0f;
+        std::array<float, 108> cqt = {};  // 108 bins, 12 bins/octava
+    };
+    
+    Features extract(const AudioBuffer<float>& audio) noexcept;
+    
+private:
+    CQTAnalyzer cqt_analyzer_;
+    PitchDetector pitch_detector_;
+};
+4. NeuralControlNetwork (NN Inference)
+Responsabilidad: Cargar modelo pre-entrenado, hacer inference.
+Flujo:
+Load .pt model en prepareToPlay
+En processBlock(), para cada frame:
+Extraer features (CQT, pitch, loudness)
+Hacer forward() en red
+Obtener parámetros síntesis (64 amplitudes harmónicas, etc)
+Passar a Voice
+cpp
+class NeuralControlNetwork {
+public:
+    struct ControlSignals {
+        std::array<float, 64> harmonic_amplitudes = {};  // [0,1] × 64
+        std::array<float, 16> noise_filter_coeffs = {};
+        float reverb_mix = 0.0f;
+        // ... otros parámetros
+    };
+    
+    bool loadModel(const juce::File& modelFile) noexcept;
+    
+    ControlSignals predict(const FeatureExtractor::Features& features) noexcept;
+    
+private:
+    // LibTorch stuff
+    torch::jit::script::Module module_;
+    bool model_loaded_ = false;
+};
+Consideraciones LibTorch:
+Cargar modelos en prepareToPlay (blocking, una sola vez)
+Inference en processBlock() es rápido (<1ms para modelo pequeño)
+No usar tensores innecesarios (copy features → tensor → forward → copy resultado)
+
+VI. INTERFAZ UI: Tabbed Design
+Estructura de Tabs
+text
+┌─────────────────────────────────────────────┐
+│  NEXUS v1.0                    [menu] [presets] │
+├─────────────────────────────────────────────┤
+│ [Synth] [Modulation] [Timbre] [Effects] [Analysis] │
+├─────────────────────────────────────────────┤
+│                                               │
+│         Content of active tab                │
+│                                               │
+│                                               │
+└─────────────────────────────────────────────┘
+Tab 1: Synthesizer (Núcleo)
+Contenido:
+Pitch controls (coarse, fine, octave)
+Harmonic count slider
+Noise/Harmonic balance
+XY Pad para morphing tímbrico rápido
+Attack/Release envolventes (simple view)
+Unison/Poly selector
+Dimensiones: Adaptables (min 600×400 en Raspberry Pi, escalable)
+Tab 2: Modulation (Moduladores)
+Contenido:
+LFO 1, LFO 2 (rate, depth, waveform)
+ADSR full (attack, decay, sustain, release)
+Modulation Matrix (origen → destino)
+Vibrato depth
+Tab 3: Timbre (Transferencia, Morphing)
+Contenido:
+Timbre selector (lista de presets tímbricos)
+Morphing slider (timbre A ↔ B)
+Timbre Transfer enable/disable
+Reference sample loader
+Visualización de embeddings (si hay space)
+Tab 4: Effects (Procesamiento Global)
+Contenido:
+Filter: Type, Cutoff, Resonance
+Compressor: Threshold, Ratio, Attack, Release
+Distortion: Amount, Type (soft-clip, saturation)
+Delay: Time, Feedback, Wetness
+Reverb: Size, Damping, Mix
+Tab 5: Analysis (Visualización)
+Contenido:
+Spectrum Analyzer (real-time FFT)
+Waveform Oscilloscope
+Loudness Meter
+CPU/Latency info
+Pitch display (cent accuracy)
+
+Responsive Scaling
+Use UIScaling::getScaleFactor() basado en display DPI:
+cpp
+class UIScaling {
+public:
+    static float getScaleFactor() noexcept {
+        #if JUCE_LINUX
+            // Raspberry Pi: ~96 DPI
+            return 1.0f;
+        #elif JUCE_WINDOWS
+            // Típico: 96 DPI
+            return juce::Desktop::getInstance().getDisplays()
+                       .getMainDisplay().dpi / 96.0f;
+        #elif JUCE_MAC
+            // Retina: 220 DPI
+            return juce::Desktop::getInstance().getDisplays()
+                       .getMainDisplay().scale;
+        #endif
+    }
+};
+En componentes:
+cpp
+void SynthesizerTab::paint(juce::Graphics& g) {
+    float scale = UIScaling::getScaleFactor();
+    
+    // Usar scale en posiciones, tamaños, fonts
+    g.setFont(juce::Font(14.0f * scale));
+    g.drawText("Pitch", 10 * scale, 10 * scale, ...);
+}
+
+VII. MIDI: Procesamiento Seguro
+MIDI 1.0 Completo
+Archivo: Source/MIDI/MIDIProcessor.h/cpp
+cpp
+class MIDIProcessor {
+public:
+    // Callback desde processBlock
+    void processMIDIMessages(const juce::MidiBuffer& midiMessages,
+                              VoiceAllocator& voices) noexcept;
+    
+private:
+    void handleNoteOn(int channel, int note, int velocity) noexcept;
+    void handleNoteOff(int channel, int note, int velocity) noexcept;
+    void handleCC(int channel, int cc, int value) noexcept;
+    void handlePitchBend(int channel, int pitchBendValue) noexcept;
+    void handleProgramChange(int channel, int program) noexcept;
+};
+CC Mapping (Centralizado):
+cpp
+namespace MIDIConstants {
+    constexpr int CC_FILTER_CUTOFF = 74;
+    constexpr int CC_FILTER_RESONANCE = 71;
+    constexpr int CC_VOLUME = 7;
+    constexpr int CC_MODULATION = 1;
+    constexpr int CC_SUSTAIN = 64;
+    // ... estándar + custom
+}
+Procesamiento seguro en audio thread:
+cpp
+void PluginProcessor::processBlock(AudioBuffer<float>& buffer,
+                                    MidiBuffer& midiMessages) noexcept {
+    // MIDI processing (lock-free)
+    for (auto m : midiMessages) {
+        auto message = m.getMessage();
+        
+        if (message.isNoteOn()) {
+            voice_allocator_.noteOn(message.getNoteNumber(),
+                                    message.getVelocity() / 127.0f);
+        } else if (message.isNoteOff()) {
+            voice_allocator_.noteOff(message.getNoteNumber(),
+                                     message.getVelocity() / 127.0f);
+        } else if (message.isController()) {
+            int cc = message.getControllerNumber();
+            float value = message.getControllerValue() / 127.0f;
+            midi_processor_.handleCC(message.getChannel(), cc, value);
+        }
+    }
+    
+    // Audio processing
+    float* out = buffer.getWritePointer(0);
+    for (int i = 0; i < buffer.getNumSamples(); ++i) {
+        out[i] = voice_allocator_.processBlock(current_controls_);
+    }
+}
+MIDI 2.0 (Opcional, Non-breaking)
+Nota: MIDI 2.0 ofrece mayor resolución (32-bit vs 7-bit), pero es backward-compatible.
+cpp
+#ifdef NEXUS_MIDI2_SUPPORT
+class MIDI2Handler {
+public:
+    // 32-bit CC values (vs 7-bit en MIDI 1.0)
+    void handleCC32(int cc, uint32_t value) noexcept;
+    
+    // Per-note CCs (técnica para synths modernos)
+    void handlePerNoteCC(int note, int cc, uint32_t value) noexcept;
+    
+    // Pitch bend 32-bit
+    void handlePitchBend32(int pitchBendValue) noexcept;
+};
+#endif
+Fallback MIDI 1.0 siempre disponible.
+
+VIII. OPTIMIZACIONES PARA RASPBERRY PI
+Platform Detection
+cpp
+#if JUCE_LINUX
+    // Asumimos Raspberry Pi en Linux
+    #define NEXUS_TARGET_RPI 1
+    #define NEXUS_MAX_VOICES 6  // vs 16 en PC
+    #define NEXUS_FFT_SIZE 512  // vs 2048 en PC
+#else
+    #define NEXUS_TARGET_RPI 0
+    #define NEXUS_MAX_VOICES 16
+    #define NEXUS_FFT_SIZE 2048
+#endif
+Optimizaciones DSP para RPi
+Fewer Oscillators: 32 vs 64 en PC
+Lower FFT Resolution: 512 vs 2048
+No Neural Vocoder en tiempo real (HiFi-GAN es pesado)
+Disable Real-time Analysis: Spectrum analyzer consume CPU
+Vectorization: NEON en ARM (compilar con -mfpu=neon)
+cpp
+#if NEXUS_TARGET_RPI
+    // Compilar con ARM optimizations
+    // En CMakeLists.txt: target_compile_options(NEXUS PRIVATE -mfpu=neon -O3)
+    
+    class DDSPSynthesizer {
+        static constexpr int HARMONIC_COUNT = 32;  // vs 64
+        // Usar NEON intrinsics en loops críticos
+    };
+#else
+    class DDSPSynthesizer {
+        static constexpr int HARMONIC_COUNT = 64;
+    };
+#endif
+Profiling en RPi
+Use perf para CPU profiling:
+bash
+perf record -F 99 ./nexus_standalone
+perf report
+Objetivo: <30% CPU @ 48 kHz, buffer 512 samples, 8 voces.
+
+IX. SERIALIZACIÓN Y PRESETS
+Gestión de Estado (DAW Chunk)
+cpp
+class ChunkHandler {
+public:
+    juce::MemoryBlock getStateInformation() const;
+    void setStateInformation(const void* data, int sizeInBytes);
+    
+private:
+    // Serializar APVTS + custom state
+    void encodeState(juce::MemoryOutputStream& out) const;
+    void decodeState(juce::MemoryInputStream& in);
+};
+Presets Locales
+cpp
+class PresetManager {
+public:
+    void savePreset(const juce::String& name);
+    void loadPreset(const juce::String& name);
+    juce::StringArray getPresetList() const;
+    
+private:
+    juce::File preset_directory_;  // ~/.nexus/presets/ o AppData
+};
+
+X. TESTING Y PROFILING
+Unit Tests (JUCE Test Framework)
+cpp
+// Tests/DSPTests.cpp
+class OscillatorTests : public juce::UnitTest {
+    void runTest() override {
+        beginTest("Oscillator phase accuracy");
+        
+        Oscillator osc;
+        osc.setFrequency(440.0f);
+        
+        float sample = osc.process(0.0f);
+        expect(std::abs(sample) <= 1.0f, "Oscillator output in range");
+    }
+};
+Performance Profiling
+cpp
+// En processBlock
+{
+    auto start = juce::Time::getHighResolutionTicks();
+    voice_allocator_.processBlock(controls);
+    auto elapsed = juce::Time::getHighResolutionTicks() - start;
+    
+    // Log si > 5ms (target <1ms @ 48kHz, 512 buffer)
+    if (elapsed > 5000) {
+        DBG("Long process block: " << elapsed << " µs");
+    }
+}
+
+XI. DOCUMENTACIÓN REQUERIDA
+Para AI Developer
+Archivos a proporcionar:
+ESTA ESPECIFICACIÓN (Arquitectura.md)
+ParameterDefinitions.h (completamente relleno con todos los parámetros)
+PluginProcessor skeleton (solo interfaces, no implementación)
+CMakeLists.txt (dependencias: JUCE, LibTorch, etc)
+Development guide (cómo extender, convenciones de código)
+Para Developer Futuro
+Archivos internos:
+API.md: Public interfaces de cada clase DSP
+Parameters.md: Rango, default, descripción de cada parámetro
+Changelog.md: Decisiones de arquitectura
+
+XII. CHECKLIST DE IMPLEMENTACIÓN
+Pre-Development
+ Espacio de disco: ~5GB (modelos NN, dependencias)
+ Compilador: C++17+, GCC 9+ / Clang 10+ / MSVC 2019+
+ Dependencias:
+ JUCE 7.0+
+ LibTorch 2.0+ (CPU only suficiente)
+ CMake 3.16+
+Phase 1: Proyecto Base (Semana 1)
+ Estructura de directorios creada
+ CMakeLists.txt configurado (builds en Mac, Win, Linux, RPi)
+ PluginProcessor skeleton compila
+ APVTS con 50+ parámetros definidos
+Phase 2: DSP Core (Semanas 2-4)
+ Oscillator: sin warping, solo sine fundamental
+ NoiseGenerator: white noise básico
+ Envelope ADSR
+ ResonatorVoice completo
+ VoiceAllocator funcionando (poly note-on/off)
+Phase 3: Control Neural (Semanas 5-6)
+ Model loader (cargar .pt)
+ FeatureExtractor básico (loudness, pitch simple)
+ NeuralControlNetwork inference
+ Integration en ResonatorVoice
+Phase 4: UI Essentials (Semanas 7-8)
+ Tabbed interface structure
+ SynthesizerTab: Pitch, Harmonic Count, Noise/Harmonic mix
+ ModulationTab: LFO, ADSR simple
+ Connection a APVTS
+ Responsive scaling para RPi
+Phase 5: MIDI + Polish (Semanas 9-10)
+ MIDI note on/off routing
+ CC mapping (CC 74 cutoff, etc)
+ Preset save/load
+ CPU profiling, optimization passa 1
+Phase 6: Advanced (Semanas 11+)
+ Timbre Transfer (si hay tiempo)
+ HiFi-GAN vocoder (si recursos CPU permiten)
+ Analysis tab con spectrum
+ MIDI 2.0 support (optional)
+
+XIII. NOTAS FINALES PARA EL AI DEVELOPER
+Estilo de Código Requerido
+cpp
+// ✅ GOOD
+class ResonatorVoice {
+    float processSample(float pitch_hz, float amplitude) noexcept;
+    bool isActive() const noexcept { return is_active_; }
+    
+private:
+    // Member variables: trailing underscore
+    std::array<Oscillator, 64> oscillators_;
+    float phase_{0.0f};  // In-class initialization (C++17)
+};
+// ❌ BAD
+class ResonatorVoice {
+    float processSample(float pitchHz, float amplitude);  // No noexcept
+    bool GetIsActive() { return isActive; }  // PascalCase, non-const
+    
+private:
+    Oscillator oscillators[64];  // Raw array, no initialization
+    float phase;
+};
+Logging en Audio Thread
+cpp
+// ❌ NEVER (JUCE asserts if you DBG in audio thread)
+void processBlock(...) {
+    DBG("Processing"); // CRASH en debug
+}
+// ✅ Queue para UI thread later
+void processBlock(...) {
+    if (should_log_) {
+        log_fifo_.push("Processing");
+    }
+}
+void timerCallback() override {
+    std::string log_msg;
+    while (log_fifo_.pop(log_msg)) {
+        DBG(log_msg);
+    }
+}
+Comentarios Útiles
+cpp
+// ❌ Comentario obvio
+float x = a + b;  // Sumar a y b
+// ✅ Comentario que explica POR QUÉ
+// We use a separate envelope for harmonic amplitude (not just global amp)
+// because timbre changes require partial-dependent transitions
+Envelope harmonic_amplitude_envelope_;
+Magic Numbers → Named Constants
+cpp
+// ❌ Magic numbers
+float feedback = 0.95f;
+int buffer_size = 1024;
+// ✅ Named constants
+static constexpr float FILTER_FEEDBACK_MAX = 0.95f;
+static constexpr int FFT_SIZE = 1024;
+static constexpr int HARMONIC_COUNT = 64;
+
+CONCLUSIÓN
+Esta especificación proporciona:
+Arquitectura modular y escalable para 16 semanas de desarrollo
+Thread-safety garantizada para audio de alta calidad
+Portabilidad (Mac, Windows, Linux, RPi) desde el inicio
+Extensibilidad para features futuras (timbre transfer, vocoder)
+Profesionalismo comparable a plugins comerciales
+El AI developer recibe todo lo necesario para construir sin ambigüedades.
+
+FIN DEL ARCHIVO 1 (NEXUS_Architecture_Specification.md)
+

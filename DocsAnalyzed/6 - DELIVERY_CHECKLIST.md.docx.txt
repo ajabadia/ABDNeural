@@ -1,0 +1,973 @@
+
+NEXUS: Delivery Checklist & Validation Framework
+Herramienta para validar cada entrega de cada phase.
+I. CÓMO USAR ESTE DOCUMENTO
+Propósito
+Cada phase tiene un checklist de validación que determina si está "lista para producción" o necesita rework.
+Flujo
+text
+Phase entregada por AI DEV
+    ↓
+Ejecuta Validation Checklist
+    ↓
+¿Todos los ✓ pasados?
+    ├─ SÍ → Aprueba, procede a Phase siguiente
+    └─ NO → Regresa items fallidos, rework
+Items en Checklist
+Cada checklist tiene:
+Compilación: ¿Compila sin errores/warnings?
+Funcionalidad: ¿Hace lo que se promete?
+Performance: ¿CPU/Memory dentro de targets?
+Quality: ¿Sigue CODE_STANDARDS?
+Testing: ¿Unit tests pasan?
+II. PHASE 1: PROJECT SETUP (SEMANA 1)
+Validación Compilación
+text
+TASK: Build en todas 4 plataformas
+COMMANDS:
+# Mac (Intel + M-series)
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+cmake --build . --config Release
+→ ✓ Compila sin errores
+→ ✓ Compila sin warnings (-Wall -Wextra)
+→ ✓ Binary size < 500 MB (debug), < 150 MB (release)
+# Windows (MSVC 2019+)
+cmake .. -G "Visual Studio 16 2019"
+cmake --build . --config Release
+→ ✓ Compila sin C4244, C4267 (conversion warnings)
+→ ✓ Linker no falla por libTorch
+# Linux (GCC 9+)
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j4
+→ ✓ Sin undefined references
+→ ✓ libTorch linked correctamente
+# Raspberry Pi (ARM, GCC 9+)
+cmake .. -DCMAKE_BUILD_TYPE=Release -DNEXUS_TARGET_RPI=ON
+make -j4
+→ ✓ Compila con -mfpu=neon -O3
+→ ✓ Sin errores ARM-specific
+Validación Estructura
+text
+TASK: Directory structure según ARCHITECTURE sección II
+VERIFICATION:
+find nexus/Source -type d | wc -l
+→ ✓ Mínimo 20 directorios
+tree nexus/Source -L 2:
+nexus/Source/
+├── Main/
+│   ├── PluginProcessor.h
+│   ├── PluginProcessor.cpp
+│   ├── PluginEditor.h
+│   └── PluginEditor.cpp
+├── State/
+│   ├── ParameterDefinitions.h
+│   ├── ParameterDefinitions.cpp
+│   ├── PresetManager.h
+│   └── PresetManager.cpp
+├── DSP/
+│   ├── CoreModules/
+│   ├── Synthesis/
+│   ├── Analysis/
+│   ├── Neural/
+│   ├── Effects/
+│   └── Utils/
+├── UI/
+│   ├── Tabs/
+│   ├── Components/
+│   ├── Styling/
+│   └── Utils/
+├── MIDI/
+├── Serialization/
+└── Platform/
+→ ✓ Todas las carpetas existen
+→ ✓ Archivos .h/.cpp pareados
+Validación PluginProcessor Skeleton
+text
+TASK: PluginProcessor.h tiene todas las interfaces
+HEADER INSPECTION:
+class PluginProcessor : public juce::AudioProcessor {
+public:
+    void prepareToPlay(double sampleRate, int samplesPerBlock) override;
+    void releaseResources() override;
+    void processBlock(AudioBuffer<float>&, MidiBuffer&) override;
+    void getStateInformation(MemoryBlock& destData) override;
+    void setStateInformation(const void* data, int sizeInBytes) override;
+    
+private:
+    juce::AudioProcessorValueTreeState apvts;
+    std::unique_ptr<VoiceAllocator> voice_allocator_;
+    std::unique_ptr<EffectsChain> effects_;
+    std::unique_ptr<MIDIProcessor> midi_processor_;
+};
+→ ✓ Todas las funciones virtuales presentes
+→ ✓ apvts declarado
+→ ✓ Todos los coordinadores (Voice, Effects, MIDI) declarados
+→ ✓ Solo declaraciones, NO implementación
+Validación ParameterDefinitions.h
+text
+TASK: 50+ parámetros definidos, enums, constantes
+CODE INSPECTION:
+grep "const juce::Identifier" ParameterDefinitions.h | wc -l
+→ ✓ Mínimo 50 parámetros
+grep "enum class" ParameterDefinitions.h
+→ ✓ VoiceMode { Poly, Mono, Unison }
+→ ✓ FilterType { LP24, LP12, HP6, BP, Notch }
+→ ✓ LFOWaveform { Sine, Triangle, Saw, Square, Random }
+→ ✓ DistortionType { SoftClip, Saturation, HardClip }
+grep "static constexpr" ParameterDefinitions.h | wc -l
+→ ✓ Mínimo 20 constantes (ranges, defaults)
+→ ✓ Factory function createAudioProcessorValueTreeState() presente
+→ ✓ Helper functions getParameterValue(), setParameterValue()
+Validación CMakeLists.txt
+text
+TASK: CMakeLists configura build multiplataforma
+INSPECTION:
+grep -i "juce_add_plugin" CMakeLists.txt
+→ ✓ Plugin formatters: VST3, AU (Mac), Standalone
+grep -i "libTorch" CMakeLists.txt
+→ ✓ find_package(Torch) presente
+→ ✓ target_link_libraries incluye ${TORCH_LIBRARIES}
+grep -i "NEXUS_TARGET_RPI" CMakeLists.txt
+→ ✓ Conditional RPi optimizations
+→ ✓ C++ standard: CMAKE_CXX_STANDARD >= 17
+→ ✓ Warning flags: -Wall -Wextra -Wpedantic
+→ ✓ Optimization: -O3 para Release, -g -O0 para Debug
+Validación Git & Documentation
+text
+TASK: Repo inicializado, .gitignore, README
+VERIFICATION:
+git status
+→ ✓ Repo initialized
+→ ✓ No uncommitted changes (todo committed)
+ls -la | grep ".gitignore"
+→ ✓ .gitignore presente (ignora build/, bin/, obj/, libTorch downloads)
+ls README.md
+→ ✓ README.md existe
+→ ✓ Contiene:
+  - Project description (NEXUS synthesizer)
+  - Build instructions (Mac, Windows, Linux, RPi)
+  - Dependencies (JUCE 7.0+, LibTorch 2.1, CMake 3.16+)
+  - Development setup
+✅ PHASE 1 PASS/FAIL
+text
+PASS si:
+☑ Compila todas 4 plataformas sin errores/warnings
+☑ Estructura de directorios completa
+☑ PluginProcessor skeleton con todas las interfaces
+☑ ParameterDefinitions.h con 50+ parámetros + enums + constantes
+☑ CMakeLists.txt configura multiplataforma
+☑ Git repo ready, README presente
+FAIL si:
+☒ Compilation errors en cualquier plataforma
+☒ Warnings (excepto deprecations JUCE)
+☒ Parámetros incompletos
+☒ CMakeLists sin RPi support
+III. PHASE 2: DSP CORE (SEMANAS 2-4)
+Validación Oscillator.h/cpp
+text
+TASK: Oscillator compila, funciona, eficiente
+COMPILATION:
+clang++ -std=c++17 -O3 Source/DSP/CoreModules/Oscillator.cpp
+→ ✓ Compila sin errores
+→ ✓ Sin warnings
+FUNCTIONALITY TESTS:
+Test 1: Frequency accuracy @ 48kHz
+    freq = 440 Hz
+    phase_increment = 440 / 48000 = 0.009167
+    After 48000 samples, phase debe haber completado 440 ciclos
+    ✓ Error < 0.1%
+Test 2: Output range
+    for (int i = 0; i < 10000; ++i) {
+        float sample = osc.processSample();
+        assert(-1.0f <= sample <= 1.0f);
+    }
+    ✓ Todos los samples en [-1, 1]
+Test 3: Phase reset
+    osc.reset();
+    float sample1 = osc.processSample();
+    osc.reset();
+    float sample2 = osc.processSample();
+    assert(sample1 == sample2);
+    ✓ Determinístico después de reset
+Test 4: Phase modulation
+    float base = osc.processSample(0.0f);
+    float modulated = osc.processSample(0.1f);  // 10% phase shift
+    assert(base != modulated);
+    ✓ Modulation afecta output
+EFFICIENCY:
+time ./oscillator_perf_test 1000000
+→ ✓ 1M samples procesados en < 10ms (@ 48kHz = 20.83s)
+→ ✓ Ratio: 50× real-time (muy rápido)
+CODE QUALITY:
+grep "new\|malloc\|delete\|free" Oscillator.cpp
+→ ✓ ZERO allocations (línea vacía)
+grep "noexcept" Oscillator.h
+→ ✓ processSample() marcado noexcept
+→ ✓ reset() marcado noexcept
+grep "std::atomic" Oscillator.h
+→ ✓ frequency_hz_ es std::atomic<float>
+→ ✓ setFrequency() usa .store()
+→ ✓ processSample() usa .load()
+Validación Envelope.h/cpp
+text
+TASK: Envelope funciona, timings precisos, shapes correctas
+COMPILATION:
+→ ✓ Compila sin errores
+→ ✓ Sin memory leaks (ASAN clean)
+FUNCTIONALITY TESTS:
+Test 1: ADSR timing @ 48kHz, 10ms attack
+    attack_ms = 10.0
+    expected_samples = 10 * 48 = 480
+    actual_samples = count hasta que envelope == 1.0f
+    error_ms = abs(actual - expected) / 48
+    ✓ Error < 1ms
+Test 2: Linear attack shape
+    samples = 480
+    increments = []
+    for i in 0..479:
+        delta = envelope[i+1] - envelope[i]
+        increments.append(delta)
+    ✓ Todos los increments ~iguales (variance < 5%)
+Test 3: Exponential decay shape
+    decay_ms = 500
+    envelope @ t=0: 1.0
+    envelope @ t=250ms: ~0.5 (exponential, not linear)
+    ✓ Decay is exponential (not linear)
+Test 4: Sustain flat
+    sustain_level = 0.7
+    for i in range(sustain_start, sustain_start + 1000):
+        envelope[i] == 0.7
+    ✓ Sustain permanece flat
+Test 5: Release on noteOff
+    startNote()
+    ...reach sustain...
+    stopNote()
+    release_samples = count hasta que envelope == 0.0
+    ✓ Release completa en tiempo especificado
+CODE QUALITY:
+→ ✓ Zero allocations en processSample()
+→ ✓ processSample() noexcept
+→ ✓ State machine (Idle, Attack, Decay, Sustain, Release)
+→ ✓ Exponential curves usando exp() math
+Validación ResonatorVoice.h/cpp
+text
+TASK: Voice integra Oscillator + Envelope + Filter
+COMPILATION:
+→ ✓ Compila sin errores
+→ ✓ Todas las dependencias (Oscillator, Envelope, Filter) presentes
+FUNCTIONALITY:
+Test 1: Note on/off lifecycle
+    voice.startNote(MIDI_C4, 1.0);  // Velocity = 1.0
+    assert(voice.isVoiceActive());
+    
+    audio = voice.processSample(0.0f);  // Process 1000 samples
+    assert(abs(audio) > 0.0f);  // Output no es silencio
+    
+    voice.stopNote(0.0f, true);
+    ...process release...
+    assert(!voice.isVoiceActive());
+    ✓ Lifecycle correcto
+Test 2: Multiple envelopes
+    4 envelopes: amp, filter, pitch, mod
+    Todos activos simultáneamente
+    ✓ Outputs no están correlacionados (todos modulan independientemente)
+CPU PROFILING:
+perf stat ./voice_process_1000samples
+→ ✓ < 1ms por 1000 samples (48kHz buffer = 20.8ms)
+→ ✓ L1 cache hit rate > 90%
+Validación VoiceAllocator.h/cpp
+text
+TASK: Allocator maneja multiple voices, note stealing
+FUNCTIONALITY:
+Test 1: Round-robin allocation
+    allocator.setVoiceCount(8);
+    
+    for note in [60, 61, 62, 63, 64, 65, 66, 67]:
+        allocator.noteOn(note, 1.0);
+    
+    for i, voice in enumerate(voices):
+        assert(voice.getMidiNote() == 60 + i);
+    ✓ Notas asignadas en orden
+Test 2: Note stealing (oldest)
+    allocator.setVoiceCount(2);
+    
+    allocator.noteOn(60, 1.0);  // Voice 0
+    ...process 100 samples...
+    allocator.noteOn(61, 1.0);  // Voice 1
+    ...process 100 samples...
+    allocator.noteOn(62, 1.0);  // Voice 0 robado (older)
+    
+    assert(voice[0].getMidiNote() == 62);
+    assert(voice[1].getMidiNote() == 61);
+    ✓ Stealing by age correcto
+Test 3: Note off releases correctly
+    allocator.noteOn(60, 1.0);
+    allocator.noteOn(61, 1.0);
+    allocator.noteOff(60, 0.0);
+    
+    audio1 = voice[0].processSample();  // Releasing
+    audio2 = voice[1].processSample();  // Active
+    ✓ Ambas activas, voice[0] en release
+Test 4: Mono mode
+    allocator.setVoiceMode(VoiceMode::Monophonic);
+    allocator.noteOn(60, 1.0);
+    allocator.noteOn(61, 1.0);
+    
+    assert(allocator.getActiveVoiceCount() == 1);
+    ✓ Solo 1 voice activa en modo mono
+CPU PROFILING (8 voices, 48kHz, 512 buffer):
+perf stat ./allocator_8voices_512buffer
+→ ✓ CPU < 5% (desktop)
+→ ✓ < 1ms total processBlock()
+Validación MIDI Integration
+text
+TASK: MIDI notes → Voice allocation
+FUNCTIONALITY:
+Test 1: MIDI note-on
+    midiBuffer.addEvent(noteOn, 0, channel=1, note=60, velocity=100);
+    processor.processBlock(audioBuffer, midiBuffer);
+    
+    assert(voice[0].getMidiNote() == 60);
+    assert(voice[0].isVoiceActive());
+    ✓ Note encaminado correctamente
+Test 2: MIDI note-off
+    midiBuffer.addEvent(noteOff, 0, channel=1, note=60);
+    processor.processBlock(audioBuffer, midiBuffer);
+    
+    ...process release...
+    assert(!voice[0].isVoiceActive());
+    ✓ Voice entra en release
+Test 3: Pitch bend
+    midiBuffer.addEvent(pitchBend, 0, value=8192+2048);  // +2 semitones
+    processor.processBlock(...);
+    
+    freq_without = osc.getFrequency();
+    freq_with = freq_without * 2^(2/12);
+    ✓ Pitch bend aplicado
+✅ PHASE 2 PASS/FAIL
+text
+PASS si:
+☑ Oscillator: compila, timing preciso, zero allocations, noexcept
+☑ Envelope: timings correctos (<1ms error), shapes exponenciales
+☑ ResonatorVoice: integra todos los módulos, lifecycle correcto
+☑ VoiceAllocator: round-robin, note stealing, mono mode
+☑ MIDI routing: note-on/off, pitch bend, all channels
+☑ CPU < 5% @ 8 voces, 48kHz, 512 buffer (desktop)
+☑ CPU < 15% @ 6 voces, 48kHz, RPi 4
+☑ Unit tests: 100% pass rate
+FAIL si:
+☒ Compilation errors en cualquier módulo
+☒ Timing errors > 5% (ADSR especialmente)
+☒ Memory leaks (ASAN detects)
+☒ CPU > 10% desktop / > 25% RPi
+☒ Allocations en processBlock()
+IV. PHASE 3: NEURAL CONTROL (SEMANAS 5-6)
+Validación FeatureExtractor.h/cpp
+text
+TASK: Extrae features para red neuronal
+COMPILATION:
+→ ✓ Compila con JUCE FFT module
+→ ✓ Sin memory leaks
+FUNCTIONALITY:
+Test 1: CQT extraction (108 bins, 12 bins/octava)
+    audio_frame = 2048 samples @ 48kHz
+    features = extractor.extract(audio_frame);
+    
+    assert(features.cqt.size() == 108);
+    assert(all(0.0f <= bin <= 1.0f) for bin in features.cqt);
+    ✓ 108 bins, normalized [0,1]
+Test 2: Pitch detection (440Hz sine)
+    generate_sine(440Hz, 2 seconds);
+    features = extractor.extract();
+    
+    detected_pitch = features.pitch_hz;
+    error = abs(detected_pitch - 440.0) / 440.0;
+    ✓ Error < 2% (440 ± 8.8 Hz acceptable)
+Test 3: Loudness calculation
+    silent_frame = [0.0f, 0.0f, ...];
+    loud_frame = [1.0f, 1.0f, ...];
+    
+    features_silent = extractor.extract(silent_frame);
+    features_loud = extractor.extract(loud_frame);
+    
+    assert(features_loud.loudness_db > features_silent.loudness_db);
+    ✓ Loudness diferencia detectada
+Test 4: Spectral centroid
+    low_freq_frame = sine(100Hz);
+    high_freq_frame = sine(5000Hz);
+    
+    centroid_low = extractor.extract(low_freq).spectral_centroid;
+    centroid_high = extractor.extract(high_freq).spectral_centroid;
+    
+    assert(centroid_low < centroid_high);
+    ✓ Centroid reflects frequency
+CPU PROFILING:
+time ./feature_extractor 48000samples@48kHz
+→ ✓ < 5ms para 2048 samples (no real-time critical)
+→ ✓ < 20ms para 8192 samples
+COMPILATION VARIANTS:
+#if NEXUS_TARGET_RPI
+    FFT_SIZE = 512  // vs 2048 desktop
+#endif
+→ ✓ RPi variant compila, reduced resolution OK
+Validación NeuralControlNetwork.h/cpp
+text
+TASK: Carga modelos .pt, hace inference
+COMPILATION:
+→ ✓ LibTorch linkea sin undefined references
+→ ✓ torch::jit headers presentes
+FUNCTIONALITY:
+Test 1: Model loading
+    model_path = "Models/control_network.pt"
+    success = neural_net.loadModel(model_path);
+    assert(success);
+    ✓ Model carga correctamente
+Test 2: Inference
+    features.pitch_hz = 440.0;
+    features.loudness_db = -12.0;
+    features.cqt = [...108 values...];
+    
+    controls = neural_net.predict(features);
+    
+    assert(controls.harmonic_amplitudes.size() == 64);
+    assert(all(0.0f <= amp <= 1.0f) for amp in controls.harmonic_amplitudes);
+    ✓ Output shape correcto, valores normalized
+Test 3: Inference speed
+    for i in range(1000):
+        controls = neural_net.predict(features);
+    
+    total_time < 1 second
+    ✓ < 1ms per inference (real-time viable)
+Test 4: Determinism
+    controls1 = neural_net.predict(features);
+    controls2 = neural_net.predict(features);
+    assert(controls1 == controls2);
+    ✓ Inference determinística
+PERFORMANCE:
+→ ✓ Model size < 50 MB (reasonable for distribution)
+→ ✓ Load time < 1 second (one-time, prepareToPlay)
+→ ✓ Inference < 1ms
+Validación DDSPSynthesizer.h/cpp
+text
+TASK: Integra synthesis blocks + neural controls
+FUNCTIONALITY:
+Test 1: Harmonic generation
+    64 oscillators, cada uno con frecuencia armónica * n
+    amplitudes from neural network
+    
+    output = sum(osc[i] * neural_amp[i] for i in 0..63)
+    ✓ Harmonics correctamente ponderados
+Test 2: Noise component
+    noise_gen = noise_filter.process(white_noise, cutoff)
+    
+    harmonic_part = sum(harmonics)
+    noise_part = noise_gen * (1 - harmonic_mix)
+    
+    final = harmonic_part * harmonic_mix + noise_part
+    ✓ Mix harmonic/noise
+Test 3: Timbre consistency
+    Play misma nota, neural features deberían ser similares
+    extract(output_frame) ≈ input_features
+    ✓ Output features match input (lossy, but consistent)
+CPU PROFILING:
+8 voices, 64 harmonics each, 48kHz, 512 buffer
+→ ✓ < 15% CPU (desktop)
+→ ✓ < 30% CPU (RPi 4)
+✅ PHASE 3 PASS/FAIL
+text
+PASS si:
+☑ FeatureExtractor: CQT 108 bins, pitch < 2% error, loudness OK
+☑ NeuralControlNetwork: model loads, inference < 1ms, deterministic
+☑ DDSPSynthesizer: harmonics correct, noise mix OK, timbre consistent
+☑ Integration: end-to-end audio reasonable quality
+☑ CPU < 20% desktop, < 40% RPi @ 8 voces
+FAIL si:
+☒ Model doesn't load (missing .pt file, LibTorch error)
+☒ Inference > 2ms (real-time violated)
+☒ Output is silence or white noise (synthesis broken)
+☒ Features wildly inaccurate (> 10% errors)
+☒ CPU > 25% desktop
+V. PHASE 4: UI & INTEGRATION (SEMANAS 7-8)
+Validación Tabbed Interface
+text
+TASK: 5 tabs functional, switching works
+COMPILATION:
+→ ✓ Compila sin UI errors
+→ ✓ JUCE components linked
+FUNCTIONALITY:
+Test 1: Tab switching
+    for each tab in [Synth, Modulation, Timbre, Effects, Analysis]:
+        click(tab)
+        assert(tab.isVisible())
+        assert(other_tabs.isHidden())
+    ✓ Tab switching works
+Test 2: Responsiveness
+    for each resolution in [(600, 400), (800, 600), (1920, 1200)]:
+        resize_window(resolution)
+        assert(all_components_visible())
+        assert(no_overlaps())
+    ✓ Responsive layout
+Test 3: No crash on interaction
+    for each slider/button in all tabs:
+        move_mouse(), click(), drag()
+    ✓ No crashes, smooth interaction
+Validación SynthesizerTab
+text
+TASK: Pitch, harmonic count, noise mix controls
+UI ELEMENTS:
+→ ✓ Pitch coarse slider (-24 to +24)
+→ ✓ Pitch fine slider (-1 to +1 semitones)
+→ ✓ Harmonic count slider (8 to 64)
+→ ✓ Noise/Harmonic mix XY pad
+→ ✓ All sliders labeled
+APVTS CONNECTION:
+for each slider:
+    drag slider
+    assert(APVTS parameter updated)
+    assert(audio reflects change immediately)
+✓ All parameters bidirectional
+TEST AUDIO:
+play note, move sliders
+→ ✓ Pitch changes in real-time
+→ ✓ Harmonic count changes timbre
+→ ✓ Noise mix crossfade smooth
+Validación Responsive Scaling
+text
+TASK: UI legible en RPi 800×600 y Retina Mac 2560×1440
+TEST CASES:
+┌──────────────────────────────────────────────────────┐
+│ Resolution │ DPI  │ UIScaleFactor │ Result           │
+├──────────────────────────────────────────────────────┤
+│ 600×400    │ 96   │ 1.0           │ ✓ Readable       │
+│ 800×600    │ 96   │ 1.0           │ ✓ OK on RPi      │
+│ 1920×1200  │ 96   │ 1.0           │ ✓ Readable       │
+│ 2560×1440  │ 220  │ 2.29          │ ✓ Sharp on Mac   │
+└──────────────────────────────────────────────────────┘
+VERIFICATION:
+for each resolution:
+    set_display_scale(scale_factor)
+    assert(font_size_readable())
+    assert(buttons_clickable())
+    assert(no_clipping())
+→ ✓ All resolutions OK
+→ ✓ Text legible (minimum 11pt effective)
+Validación ModulationTab
+text
+TASK: LFO, ADSR, modulation matrix
+UI ELEMENTS:
+→ ✓ LFO 1 rate slider
+→ ✓ LFO 1 depth slider
+→ ✓ LFO 1 waveform choice (Sine/Triangle/Saw/Square)
+→ ✓ LFO 2 (same)
+→ ✓ ADSR envelope display (4 controls per envelope)
+→ ✓ Modulation matrix (LFO → Pitch/Filter/Amp)
+FUNCTIONALITY:
+for each LFO:
+    change_rate() → audio modulation speed changes
+    change_depth() → modulation amount changes
+    change_waveform() → modulation shape changes
+✓ All LFO parameters affect audio
+for each mod matrix entry:
+    set_source(LFO1)
+    set_destination(FilterCutoff)
+    set_amount(0.5)
+    assert(filter_cutoff modulated by LFO1)
+✓ Modulation matrix works
+Validación EffectsTab
+text
+TASK: Filter, Compressor, Distortion, Delay, Reverb controls
+EFFECT CHAIN:
+[Voice Output] → [Filter] → [Compressor] → [Distortion] 
+                 → [Delay] → [Reverb] → [Master]
+FOR EACH EFFECT:
+Test 1: Bypass toggle
+    toggle_bypass(effect)
+    assert(audio_unchanged() or audio_changed() depending on bypass)
+Test 2: Parameter changes
+    change_all_parameters()
+    assert(audio_reflects_immediately())
+Test 3: CPU impact (per effect enabled)
+    effect_disabled: CPU = X%
+    effect_enabled: CPU = Y%
+    assert(Y - X < 5%)  // Individual effect < 5% CPU
+SPECIFIC TESTS:
+Filter:
+    sweep_cutoff(20Hz to 20000Hz)
+    assert(frequency_response matches sweep)
+Compressor:
+    signal > threshold
+    assert(amplitude reduced by ratio)
+Distortion:
+    increase_amount(0 → 1)
+    assert(harmonics increase, output gets "grittier")
+Delay:
+    set_time(250ms)
+    assert(echo heard at 250ms delay)
+Reverb:
+    set_wetness(1.0)
+    assert(strong reverberation)
+Validación AnalysisTab (Optional Phase 4 or Phase 6)
+text
+TASK: Spectrum analyzer, waveform display, meters
+DISPLAY:
+→ ✓ Real-time FFT spectrum (0-20kHz)
+→ ✓ Waveform oscilloscope (time-domain)
+→ ✓ Loudness meter (dB scale)
+→ ✓ Pitch display (cent accuracy if available)
+PERFORMANCE:
+spectrum_analyzer_update()
+→ ✓ < 5ms update time (60 FPS target)
+→ ✓ No audio glitches during analysis
+VISUALIZATION:
+play tone, watch displays
+→ ✓ Spectrum shows fundamental + harmonics
+→ ✓ Waveform smooth, no aliasing artifacts
+→ ✓ Loudness meter responds to amplitude changes
+✅ PHASE 4 PASS/FAIL
+text
+PASS si:
+☑ All 5 tabs compile and switch without crashes
+☑ UI responsive: 600×400 (RPi) to 2560×1440 (Retina) readable
+☑ All APVTS parameters bidirectional (UI ↔ Audio)
+☑ Audio reflects UI changes immediately (< 50ms)
+☑ No UI lag during playback
+☑ Effects chain working (bypass, parameter changes)
+☑ Analysis displays (if Phase 4) update smoothly
+FAIL si:
+☒ Compilation errors in UI code
+☒ Tab switching crashes
+☒ UI elements overlap or disappear on resize
+☒ Sliders change but audio doesn't respond
+☒ Audio glitches when moving UI elements
+☒ Text unreadable at 800×600 or 2560×1440
+VI. PHASE 5: MIDI + POLISH (SEMANAS 9-10)
+Validación MIDI Complete
+text
+TASK: MIDI 1.0 full spec, DAW synchronization
+MIDI NOTE-ON/OFF:
+→ ✓ Note numbers 0-127 routed correctly
+→ ✓ Velocities 0-127 interpreted (0 = note-off)
+→ ✓ Channels 1-16 supported
+→ ✓ Multiple notes simultaneous (polyphony)
+MIDI CC:
+→ ✓ CC 1 (Modulation Wheel) → LFO depth
+→ ✓ CC 7 (Volume) → Master volume
+→ ✓ CC 64 (Sustain Pedal) → sustain gate
+→ ✓ CC 74 (Cutoff Frequency) → filter cutoff
+→ ✓ Custom CCs mappable
+MIDI PITCH BEND:
+→ ✓ Range configurable (1-24 semitones)
+→ ✓ Smooth pitch transitions (no zipper)
+MIDI PROGRAM CHANGE:
+→ ✓ Load presets by program number
+DAW SYNCHRONIZATION:
+→ ✓ Transport sync (play, stop, loop)
+→ ✓ Automation: DAW can automate any parameter
+→ ✓ Tempo sync (if applicable)
+TEST WITH DAW:
+ableton/logic/studio_one:
+    create_midi_clip([C4, D4, E4, F4, G4])
+    → ✓ Notes play correctly
+    → ✓ Automation lanes work
+    → ✓ CC data routed
+Validación Presets
+text
+TASK: Save/load presets, factory defaults
+FUNCTIONALITY:
+Test 1: Save preset
+    set_all_parameters(custom_values)
+    save_preset("MyPreset")
+    assert(file_exists("~/.nexus/presets/MyPreset.nex"))
+    ✓ Preset saved
+Test 2: Load preset
+    load_preset("MyPreset")
+    for each param:
+        assert(APVTS[param] == saved_value)
+    ✓ All parameters restored
+Test 3: Factory presets
+    preset_list = get_factory_presets()
+    assert(len(preset_list) >= 10)  // Warm_Pad, Bright_Pluck, etc
+    
+    for each factory preset:
+        load_preset(name)
+        play_note(C4)
+        assert(sounds_reasonable())
+    ✓ Factory presets sound good
+Test 4: Preset persistence
+    save_preset("A")
+    quit_plugin
+    reopen_plugin
+    load_preset("A")
+    assert(all_parameters_correct())
+    ✓ Presets survive close/reopen
+TEST ACROSS DAW:
+→ ✓ Presets save via DAW state
+→ ✓ Save DAW project, close, reopen
+→ ✓ Presets intact
+Validación CPU Optimization
+text
+TASK: CPU usage within targets
+DESKTOP (Mac/Windows/Linux):
+─────────────────────────────────────
+Config: 8 voices, 48kHz, 512 buffer, all effects enabled
+Expected: < 25% CPU single core
+MEASUREMENT:
+perf stat ./nexus_standalone -voices 8 -duration 60s
+    cycles: 240M
+    instructions: 800M
+    IPC: 3.33 (good)
+    
+→ ✓ CPU < 25%
+→ ✓ L1 cache hit > 90%
+→ ✓ No CPU throttling
+RASPBERRY PI 4 (2GB RAM):
+─────────────────────────────────────
+Config: 6 voices (reduced), 48kHz, 512 buffer, basic effects
+Expected: < 30% CPU
+MEASUREMENT:
+top -p $(pidof nexus)
+    %CPU: 28.5% (1 core, RPi has 4)
+    
+→ ✓ CPU < 30%
+→ ✓ Memory < 256 MB
+→ ✓ No audio dropouts (xrun counter = 0)
+PROFILING REPORT:
+perf report --stdio
+Top functions by cycles:
+    1. processSample() @ 35% 
+    2. FFT (analysis) @ 15%
+    3. Effects @ 25%
+    4. Utilities @ 25%
+    
+→ ✓ No hot functions taking > 40%
+Validación Memory Safety
+text
+TASK: No memory leaks, sanitizers clean
+ASAN (AddressSanitizer):
+clang++ -fsanitize=address -g Source/...
+./nexus_debug
+→ ✓ Zero ASAN errors
+→ ✓ Zero leaks detected
+VALGRIND (Linux):
+valgrind --leak-check=full ./nexus_standalone
+→ ✓ "definitely lost: 0 bytes"
+→ ✓ "still reachable: < 1MB"
+UBSAN (Undefined Behavior Sanitizer):
+clang++ -fsanitize=undefined ./nexus_standalone
+play_for_10_seconds
+→ ✓ Zero UBSan errors
+STATIC ANALYSIS:
+clang-tidy Source/DSP/*.cpp -- -std=c++17
+→ ✓ No major warnings
+→ ✓ Memory management clean
+✅ PHASE 5 PASS/FAIL
+text
+PASS si:
+☑ MIDI 1.0: note-on/off, CC, pitch bend, program change
+☑ DAW synchronization working
+☑ Presets: save, load, factory defaults
+☑ CPU < 25% desktop (8 voices), < 30% RPi (6 voices)
+☑ Memory: zero leaks (ASAN clean, valgrind clean)
+☑ Audio: no glitches, stable, artifact-free
+☑ Automation: DAW can automate all parameters
+☑ Performance profiling shows no bottlenecks
+FAIL si:
+☒ MIDI parsing errors
+☒ Presets don't save/load
+☒ CPU > 30% desktop / > 40% RPi
+☒ Memory leaks detected by ASAN/valgrind
+☒ Audio dropouts, xruns, or glitches
+☒ Profiling shows > 40% in single function
+VII. PHASE 6: ADVANCED FEATURES (SEMANAS 11+)
+Validación Timbre Transfer (Optional)
+text
+TASK: Load reference audio, morph timbre
+FUNCTIONALITY:
+Test 1: Reference loading
+    dialog = file_chooser()
+    audio_file = dialog.getFile()
+    success = timbre_transfer.loadReference(audio_file)
+    assert(success)
+    ✓ Audio loaded, analyzed
+Test 2: Timbre morphing
+    morphing_slider = [0.0, 0.25, 0.5, 0.75, 1.0]
+    for morph in morphing_slider:
+        set_morphing_amount(morph)
+        audio = play_note_c4()
+        assert(audio_smoothly_interpolates())
+    ✓ Smooth timbre transition
+Test 3: Real-time morphing
+    slider_continuous_drag()
+    audio_tracks_slider()
+    → ✓ < 50ms latency between slider and audio
+Validación HiFi-GAN Vocoder (Optional)
+text
+TASK: Neural vocoder for synthesis quality (if CPU permits)
+FUNCTIONALITY:
+Test 1: Model loading
+    model_path = "Models/hifi_gan.pt"
+    success = vocoder.loadModel(model_path)
+    assert(success)
+    ✓ Vocoder model loaded
+Test 2: Vocoder inference
+    mel_spectrogram = create_mel_spectrogram(synthesis_output)
+    audio_vocoded = vocoder.synthesize(mel_spectrogram)
+    assert(len(audio_vocoded) > 0)
+    ✓ Vocoder produces audio
+Test 3: Quality improvement
+    quality_before = perceptual_loss(synth_output)
+    quality_after = perceptual_loss(vocoded_output)
+    assert(quality_after > quality_before)
+    ✓ Vocoding improves perceptual quality
+Test 4: CPU impact
+    vocoder_disabled: CPU = X%
+    vocoder_enabled: CPU = X + 15%
+    → ✓ < 20% CPU overhead (if enabled)
+Validación MIDI 2.0 (Optional)
+text
+TASK: MIDI 2.0 support (backward compatible with MIDI 1.0)
+FUNCTIONALITY:
+Test 1: 32-bit CC values
+    cc74_value_7bit = 64  // Standard MIDI 1.0
+    cc74_value_32bit = 536870912  // Full precision
+    
+    both_encodings_produce_same_audio = True
+    ✓ Backward compatible
+Test 2: Per-note CC
+    note_60_cc74 = 0.5  // Specific CC for C4
+    note_61_cc74 = 0.3  // Different for D4
+    
+    each_note_receives_correct_cc = True
+    ✓ Per-note CC working
+Test 3: Pitch bend 32-bit
+    pitch_bend_7bit_range = [-8192, +8191]
+    pitch_bend_32bit_range = [-2147483648, +2147483647]
+    
+    finer_pitch_control_available = True
+    ✓ 32-bit pitch bend smoother
+✅ PHASE 6 PASS/FAIL
+text
+PASS si (Feature Implementation):
+☑ Timbre Transfer: loads, morphs smoothly, no artifacts
+☑ HiFi-GAN (if enabled): improves perceptual quality, < 20% CPU overhead
+☑ MIDI 2.0: backward compatible, finer control
+☑ All optional features don't break core functionality
+☑ CPU within targets with all features
+FAIL si:
+☒ Optional features break core audio
+☒ Model loading fails
+☒ CPU > 50% with all features enabled
+☒ Backward compatibility broken (MIDI 1.0 stops working)
+VIII. INTEGRATION TEST (All Phases Complete)
+Full System Validation
+text
+TASK: End-to-end functionality across all phases
+SCENARIOS:
+┌─────────────────────────────────────────────────────────────┐
+│ Scenario 1: DAW Session                                     │
+├─────────────────────────────────────────────────────────────┤
+│ 1. Open Ableton/Logic/Studio One                            │
+│ 2. Create track with NEXUS plugin                           │
+│ 3. Create MIDI clip: C4-D4-E4-F4-G4 (8 bars)               │
+│ 4. Play, draw CC automation (CC74 filter sweep)             │
+│ 5. Save preset "Session_Preset"                             │
+│ 6. Close project, reopen                                    │
+│ 7. Preset should be restored, automation intact             │
+│ ✓ End-to-end DAW workflow working                           │
+└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│ Scenario 2: Standalone Application                          │
+├─────────────────────────────────────────────────────────────┤
+│ 1. Run NEXUS standalone                                     │
+│ 2. Connect MIDI keyboard                                    │
+│ 3. Play notes, interact with UI                            │
+│ 4. Sweep filters, change LFO rates, morphing timbre        │
+│ 5. Save custom preset                                       │
+│ 6. Load factory preset, verify sound                        │
+│ ✓ Standalone workflow complete                              │
+└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│ Scenario 3: Raspberry Pi Deployment                         │
+├─────────────────────────────────────────────────────────────┤
+│ 1. Compile on RPi with NEXUS_TARGET_RPI=ON                 │
+│ 2. Connect USB MIDI keyboard                                │
+│ 3. Run standalone                                            │
+│ 4. Play polyphonic performance (6 voices)                   │
+│ 5. Verify CPU < 30%, no xruns                              │
+│ ✓ RPi deployment viable                                     │
+└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│ Scenario 4: Stress Test (Edge Cases)                        │
+├─────────────────────────────────────────────────────────────┤
+│ 1. Rapid note-on/off (sustained CC)                        │
+│ 2. Automation of all parameters simultaneously              │
+│ 3. Extreme parameter values (min/max)                       │
+│ 4. MIDI velocity extremes (0, 1, 127)                       │
+│ 5. Tab switching during playback                            │
+│ 6. Preset switching mid-note                                │
+│ ✓ No crashes, audio remains stable                          │
+└─────────────────────────────────────────────────────────────┘
+IX. FINAL SIGN-OFF CHECKLIST
+Before Releasing to Production
+text
+┌─────────────────────────────────────────────────────────────┐
+│ NEXUS v1.0 Production Release Checklist                     │
+├─────────────────────────────────────────────────────────────┤
+│ ✓ All 6 phases complete and validated                       │
+│ ✓ All unit tests pass (100% pass rate)                      │
+│ ✓ Integration tests pass                                    │
+│ ✓ Code reviewed against CODE_STANDARDS                      │
+│ ✓ Memory sanitized (ASAN, valgrind clean)                  │
+│ ✓ CPU profiling targets met (all platforms)                │
+│ ✓ Documentation complete (README, API, Parameters)         │
+│ ✓ Factory presets included (≥10)                           │
+│ ✓ Binary builds for Mac/Windows/Linux/RPi                  │
+│ ✓ Version bumped to 1.0 (major.minor.patch)                │
+│ ✓ Changelog updated                                        │
+│ ✓ Git tagged: v1.0.0                                       │
+│ ✓ Tests can reproduce on fresh clone                       │
+│ ✓ CI/CD pipeline green (if using GitHub Actions, etc)      │
+│ ✓ Performance within 10% of targets on all platforms       │
+│                                                              │
+│ READY FOR PRODUCTION RELEASE                                │
+└─────────────────────────────────────────────────────────────┘
+X. RAPID REFERENCE TABLE
+PhaseDurationKey DeliverableValidation PointsCPU Target
+1Week 1Project setupCompilation, directory structure, CMakeLists—
+2Weeks 2-4DSP coreOscillator, Envelope, Voice, VoiceAllocator, MIDI<5% (8v)
+3Weeks 5-6Neural controlFeatureExtractor, NeuralNet, DDSP synthesis<20% (8v)
+4Weeks 7-8UITabbed interface, APVTS connection, responsiveness<5% UI thread
+5Weeks 9-10MIDI + PolishFull MIDI 1.0, presets, optimization<25% (8v) desktop, <30% RPi
+6Weeks 11+AdvancedTimbre Transfer, Vocoder, MIDI 2.0 (opt)<50% (all features)
+FIN DEL ARCHIVO 5 (DELIVERY_CHECKLIST.md)
+✅ TODOS LOS 5 ARCHIVOS ENTREGADOS
+Has recibido completamente:
+✅ NEXUS_Architecture_Specification.md — 1,145 líneas (entregado)
+✅ NEXUS_ParameterDefinitions_Template.h — 232 líneas (entregado)
+✅ NEXUS_CodeStandards_Examples.md — 692 líneas (entregado)
+✅ AI_DEVELOPER_BRIEFING.md — 407 líneas (entregado)
+✅ DELIVERY_CHECKLIST.md — 444 líneas (JUST DELIVERED)
+Total: 2,920 líneas de especificación profesional completa
+🎯 PRÓXIMOS PASOS
+Ahora:
+Revisa todos los 5 archivos (dedícale 3-4 horas)
+Identifica dudas o cambios que quieras hacer
+Preparate para pasar esto a un AI developer
+Cuando estés listo:
+Copy-paste los 5 archivos en un prompt a tu AI favorito (Claude, Gemini, etc)
+Adjunta el AI_DEVELOPER_BRIEFING.md para que sepa cómo trabajar
+Usa DELIVERY_CHECKLIST.md para validar cada entrega
+Timeline Realista:
+Phase 1: ~1 semana (project setup)
+Phase 2-3: ~5 semanas (DSP + neural core)
+Phase 4-5: ~4 semanas (UI + MIDI polish)
+Phase 6: ~2+ semanas (advanced features)
+Total: 16 semanas (~4 meses) a producción-ready.
+❓ ¿Algo más que necesites?
+¿Quieres cambiar algo de la especificación?
+¿Quieres agregar features?
+¿Preguntas sobre la arquitectura?
+¿Dudas sobre algún principio?
+Dime y lo ajustamos antes de pasar a AI developer.
+

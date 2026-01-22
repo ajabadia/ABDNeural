@@ -364,6 +364,14 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="D:\desarrollos\ABDNeural\Source\UI\ParameterPanel.cpp" />
     <ClInclude Include="D:\desarrollos\ABDNeural\Source\UI\SpectralVisualizer.h" />
     <ClCompile Include="D:\desarrollos\ABDNeural\Source\UI\SpectralVisualizer.cpp" />
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\UI\XYPad.h" />
+    <ClCompile Include="D:\desarrollos\ABDNeural\Source\UI\XYPad.cpp" />
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\UI\Panels\OscillatorPanel.h" />
+    <ClCompile Include="D:\desarrollos\ABDNeural\Source\UI\Panels\OscillatorPanel.cpp" />
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\UI\Panels\FilterEnvPanel.h" />
+    <ClCompile Include="D:\desarrollos\ABDNeural\Source\UI\Panels\FilterEnvPanel.cpp" />
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\UI\Panels\FXPanel.h" />
+    <ClCompile Include="D:\desarrollos\ABDNeural\Source\UI\Panels\FXPanel.cpp" />
     <ClInclude Include="D:\desarrollos\ABDNeural\Source\State\ParameterDefinitions.h" />
     <ClInclude Include="D:\desarrollos\ABDNeural\Source\DSP\CoreModules\Oscillator.h" />
     <ClCompile Include="D:\desarrollos\ABDNeural\Source\DSP\CoreModules\Oscillator.cpp" />

@@ -1,0 +1,172 @@
+
+Te paso ahora un trozo clave de features avanzado: Wavetable + Mod Matrix en formato documento, para que lo puedas pegar como NEXUS_Advanced_Features_Wavetable_ModMatrix.md o integrarlo en tu doc grande.
+
+NEXUS_Advanced_Features_Wavetable_ModMatrix.md
+text
+# NEXUS: Advanced Features — Wavetable & Mod Matrix
+Features avanzadas de síntesis y modulación para Phases 2–3.
+---
+## 1. WAVETABLE SYNTHESIS (PHASE 2)
+### 1.1 Objetivo
+Añadir un oscilador **wavetable** con morphing continuo y soporte para futuras extensiones (PWM, wave shaping, ML, etc.).
+### 1.2 Arquitectura
+Ubicación:
+- `Source/DSP/Synthesis/WavetableOscillator.h`
+- `Source/DSP/Synthesis/WavetableOscillator.cpp`
+Clase principal:
+```cpp
+namespace Nexus::DSP::Synthesis {
+class WavetableOscillator
+{
+public:
+    WavetableOscillator() noexcept;
+    ~WavetableOscillator() = default;
+    WavetableOscillator(const WavetableOscillator&) = delete;
+    WavetableOscillator& operator=(const WavetableOscillator&) = delete;
+    void setSampleRate(double sampleRate) noexcept;
+    void setFrequency(float hz) noexcept;
+    void setMorphPosition(float position) noexcept;   //[1]
+    void setGain(float linearGain) noexcept;
+    /// RT-safe, sin asignaciones.
+    float processSample() noexcept;
+    void reset() noexcept;
+    /// Carga un set de wavetables pre-generadas (mismas dimensiones).
+    void setWavetables(juce::Span<const juce::AudioBuffer<float>> wavetables) noexcept;
+private:
+    double sampleRate_ = 48000.0;
+    std::atomic<float> frequencyHz_{ 440.0f };
+    std::atomic<float> morphPosition_{ 0.0f };
+    std::atomic<float> gain_{ 1.0f };
+    float phase_ = 0.0f;
+    // Wavetables: vector de buffers mono, misma longitud.
+    std::vector<const float*> tableData_;
+    int tableSize_ = 0;
+    float getSampleFromTables(float phase, float morph) const noexcept;
+};
+} // namespace Nexus::DSP::Synthesis
+1.3 Parámetros APVTS
+IDs sugeridos:
+oscWtEnabled (bool)
+oscWtWaveIndex (choice)
+oscWtMorph ([0, 1])
+oscWtGain (dB o linear)
+
+2. MODULATION MATRIX (PHASE 2–3)
+2.1 Objetivo
+Permitir conexión flexible entre fuentes de modulación (LFO, envelopes, velocity, etc.) y destinos (cutoff, pitch, wavetable morph, etc.) con hasta 32 rutas activas.
+2.2 Concepto
+Sources (ejemplos):
+LFO1, LFO2, LFO3…
+ENV1, ENV2, …
+Key tracking.
+Velocity.
+Macro1–Macro8.
+Destinations (ejemplos):
+Osc pitch (coarse/fine).
+Wavetable morph.
+Filter cutoff/resonance.
+FX mix.
+2.3 Arquitectura
+Ubicación:
+Source/DSP/Modulation/ModMatrix.h
+Source/DSP/Modulation/ModMatrix.cpp
+Clase principal (resumida):
+cpp
+namespace Nexus::DSP::Modulation {
+enum class ModSourceId : uint8_t
+{
+    None = 0,
+    LFO1,
+    LFO2,
+    ENV1,
+    ENV2,
+    Velocity,
+    KeyTracking,
+    Macro1,
+    Macro2,
+    // ...
+};
+enum class ModDestinationId : uint8_t
+{
+    None = 0,
+    OscPitch,
+    OscFine,
+    WavetableMorph,
+    FilterCutoff,
+    FilterResonance,
+    AmpLevel,
+    FxMix,
+    // ...
+};
+struct ModRoute
+{
+    ModSourceId       source      = ModSourceId::None;
+    ModDestinationId  destination = ModDestinationId::None;
+    float             amount      = 0.0f;   // bipolar [-1, 1]
+    bool              enabled     = false;
+};
+class ModMatrix
+{
+public:
+    static constexpr int kMaxRoutes = 32;
+    ModMatrix() noexcept = default;
+    void clear() noexcept;
+    void setRoute(int index, const ModRoute& route) noexcept;
+    ModRoute getRoute(int index) const noexcept;
+    /// Escribe en un array de destinos (ej: struct con campos).
+    template <typename DestState>
+    void apply(const DestState& baseValues,
+               const float* sourceValues,
+               DestState& outModulated) const noexcept;
+private:
+    std::array<ModRoute, kMaxRoutes> routes_;
+};
+} // namespace Nexus::DSP::Modulation
+La idea es que sourceValues contenga, por índice, el valor normalizado de cada fuente (ej. LFO1, LFO2…), y DestState sea una estructura con los destinos base:
+cpp
+struct SynthDestState
+{
+    float oscPitch = 0.0f;
+    float oscFine = 0.0f;
+    float wtMorph = 0.0f;
+    float filterCutoff = 0.0f;
+    float filterResonance = 0.0f;
+    float ampLevel = 0.0f;
+    float fxMix = 0.0f;
+};
+
+3. MACROS (PHASE 3)
+3.1 Objetivo
+Introducir 8 macros asignables que puedan dirigir múltiples destinos a la vez, y ser mapeadas por el usuario.
+3.2 Parámetros APVTS
+macro1 … macro8 ([0, 1] o -1..1 según diseño UI)
+Nombre amigable (puede venir de un ValueTree extra).
+3.3 Uso interno
+Las macros se consideran fuentes en la Mod Matrix: ModSourceId::Macro1 etc.
+La UI permite etiquetar macro1 como “Brightness”, etc., pero internamente es solo un float.
+
+4. INTERACCIÓN ENTRE WAVETABLE Y MOD MATRIX
+Ejemplos de rutas típicas:
+LFO1 → WavetableMorph (amount 0.5)→ Movimiento regular de timbre.
+Env2 → WavetableMorph (amount 1.0)→ Ataque del sonido abre el waveform.
+Macro1 → WavetableMorph (amount 0.8)→ Macro “Timbre” asignado a morph.
+
+5. TESTS RECOMENDADOS
+5.1 Wavetable
+Test de frecuencia:
+Para una tabla de sine, comprobar que la salida es (aprox) sinusoide.
+Test de morph:
+Interpolación entre tabla A y B produce valores intermedios.
+Test de límites:
+morph < 0 → clamp a 0.
+morph > 1 → clamp a 1.
+5.2 Mod Matrix
+Un solo route:
+source=1.0, amount=0.5 → destino incrementa 0.5.
+Múltiples rutas al mismo destino:
+suma de contributions correcta.
+Rutas deshabilitadas:
+enabled=false → no afecta.
+
+FIN
+

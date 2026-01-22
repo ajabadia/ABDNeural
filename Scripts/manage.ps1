@@ -29,9 +29,9 @@ $JuceDirCandidate = "C:\JUCE"
 if (Test-Path $JuceDirCandidate) { $JuceDir = $JuceDirCandidate }
 
 function Show-Header {
-    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host "=========================================" -ForegroundColor Cyan
     Write-Host "  NEXUS Synthesizer Management Script   " -ForegroundColor Cyan
-    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host "=========================================" -ForegroundColor Cyan
     Write-Host "Task: $task | Config: $config"
     Write-Host ""
 }
@@ -169,8 +169,25 @@ function Invoke-TaskBuild {
 function Invoke-TaskClean {
     Write-Host "Cleaning Build directory..." -ForegroundColor Yellow
     if (Test-Path $BuildDir) {
-        Remove-Item -Path $BuildDir -Recurse -Force
-        Write-Host "Cleaned $BuildDir"
+        $maxRetries = 5
+        $retryDelay = 2 # seconds
+        for ($i = 1; $i -le $maxRetries; $i++) {
+            try {
+                Remove-Item -Path $BuildDir -Recurse -Force -ErrorAction Stop
+                Write-Host "Cleaned $BuildDir"
+                return # Success
+            }
+            catch {
+                if ($i -lt $maxRetries) {
+                    Write-Host "Warning: Could not delete '$BuildDir'. Another process might be locking it." -ForegroundColor Yellow
+                    Write-Host "Retrying in $retryDelay seconds... (Attempt $i of $maxRetries)" -ForegroundColor Yellow
+                    Start-Sleep -Seconds $retryDelay
+                } else {
+                    Write-Host "Error: Failed to delete '$BuildDir' after several retries." -ForegroundColor Red
+                    throw "Could not clean build directory. Please ensure no processes (like debuggers or the app itself) are using it."
+                }
+            }
+        }
     }
     else {
         Write-Host "Build directory does not exist. Nothing to clean."

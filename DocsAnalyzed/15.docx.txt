@@ -1,0 +1,407 @@
+
+Te paso ahora FM SYNTHESIS (completo y práctico) y luego SOURCE/DSP README para que organices bien tu código.
+
+NEXUS_FM_SYNTHESIS.md
+text
+# NEXUS: FM Synthesis Implementation
+Síntesis FM completa inspirada en Yamaha DX7 / DX200, adaptada a NEXUS.
+---
+## 1. CONCEPTOS
+### 1.1 Qué es FM
+- **Frequency Modulation**: oscilador "portador" modulado en frecuencia por oscilador "modulador".
+- Genera armónicos ricos y dinámicos sin necesidad de wavetables complejas.
+- Implementación eficiente en CPU (solo sines).
+### 1.2 Parámetro clave: Índice de Modulación (I)
+I = (Frecuencia moduladora × Ratio modulador) / Portador
+text
+- I pequeño (< 1): sonidos suave, campanas.
+- I grande (> 5): sonidos complejos, metaloides.
+---
+## 2. ARQUITECTURA
+### 2.1 Estructura de datos
+Ubicación:
+- `Source/DSP/Synthesis/FMOperator.h/cpp`
+- `Source/DSP/Synthesis/FMSynthesizer.h/cpp`
+Operator (bloque base):
+```cpp
+namespace Nexus::DSP::Synthesis {
+/// Oscilador de FM: seno simple con frecuencia controlable.
+class FMOperator
+{
+public:
+    FMOperator() noexcept;
+    void setSampleRate(double sr) noexcept;
+    /// Frecuencia en Hz.
+    void setFrequency(float hz) noexcept;
+    /// Output level. Afecta amplitud del operador.[1]
+    void setOutputLevel(float level) noexcept;
+    /// Procesa un sample. `freqModAmount` es modulación adicional en Hz.
+    float processSample(float freqModAmount = 0.0f) noexcept;
+    void reset() noexcept;
+private:
+    double sampleRate_ = 48000.0;
+    std::atomic<float> frequencyHz_{ 440.0f };
+    std::atomic<float> outputLevel_{ 1.0f };
+    float phase_ = 0.0f;
+    float getPhaseIncrement() const noexcept;
+};
+} // namespace Nexus::DSP::Synthesis
+
+2.2 Algoritmos FM
+Algoritmos típicos DX7 (simplificados):
+text
+Algoritmo 1 (Serial 2-Op):
+  Mod → Portador → Out
+Algoritmo 2 (Parallel 2-Op):
+  Mod1 --|
+         |→ Suma → Out
+  Mod2 --|
+Algoritmo 3 (3-Op Serial):
+  Mod1 → Mod2 → Carrier → Out
+Algoritmo 4 (3-Op Feedback):
+  Mod -┐
+       ├→ Portador → Out
+  Feedback (Portador ↔ Mod)
+
+3. SÍNTESIS FM COMPLETA
+3.1 Clase principal
+cpp
+namespace Nexus::DSP::Synthesis {
+enum class FMAlgorithm : uint8_t
+{
+    Serial2Op = 0,    // Mod → Carrier
+    Parallel2Op = 1,  // Mod1, Mod2 || → Carrier
+    Serial3Op = 2,    // Mod1 → Mod2 → Carrier
+    Feedback2Op = 3,  // Mod ↔ Carrier (self-mod)
+};
+class FMSynthesizer
+{
+public:
+    static constexpr int kOperatorCount = 4;
+    FMSynthesizer() noexcept;
+    ~FMSynthesizer() = default;
+    FMSynthesizer(const FMSynthesizer&) = delete;
+    FMSynthesizer& operator=(const FMSynthesizer&) = delete;
+    void setSampleRate(double sr) noexcept;
+    void prepareToPlay(int maxSamplesPerBlock) noexcept;
+    /// Algoritmo activo.
+    void setAlgorithm(FMAlgorithm algo) noexcept;
+    /// Frecuencia fundamental (Carrier en la mayoría de casos).
+    void setCarrierFrequency(float hz) noexcept;
+    /// Ratio relativo al carrier para operador i.
+    /// Ej: op0 ratio=2.0 → 2× carrier frequency.
+    void setOperatorRatio(int opIndex, float ratio) noexcept;
+    /// Índice de modulación: qué tan "fuerte" modula i a j.
+    /// Rango típico [-1, 1] o  según diseño.[1]
+    void setModulationAmount(int source, int target, float amount) noexcept;
+    /// Output level del operador.
+    void setOperatorLevel(int opIndex, float level) noexcept;
+    /// Feedback: auto-modulación del portador.
+    void setFeedback(float amount) noexcept;  //[1]
+    /// Procesa un sample (audio thread safe).
+    float processSample() noexcept;
+    void reset() noexcept;
+private:
+    std::array<FMOperator, kOperatorCount> operators_;
+    FMAlgorithm algorithm_ = FMAlgorithm::Serial2Op;
+    std::atomic<float> carrierFrequencyHz_{ 440.0f };
+    std::array<std::atomic<float>, kOperatorCount> ratios_{ { 1.0f, 1.0f, 1.0f, 1.0f } };
+    std::array<std::array<std::atomic<float>, kOperatorCount>, kOperatorCount> 
+        modulationMatrix_{ { { 0.0f } } };
+    std::atomic<float> feedback_{ 0.0f };
+    float feedbackBuffer_ = 0.0f;
+    float computeAlgorithm() noexcept;
+};
+} // namespace Nexus::DSP::Synthesis
+3.2 Implementación resumida
+cpp
+#include "FMSynthesizer.h"
+#include <cmath>
+namespace Nexus::DSP::Synthesis {
+FMSynthesizer::FMSynthesizer() noexcept
+{
+    for (auto& op : operators_)
+        op.setSampleRate(48000.0);
+}
+void FMSynthesizer::setSampleRate(double sr) noexcept
+{
+    for (auto& op : operators_)
+        op.setSampleRate(sr);
+}
+void FMSynthesizer::setCarrierFrequency(float hz) noexcept
+{
+    hz = juce::jlimit(20.0f, 20000.0f, hz);
+    carrierFrequencyHz_.store(hz, std::memory_order_release);
+    // Carrier es típicamente op
+    operators_.setFrequency(hz);
+}
+void FMSynthesizer::setOperatorRatio(int opIndex, float ratio) noexcept
+{
+    jassert(opIndex >= 0 && opIndex < kOperatorCount);
+    ratio = juce::jlimit(0.1f, 16.0f, ratio);
+    ratios_[opIndex].store(ratio, std::memory_order_release);
+    float carrier = carrierFrequencyHz_.load(std::memory_order_acquire);
+    operators_[opIndex].setFrequency(carrier * ratio);
+}
+float FMSynthesizer::processSample() noexcept
+{
+    float algo = algorithm_;
+    if (algo == 0)  // Serial 2-Op: Mod → Carrier
+    {
+        float modOut = operators_.processSample();[1]
+        float modAmount = modulationMatrix_.load(std::memory_order_acquire);[1]
+        float output = operators_.processSample(modOut * modAmount * 100.0f);
+        return output;
+    }
+    else if (algo == 1)  // Parallel 2-Op
+    {
+        float mod1 = operators_.processSample();[1]
+        float mod2 = operators_.processSample();[2]
+        float amt1 = modulationMatrix_.load(std::memory_order_acquire);[1]
+        float amt2 = modulationMatrix_.load(std::memory_order_acquire);[2]
+        float output = operators_.processSample((mod1 * amt1 + mod2 * amt2) * 100.0f);
+        return output;
+    }
+    // ... más algoritmos ...
+    return 0.0f;
+}
+void FMSynthesizer::reset() noexcept
+{
+    for (auto& op : operators_)
+        op.reset();
+    feedbackBuffer_ = 0.0f;
+}
+} // namespace Nexus::DSP::Synthesis
+
+4. PARÁMETROS APVTS
+Sugeridos:
+text
+// FM Enable
+fmEnabled (bool)
+// Algoritmo
+fmAlgorithm (choice: Serial2Op, Parallel2Op, Serial3Op, Feedback2Op)
+// Operador 0 (Carrier)
+fmOp0Ratio ([0.1, 16.0], default 1.0)
+fmOp0Level ()[1]
+fmOp0Attack (ms, ADSR)
+fmOp0Decay (ms)
+fmOp0Sustain ()[1]
+fmOp0Release (ms)
+// Operador 1 (Mod 1)
+fmOp1Ratio
+fmOp1Level
+fmOp1Attack/Decay/Sustain/Release
+fmOp1ToCarrier (modulación: [-1, 1])  ← Índice de modulación
+// Operador 2 (Mod 2)
+fmOp2Ratio
+fmOp2Level
+fmOp2Attack/Decay/Sustain/Release
+fmOp2ToCarrier
+fmOp2ToOp1
+// Operador 3 (opcional)
+fmOp3Ratio
+... idem
+// Feedback
+fmFeedback ()[1]
+// Mix
+fmMix () ← cuánto FM vs síntesis anterior[1]
+
+5. TESTS RECOMENDADOS
+cpp
+#include <catch2/catch.hpp>
+#include "../Source/DSP/Synthesis/FMSynthesizer.h"
+using namespace Nexus::DSP::Synthesis;
+TEST_CASE("FM Carrier frequency", "[FM]")
+{
+    FMSynthesizer fm;
+    fm.setSampleRate(48000.0);
+    fm.setCarrierFrequency(440.0f);
+    // Procesar 1 segundo, contar ceros y comparar con 440 Hz
+    int zeroCrossings = 0;
+    float lastSample = 0.0f;
+    for (int i = 0; i < 48000; ++i)
+    {
+        float sample = fm.processSample();
+        if (lastSample < 0.0f && sample >= 0.0f)
+            zeroCrossings++;
+        lastSample = sample;
+    }
+    float detectedFreq = zeroCrossings / 2.0f;
+    REQUIRE(std::abs(detectedFreq - 440.0f) < 5.0f); // < 1% error
+}
+TEST_CASE("FM output range", "[FM]")
+{
+    FMSynthesizer fm;
+    fm.setSampleRate(48000.0);
+    fm.setCarrierFrequency(440.0f);
+    fm.setOperatorLevel(0, 0.5f);
+    for (int i = 0; i < 10000; ++i)
+    {
+        float sample = fm.processSample();
+        REQUIRE(sample >= -1.1f && sample <= 1.1f); // Con margen
+    }
+}
+TEST_CASE("FM algoritmo cambio", "[FM]")
+{
+    FMSynthesizer fm;
+    fm.setSampleRate(48000.0);
+    fm.setAlgorithm(FMAlgorithm::Serial2Op);
+    fm.setCarrierFrequency(440.0f);
+    float sampleA = fm.processSample();
+    fm.setAlgorithm(FMAlgorithm::Parallel2Op);
+    float sampleB = fm.processSample();
+    // No debería crashear, y el sonido debería cambiar
+    REQUIRE(!std::isnan(sampleA));
+    REQUIRE(!std::isnan(sampleB));
+}
+
+6. NOTAS DE IMPLEMENTACIÓN
+Feedback: Usar un buffer de feedbackBuffer_ que almacene el output anterior del carrier y realimentirese a sí mismo.
+Modulación cruzada: La matriz de modulación debe ser flexible. Ej: op3 puede modular op1, op1 puede modular op2, etc.
+Envolventes por operador: Cada operador debería tener su propia envolvente (ADSR) independiente para control fino del timbre temporal.
+CPU: FM es muy eficiente. 4 operadores en serial ≈ 4 sines = costo muy bajo.
+FIN
+text
+***
+## `Source/DSP/README.md`
+```markdown
+# Source/DSP — Digital Signal Processing Core
+Módulos de procesamiento de audio en tiempo real (RT-safe).
+---
+## Estructura
+Source/DSP/├── CoreModules/│ ├── Oscillator.h/cpp — Sine wave básico│ ├── WavetableOscillator.h/cpp — Wavetable morphing│ └── Envelope.h/cpp — ADSR envelope│├── Synthesis/│ ├── Voice.h/cpp — Oscilador + envelope por nota│ ├── VoiceAllocator.h/cpp — Gestión de voces (round-robin, stealing)│ ├── DDSPSynthesizer.h/cpp — Orquestrador principal│ ├── FMSynthesizer.h/cpp — FM synthesis (Phase 3)│ └── AdditiveSynthesizer.h/cpp — Additive synth (Phase 3+)│├── Filters/│ ├── BiquadFilter.h/cpp — Biquad IIR base│ ├── FilterBank.h/cpp — Cascada de filtros│ └── SVFilter.h/cpp — State-variable (future)│├── Effects/│ ├── ConvolutionReverb.h/cpp — Reverb por convolución│ ├── DelayLine.h/cpp — Delay simple│ ├── Distortion.h/cpp — Saturación/clipping│ └── Chorus.h/cpp — Chorus (future)│├── Modulation/│ ├── LFO.h/cpp — Low-frequency oscillator│ ├── ModMatrix.h/cpp — 32-route modulation matrix│ └── EnvelopeFollower.h/cpp — Analysis envelope│└── ML/├── FeatureExtractor.h/cpp — Extrae features (pitch, spectro)├── NeuralModel.h/cpp — Wrapper para inferencia LibTorch└── RealtimeBuffer.h/cpp — Buffer lock-free para análisis
+text
+---
+## Reglas de implementación
+### 1. RT-Safety
+Métodos `processSample()` y `processBlock()`:
+- Sin `new`, `delete`, `std::vector::push_back()`.
+- Sin `std::mutex`, `std::lock_guard`.
+- Sin I/O (disco, red, stdout).
+### 2. Naming
+- Clase: `PascalCase`
+- Método: `camelCase`
+- Miembro privado: `camelCase_` (con `_` al final)
+- Constante: `UPPER_SNAKE` o `kPascalCase`
+### 3. Doc comments
+Cada método público debe tener doc comment:
+```cpp
+/**
+ * Procesa un sample de audio.
+ *
+ * @param input Audio input [-1, 1]
+ * @return Processed sample [-1, 1]
+ *
+ * Thread-safety: RT-safe (no allocs, no locks).
+ */
+float processSample(float input) noexcept;
+4. Inicialización
+cpp
+// Siempre inicializar en constructor
+Oscillator::Oscillator() noexcept
+    : phase_(0.0f), sampleRate_(48000.0) {}
+// O con inicializadores inline
+class Oscillator {
+private:
+    float phase_ = 0.0f;
+    double sampleRate_ = 48000.0;
+};
+5. Tamaño de archivos
+Máximo ~300 líneas por archivo.
+Si crece más → split en módulos.
+
+CPU Targets
+Desktop (8 voces):
+Síntesis base (osc + env): < 2% CPU.
+Filtro (biquad): < 1% CPU por voz.
+Reverb (convolución): < 3% CPU (total, no por voz).
+Total objetivo: < 25% CPU.
+Raspberry Pi (6 voces):
+Síntesis base: < 3% CPU.
+Filtro: < 1.5% CPU por voz.
+Total objetivo: < 30% CPU.
+Medir con perf o profiler equivalente.
+
+Testing
+Unit tests
+Cada módulo crítico necesita tests:
+text
+Tests/DspUnitTests.cpp
+├── Oscillator frequency accuracy (< 0.5% error)
+├── Envelope timing (< 1ms error)
+├── Filter frequency response (magnitude, phase)
+├── Voice allocator round-robin
+└── CPU profiling (vs targets)
+Ejecutar:
+bash
+cd Tests
+./run_tests.sh 2>&1 | tee ../LOGS/tests/unit_tests.log
+
+Integration with UI
+Parameter binding
+Parámetros APVTS en Source/State/ParameterDefinitions.h:
+cpp
+namespace Nexus::State {
+    const juce::Identifier OSC_PITCH = "oscPitch";
+    const juce::Identifier OSC_FINE = "oscFine";
+    const juce::Identifier FILTER_CUTOFF = "filterCutoff";
+    // ...
+}
+Audio callback
+En PluginProcessor::processBlock():
+cpp
+void PluginProcessor::processBlock(AudioBuffer<float>& buffer, MidiBuffer& midi)
+{
+    // 1. Lee parámetros APVTS
+    auto pitchCoarse = getAPVTS().getRawParameterValue("oscPitch")->load();
+    // 2. Actualiza síntesis
+    for (auto& voice : synthesizer_.getVoices())
+        voice.setFrequency(midiToHz(pitchCoarse));
+    // 3. Procesa MIDI
+    for (auto meta : midi)
+    {
+        if (auto noteOn = meta.getMessage().getNoteOnVelocity())
+            synthesizer_.noteOn(meta.samplePosition, meta.getMessage().getNoteNumber());
+        // ...
+    }
+    // 4. Renderiza audio
+    synthesizer_.renderBlock(buffer);
+}
+
+Profiling & Debugging
+CPU Profile
+bash
+perf record -F 99 -g ./nexus_test --duration 10s
+perf report --stdio > LOGS/profiling/cpu_profile.txt
+Buscar funciones > 5% CPU y optimizar.
+Memory Leaks
+bash
+clang++ -fsanitize=address -g test.cpp -o test
+./test 2>&1 | tee LOGS/profiling/asan.txt
+Debe decir "No memory leaks".
+Undefined Behavior
+bash
+clang++ -fsanitize=undefined -g test.cpp -o test
+./test 2>&1 | tee LOGS/profiling/ubsan.txt
+Debe estar limpio.
+
+Dependencies
+JUCE 7.0+
+LibTorch 2.0+ (para Phase 3 ML, opcional hasta entonces)
+C++17 compilador
+
+FIN
+text
+***
+Ahora tienes:
+✅ **AI_OPERATIONAL_GUIDELINES.md** — Reglas base  
+✅ **DAILY_DEVELOPER_CHECKLIST.md** — Checklist diario  
+✅ **ERROR_PATTERNS_AND_SOLUTIONS.md** — Debugging  
+✅ **QUICK_START_AI_DEVELOPER.md** — Onboarding rápido  
+✅ **MASTER_DOCUMENT_INDEX.md** — Índice  
+✅ **DELIVERY_CHECKLIST.md** — Quality gates  
+✅ **NEXUS_CodeStandards_Examples.md** — Code patterns  
+✅ **NEXUS_Advanced_Features_Wavetable_ModMatrix.md** — Wavetable + Mod Matrix  
+✅ **NEXUS_FM_SYNTHESIS.md** — FM completo  
+✅ **Source/DSP/README.md** — Organización DSP 
+

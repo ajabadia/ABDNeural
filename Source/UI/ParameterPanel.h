@@ -1,7 +1,6 @@
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_processors/juce_audio_processors.h>
-#include "SpectralVisualizer.h"
 
 namespace Nexus::UI {
 
@@ -25,11 +24,12 @@ private:
 
     juce::AudioProcessorValueTreeState& vts;
 
+    // Envelope Controls
     RotaryControl attack, decay, sustain, release;
+
+    // Filter & Resonator Controls
     RotaryControl cutoff, resonance;
     RotaryControl rollOff;
-
-    SpectralVisualizer visualizer;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ParameterPanel)
 };

@@ -1,0 +1,602 @@
+
+AI DEVELOPER BRIEFING: Cómo Usar Esta Especificación
+Este documento explica cómo trabajar con la especificación de NEXUS.
+
+I. ARCHIVOS QUE RECIBIRÁS
+Recibirás 5 documentos maestros:
+NEXUS_Architecture_Specification.md (1,145 líneas)
+Visión completa del proyecto
+Estructura de directorios
+Principios arquitectónicos
+Roadmap de 16 semanas
+NEXUS_ParameterDefinitions_Template.h (232 líneas)
+Todos los parámetros centralizados
+Enums, constantes, rangos
+Factory APVTS
+NEXUS_CodeStandards_Examples.md (692 líneas)
+Patrones GOOD vs BAD
+Ejemplos de código real
+Clase completa ejemplo (Oscillator)
+AI_DEVELOPER_BRIEFING.md (este archivo)
+Cómo trabajar con especificación
+Conversaciones tipo
+Timeline realista
+DELIVERY_CHECKLIST.md (444 líneas)
+Validación por fase
+Archivos entregables esperados
+Tests de calidad
+
+II. FLUJO DE TRABAJO RECOMENDADO
+Paso 1: Lectura Inicial (1-2 horas)
+text
+┌─────────────────────────────────────┐
+│ 1. Lee ARCHITECTURE (secciones I-V) │
+│    → Entiende estructura de dirs     │
+│    → Principios SoC, thread-safety   │
+└─────────────────────────────────────┘
+        ↓
+┌─────────────────────────────────────┐
+│ 2. Lee CODE STANDARDS               │
+│    → Aprende estilo esperado         │
+│    → Mira ejemplos GOOD/BAD          │
+└─────────────────────────────────────┘
+        ↓
+┌─────────────────────────────────────┐
+│ 3. Lee PARAMETER DEFINITIONS        │
+│    → Ve todos los parámetros        │
+│    → Entiende enums y rangos         │
+└─────────────────────────────────────┘
+        ↓
+┌─────────────────────────────────────┐
+│ 4. Consulta BRIEFING y CHECKLIST   │
+│    → Sabe cómo proceder              │
+│    → Qué validar en cada fase        │
+└─────────────────────────────────────┘
+Paso 2: Planificación (30 minutos)
+text
+PHASE 1 (Semana 1): Project Setup
+├─ Create directory structure
+├─ Configure CMakeLists.txt
+├─ Create ParameterDefinitions.h
+└─ Create PluginProcessor skeleton
+PHASE 2 (Semanas 2-4): DSP Core
+├─ Implement Oscillator
+├─ Implement Envelope
+├─ Implement ResonatorVoice
+└─ Implement VoiceAllocator
+PHASE 3 (Semanas 5-6): Neural Control
+├─ Implement FeatureExtractor
+├─ Implement NeuralControlNetwork
+└─ Load .pt model
+PHASE 4 (Semanas 7-8): UI
+├─ Create tabbed interface
+├─ Implement SynthesizerTab
+├─ Implement ModulationTab
+└─ Connect to APVTS
+PHASE 5 (Semanas 9-10): MIDI + Polish
+├─ MIDI note processing
+├─ CC mapping
+├─ Preset save/load
+└─ CPU optimization pass 1
+PHASE 6 (Semanas 11+): Advanced Features
+├─ Timbre Transfer
+├─ HiFi-GAN Vocoder (optional)
+├─ Analysis Tab
+└─ MIDI 2.0 (optional)
+Paso 3: Conversación Estructura (Cómo Preguntar)
+NO hagas esto:
+text
+"Dame el código del Oscillator"
+→ Vago, ambiguo, resultado genérico
+HAZ esto:
+text
+"Voy a implementar la Fase 1 (Project Setup).
+Necesito:
+1. CMakeLists.txt que compile en Mac/Windows/Linux/RPi
+2. Directory structure según ARCHITECTURE sección II
+3. PluginProcessor.h skeleton (solo interfaces)
+4. ParameterDefinitions.h completamente relleno
+¿Comienzo?"
+Resultado: Código específico, coherente, listo para integrar.
+
+III. CONVERSACIONES TIPO
+CONVERSACIÓN 1: Phase 1 (Project Setup)
+text
+USER:
+"Voy a hacer Phase 1 (Project Setup, Semana 1).
+Según ARCHITECTURE, necesito:
+1. CMakeLists.txt:
+   - JUCE 7.0+
+   - LibTorch 2.0+
+   - Compilar para Mac (Intel + M-series), Windows, Linux, RPi
+   - C++17
+2. Directory structure (Source/DSP, Source/UI, etc)
+3. PluginProcessor.h skeleton:
+   - Solo interfaces, sin implementación
+   - Comentarios de responsabilidad
+4. ParameterDefinitions.h completamente relleno
+¿Comienzo?"
+AI DEVELOPER:
+"Perfecto. Voy a crear:
+1. CMakeLists.txt profesional
+2. Estructura de directorios (ya voy creando)
+3. PluginProcessor.h con interfaces claras
+4. ParameterDefinitions.h con 50+ parámetros
+¿Alguna preferencia en LibTorch versión (2.0 vs 2.1)?"
+USER:
+"2.1, por favor. CPU-only. ¿Cuándo terminas?"
+AI DEVELOPER:
+[Entrega archivos]
+"Listos los 4 archivos. 
+- CMakeLists.txt: Builds en 4 plataformas
+- PluginProcessor.h: 150 líneas, todas interfaces
+- ParameterDefinitions.h: 50+ parámetros en namespaces
+- Directory structure: 28 directorios creados
+¿Compila en tu máquina?"
+CONVERSACIÓN 2: Phase 2a (Oscillator)
+text
+USER:
+"Phase 2, semana 2. Voy a implementar Oscillator.
+Requisitos:
+- Sine wave output, [-1, 1] range
+- Phase en [0, 1) (no radians, para estabilidad numérica)
+- setFrequency() thread-safe (atomic)
+- processSample(phaseModulation) noexcept
+- setSampleRate(sr) en prepareToPlay
+- Cero allocations post-construcción
+Mira el ejemplo en CODE_STANDARDS > X. CLASE EJEMPLO COMPLETA
+Quiero esto ANTES de Envelope, porque Envelope la usará."
+AI DEVELOPER:
+"Entendido. Voy a:
+1. Implementar Oscillator.h siguiendo el ejemplo
+2. Crear Oscillator.cpp con tests básicos
+3. Asegurar zero allocations, noexcept en processSample
+4. Usar std::atomic para setFrequency
+¿Test específicos?"
+USER:
+"Sí:
+- Frequency = 440Hz @ 48kHz → phase increment = 440/48000 = 0.00917 ✓
+- processSample() devuelve valores en [-1, 1] ✓
+- reset() pone phase a 0 ✓
+- Phase modulation funciona sin aliasing obvio ✓"
+AI DEVELOPER:
+[Entrega Oscillator.h/cpp]
+"Listo. 85 líneas Oscillator.h, 40 líneas tests.
+- setFrequency() usa atomic<float>
+- processSample() marcado noexcept
+- Phase modulation integrado
+- Todos tus tests pasan ✓"
+CONVERSACIÓN 3: Phase 2b (Envelope)
+text
+USER:
+"Phase 2, semana 3. ADSR Envelope.
+Requisitos:
+- Attack, Decay, Sustain, Release (APVTS parámetros)
+- startNote(), stopNote() para state machine
+- processSample() devuelve [0, 1] gain
+- Tiempo en ms (APVTS), pero processSample() en samples
+- noexcept, zero allocations
+Nota: Envelope se usa 4 veces por Voice (amp, filter, pitch, mod).
+Por eso DEBE ser ultra-eficiente."
+AI DEVELOPER:
+"Entendido. Adsr × 4 voces × 16 voces = 64 envelopes.
+Voy a:
+1. Enum State { Idle, Attack, Decay, Sustain, Release }
+2. Miembro privado sample_rate_ para conversión ms→samples
+3. Miembro privado counter_ (incrementa en processSample)
+4. Cálculo pendiente = (ms_time / 1000) * sample_rate_
+¿Curve linear o exponencial?"
+USER:
+"ADSR típico:
+- Attack: linear
+- Decay/Release: exponencial (natural para audio)
+- Sustain: flat"
+AI DEVELOPER:
+[Entrega Envelope.h/cpp]
+"Listo. 95 líneas Envelope.h.
+- State machine con switch/case
+- Linear attack, exponential decay/release
+- Sustain flat until stopNote
+- Tests: verificar timings, shapes"
+CONVERSACIÓN 4: Phase 3 (FeatureExtractor)
+text
+USER:
+"Phase 3, semana 5. FeatureExtractor para red neuronal.
+Necesito extraer:
+- Pitch (F0) en Hz
+- Loudness en dB
+- Spectral Centroid (promedio ponderado de frecuencias)
+- CQT (Constant-Q Transform, 108 bins, 12 bins/octava)
+El modelo neuronal espera este struct:
+struct Features {
+    float pitch_hz;
+    float loudness_db;
+    float spectral_centroid;
+    std::array<float, 108> cqt;
+};
+Para CQT:
+- Usar Kiss FFT o JUCE FFT
+- Configurar para 108 bins (12 bins/octava, ~C1 a C9)
+¿Cómo lo ves?"
+AI DEVELOPER:
+"Perfecto. Voy a:
+1. CQTAnalyzer (usando JUCE FFT internally)
+2. PitchDetector (autocorrelación simple, 50-500Hz range)
+3. LoudnessCalculator (RMS + ITU-R weighting)
+4. FeatureExtractor que combina todo
+¿Buffer size? (típicamente 2048 samples)"
+USER:
+"2048 @ 48kHz = 42ms frame. OK.
+Pero en RPi, reduce a 512 samples (mejor latencia).
+Usa NEXUS_TARGET_RPI compile flag."
+AI DEVELOPER:
+[Entrega FeatureExtractor.h/cpp, CQTAnalyzer, etc]
+"Listo. FeatureExtractor.cpp:
+- CQT @ 2048 en PC, 512 en RPi
+- Pitch detector (correlation-based)
+- Spectral features
+- Todos los Features listos para neural net"
+CONVERSACIÓN 5: Phase 6 (Timbre Transfer)
+text
+USER:
+"Phase 6, semana 12. Timbre Transfer (feature: opcional, si CPU permite).
+Idea:
+- Usuario carga referencia de audio (3-5 segundos)
+- Extraer features (CQT, pitch, loudness) de referencia
+- Crear 'timbre embedding' en espacio latente
+- Red neuronal: input Features + embedding → control parameters
+Nota: NO hacer inference en tiempo real (caro).
+En su lugar: pre-compute embedding, luego interpolar durante síntesis.
+¿Cómo estructurar?"
+AI DEVELOPER:
+"Entendido. Estructura:
+1. TimbreTransferAnalyzer: cargar audio, extraer features, compute embedding
+2. TimbreTransferController: interpolar embedding en tiempo real
+3. UI: file chooser para referencia, slider para morphing (0-1)
+¿Usar modelo pre-entrenado o modelo custom?"
+USER:
+"Usar modelo pre-entrenado (ACID/WAV2VEC style).
+Si CPU muy restringida (RPi), deshabilitar vía compile flag."
+AI DEVELOPER:
+[Entrega TimbreTransfer.h/cpp, UI]
+"Listo. Timbre transfer integrado:
+- Análisis offline (no afecta audio)
+- Interpolación en tiempo real smooth
+- Compile flag para RPi"
+
+IV. VALIDACIÓN EN CADA FASE
+Phase 1: Project Setup
+text
+CHECKLIST:
+☐ CMakeLists.txt compila en todas 4 plataformas (Mac, Win, Linux, RPi)
+☐ Estructura de directorios creada
+☐ PluginProcessor.h skeleton compila sin errores
+☐ ParameterDefinitions.h: 50+ parámetros definidos
+☐ No hay warnings (compilar con -Wall -Wextra)
+☐ Git repo inicializado con .gitignore apropiado
+Phase 2: DSP Core
+text
+CHECKLIST:
+☐ Oscillator: phase accuracy, frequency sweep, modulation
+☐ Envelope: timing preciso, exponential curves
+☐ ResonatorVoice: note-on/off, all DSP modules connected
+☐ VoiceAllocator: round-robin allocation, note stealing
+☐ CPU: <5% @ 8 voces, 48kHz, 512 buffer (desktop)
+☐ No allocations en processBlock() (verified with ASAN)
+Phase 3: Neural Control
+text
+CHECKLIST:
+☐ FeatureExtractor: CQT, pitch, loudness extraction
+☐ NeuralControlNetwork: model loads, inference <1ms
+☐ Control signals: harmonic amplitudes, noise filter params
+☐ Integration: voice allocation uses neural controls
+☐ LibTorch linked correctly (no runtime errors)
+Phase 4: UI
+text
+CHECKLIST:
+☐ Tabbed interface estructura (5 tabs)
+☐ SynthesizerTab: pitch, harmonic count, noise mix sliders
+☐ APVTS connection: cambiar slider → parámetro cambia
+☐ Responsive scaling: UI legible en 600×400 (RPi) y 1920×1200
+☐ No crashes on resize, tab switching
+☐ Fonts legibles (@96 DPI RPi, @220 DPI Retina Mac)
+Phase 5: MIDI + Polish
+text
+CHECKLIST:
+☐ MIDI note-on/off routing a voice allocator
+☐ CC mapping (CC 74 cutoff, CC 1 modulation, etc)
+☐ Pitch bend handling
+☐ Sustain pedal (CC 64)
+☐ Preset save/load working
+☐ DAW sync (transport, automation)
+☐ CPU profile: <25% @ 8 voces, full effects (desktop)
+☐ <15% RPi 4 @ 6 voces
+Phase 6: Advanced Features
+text
+CHECKLIST:
+☐ Timbre Transfer loads and morphs
+☐ HiFi-GAN vocoder (if enabled) smooth output
+☐ Analysis tab shows spectrum in real-time
+☐ Waveform oscilloscope smooth
+☐ MIDI 2.0 support (backward compatible)
+
+V. ANTI-PATTERNS: QUÉ EVITAR
+❌ Anti-Pattern 1: Allocations en processBlock()
+cpp
+// WRONG
+void Voice::processBlock(AudioBuffer<float>& buffer) {
+    std::vector<float> temp(buffer.getNumSamples());  // ❌ Allocation
+    for (int i = 0; i < buffer.getNumSamples(); ++i) {
+        temp[i] = process_sample();
+    }
+}
+// CORRECT
+void Voice::processBlock(AudioBuffer<float>& buffer) {
+    float* out = buffer.getWritePointer(0);
+    for (int i = 0; i < buffer.getNumSamples(); ++i) {
+        out[i] = process_sample();
+    }
+}
+❌ Anti-Pattern 2: Locks en Audio Thread
+cpp
+// WRONG
+void Voice::processBlock(AudioBuffer<float>& buffer) {
+    std::lock_guard<std::mutex> lock(param_mutex);  // ❌ Lock
+    float cutoff = param_cutoff;
+}
+// CORRECT
+void Voice::processBlock(AudioBuffer<float>& buffer) {
+    float cutoff = param_cutoff.load(std::memory_order_acquire);  // ✓ Atomic
+}
+❌ Anti-Pattern 3: Variables Sueltas (no APVTS)
+cpp
+// WRONG
+class Voice {
+    float pitch_coarse = 0.0f;
+    float pitch_fine = 0.0f;
+    // Manual sync con DAW = desastador
+};
+// CORRECT
+class Voice {
+    // Lee directo de APVTS en processBlock()
+    float pitch_coarse = *apvts.getRawParameterValue("pitchCoarse");
+    // DAW sync automático
+}
+❌ Anti-Pattern 4: Magic Numbers
+cpp
+// WRONG
+for (int i = 0; i < 64; ++i) {  // ¿Por qué 64?
+    oscillators[i].process();
+}
+// CORRECT
+static constexpr int HARMONIC_COUNT = 64;
+for (int i = 0; i < HARMONIC_COUNT; ++i) {
+    oscillators[i].process();
+}
+❌ Anti-Pattern 5: Raw Pointers
+cpp
+// WRONG
+Voice* voice = new Voice();
+// ¿Quién lo deleta? ¿Cuándo? ¿Si hay excepción?
+// CORRECT
+auto voice = std::make_unique<Voice>();
+// Destruido automáticamente
+❌ Anti-Pattern 6: Logging en Audio Thread
+cpp
+// WRONG
+void Voice::processBlock(...) {
+    DBG("Processing voice");  // ❌ Thread violation
+}
+// CORRECT
+void Voice::processBlock(...) {
+    if (should_log_) {
+        log_queue.push("Processing voice");  // ✓ Lock-free
+    }
+}
+void TimerCallback() {
+    std::string msg;
+    while (log_queue.pop(msg)) DBG(msg);  // UI thread
+}
+
+VI. TIMELINE REALISTA
+Week
+Phase
+Tasks
+Deliverable
+1
+Phase 1
+Project setup, CMakeLists, ParameterDefinitions
+Compiling skeleton
+2-3
+Phase 2a
+Oscillator, Envelope, basic Voice
+8 voices polyphony
+4
+Phase 2b
+VoiceAllocator, MIDI routing
+Note-on/off working
+5-6
+Phase 3
+FeatureExtractor, Neural inference
+Neural controls active
+7-8
+Phase 4
+Tabbed UI, APVTS connection
+All 5 tabs functional
+9
+Phase 5a
+Preset save/load, DAW sync
+Presets working
+10
+Phase 5b
+CPU optimization, profiling
+<25% CPU (desktop)
+11+
+Phase 6
+Timbre transfer, vocoder, MIDI 2.0 (opt)
+Advanced features
+Total: 16 semanas (4 meses) desde cero a production-ready.
+
+VII. CÓMO HACER PREGUNTAS EFECTIVAS
+❌ Vago
+text
+"Necesito un sintetizador"
+"Cómo hago MIDI"
+"Optimiza el código"
+→ Resultado: Genérico, sin contexto, inútil.
+✅ Específico
+text
+"Phase 2, semana 2.
+Voy a implementar Oscillator.h según ARCHITECTURE sección V.1 + CODE_STANDARDS ejemplo.
+Necesito:
+- Sine wave, phase [0,1)
+- setFrequency() atomic para thread-safety
+- processSample(phaseModulation) noexcept
+- Zero allocations post-construcción
+Quiero esto COMPLETADO (header + implementation + tests) antes de pasar a Envelope.
+¿Algún issue técnico que vea?"
+→ Resultado: Código específico, coherente, integrable.
+
+VIII. RED FLAGS: Signos de Problema
+🚩 Red Flag 1: "Voy a simplificar la arquitectura"
+text
+AI DEV: "La separación SoC es overkill. Voy a meter todo en 
+         PluginProcessor para reducir complejidad."
+RESPONSE: ❌ RECHAZAR
+Razón: Violates ARCHITECTURE sección III.A. SoC es requisito, 
+       no opción. Eso fue determinado deliberadamente.
+🚩 Red Flag 2: "No necesitamos thread-safety en audio"
+text
+AI DEV: "El compilador maneja eso automáticamente"
+RESPONSE: ❌ RECHAZAR
+Razón: Audio thread safety es manual. Necesita:
+       - std::atomic para parámetros
+       - Zero allocations en processBlock()
+       - No locks
+Esto está en ARCHITECTURE sección III.C.
+🚩 Red Flag 3: "Phase Adelante, UI después"
+text
+AI DEV: "Voy a saltar Phase 4 (UI) porque es tedioso. 
+         Primero todo el DSP, UI al final."
+RESPONSE: ⚠️ RECONSIDERAR
+Mejor: Phase 4 temprano permite testing interactivo.
+       Integración APVTS desde inicio = menos refactoring.
+🚩 Red Flag 4: "Usamos STL containers en processBlock()"
+text
+AI DEV: "Para eficiencia, voy a usar std::vector en lugar de std::array"
+RESPONSE: ❌ RECHAZAR
+Razón: std::vector puede allocate/reallocate. Prohibido en audio thread.
+       Usa std::array (fixed-size, stack allocation).
+
+IX. HERRAMIENTAS RECOMENDADAS
+Build & Compilation
+CMake 3.16+: Configuración multiplataforma
+Ninja: Backend rápido
+ccache: Compilación incremental
+Profiling
+perf (Linux/RPi): CPU profiling
+Instruments (Mac): Thread profiling, memory
+Visual Studio Profiler (Windows)
+ASAN (AddressSanitizer): Memory leaks en development
+Code Quality
+clang-format: Code formatting (use .clang-format en repo)
+clang-tidy: Static analysis (catch errors early)
+valgrind (Linux): Memory profiling
+MIDI Testing
+LoopMIDI (Windows): Virtual MIDI ports
+IAC Driver (Mac): Inter-App Audio MIDI
+a2jmidid (Linux): ALSA → JACK bridge
+
+X. FAQ
+P: ¿Cuánto tiempo en Phase 1?
+R: 4-8 horas (CMakeLists debugging puede ser tedioso).
+P: ¿Necesito TODAS las features de Phase 6?
+R: No. Timbre Transfer y HiFi-GAN son opcional. MIDI 2.0 es backward-compatible.
+P: ¿Qué si encuentro un bug en especificación?
+R: Señálalo. Si es error real, ajusta y documenta. Especificación es livingdoc.
+P: ¿Puedo cambiar librería X por Y?
+R: Si es equivalente en API y no viola requisitos (thread-safety, portability, CPU), probablemente sí. Consulta primero.
+P: ¿Qué pasa si RPi no compila?
+R: RPi compilation es Phase 5. Prioridad: Desktop first, RPi optimization después.
+P: ¿Cuándo empiezo con tests?
+R: Phase 1. Unit tests en cada componente DSP. Esto no es opcional.
+P: ¿Cómo manejo backwards compatibility?
+R: Presets guardados deben seguir siendo válidos. APVTS maneja esto automáticamente si añades parámetros (nuevos parámetros = default value).
+P: ¿Y si memoria no es suficiente?
+R: En RPi, reduce HARMONIC_COUNT a 32, FFT_SIZE a 512, VOICE_COUNT a 6. Estos flags existen en ARCHITECTURE.
+
+XI. ENTREGABLES ESPERADOS POR PHASE
+Phase 1 Deliverables
+text
+nexus/
+├── CMakeLists.txt ✓
+├── Source/
+│   ├── Main/PluginProcessor.h (skeleton) ✓
+│   ├── State/ParameterDefinitions.h (completo) ✓
+│   ├── DSP/ (directory structure)
+│   ├── UI/ (directory structure)
+│   ├── MIDI/ (directory structure)
+│   └── ... (otros directorios)
+├── Models/ (directory)
+├── Presets/ (directory)
+├── Tests/ (directory)
+└── README.md
+Phase 2 Deliverables
+text
+Source/DSP/
+├── CoreModules/
+│   ├── Oscillator.h/cpp ✓
+│   ├── Envelope.h/cpp ✓
+│   ├── NoiseGenerator.h/cpp ✓
+│   └── FilterBank.h/cpp ✓
+├── Synthesis/
+│   ├── ResonatorVoice.h/cpp ✓
+│   ├── VoiceAllocator.h/cpp ✓
+└── Utils/
+    ├── DSPMath.h/cpp
+    └── LookupTables.h/cpp
+Tests/
+├── OscillatorTests.cpp ✓
+├── EnvelopeTests.cpp ✓
+└── DSPPerformanceTests.cpp ✓
+Phase 3 Deliverables
+text
+Source/DSP/
+├── Analysis/
+│   ├── FeatureExtractor.h/cpp ✓
+│   ├── CQTAnalyzer.h/cpp ✓
+│   └── AudioMetrics.h/cpp ✓
+├── Neural/
+│   ├── NeuralControlNetwork.h/cpp ✓
+│   └── ModelLoader.h/cpp ✓
+└── Synthesis/
+    └── DDSPSynthesizer.h/cpp ✓
+Phase 4 Deliverables
+text
+Source/UI/
+├── Tabs/
+│   ├── SynthesizerTab.h/cpp ✓
+│   ├── ModulationTab.h/cpp ✓
+│   ├── TimbreTab.h/cpp ✓
+│   ├── EffectsTab.h/cpp ✓
+│   └── AnalysisTab.h/cpp ✓
+├── Components/
+│   ├── XYPad.h/cpp ✓
+│   ├── VerticalSlider.h/cpp ✓
+│   └── ... (otros componentes)
+└── Styling/
+    ├── Colors.h ✓
+    ├── Theme.h ✓
+    └── UIScaling.h/cpp ✓
+
+CONCLUSIÓN
+Esta briefing es tu guía. Úsala para:
+✅ Entender qué hacer en cada phase
+✅ Comunicar claramente con AI developer
+✅ Validar entregables
+✅ Identificar problemas temprano
+Si sigues este flujo, en 16 semanas tendrás un sintetizador neural profesional.
+¡Éxito! 🚀
+
+FIN DEL ARCHIVO 4 (AI_DEVELOPER_BRIEFING.md)
+

@@ -2,17 +2,22 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <juce_audio_utils/juce_audio_utils.h>
+#include "../DSP/Synthesis/ResonatorVoice.h"
+#include "../DSP/Effects/Saturation.h"
+#include "../DSP/Effects/Delay.h"
 
-class NEXUSProcessor : public juce::AudioProcessor
+class NEXUSProcessor : public juce::AudioProcessor, public juce::AudioProcessorValueTreeState::Listener
 {
 public:
     NEXUSProcessor();
-    ~NEXUSProcessor() override = default;
+    ~NEXUSProcessor() override;
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
     void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBlock(juce::AudioBuffer<double>&, juce::MidiBuffer&) override;
+
+    void parameterChanged(const juce::String& parameterID, float newValue) override;
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override;
@@ -40,7 +45,19 @@ private:
     juce::MidiKeyboardState keyboardState;
     juce::Synthesiser synth;
 
+    // Cache for voice parameters
+    Nexus::DSP::Synthesis::ResonatorVoice::VoiceParams voiceParams;
+    std::atomic<bool> parametersNeedUpdating { true };
+
     void setupSynth();
+    void updateVoiceParameters();
+
+    // --- Global FX ---
+    Nexus::DSP::Effects::Saturation saturationProcessor;
+    Nexus::DSP::Effects::Delay delayProcessor;
+    
+    // Smoothing for global parameters
+    juce::LinearSmoothedValue<float> masterLevelSmoother;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NEXUSProcessor)
 };

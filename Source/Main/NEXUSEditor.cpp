@@ -8,7 +8,10 @@
 NEXUSEditor::NEXUSEditor(NEXUSProcessor& p)
     : AudioProcessorEditor(p), processor(p), menuBar(this),
       keyboardComponent(p.getKeyboardState(), juce::MidiKeyboardComponent::horizontalKeyboard),
-      parameterPanel(p.getAPVTS())
+      dashboardPanel(p.getAPVTS()),
+      oscPanel(p.getAPVTS()),
+      filterEnvPanel(p.getAPVTS()),
+      fxPanel(p.getAPVTS())
 {
     addAndMakeVisible(menuBar);
     addAndMakeVisible(keyboardComponent);
@@ -24,10 +27,10 @@ NEXUSEditor::NEXUSEditor(NEXUSProcessor& p)
     versionLabel.setJustificationType(juce::Justification::centred);
 
     // Initial Tabs
-    mainTabs.addTab("DASHBOARD", juce::Colours::darkgrey, &parameterPanel, false);
-    mainTabs.addTab("OSCILLATORS", juce::Colours::darkgrey, new juce::Component(), true);
-    mainTabs.addTab("FILTER/ENV", juce::Colours::darkgrey, new juce::Component(), true);
-    mainTabs.addTab("FX", juce::Colours::darkgrey, new juce::Component(), true);
+    mainTabs.addTab("DASHBOARD",  juce::Colours::darkgrey, &dashboardPanel, false);
+    mainTabs.addTab("RESONATOR",  juce::Colours::darkgrey, &oscPanel, false);
+    mainTabs.addTab("FILTER/ENV", juce::Colours::darkgrey, &filterEnvPanel, false);
+    mainTabs.addTab("FX",         juce::Colours::darkgrey, &fxPanel, false);
 
     keyboardComponent.setAvailableRange(24, 96);
     

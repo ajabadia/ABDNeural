@@ -15,7 +15,6 @@ namespace Nexus::DSP::Synthesis {
 ResonatorVoice::ResonatorVoice()
 {
     // Initial configuration
-    resonator.setHarmonicDistribution(harmonicRollOff);
     filter.setType(Nexus::DSP::Core::FilterBank::FilterType::LowPass);
     filter.setCutoff(2000.0f);
     filter.setResonance(0.1f);
@@ -36,6 +35,11 @@ void ResonatorVoice::startNote(int midiNoteNumber, float velocity,
     float freq = static_cast<float>(juce::MidiMessage::getMidiNoteInHertz(midiNoteNumber));
     resonator.setBaseFrequency(freq);
     
+    // Force harmonic recalculation with the new frequency
+    resonator.setStretching(currentParams.inharmonicity);
+    resonator.setEntropy(currentParams.roughness);
+    resonator.updateHarmonicsFromModels(currentParams.morphX, currentParams.morphY);
+
     // Reset DSP state for clean start
     resonator.reset();
     ampEnvelope.noteOn();
@@ -75,6 +79,9 @@ void ResonatorVoice::controllerMoved(int /*controllerNumber*/, int /*newControll
 
 void ResonatorVoice::updateParameters(const VoiceParams& params)
 {
+    // Cache the parameters for use in startNote
+    currentParams = params;
+
     // APVTS parameters are in seconds, Envelope expects milliseconds
     ampEnvelope.setParameters(params.attack * 1000.0f, 
                               params.decay * 1000.0f, 
@@ -83,7 +90,11 @@ void ResonatorVoice::updateParameters(const VoiceParams& params)
                               
     filter.setCutoff(params.filterCutoff);
     filter.setResonance(params.filterRes);
-    resonator.setHarmonicDistribution(params.resonatorRollOff);
+
+    // Use the new Neural Model Engine for harmonic generation
+    resonator.setStretching(params.inharmonicity);
+    resonator.setEntropy(params.roughness);
+    resonator.updateHarmonicsFromModels(params.morphX, params.morphY);
 }
 
 void ResonatorVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, 

@@ -1,0 +1,1154 @@
+Listado de rutas de carpetas para el volumen 2tb
+El número de serie del volumen es BA49-15DA
+D:.
+¦   .gitignore
+¦   build.ps1
+¦   build_error.txt
+¦   build_error_10.txt
+¦   build_error_11.txt
+¦   build_error_12.txt
+¦   build_error_13.txt
+¦   build_error_14.txt
+¦   build_error_2.txt
+¦   build_error_3.txt
+¦   build_error_4.txt
+¦   build_error_5.txt
+¦   build_error_6.txt
+¦   build_error_7.txt
+¦   build_error_8.txt
+¦   build_error_9.txt
+¦   build_full_output.txt
+¦   build_full_output_ascii.txt
+¦   build_no.txt
+¦   build_output.log
+¦   build_verbose.log
+¦   CMakeLists.txt
+¦   extract_docx.ps1
+¦   init_nexus.ps1
+¦   init_nexus.sh
+¦   README.md
+¦   tree.txt
+¦   
++---.agent
+¦   +---rules
+¦           reglas.md
+¦           
++---.idea
+¦   ¦   .gitignore
+¦   ¦   ABDNeural.iml
+¦   ¦   markdown.xml
+¦   ¦   misc.xml
+¦   ¦   modules.xml
+¦   ¦   vcs.xml
+¦   ¦   workspace.xml
+¦   ¦   
+¦   +---caches
+¦   ¦       deviceStreaming.xml
+¦   ¦       
+¦   +---libraries
+¦           doc.xml
+¦           
++---build
+¦   ¦   ALL_BUILD.vcxproj
+¦   ¦   ALL_BUILD.vcxproj.filters
+¦   ¦   CMakeCache.txt
+¦   ¦   cmake_install.cmake
+¦   ¦   INSTALL.vcxproj
+¦   ¦   INSTALL.vcxproj.filters
+¦   ¦   NEXUS.vcxproj
+¦   ¦   NEXUS.vcxproj.filters
+¦   ¦   NEXUS_All.vcxproj
+¦   ¦   NEXUS_All.vcxproj.filters
+¦   ¦   NEXUS_rc_lib.vcxproj
+¦   ¦   NEXUS_rc_lib.vcxproj.filters
+¦   ¦   NEXUS_Standalone.vcxproj
+¦   ¦   NEXUS_Standalone.vcxproj.filters
+¦   ¦   NEXUS_Synthesizer.sln
+¦   ¦   NEXUS_VST3.vcxproj
+¦   ¦   NEXUS_VST3.vcxproj.filters
+¦   ¦   NEXUS_vst3_helper.vcxproj
+¦   ¦   NEXUS_vst3_helper.vcxproj.filters
+¦   ¦   ZERO_CHECK.vcxproj
+¦   ¦   ZERO_CHECK.vcxproj.filters
+¦   ¦   
+¦   +---CMakeFiles
+¦   ¦   ¦   cmake.check_cache
+¦   ¦   ¦   cmake.verify_globs
+¦   ¦   ¦   CMakeConfigureLog.yaml
+¦   ¦   ¦   generate.stamp
+¦   ¦   ¦   generate.stamp.depend
+¦   ¦   ¦   generate.stamp.list
+¦   ¦   ¦   InstallScripts.json
+¦   ¦   ¦   TargetDirectories.txt
+¦   ¦   ¦   VerifyGlobs.cmake
+¦   ¦   ¦   
+¦   ¦   +---01bff85c5400fcd4737a8007bd315c42
+¦   ¦   ¦       INSTALL_force.rule
+¦   ¦   ¦       
+¦   ¦   +---0dce425e6422eb54afbe69862c74f6d4
+¦   ¦   ¦       generate.stamp.rule
+¦   ¦   ¦       INSTALL_force.rule
+¦   ¦   ¦       
+¦   ¦   +---31314090411c7eacd6e78d89d43b47be
+¦   ¦   ¦       NEXUS_resources.rc.rule
+¦   ¦   ¦       
+¦   ¦   +---4.1.1-msvc1
+¦   ¦   ¦   ¦   CMakeCCompiler.cmake
+¦   ¦   ¦   ¦   CMakeCXXCompiler.cmake
+¦   ¦   ¦   ¦   CMakeDetermineCompilerABI_C.bin
+¦   ¦   ¦   ¦   CMakeDetermineCompilerABI_CXX.bin
+¦   ¦   ¦   ¦   CMakeRCCompiler.cmake
+¦   ¦   ¦   ¦   CMakeSystem.cmake
+¦   ¦   ¦   ¦   VCTargetsPath.txt
+¦   ¦   ¦   ¦   VCTargetsPath.vcxproj
+¦   ¦   ¦   ¦   
+¦   ¦   ¦   +---CompilerIdC
+¦   ¦   ¦   ¦   ¦   CMakeCCompilerId.c
+¦   ¦   ¦   ¦   ¦   CompilerIdC.exe
+¦   ¦   ¦   ¦   ¦   CompilerIdC.vcxproj
+¦   ¦   ¦   ¦   ¦   
+¦   ¦   ¦   ¦   +---Debug
+¦   ¦   ¦   ¦   ¦   ¦   CMakeCCompilerId.obj
+¦   ¦   ¦   ¦   ¦   ¦   CompilerIdC.exe.recipe
+¦   ¦   ¦   ¦   ¦   ¦   
+¦   ¦   ¦   ¦   ¦   +---CompilerIdC.tlog
+¦   ¦   ¦   ¦   ¦           CL.command.1.tlog
+¦   ¦   ¦   ¦   ¦           Cl.items.tlog
+¦   ¦   ¦   ¦   ¦           CL.read.1.tlog
+¦   ¦   ¦   ¦   ¦           CL.write.1.tlog
+¦   ¦   ¦   ¦   ¦           CompilerIdC.lastbuildstate
+¦   ¦   ¦   ¦   ¦           link.command.1.tlog
+¦   ¦   ¦   ¦   ¦           link.read.1.tlog
+¦   ¦   ¦   ¦   ¦           link.secondary.1.tlog
+¦   ¦   ¦   ¦   ¦           link.write.1.tlog
+¦   ¦   ¦   ¦   ¦           
+¦   ¦   ¦   ¦   +---tmp
+¦   ¦   ¦   +---CompilerIdCXX
+¦   ¦   ¦   ¦   ¦   CMakeCXXCompilerId.cpp
+¦   ¦   ¦   ¦   ¦   CompilerIdCXX.exe
+¦   ¦   ¦   ¦   ¦   CompilerIdCXX.vcxproj
+¦   ¦   ¦   ¦   ¦   
+¦   ¦   ¦   ¦   +---Debug
+¦   ¦   ¦   ¦   ¦   ¦   CMakeCXXCompilerId.obj
+¦   ¦   ¦   ¦   ¦   ¦   CompilerIdCXX.exe.recipe
+¦   ¦   ¦   ¦   ¦   ¦   
+¦   ¦   ¦   ¦   ¦   +---CompilerIdCXX.tlog
+¦   ¦   ¦   ¦   ¦           CL.command.1.tlog
+¦   ¦   ¦   ¦   ¦           Cl.items.tlog
+¦   ¦   ¦   ¦   ¦           CL.read.1.tlog
+¦   ¦   ¦   ¦   ¦           CL.write.1.tlog
+¦   ¦   ¦   ¦   ¦           CompilerIdCXX.lastbuildstate
+¦   ¦   ¦   ¦   ¦           link.command.1.tlog
+¦   ¦   ¦   ¦   ¦           link.read.1.tlog
+¦   ¦   ¦   ¦   ¦           link.secondary.1.tlog
+¦   ¦   ¦   ¦   ¦           link.write.1.tlog
+¦   ¦   ¦   ¦   ¦           
+¦   ¦   ¦   ¦   +---tmp
+¦   ¦   ¦   +---VCTargetsPath
+¦   ¦   ¦   ¦   +---x64
+¦   ¦   ¦   ¦       +---Debug
+¦   ¦   ¦   ¦           ¦   VCTargetsPath.recipe
+¦   ¦   ¦   ¦           ¦   
+¦   ¦   ¦   ¦           +---VCTargetsPath.tlog
+¦   ¦   ¦   ¦                   VCTargetsPath.lastbuildstate
+¦   ¦   ¦   ¦                   
+¦   ¦   ¦   +---x64
+¦   ¦   ¦       +---Debug
+¦   ¦   +---650ee8219559b331b7803a82e5c70286
+¦   ¦   ¦       INSTALL_force.rule
+¦   ¦   ¦       
+¦   ¦   +---bd8716631b6a9b6f13c6cef799720763
+¦   ¦   ¦       INSTALL_force.rule
+¦   ¦   ¦       
+¦   ¦   +---c47fb4417a65a0fbaaccac6efe1a9d03
+¦   ¦   ¦       INSTALL_force.rule
+¦   ¦   ¦       
+¦   ¦   +---CMakeScratch
+¦   ¦   +---pkgRedirects
+¦   +---JUCE
+¦   ¦   ¦   ALL_BUILD.vcxproj
+¦   ¦   ¦   ALL_BUILD.vcxproj.filters
+¦   ¦   ¦   cmake_install.cmake
+¦   ¦   ¦   INSTALL.vcxproj
+¦   ¦   ¦   INSTALL.vcxproj.filters
+¦   ¦   ¦   JUCE.sln
+¦   ¦   ¦   JUCEConfig.cmake
+¦   ¦   ¦   JUCEConfigVersion.cmake
+¦   ¦   ¦   JUCEExportConfig.cmake
+¦   ¦   ¦   
+¦   ¦   +---CMakeFiles
+¦   ¦   ¦   ¦   generate.stamp
+¦   ¦   ¦   ¦   generate.stamp.depend
+¦   ¦   ¦   ¦   
+¦   ¦   ¦   +---CMakeTmp
+¦   ¦   +---extras
+¦   ¦   ¦   +---Build
+¦   ¦   ¦       ¦   cmake_install.cmake
+¦   ¦   ¦       ¦   INSTALL.vcxproj
+¦   ¦   ¦       ¦   INSTALL.vcxproj.filters
+¦   ¦   ¦       ¦   
+¦   ¦   ¦       +---CMakeFiles
+¦   ¦   ¦       ¦       generate.stamp
+¦   ¦   ¦       ¦       generate.stamp.depend
+¦   ¦   ¦       ¦       
+¦   ¦   ¦       +---juceaide
+¦   ¦   ¦           ¦   cmake_install.cmake
+¦   ¦   ¦           ¦   INSTALL.vcxproj
+¦   ¦   ¦           ¦   INSTALL.vcxproj.filters
+¦   ¦   ¦           ¦   
+¦   ¦   ¦           +---CMakeFiles
+¦   ¦   ¦                   generate.stamp
+¦   ¦   ¦                   generate.stamp.depend
+¦   ¦   ¦                   
+¦   ¦   +---modules
+¦   ¦   ¦   ¦   cmake_install.cmake
+¦   ¦   ¦   ¦   INSTALL.vcxproj
+¦   ¦   ¦   ¦   INSTALL.vcxproj.filters
+¦   ¦   ¦   ¦   
+¦   ¦   ¦   +---CMakeFiles
+¦   ¦   ¦           generate.stamp
+¦   ¦   ¦           generate.stamp.depend
+¦   ¦   ¦           
+¦   ¦   +---tools
+¦   ¦       ¦   ALL_BUILD.vcxproj
+¦   ¦       ¦   ALL_BUILD.vcxproj.filters
+¦   ¦       ¦   CMakeCache.txt
+¦   ¦       ¦   cmake_install.cmake
+¦   ¦       ¦   INSTALL.vcxproj
+¦   ¦       ¦   INSTALL.vcxproj.filters
+¦   ¦       ¦   JUCE.sln
+¦   ¦       ¦   JUCEConfig.cmake
+¦   ¦       ¦   JUCEConfigVersion.cmake
+¦   ¦       ¦   JUCEExportConfig.cmake
+¦   ¦       ¦   JUCEToolsExport.cmake
+¦   ¦       ¦   ZERO_CHECK.vcxproj
+¦   ¦       ¦   ZERO_CHECK.vcxproj.filters
+¦   ¦       ¦   
+¦   ¦       +---CMakeFiles
+¦   ¦       ¦   ¦   cmake.check_cache
+¦   ¦       ¦   ¦   cmake.verify_globs
+¦   ¦       ¦   ¦   CMakeConfigureLog.yaml
+¦   ¦       ¦   ¦   generate.stamp
+¦   ¦       ¦   ¦   generate.stamp.depend
+¦   ¦       ¦   ¦   generate.stamp.list
+¦   ¦       ¦   ¦   InstallScripts.json
+¦   ¦       ¦   ¦   TargetDirectories.txt
+¦   ¦       ¦   ¦   VerifyGlobs.cmake
+¦   ¦       ¦   ¦   
+¦   ¦       ¦   +---4.1.1-msvc1
+¦   ¦       ¦   ¦   ¦   CMakeCCompiler.cmake
+¦   ¦       ¦   ¦   ¦   CMakeCXXCompiler.cmake
+¦   ¦       ¦   ¦   ¦   CMakeDetermineCompilerABI_C.bin
+¦   ¦       ¦   ¦   ¦   CMakeDetermineCompilerABI_CXX.bin
+¦   ¦       ¦   ¦   ¦   CMakeRCCompiler.cmake
+¦   ¦       ¦   ¦   ¦   CMakeSystem.cmake
+¦   ¦       ¦   ¦   ¦   VCTargetsPath.txt
+¦   ¦       ¦   ¦   ¦   VCTargetsPath.vcxproj
+¦   ¦       ¦   ¦   ¦   
+¦   ¦       ¦   ¦   +---CompilerIdC
+¦   ¦       ¦   ¦   ¦   ¦   CMakeCCompilerId.c
+¦   ¦       ¦   ¦   ¦   ¦   CompilerIdC.exe
+¦   ¦       ¦   ¦   ¦   ¦   CompilerIdC.vcxproj
+¦   ¦       ¦   ¦   ¦   ¦   
+¦   ¦       ¦   ¦   ¦   +---Debug
+¦   ¦       ¦   ¦   ¦   ¦   ¦   CMakeCCompilerId.obj
+¦   ¦       ¦   ¦   ¦   ¦   ¦   CompilerIdC.exe.recipe
+¦   ¦       ¦   ¦   ¦   ¦   ¦   
+¦   ¦       ¦   ¦   ¦   ¦   +---CompilerIdC.tlog
+¦   ¦       ¦   ¦   ¦   ¦           CL.command.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           Cl.items.tlog
+¦   ¦       ¦   ¦   ¦   ¦           CL.read.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           CL.write.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           CompilerIdC.lastbuildstate
+¦   ¦       ¦   ¦   ¦   ¦           link.command.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           link.read.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           link.secondary.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           link.write.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           
+¦   ¦       ¦   ¦   ¦   +---tmp
+¦   ¦       ¦   ¦   +---CompilerIdCXX
+¦   ¦       ¦   ¦   ¦   ¦   CMakeCXXCompilerId.cpp
+¦   ¦       ¦   ¦   ¦   ¦   CompilerIdCXX.exe
+¦   ¦       ¦   ¦   ¦   ¦   CompilerIdCXX.vcxproj
+¦   ¦       ¦   ¦   ¦   ¦   
+¦   ¦       ¦   ¦   ¦   +---Debug
+¦   ¦       ¦   ¦   ¦   ¦   ¦   CMakeCXXCompilerId.obj
+¦   ¦       ¦   ¦   ¦   ¦   ¦   CompilerIdCXX.exe.recipe
+¦   ¦       ¦   ¦   ¦   ¦   ¦   
+¦   ¦       ¦   ¦   ¦   ¦   +---CompilerIdCXX.tlog
+¦   ¦       ¦   ¦   ¦   ¦           CL.command.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           Cl.items.tlog
+¦   ¦       ¦   ¦   ¦   ¦           CL.read.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           CL.write.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           CompilerIdCXX.lastbuildstate
+¦   ¦       ¦   ¦   ¦   ¦           link.command.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           link.read.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           link.secondary.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           link.write.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           
+¦   ¦       ¦   ¦   ¦   +---tmp
+¦   ¦       ¦   ¦   +---VCTargetsPath
+¦   ¦       ¦   ¦   ¦   +---x64
+¦   ¦       ¦   ¦   ¦       +---Debug
+¦   ¦       ¦   ¦   ¦           ¦   VCTargetsPath.recipe
+¦   ¦       ¦   ¦   ¦           ¦   
+¦   ¦       ¦   ¦   ¦           +---VCTargetsPath.tlog
+¦   ¦       ¦   ¦   ¦                   VCTargetsPath.lastbuildstate
+¦   ¦       ¦   ¦   ¦                   
+¦   ¦       ¦   ¦   +---x64
+¦   ¦       ¦   ¦       +---Debug
+¦   ¦       ¦   +---4194d321ca6c496ab69ec4e945cb6f93
+¦   ¦       ¦   ¦       INSTALL_force.rule
+¦   ¦       ¦   ¦       
+¦   ¦       ¦   +---45339937d4d74e5f94ce2165ab2efbe2
+¦   ¦       ¦   ¦       generate.stamp.rule
+¦   ¦       ¦   ¦       INSTALL_force.rule
+¦   ¦       ¦   ¦       
+¦   ¦       ¦   +---52c583ac3f3e328cf7ae05a7a19046b8
+¦   ¦       ¦   ¦       INSTALL_force.rule
+¦   ¦       ¦   ¦       
+¦   ¦       ¦   +---7791e91234ebdf0d056398bb2b4b39e1
+¦   ¦       ¦   ¦       INSTALL_force.rule
+¦   ¦       ¦   ¦       
+¦   ¦       ¦   +---CMakeScratch
+¦   ¦       ¦   +---CMakeTmp
+¦   ¦       ¦   +---pkgRedirects
+¦   ¦       +---extras
+¦   ¦       ¦   +---Build
+¦   ¦       ¦       ¦   cmake_install.cmake
+¦   ¦       ¦       ¦   INSTALL.vcxproj
+¦   ¦       ¦       ¦   INSTALL.vcxproj.filters
+¦   ¦       ¦       ¦   
+¦   ¦       ¦       +---CMakeFiles
+¦   ¦       ¦       ¦       generate.stamp
+¦   ¦       ¦       ¦       generate.stamp.depend
+¦   ¦       ¦       ¦       
+¦   ¦       ¦       +---juceaide
+¦   ¦       ¦           ¦   cmake_install.cmake
+¦   ¦       ¦           ¦   INSTALL.vcxproj
+¦   ¦       ¦           ¦   INSTALL.vcxproj.filters
+¦   ¦       ¦           ¦   juceaide.vcxproj
+¦   ¦       ¦           ¦   juceaide.vcxproj.filters
+¦   ¦       ¦           ¦   
+¦   ¦       ¦           +---CMakeFiles
+¦   ¦       ¦           ¦       generate.stamp
+¦   ¦       ¦           ¦       generate.stamp.depend
+¦   ¦       ¦           ¦       
+¦   ¦       ¦           +---juceaide.dir
+¦   ¦       ¦           ¦   +---Custom
+¦   ¦       ¦           ¦       ¦   juceaide.exe.recipe
+¦   ¦       ¦           ¦       ¦   juceaide.ilk
+¦   ¦       ¦           ¦       ¦   juce_build_tools.obj
+¦   ¦       ¦           ¦       ¦   juce_core.obj
+¦   ¦       ¦           ¦       ¦   juce_core_CompilationTime.obj
+¦   ¦       ¦           ¦       ¦   juce_data_structures.obj
+¦   ¦       ¦           ¦       ¦   juce_events.obj
+¦   ¦       ¦           ¦       ¦   juce_graphics.obj
+¦   ¦       ¦           ¦       ¦   juce_graphics_Harfbuzz.obj
+¦   ¦       ¦           ¦       ¦   juce_graphics_Sheenbidi.obj
+¦   ¦       ¦           ¦       ¦   juce_gui_basics.obj
+¦   ¦       ¦           ¦       ¦   Main.obj
+¦   ¦       ¦           ¦       ¦   
+¦   ¦       ¦           ¦       +---juceaide.tlog
+¦   ¦       ¦           ¦               CL.command.1.tlog
+¦   ¦       ¦           ¦               Cl.items.tlog
+¦   ¦       ¦           ¦               CL.read.1.tlog
+¦   ¦       ¦           ¦               CL.write.1.tlog
+¦   ¦       ¦           ¦               CustomBuild.command.1.tlog
+¦   ¦       ¦           ¦               CustomBuild.read.1.tlog
+¦   ¦       ¦           ¦               CustomBuild.write.1.tlog
+¦   ¦       ¦           ¦               juceaide.lastbuildstate
+¦   ¦       ¦           ¦               link.command.1.tlog
+¦   ¦       ¦           ¦               link.read.1.tlog
+¦   ¦       ¦           ¦               link.secondary.1.tlog
+¦   ¦       ¦           ¦               link.write.1.tlog
+¦   ¦       ¦           ¦               
+¦   ¦       ¦           +---juceaide_artefacts
+¦   ¦       ¦               +---Custom
+¦   ¦       ¦               ¦       juceaide.exe
+¦   ¦       ¦               ¦       
+¦   ¦       ¦               +---JuceLibraryCode
+¦   ¦       ¦                   +---Custom
+¦   ¦       ¦                           Defs.txt
+¦   ¦       ¦                           
+¦   ¦       +---modules
+¦   ¦       ¦   ¦   cmake_install.cmake
+¦   ¦       ¦   ¦   INSTALL.vcxproj
+¦   ¦       ¦   ¦   INSTALL.vcxproj.filters
+¦   ¦       ¦   ¦   
+¦   ¦       ¦   +---CMakeFiles
+¦   ¦       ¦           generate.stamp
+¦   ¦       ¦           generate.stamp.depend
+¦   ¦       ¦           
+¦   ¦       +---x64
+¦   ¦           +---Custom
+¦   ¦               +---ALL_BUILD
+¦   ¦               ¦   ¦   ALL_BUILD.recipe
+¦   ¦               ¦   ¦   
+¦   ¦               ¦   +---ALL_BUILD.tlog
+¦   ¦               ¦           ALL_BUILD.lastbuildstate
+¦   ¦               ¦           CustomBuild.command.1.tlog
+¦   ¦               ¦           CustomBuild.read.1.tlog
+¦   ¦               ¦           CustomBuild.write.1.tlog
+¦   ¦               ¦           
+¦   ¦               +---ZERO_CHECK
+¦   ¦                   ¦   ZERO_CHECK.recipe
+¦   ¦                   ¦   
+¦   ¦                   +---ZERO_CHECK.tlog
+¦   ¦                           CustomBuild.command.1.tlog
+¦   ¦                           CustomBuild.read.1.tlog
+¦   ¦                           CustomBuild.write.1.tlog
+¦   ¦                           ZERO_CHECK.lastbuildstate
+¦   ¦                           
+¦   +---NEXUS.dir
+¦   ¦   +---Debug
+¦   ¦       ¦   juce_audio_basics.obj
+¦   ¦       ¦   juce_audio_devices.obj
+¦   ¦       ¦   juce_audio_formats.obj
+¦   ¦       ¦   juce_audio_processors.obj
+¦   ¦       ¦   juce_audio_processors_headless.obj
+¦   ¦       ¦   juce_audio_processors_headless_ara.obj
+¦   ¦       ¦   juce_audio_processors_headless_lv2_libs.obj
+¦   ¦       ¦   juce_audio_utils.obj
+¦   ¦       ¦   juce_core.obj
+¦   ¦       ¦   juce_core_CompilationTime.obj
+¦   ¦       ¦   juce_data_structures.obj
+¦   ¦       ¦   juce_dsp.obj
+¦   ¦       ¦   juce_events.obj
+¦   ¦       ¦   juce_graphics.obj
+¦   ¦       ¦   juce_graphics_Harfbuzz.obj
+¦   ¦       ¦   juce_graphics_Sheenbidi.obj
+¦   ¦       ¦   juce_gui_basics.obj
+¦   ¦       ¦   juce_gui_extra.obj
+¦   ¦       ¦   NEXUS_SharedCode.lib.recipe
+¦   ¦       ¦   
+¦   ¦       +---NEXUS.tlog
+¦   ¦               CL.command.1.tlog
+¦   ¦               Cl.items.tlog
+¦   ¦               CL.read.1.tlog
+¦   ¦               CL.write.1.tlog
+¦   ¦               CustomBuild.command.1.tlog
+¦   ¦               CustomBuild.read.1.tlog
+¦   ¦               CustomBuild.write.1.tlog
+¦   ¦               Lib-link.read.1.tlog
+¦   ¦               Lib-link.write.1.tlog
+¦   ¦               Lib.command.1.tlog
+¦   ¦               NEXUS.lastbuildstate
+¦   ¦               
+¦   +---NEXUS_artefacts
+¦   ¦   +---Debug
+¦   ¦   ¦   ¦   NEXUS_SharedCode.lib
+¦   ¦   ¦   ¦   NEXUS_SharedCode.pdb
+¦   ¦   ¦   ¦   
+¦   ¦   ¦   +---Standalone
+¦   ¦   ¦           NEXUS.pdb
+¦   ¦   ¦           
+¦   ¦   +---JuceLibraryCode
+¦   ¦       ¦   Info.txt
+¦   ¦       ¦   NEXUS_resources.rc
+¦   ¦       ¦   
+¦   ¦       +---Debug
+¦   ¦       ¦       Defs.txt
+¦   ¦       ¦       
+¦   ¦       +---MinSizeRel
+¦   ¦       ¦       Defs.txt
+¦   ¦       ¦       
+¦   ¦       +---Release
+¦   ¦       ¦       Defs.txt
+¦   ¦       ¦       
+¦   ¦       +---RelWithDebInfo
+¦   ¦               Defs.txt
+¦   ¦               
+¦   +---NEXUS_rc_lib.dir
+¦   ¦   +---Debug
+¦   ¦       ¦   NEXUS_rc_lib.lib
+¦   ¦       ¦   NEXUS_rc_lib.lib.recipe
+¦   ¦       ¦   NEXUS_rc_lib.vcxproj.FileListAbsolute.txt
+¦   ¦       ¦   NEXUS_resources.res
+¦   ¦       ¦   
+¦   ¦       +---NEXUS_rc_lib.tlog
+¦   ¦               CustomBuild.command.1.tlog
+¦   ¦               CustomBuild.read.1.tlog
+¦   ¦               CustomBuild.write.1.tlog
+¦   ¦               Lib-link-cvtres.read.1.tlog
+¦   ¦               Lib-link-cvtres.write.1.tlog
+¦   ¦               Lib.command.1.tlog
+¦   ¦               NEXUS_rc_lib.lastbuildstate
+¦   ¦               rc.command.1.tlog
+¦   ¦               rc.read.1.tlog
+¦   ¦               rc.write.1.tlog
+¦   ¦               
+¦   +---NEXUS_Standalone.dir
+¦   ¦   +---Debug
+¦   ¦       ¦   juce_audio_plugin_client_AAX.obj
+¦   ¦       ¦   juce_audio_plugin_client_AAX_utils.obj
+¦   ¦       ¦   juce_audio_plugin_client_ARA.obj
+¦   ¦       ¦   juce_audio_plugin_client_LV2.obj
+¦   ¦       ¦   juce_audio_plugin_client_Standalone.obj
+¦   ¦       ¦   juce_audio_plugin_client_Unity.obj
+¦   ¦       ¦   juce_audio_plugin_client_VST2.obj
+¦   ¦       ¦   juce_audio_plugin_client_VST3.obj
+¦   ¦       ¦   vc145.pdb
+¦   ¦       ¦   
+¦   ¦       +---NEXUS_Standalone.tlog
+¦   ¦               CL.command.1.tlog
+¦   ¦               CL.read.1.tlog
+¦   ¦               CL.write.1.tlog
+¦   ¦               CustomBuild.command.1.tlog
+¦   ¦               CustomBuild.read.1.tlog
+¦   ¦               CustomBuild.write.1.tlog
+¦   ¦               link-cvtres.read.1.tlog
+¦   ¦               link-cvtres.write.1.tlog
+¦   ¦               link-rc.read.1.tlog
+¦   ¦               link-rc.write.1.tlog
+¦   ¦               link.command.1.tlog
+¦   ¦               link.read.1.tlog
+¦   ¦               link.read.3.tlog
+¦   ¦               link.write.1.tlog
+¦   ¦               NEXUS_Standalone.lastbuildstate
+¦   ¦               unsuccessfulbuild
+¦   ¦               
+¦   +---x64
+¦       +---Debug
+¦           +---ZERO_CHECK
+¦               ¦   ZERO_CHECK.recipe
+¦               ¦   
+¦               +---ZERO_CHECK.tlog
+¦                       CustomBuild.command.1.tlog
+¦                       CustomBuild.read.1.tlog
+¦                       CustomBuild.write.1.tlog
+¦                       ZERO_CHECK.lastbuildstate
+¦                       
++---build_nexus
+¦   ¦   ALL_BUILD.vcxproj
+¦   ¦   ALL_BUILD.vcxproj.filters
+¦   ¦   CMakeCache.txt
+¦   ¦   cmake_install.cmake
+¦   ¦   INSTALL.vcxproj
+¦   ¦   INSTALL.vcxproj.filters
+¦   ¦   NEXUS.vcxproj
+¦   ¦   NEXUS.vcxproj.filters
+¦   ¦   NEXUS_All.vcxproj
+¦   ¦   NEXUS_All.vcxproj.filters
+¦   ¦   NEXUS_rc_lib.vcxproj
+¦   ¦   NEXUS_rc_lib.vcxproj.filters
+¦   ¦   NEXUS_Standalone.vcxproj
+¦   ¦   NEXUS_Standalone.vcxproj.filters
+¦   ¦   NEXUS_Synthesizer.sln
+¦   ¦   NEXUS_VST3.vcxproj
+¦   ¦   NEXUS_VST3.vcxproj.filters
+¦   ¦   NEXUS_vst3_helper.vcxproj
+¦   ¦   NEXUS_vst3_helper.vcxproj.filters
+¦   ¦   ZERO_CHECK.vcxproj
+¦   ¦   ZERO_CHECK.vcxproj.filters
+¦   ¦   
+¦   +---CMakeFiles
+¦   ¦   ¦   cmake.check_cache
+¦   ¦   ¦   cmake.verify_globs
+¦   ¦   ¦   CMakeConfigureLog.yaml
+¦   ¦   ¦   generate.stamp
+¦   ¦   ¦   generate.stamp.depend
+¦   ¦   ¦   generate.stamp.list
+¦   ¦   ¦   InstallScripts.json
+¦   ¦   ¦   TargetDirectories.txt
+¦   ¦   ¦   VerifyGlobs.cmake
+¦   ¦   ¦   
+¦   ¦   +---09067df1a3844153517ed3606390d96d
+¦   ¦   ¦       INSTALL_force.rule
+¦   ¦   ¦       
+¦   ¦   +---4.1.1-msvc1
+¦   ¦   ¦   ¦   CMakeCCompiler.cmake
+¦   ¦   ¦   ¦   CMakeCXXCompiler.cmake
+¦   ¦   ¦   ¦   CMakeDetermineCompilerABI_C.bin
+¦   ¦   ¦   ¦   CMakeDetermineCompilerABI_CXX.bin
+¦   ¦   ¦   ¦   CMakeRCCompiler.cmake
+¦   ¦   ¦   ¦   CMakeSystem.cmake
+¦   ¦   ¦   ¦   VCTargetsPath.txt
+¦   ¦   ¦   ¦   VCTargetsPath.vcxproj
+¦   ¦   ¦   ¦   
+¦   ¦   ¦   +---CompilerIdC
+¦   ¦   ¦   ¦   ¦   CMakeCCompilerId.c
+¦   ¦   ¦   ¦   ¦   CompilerIdC.exe
+¦   ¦   ¦   ¦   ¦   CompilerIdC.vcxproj
+¦   ¦   ¦   ¦   ¦   
+¦   ¦   ¦   ¦   +---Debug
+¦   ¦   ¦   ¦   ¦   ¦   CMakeCCompilerId.obj
+¦   ¦   ¦   ¦   ¦   ¦   CompilerIdC.exe.recipe
+¦   ¦   ¦   ¦   ¦   ¦   
+¦   ¦   ¦   ¦   ¦   +---CompilerIdC.tlog
+¦   ¦   ¦   ¦   ¦           CL.command.1.tlog
+¦   ¦   ¦   ¦   ¦           Cl.items.tlog
+¦   ¦   ¦   ¦   ¦           CL.read.1.tlog
+¦   ¦   ¦   ¦   ¦           CL.write.1.tlog
+¦   ¦   ¦   ¦   ¦           CompilerIdC.lastbuildstate
+¦   ¦   ¦   ¦   ¦           link.command.1.tlog
+¦   ¦   ¦   ¦   ¦           link.read.1.tlog
+¦   ¦   ¦   ¦   ¦           link.secondary.1.tlog
+¦   ¦   ¦   ¦   ¦           link.write.1.tlog
+¦   ¦   ¦   ¦   ¦           
+¦   ¦   ¦   ¦   +---tmp
+¦   ¦   ¦   +---CompilerIdCXX
+¦   ¦   ¦   ¦   ¦   CMakeCXXCompilerId.cpp
+¦   ¦   ¦   ¦   ¦   CompilerIdCXX.exe
+¦   ¦   ¦   ¦   ¦   CompilerIdCXX.vcxproj
+¦   ¦   ¦   ¦   ¦   
+¦   ¦   ¦   ¦   +---Debug
+¦   ¦   ¦   ¦   ¦   ¦   CMakeCXXCompilerId.obj
+¦   ¦   ¦   ¦   ¦   ¦   CompilerIdCXX.exe.recipe
+¦   ¦   ¦   ¦   ¦   ¦   
+¦   ¦   ¦   ¦   ¦   +---CompilerIdCXX.tlog
+¦   ¦   ¦   ¦   ¦           CL.command.1.tlog
+¦   ¦   ¦   ¦   ¦           Cl.items.tlog
+¦   ¦   ¦   ¦   ¦           CL.read.1.tlog
+¦   ¦   ¦   ¦   ¦           CL.write.1.tlog
+¦   ¦   ¦   ¦   ¦           CompilerIdCXX.lastbuildstate
+¦   ¦   ¦   ¦   ¦           link.command.1.tlog
+¦   ¦   ¦   ¦   ¦           link.read.1.tlog
+¦   ¦   ¦   ¦   ¦           link.secondary.1.tlog
+¦   ¦   ¦   ¦   ¦           link.write.1.tlog
+¦   ¦   ¦   ¦   ¦           
+¦   ¦   ¦   ¦   +---tmp
+¦   ¦   ¦   +---VCTargetsPath
+¦   ¦   ¦   ¦   +---x64
+¦   ¦   ¦   ¦       +---Debug
+¦   ¦   ¦   ¦           ¦   VCTargetsPath.recipe
+¦   ¦   ¦   ¦           ¦   
+¦   ¦   ¦   ¦           +---VCTargetsPath.tlog
+¦   ¦   ¦   ¦                   VCTargetsPath.lastbuildstate
+¦   ¦   ¦   ¦                   
+¦   ¦   ¦   +---x64
+¦   ¦   ¦       +---Debug
+¦   ¦   +---95917f252fe3c675c2edd633fa5e3973
+¦   ¦   ¦       INSTALL_force.rule
+¦   ¦   ¦       
+¦   ¦   +---a028381eb48b962cf7f3eda8d13f5cab
+¦   ¦   ¦       INSTALL_force.rule
+¦   ¦   ¦       
+¦   ¦   +---a26082e80948317dbde3fe2ebd550017
+¦   ¦   ¦       NEXUS_resources.rc.rule
+¦   ¦   ¦       
+¦   ¦   +---a6edc6917ceff3ee0285d863e90ccc97
+¦   ¦   ¦       INSTALL_force.rule
+¦   ¦   ¦       
+¦   ¦   +---CMakeScratch
+¦   ¦   +---e0b1a4192de10557019a86c0ec2dd26f
+¦   ¦   ¦       generate.stamp.rule
+¦   ¦   ¦       INSTALL_force.rule
+¦   ¦   ¦       
+¦   ¦   +---pkgRedirects
+¦   +---JUCE
+¦   ¦   ¦   ALL_BUILD.vcxproj
+¦   ¦   ¦   ALL_BUILD.vcxproj.filters
+¦   ¦   ¦   cmake_install.cmake
+¦   ¦   ¦   INSTALL.vcxproj
+¦   ¦   ¦   INSTALL.vcxproj.filters
+¦   ¦   ¦   JUCE.sln
+¦   ¦   ¦   JUCEConfig.cmake
+¦   ¦   ¦   JUCEConfigVersion.cmake
+¦   ¦   ¦   JUCEExportConfig.cmake
+¦   ¦   ¦   
+¦   ¦   +---CMakeFiles
+¦   ¦   ¦   ¦   generate.stamp
+¦   ¦   ¦   ¦   generate.stamp.depend
+¦   ¦   ¦   ¦   
+¦   ¦   ¦   +---CMakeTmp
+¦   ¦   +---extras
+¦   ¦   ¦   +---Build
+¦   ¦   ¦       ¦   cmake_install.cmake
+¦   ¦   ¦       ¦   INSTALL.vcxproj
+¦   ¦   ¦       ¦   INSTALL.vcxproj.filters
+¦   ¦   ¦       ¦   
+¦   ¦   ¦       +---CMakeFiles
+¦   ¦   ¦       ¦       generate.stamp
+¦   ¦   ¦       ¦       generate.stamp.depend
+¦   ¦   ¦       ¦       
+¦   ¦   ¦       +---juceaide
+¦   ¦   ¦           ¦   cmake_install.cmake
+¦   ¦   ¦           ¦   INSTALL.vcxproj
+¦   ¦   ¦           ¦   INSTALL.vcxproj.filters
+¦   ¦   ¦           ¦   
+¦   ¦   ¦           +---CMakeFiles
+¦   ¦   ¦                   generate.stamp
+¦   ¦   ¦                   generate.stamp.depend
+¦   ¦   ¦                   
+¦   ¦   +---modules
+¦   ¦   ¦   ¦   cmake_install.cmake
+¦   ¦   ¦   ¦   INSTALL.vcxproj
+¦   ¦   ¦   ¦   INSTALL.vcxproj.filters
+¦   ¦   ¦   ¦   
+¦   ¦   ¦   +---CMakeFiles
+¦   ¦   ¦           generate.stamp
+¦   ¦   ¦           generate.stamp.depend
+¦   ¦   ¦           
+¦   ¦   +---tools
+¦   ¦       ¦   ALL_BUILD.vcxproj
+¦   ¦       ¦   ALL_BUILD.vcxproj.filters
+¦   ¦       ¦   CMakeCache.txt
+¦   ¦       ¦   cmake_install.cmake
+¦   ¦       ¦   INSTALL.vcxproj
+¦   ¦       ¦   INSTALL.vcxproj.filters
+¦   ¦       ¦   JUCE.sln
+¦   ¦       ¦   JUCEConfig.cmake
+¦   ¦       ¦   JUCEConfigVersion.cmake
+¦   ¦       ¦   JUCEExportConfig.cmake
+¦   ¦       ¦   JUCEToolsExport.cmake
+¦   ¦       ¦   ZERO_CHECK.vcxproj
+¦   ¦       ¦   ZERO_CHECK.vcxproj.filters
+¦   ¦       ¦   
+¦   ¦       +---CMakeFiles
+¦   ¦       ¦   ¦   cmake.check_cache
+¦   ¦       ¦   ¦   cmake.verify_globs
+¦   ¦       ¦   ¦   CMakeConfigureLog.yaml
+¦   ¦       ¦   ¦   generate.stamp
+¦   ¦       ¦   ¦   generate.stamp.depend
+¦   ¦       ¦   ¦   generate.stamp.list
+¦   ¦       ¦   ¦   InstallScripts.json
+¦   ¦       ¦   ¦   TargetDirectories.txt
+¦   ¦       ¦   ¦   VerifyGlobs.cmake
+¦   ¦       ¦   ¦   
+¦   ¦       ¦   +---2ac0fdbdc5d69244b379cb6944347ea8
+¦   ¦       ¦   ¦       INSTALL_force.rule
+¦   ¦       ¦   ¦       
+¦   ¦       ¦   +---4.1.1-msvc1
+¦   ¦       ¦   ¦   ¦   CMakeCCompiler.cmake
+¦   ¦       ¦   ¦   ¦   CMakeCXXCompiler.cmake
+¦   ¦       ¦   ¦   ¦   CMakeDetermineCompilerABI_C.bin
+¦   ¦       ¦   ¦   ¦   CMakeDetermineCompilerABI_CXX.bin
+¦   ¦       ¦   ¦   ¦   CMakeRCCompiler.cmake
+¦   ¦       ¦   ¦   ¦   CMakeSystem.cmake
+¦   ¦       ¦   ¦   ¦   VCTargetsPath.txt
+¦   ¦       ¦   ¦   ¦   VCTargetsPath.vcxproj
+¦   ¦       ¦   ¦   ¦   
+¦   ¦       ¦   ¦   +---CompilerIdC
+¦   ¦       ¦   ¦   ¦   ¦   CMakeCCompilerId.c
+¦   ¦       ¦   ¦   ¦   ¦   CompilerIdC.exe
+¦   ¦       ¦   ¦   ¦   ¦   CompilerIdC.vcxproj
+¦   ¦       ¦   ¦   ¦   ¦   
+¦   ¦       ¦   ¦   ¦   +---Debug
+¦   ¦       ¦   ¦   ¦   ¦   ¦   CMakeCCompilerId.obj
+¦   ¦       ¦   ¦   ¦   ¦   ¦   CompilerIdC.exe.recipe
+¦   ¦       ¦   ¦   ¦   ¦   ¦   
+¦   ¦       ¦   ¦   ¦   ¦   +---CompilerIdC.tlog
+¦   ¦       ¦   ¦   ¦   ¦           CL.command.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           Cl.items.tlog
+¦   ¦       ¦   ¦   ¦   ¦           CL.read.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           CL.write.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           CompilerIdC.lastbuildstate
+¦   ¦       ¦   ¦   ¦   ¦           link.command.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           link.read.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           link.secondary.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           link.write.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           
+¦   ¦       ¦   ¦   ¦   +---tmp
+¦   ¦       ¦   ¦   +---CompilerIdCXX
+¦   ¦       ¦   ¦   ¦   ¦   CMakeCXXCompilerId.cpp
+¦   ¦       ¦   ¦   ¦   ¦   CompilerIdCXX.exe
+¦   ¦       ¦   ¦   ¦   ¦   CompilerIdCXX.vcxproj
+¦   ¦       ¦   ¦   ¦   ¦   
+¦   ¦       ¦   ¦   ¦   +---Debug
+¦   ¦       ¦   ¦   ¦   ¦   ¦   CMakeCXXCompilerId.obj
+¦   ¦       ¦   ¦   ¦   ¦   ¦   CompilerIdCXX.exe.recipe
+¦   ¦       ¦   ¦   ¦   ¦   ¦   
+¦   ¦       ¦   ¦   ¦   ¦   +---CompilerIdCXX.tlog
+¦   ¦       ¦   ¦   ¦   ¦           CL.command.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           Cl.items.tlog
+¦   ¦       ¦   ¦   ¦   ¦           CL.read.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           CL.write.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           CompilerIdCXX.lastbuildstate
+¦   ¦       ¦   ¦   ¦   ¦           link.command.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           link.read.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           link.secondary.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           link.write.1.tlog
+¦   ¦       ¦   ¦   ¦   ¦           
+¦   ¦       ¦   ¦   ¦   +---tmp
+¦   ¦       ¦   ¦   +---VCTargetsPath
+¦   ¦       ¦   ¦   ¦   +---x64
+¦   ¦       ¦   ¦   ¦       +---Debug
+¦   ¦       ¦   ¦   ¦           ¦   VCTargetsPath.recipe
+¦   ¦       ¦   ¦   ¦           ¦   
+¦   ¦       ¦   ¦   ¦           +---VCTargetsPath.tlog
+¦   ¦       ¦   ¦   ¦                   VCTargetsPath.lastbuildstate
+¦   ¦       ¦   ¦   ¦                   
+¦   ¦       ¦   ¦   +---x64
+¦   ¦       ¦   ¦       +---Debug
+¦   ¦       ¦   +---b0a84f844ff47144020530b8b160bdfc
+¦   ¦       ¦   ¦       generate.stamp.rule
+¦   ¦       ¦   ¦       INSTALL_force.rule
+¦   ¦       ¦   ¦       
+¦   ¦       ¦   +---CMakeScratch
+¦   ¦       ¦   +---CMakeTmp
+¦   ¦       ¦   +---d77a19faa88770536ec02718bb3fc890
+¦   ¦       ¦   ¦       INSTALL_force.rule
+¦   ¦       ¦   ¦       
+¦   ¦       ¦   +---e7aece06fa1c706735985443ad17f05e
+¦   ¦       ¦   ¦       INSTALL_force.rule
+¦   ¦       ¦   ¦       
+¦   ¦       ¦   +---pkgRedirects
+¦   ¦       +---extras
+¦   ¦       ¦   +---Build
+¦   ¦       ¦       ¦   cmake_install.cmake
+¦   ¦       ¦       ¦   INSTALL.vcxproj
+¦   ¦       ¦       ¦   INSTALL.vcxproj.filters
+¦   ¦       ¦       ¦   
+¦   ¦       ¦       +---CMakeFiles
+¦   ¦       ¦       ¦       generate.stamp
+¦   ¦       ¦       ¦       generate.stamp.depend
+¦   ¦       ¦       ¦       
+¦   ¦       ¦       +---juceaide
+¦   ¦       ¦           ¦   cmake_install.cmake
+¦   ¦       ¦           ¦   INSTALL.vcxproj
+¦   ¦       ¦           ¦   INSTALL.vcxproj.filters
+¦   ¦       ¦           ¦   juceaide.vcxproj
+¦   ¦       ¦           ¦   juceaide.vcxproj.filters
+¦   ¦       ¦           ¦   
+¦   ¦       ¦           +---CMakeFiles
+¦   ¦       ¦           ¦       generate.stamp
+¦   ¦       ¦           ¦       generate.stamp.depend
+¦   ¦       ¦           ¦       
+¦   ¦       ¦           +---juceaide.dir
+¦   ¦       ¦           ¦   +---Custom
+¦   ¦       ¦           ¦       ¦   juceaide.exe.recipe
+¦   ¦       ¦           ¦       ¦   juceaide.ilk
+¦   ¦       ¦           ¦       ¦   juce_build_tools.obj
+¦   ¦       ¦           ¦       ¦   juce_core.obj
+¦   ¦       ¦           ¦       ¦   juce_core_CompilationTime.obj
+¦   ¦       ¦           ¦       ¦   juce_data_structures.obj
+¦   ¦       ¦           ¦       ¦   juce_events.obj
+¦   ¦       ¦           ¦       ¦   juce_graphics.obj
+¦   ¦       ¦           ¦       ¦   juce_graphics_Harfbuzz.obj
+¦   ¦       ¦           ¦       ¦   juce_graphics_Sheenbidi.obj
+¦   ¦       ¦           ¦       ¦   juce_gui_basics.obj
+¦   ¦       ¦           ¦       ¦   Main.obj
+¦   ¦       ¦           ¦       ¦   
+¦   ¦       ¦           ¦       +---juceaide.tlog
+¦   ¦       ¦           ¦               CL.command.1.tlog
+¦   ¦       ¦           ¦               Cl.items.tlog
+¦   ¦       ¦           ¦               CL.read.1.tlog
+¦   ¦       ¦           ¦               CL.write.1.tlog
+¦   ¦       ¦           ¦               CustomBuild.command.1.tlog
+¦   ¦       ¦           ¦               CustomBuild.read.1.tlog
+¦   ¦       ¦           ¦               CustomBuild.write.1.tlog
+¦   ¦       ¦           ¦               juceaide.lastbuildstate
+¦   ¦       ¦           ¦               link.command.1.tlog
+¦   ¦       ¦           ¦               link.read.1.tlog
+¦   ¦       ¦           ¦               link.secondary.1.tlog
+¦   ¦       ¦           ¦               link.write.1.tlog
+¦   ¦       ¦           ¦               
+¦   ¦       ¦           +---juceaide_artefacts
+¦   ¦       ¦               +---Custom
+¦   ¦       ¦               ¦       juceaide.exe
+¦   ¦       ¦               ¦       
+¦   ¦       ¦               +---JuceLibraryCode
+¦   ¦       ¦                   +---Custom
+¦   ¦       ¦                           Defs.txt
+¦   ¦       ¦                           
+¦   ¦       +---modules
+¦   ¦       ¦   ¦   cmake_install.cmake
+¦   ¦       ¦   ¦   INSTALL.vcxproj
+¦   ¦       ¦   ¦   INSTALL.vcxproj.filters
+¦   ¦       ¦   ¦   
+¦   ¦       ¦   +---CMakeFiles
+¦   ¦       ¦           generate.stamp
+¦   ¦       ¦           generate.stamp.depend
+¦   ¦       ¦           
+¦   ¦       +---x64
+¦   ¦           +---Custom
+¦   ¦               +---ALL_BUILD
+¦   ¦               ¦   ¦   ALL_BUILD.recipe
+¦   ¦               ¦   ¦   
+¦   ¦               ¦   +---ALL_BUILD.tlog
+¦   ¦               ¦           ALL_BUILD.lastbuildstate
+¦   ¦               ¦           CustomBuild.command.1.tlog
+¦   ¦               ¦           CustomBuild.read.1.tlog
+¦   ¦               ¦           CustomBuild.write.1.tlog
+¦   ¦               ¦           
+¦   ¦               +---ZERO_CHECK
+¦   ¦                   ¦   ZERO_CHECK.recipe
+¦   ¦                   ¦   
+¦   ¦                   +---ZERO_CHECK.tlog
+¦   ¦                           CustomBuild.command.1.tlog
+¦   ¦                           CustomBuild.read.1.tlog
+¦   ¦                           CustomBuild.write.1.tlog
+¦   ¦                           ZERO_CHECK.lastbuildstate
+¦   ¦                           
+¦   +---NEXUS.dir
+¦   ¦   +---Debug
+¦   ¦       ¦   juce_audio_basics.obj
+¦   ¦       ¦   juce_audio_devices.obj
+¦   ¦       ¦   juce_audio_formats.obj
+¦   ¦       ¦   juce_audio_processors.obj
+¦   ¦       ¦   juce_audio_processors_headless.obj
+¦   ¦       ¦   juce_audio_processors_headless_ara.obj
+¦   ¦       ¦   juce_audio_processors_headless_lv2_libs.obj
+¦   ¦       ¦   juce_audio_utils.obj
+¦   ¦       ¦   juce_core.obj
+¦   ¦       ¦   juce_core_CompilationTime.obj
+¦   ¦       ¦   juce_data_structures.obj
+¦   ¦       ¦   juce_dsp.obj
+¦   ¦       ¦   juce_events.obj
+¦   ¦       ¦   juce_graphics.obj
+¦   ¦       ¦   juce_graphics_Harfbuzz.obj
+¦   ¦       ¦   juce_graphics_Sheenbidi.obj
+¦   ¦       ¦   juce_gui_basics.obj
+¦   ¦       ¦   juce_gui_extra.obj
+¦   ¦       ¦   NEXUS_SharedCode.lib.recipe
+¦   ¦       ¦   
+¦   ¦       +---NEXUS.tlog
+¦   ¦               CL.command.1.tlog
+¦   ¦               Cl.items.tlog
+¦   ¦               CL.read.1.tlog
+¦   ¦               CL.write.1.tlog
+¦   ¦               CustomBuild.command.1.tlog
+¦   ¦               CustomBuild.read.1.tlog
+¦   ¦               CustomBuild.write.1.tlog
+¦   ¦               Lib-link.read.1.tlog
+¦   ¦               Lib-link.write.1.tlog
+¦   ¦               Lib.command.1.tlog
+¦   ¦               NEXUS.lastbuildstate
+¦   ¦               
+¦   +---NEXUS_artefacts
+¦   ¦   +---Debug
+¦   ¦   ¦   ¦   NEXUS_SharedCode.lib
+¦   ¦   ¦   ¦   NEXUS_SharedCode.pdb
+¦   ¦   ¦   ¦   
+¦   ¦   ¦   +---Standalone
+¦   ¦   ¦           NEXUS.exe
+¦   ¦   ¦           NEXUS.pdb
+¦   ¦   ¦           
+¦   ¦   +---JuceLibraryCode
+¦   ¦       ¦   Info.txt
+¦   ¦       ¦   NEXUS_resources.rc
+¦   ¦       ¦   
+¦   ¦       +---Debug
+¦   ¦       ¦       Defs.txt
+¦   ¦       ¦       
+¦   ¦       +---MinSizeRel
+¦   ¦       ¦       Defs.txt
+¦   ¦       ¦       
+¦   ¦       +---Release
+¦   ¦       ¦       Defs.txt
+¦   ¦       ¦       
+¦   ¦       +---RelWithDebInfo
+¦   ¦               Defs.txt
+¦   ¦               
+¦   +---NEXUS_rc_lib.dir
+¦   ¦   +---Debug
+¦   ¦       ¦   NEXUS_rc_lib.lib
+¦   ¦       ¦   NEXUS_rc_lib.lib.recipe
+¦   ¦       ¦   NEXUS_rc_lib.vcxproj.FileListAbsolute.txt
+¦   ¦       ¦   NEXUS_resources.res
+¦   ¦       ¦   
+¦   ¦       +---NEXUS_rc_lib.tlog
+¦   ¦               CustomBuild.command.1.tlog
+¦   ¦               CustomBuild.read.1.tlog
+¦   ¦               CustomBuild.write.1.tlog
+¦   ¦               Lib-link-cvtres.read.1.tlog
+¦   ¦               Lib-link-cvtres.write.1.tlog
+¦   ¦               Lib.command.1.tlog
+¦   ¦               NEXUS_rc_lib.lastbuildstate
+¦   ¦               rc.command.1.tlog
+¦   ¦               rc.read.1.tlog
+¦   ¦               rc.write.1.tlog
+¦   ¦               
+¦   +---NEXUS_Standalone.dir
+¦   ¦   +---Debug
+¦   ¦       ¦   Envelope.obj
+¦   ¦       ¦   FilterBank.obj
+¦   ¦       ¦   juce_audio_plugin_client_AAX.obj
+¦   ¦       ¦   juce_audio_plugin_client_AAX_utils.obj
+¦   ¦       ¦   juce_audio_plugin_client_ARA.obj
+¦   ¦       ¦   juce_audio_plugin_client_LV2.obj
+¦   ¦       ¦   juce_audio_plugin_client_Standalone.obj
+¦   ¦       ¦   juce_audio_plugin_client_Unity.obj
+¦   ¦       ¦   juce_audio_plugin_client_VST2.obj
+¦   ¦       ¦   juce_audio_plugin_client_VST3.obj
+¦   ¦       ¦   NEXUS.exe.recipe
+¦   ¦       ¦   NEXUS.ilk
+¦   ¦       ¦   NEXUSEditor.obj
+¦   ¦       ¦   NEXUSProcessor.obj
+¦   ¦       ¦   Oscillator.obj
+¦   ¦       ¦   ParameterPanel.obj
+¦   ¦       ¦   Resonator.obj
+¦   ¦       ¦   ResonatorVoice.obj
+¦   ¦       ¦   SpectralVisualizer.obj
+¦   ¦       ¦   vc145.pdb
+¦   ¦       ¦   
+¦   ¦       +---NEXUS_Standalone.tlog
+¦   ¦               CL.command.1.tlog
+¦   ¦               Cl.items.tlog
+¦   ¦               CL.read.1.tlog
+¦   ¦               CL.write.1.tlog
+¦   ¦               CustomBuild.command.1.tlog
+¦   ¦               CustomBuild.read.1.tlog
+¦   ¦               CustomBuild.write.1.tlog
+¦   ¦               link.command.1.tlog
+¦   ¦               link.read.1.tlog
+¦   ¦               link.secondary.1.tlog
+¦   ¦               link.write.1.tlog
+¦   ¦               NEXUS_Standalone.lastbuildstate
+¦   ¦               
+¦   +---x64
+¦       +---Debug
+¦           +---ZERO_CHECK
+¦               ¦   ZERO_CHECK.recipe
+¦               ¦   
+¦               +---ZERO_CHECK.tlog
+¦                       CustomBuild.command.1.tlog
+¦                       CustomBuild.read.1.tlog
+¦                       CustomBuild.write.1.tlog
+¦                       ZERO_CHECK.lastbuildstate
+¦                       
++---bundle_code
+¦       CONTROL_FILESCODE202601201927.txt
+¦       TOTALCODE202601201927.txt
+¦       
++---DOC
+¦   ¦   0 - introducción.docx
+¦   ¦   1 - inicio.docx
+¦   ¦   10.docx
+¦   ¦   11.docx
+¦   ¦   12.docx
+¦   ¦   13.docx
+¦   ¦   14.docx
+¦   ¦   15.docx
+¦   ¦   16.docx
+¦   ¦   2 -NEXUS_Architecture_Specification.md.docx
+¦   ¦   3 - ParameterDefinitions.h
+¦   ¦   4 - NEXUS_CodeStandards_Examples.md.docx
+¦   ¦   5 - AI_DEVELOPER_BRIEFING.md.docx
+¦   ¦   6 - DELIVERY_CHECKLIST.md.docx
+¦   ¦   7 - new features .docx
+¦   ¦   8 - new features ii.docx
+¦   ¦   9.docx
+¦   ¦   
+¦   +---PLANS
++---DOCS
+¦   +---PLANS
+¦           ROADMAP.MD
+¦           
++---Documentation
+¦   ¦   ARCHITECTURE_QUICK_REF.md
+¦   ¦   DAILY_CHECKLIST.md
+¦   ¦   QUICK_START.md
+¦   ¦   
+¦   +---Analyzed
+¦   ¦       0 - introducción.docx.txt
+¦   ¦       1 - inicio.docx.txt
+¦   ¦       10.docx.txt
+¦   ¦       11.docx.txt
+¦   ¦       12.docx.txt
+¦   ¦       13.docx.txt
+¦   ¦       14.docx.txt
+¦   ¦       15.docx.txt
+¦   ¦       16.docx.txt
+¦   ¦       2 -NEXUS_Architecture_Specification.md.docx.txt
+¦   ¦       4 - NEXUS_CodeStandards_Examples.md.docx.txt
+¦   ¦       5 - AI_DEVELOPER_BRIEFING.md.docx.txt
+¦   ¦       6 - DELIVERY_CHECKLIST.md.docx.txt
+¦   ¦       8 - new features ii.docx.txt
+¦   ¦       9.docx.txt
+¦   ¦       
+¦   +---Plans
+¦           ROADMAP.md
+¦           
++---logs
+¦   +---blockers
+¦   +---build
+¦   +---compilation
+¦   +---profiling
+¦   +---runtime
+¦   +---tests
++---Models
++---Resources
++---Scripts
+¦       bundle_code.ps1
+¦       manage.ps1
+¦       Temp
+¦       
++---Source
+¦   +---Core
+¦   ¦       BuildVersion.h
+¦   ¦       
+¦   +---DSP
+¦   ¦   +---CoreModules
+¦   ¦   ¦       Envelope.cpp
+¦   ¦   ¦       Envelope.h
+¦   ¦   ¦       FilterBank.cpp
+¦   ¦   ¦       FilterBank.h
+¦   ¦   ¦       Oscillator.cpp
+¦   ¦   ¦       Oscillator.h
+¦   ¦   ¦       Resonator.cpp
+¦   ¦   ¦       Resonator.h
+¦   ¦   ¦       
+¦   ¦   +---Effects
+¦   ¦   ¦       Delay.h
+¦   ¦   ¦       Saturation.h
+¦   ¦   ¦       
+¦   ¦   +---Filters
+¦   ¦   +---ML
+¦   ¦   +---Modulation
+¦   ¦   +---Synthesis
+¦   ¦           ResonatorSound.h
+¦   ¦           ResonatorVoice.cpp
+¦   ¦           ResonatorVoice.h
+¦   ¦           
+¦   +---Main
+¦   ¦       NEXUSEditor.cpp
+¦   ¦       NEXUSEditor.h
+¦   ¦       NEXUSProcessor.cpp
+¦   ¦       NEXUSProcessor.h
+¦   ¦       
+¦   +---MIDI
+¦   +---Platform
+¦   +---Serialization
+¦   +---State
+¦   ¦       ParameterDefinitions.h
+¦   ¦       
+¦   +---UI
+¦       ¦   ParameterPanel.cpp
+¦       ¦   ParameterPanel.h
+¦       ¦   SpectralVisualizer.cpp
+¦       ¦   SpectralVisualizer.h
+¦       ¦   
+¦       +---Components
+¦       +---Panels
+¦               FilterEnvPanel.cpp
+¦               FilterEnvPanel.h
+¦               FXPanel.cpp
+¦               FXPanel.h
+¦               OscillatorPanel.cpp
+¦               OscillatorPanel.h
+¦               
++---TEMP
+¦   +---Scripts
+¦           manage.ps1
+¦           UpdateVersion.cmake
+¦           
++---temp_docx_extract
+¦   ¦   doc.zip
+¦   ¦   
+¦   +---extracted
+¦       ¦   [Content_Types].xml
+¦       ¦   
+¦       +---docProps
+¦       ¦       app.xml
+¦       ¦       core.xml
+¦       ¦       
+¦       +---word
+¦       ¦   ¦   document.xml
+¦       ¦   ¦   fontTable.xml
+¦       ¦   ¦   numbering.xml
+¦       ¦   ¦   settings.xml
+¦       ¦   ¦   styles.xml
+¦       ¦   ¦   webSettings.xml
+¦       ¦   ¦   
+¦       ¦   +---theme
+¦       ¦   ¦       theme1.xml
+¦       ¦   ¦       
+¦       ¦   +---_rels
+¦       ¦           document.xml.rels
+¦       ¦           
+¦       +---_rels
+¦               .rels
+¦               
++---Tests

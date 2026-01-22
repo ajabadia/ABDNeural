@@ -85,26 +85,45 @@ void SpectralVisualizer::timerCallback()
 void SpectralVisualizer::updateProfile()
 {
     auto* rollOffPtr = vts_.getRawParameterValue("resonator_rolloff");
-    if (!rollOffPtr) return;
+    auto* parityPtr = vts_.getRawParameterValue("resonator_parity");
+    if (!rollOffPtr || !parityPtr) return;
     
     float rollOff = rollOffPtr->load();
+    float parity = parityPtr->load();
     
-    float firstAmp = 1.0f; // Fundamental is always 1.0 before normalization
-    harmonicProfile_[0] = firstAmp;
-    
-    float total = firstAmp;
-    for (int i = 1; i < 64; ++i)
+    float total = 0.0f;
+    for (int i = 0; i < 64; ++i)
     {
-        harmonicProfile_[i] = 1.0f / std::pow(static_cast<float>(i + 1), rollOff);
-        total += harmonicProfile_[i];
+        int harmonicNumber = i + 1;
+        bool isEven = (harmonicNumber % 2 == 0);
+        
+        float amp = 1.0f / std::pow(static_cast<float>(harmonicNumber), rollOff);
+        
+        float parityWeight = 1.0f;
+        if (isEven)
+            parityWeight = parity * 2.0f;
+        else
+            parityWeight = (1.0f - parity) * 2.0f;
+            
+        amp *= juce::jlimit(0.0f, 1.0f, parityWeight);
+        
+        harmonicProfile_[i] = amp;
+        total += amp;
     }
     
     // Normalization for visual scale
-    // We want the fundamental to be near the top but not clipping
     float scale = 0.8f; 
-    for (int i = 0; i < 64; ++i)
+    if (total > 0.0f)
     {
-        harmonicProfile_[i] *= scale;
+        // Find max to normalize better
+        float maxAmp = 0.0f;
+        for (float v : harmonicProfile_) maxAmp = std::max(maxAmp, v);
+        
+        if (maxAmp > 0.0f)
+        {
+            for (int i = 0; i < 64; ++i)
+                harmonicProfile_[i] = (harmonicProfile_[i] / maxAmp) * scale;
+        }
     }
 }
 
