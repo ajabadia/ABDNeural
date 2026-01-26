@@ -9,15 +9,22 @@
 */
 
 #include "ResonatorVoice.h"
+#include "../../Main/NEURONiKProcessor.h" // Include the processor header
 
-namespace Nexus::DSP::Synthesis {
+namespace NEURONiK::DSP::Synthesis {
 
-ResonatorVoice::ResonatorVoice()
+// Constructor now accepts the owner processor
+ResonatorVoice::ResonatorVoice(NEURONiKProcessor* p) : ownerProcessor(p)
 {
     // Initial configuration
-    filter.setType(Nexus::DSP::Core::FilterBank::FilterType::LowPass);
+    filter.setType(NEURONiK::DSP::Core::FilterBank::FilterType::LowPass);
     filter.setCutoff(2000.0f);
     filter.setResonance(0.1f);
+}
+
+void ResonatorVoice::loadModel(const NEURONiK::DSP::Core::SpectralModel& model, int slot)
+{
+    resonator.loadModel(model, slot);
 }
 
 bool ResonatorVoice::canPlaySound(juce::SynthesiserSound* sound)
@@ -27,21 +34,27 @@ bool ResonatorVoice::canPlaySound(juce::SynthesiserSound* sound)
 
 void ResonatorVoice::startNote(int midiNoteNumber, float velocity, 
                                juce::SynthesiserSound* /*sound*/, 
-                               int /*currentPitchWheelPosition*/)
+                               int currentPitchWheelPosition)
 {
     currentVelocity = velocity;
-    
-    // Convert MIDI to Frequency
-    float freq = static_cast<float>(juce::MidiMessage::getMidiNoteInHertz(midiNoteNumber));
-    resonator.setBaseFrequency(freq);
-    
+    originalFrequency = static_cast<float>(juce::MidiMessage::getMidiNoteInHertz(midiNoteNumber));
+    pitchWheelMoved(currentPitchWheelPosition); // Apply initial pitch bend
+
     // Force harmonic recalculation with the new frequency
     resonator.setStretching(currentParams.inharmonicity);
-    resonator.setEntropy(currentParams.roughness);
+    resonator.setEntropy(currentParams.roughness * 0.5f);
     resonator.updateHarmonicsFromModels(currentParams.morphX, currentParams.morphY);
 
-    // Reset DSP state for clean start
-    resonator.reset();
+    // FIX: Do NOT reset resonator phases to 0 here.
+    // Resetting causes audible clicks if the voice was already playing (stealing).
+    // Letting the phases run ensures continuous waveforms, just changing frequency.
+    // resonator.reset(); 
+
+    // Use a very fast attack override if retriggering to avoid click?
+    // Actually, simply noteOn() restarting the envelope from 0 is usually what causes
+    // click if note was high level. 
+    // Ideally, we crossfade or the envelope handles retrigger. 
+    // But for now, just removing resonator reset fixes the phase discontinuity click.
     ampEnvelope.noteOn();
 }
 
@@ -67,9 +80,15 @@ void ResonatorVoice::setCurrentPlaybackSampleRate(double newRate)
     filter.setSampleRate(newRate);
 }
 
-void ResonatorVoice::pitchWheelMoved(int /*newPitchWheelValue*/)
+void ResonatorVoice::pitchWheelMoved(int newPitchWheelValue)
 {
-    // Pitch wheel implementation can be added here
+    // JUCE pitch wheel is 14-bit (0-16383). 8192 is center.
+    auto pitchBend = newPitchWheelValue - 8192;
+    // Map to +/- 2 semitones
+    auto bendRange = 2.0f / 8192.0f;
+    pitchBendRatio = 1.0f + pitchBend * bendRange;
+
+    resonator.setBaseFrequency(originalFrequency * pitchBendRatio);
 }
 
 void ResonatorVoice::controllerMoved(int /*controllerNumber*/, int /*newControllerValue*/)
@@ -93,7 +112,8 @@ void ResonatorVoice::updateParameters(const VoiceParams& params)
 
     // Use the new Neural Model Engine for harmonic generation
     resonator.setStretching(params.inharmonicity);
-    resonator.setEntropy(params.roughness);
+    resonator.setEntropy(params.roughness * 0.5f);
+    // FIX: Using params consistently
     resonator.updateHarmonicsFromModels(params.morphX, params.morphY);
 }
 
@@ -101,10 +121,21 @@ void ResonatorVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer,
                                     int startSample, int numSamples)
 {
     // Optimization: if envelope is idle, skip processing
-    if (ampEnvelope.getCurrentState() == Nexus::DSP::Core::Envelope::State::Idle)
+    if (ampEnvelope.getCurrentState() == NEURONiK::DSP::Core::Envelope::State::Idle)
     {
         clearCurrentNote();
         return;
+    }
+
+    // --- Data transfer to UI ---
+    // If this voice is active, send its spectral data to the processor for the UI.
+    if (isVoiceActive() && ownerProcessor != nullptr)
+    {
+        const auto& partials = resonator.getPartialAmplitudes();
+        for (int i = 0; i < 64; ++i)
+        {
+            ownerProcessor->spectralDataForUI[i].store(partials[i], std::memory_order_relaxed);
+        }
     }
 
     // Processing loop
@@ -118,7 +149,7 @@ void ResonatorVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer,
         
         // 3. Apply Amplitude Envelope
         float envValue = ampEnvelope.processSample();
-        float finalSample = filteredSample * envValue * currentVelocity;
+        float finalSample = filteredSample * envValue * currentVelocity * currentParams.oscLevel;
         
         // 4. Mix into output buffer (Additive)
         for (int channel = 0; channel < outputBuffer.getNumChannels(); ++channel)
@@ -128,10 +159,18 @@ void ResonatorVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer,
     }
     
     // Check if envelope finished after the block
-    if (ampEnvelope.getCurrentState() == Nexus::DSP::Core::Envelope::State::Idle)
+    if (ampEnvelope.getCurrentState() == NEURONiK::DSP::Core::Envelope::State::Idle)
     {
+        // When the note ends, clear the visualizer data
+        if (ownerProcessor != nullptr)
+        {
+            for (int i = 0; i < 64; ++i)
+            {
+                ownerProcessor->spectralDataForUI[i].store(0.0f, std::memory_order_relaxed);
+            }
+        }
         clearCurrentNote();
     }
 }
 
-} // namespace Nexus::DSP::Synthesis
+} // namespace NEURONiK::DSP::Synthesis

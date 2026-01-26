@@ -3,7 +3,7 @@
 
     ResonatorVoice.h
     Created: 21 Jan 2026
-    Description: Polyphonic voice implementation for NEXUS.
+    Description: Polyphonic voice implementation for NEURONiK.
                  Integrates Resonator, FilterBank, and Envelope modules.
 
   ==============================================================================
@@ -17,12 +17,15 @@
 #include "../CoreModules/FilterBank.h"
 #include "ResonatorSound.h"
 
-namespace Nexus::DSP::Synthesis {
+// Forward declaration to break circular dependency
+class NEURONiKProcessor;
+
+namespace NEURONiK::DSP::Synthesis {
 
 class ResonatorVoice : public juce::SynthesiserVoice
 {
 public:
-    ResonatorVoice();
+    explicit ResonatorVoice(NEURONiKProcessor* p);
     ~ResonatorVoice() override = default;
 
     struct VoiceParams
@@ -43,6 +46,8 @@ public:
         float roughness;
     };
 
+    void loadModel(const NEURONiK::DSP::Core::SpectralModel& model, int slot);
+
     // --- juce::SynthesiserVoice Overrides ---
 
     bool canPlaySound(juce::SynthesiserSound* sound) override;
@@ -62,14 +67,19 @@ public:
 
 private:
     // --- DSP Chain ---
-    Nexus::DSP::Core::Resonator resonator;
-    Nexus::DSP::Core::Envelope ampEnvelope;
-    Nexus::DSP::Core::FilterBank filter;
+    NEURONiK::DSP::Core::Resonator resonator;
+    NEURONiK::DSP::Core::Envelope ampEnvelope;
+    NEURONiK::DSP::Core::FilterBank filter;
 
     float currentVelocity = 0.0f;
     VoiceParams currentParams; // Cached parameters
 
+    float originalFrequency = 440.0f;
+    float pitchBendRatio = 1.0f;
+
+    NEURONiKProcessor* ownerProcessor; // Non-owning pointer to the main processor
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ResonatorVoice)
 };
 
-} // namespace Nexus::DSP::Synthesis
+} // namespace NEURONiK::DSP::Synthesis

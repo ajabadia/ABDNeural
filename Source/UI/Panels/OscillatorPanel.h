@@ -2,27 +2,49 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_processors/juce_audio_processors.h>
-#include "../SpectralVisualizer.h"
 #include "../XYPad.h"
+#include "../MidiLearner.h"
 
-namespace Nexus::UI {
+// Forward declaration to avoid including NEURONiKProcessor.h in a header
+class NEURONiKProcessor;
 
-class OscillatorPanel : public juce::Component
+namespace NEURONiK::UI {
+
+// A small helper struct for our rotary controls
+struct RotaryControl {
+    juce::Slider slider;
+    juce::Label label;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
+    std::unique_ptr<MidiLearner> midiLearner;
+};
+
+class OscillatorPanel : public juce::Component, public juce::Button::Listener
 {
 public:
-    OscillatorPanel(juce::AudioProcessorValueTreeState& vts);
+    // The constructor now takes the main processor reference
+    OscillatorPanel(NEURONiKProcessor& p);
     ~OscillatorPanel() override = default;
 
     void paint(juce::Graphics& g) override;
     void resized() override;
+    void buttonClicked(juce::Button* button) override;
+    void setModelName(int slot, const juce::String& name);
 
 private:
-    juce::AudioProcessorValueTreeState& vts;
+    void setupControl(RotaryControl& ctrl, const juce::String& paramID, const juce::String& labelText);
 
-    SpectralVisualizer visualizer;
+    NEURONiKProcessor& processor;
+
     XYPad xyPad;
+    RotaryControl inharmonicity;
+    RotaryControl roughness;
+
+    juce::TextButton loadA, loadB, loadC, loadD;
+    std::array<juce::String, 4> modelNames;
+
+    std::unique_ptr<juce::FileChooser> fileChooser;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(OscillatorPanel)
 };
 
-} // namespace Nexus::UI
+} // namespace NEURONiK::UI

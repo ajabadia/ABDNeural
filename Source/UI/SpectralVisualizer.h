@@ -11,10 +11,12 @@
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>
-#include <juce_audio_processors/juce_audio_processors.h>
 #include <array>
 
-namespace Nexus::UI {
+// Forward declaration to avoid including NEURONiKProcessor.h in a header
+class NEURONiKProcessor;
+
+namespace NEURONiK::UI {
 
 /**
  * @class SpectralVisualizer
@@ -23,7 +25,8 @@ namespace Nexus::UI {
 class SpectralVisualizer : public juce::Component, public juce::Timer
 {
 public:
-    SpectralVisualizer(juce::AudioProcessorValueTreeState& vts);
+    // The constructor now takes the main processor reference
+    explicit SpectralVisualizer(NEURONiKProcessor& p);
     ~SpectralVisualizer() override;
 
     void paint(juce::Graphics& g) override;
@@ -31,7 +34,9 @@ public:
     void timerCallback() override;
 
 private:
-    juce::AudioProcessorValueTreeState& vts_;
+    // A reference to the processor to access real-time spectral data
+    NEURONiKProcessor& processor;
+
     std::array<float, 64> harmonicProfile_;
     
     // Aesthetic elements
@@ -42,4 +47,4 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SpectralVisualizer)
 };
 
-} // namespace Nexus::UI
+} // namespace NEURONiK::UI

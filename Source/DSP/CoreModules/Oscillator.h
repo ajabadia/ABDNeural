@@ -15,7 +15,7 @@
 #include <cmath>
 #include <cstdint>
 
-namespace Nexus::DSP::Core {
+namespace NEURONiK::DSP::Core {
 
 /**
  * @class Oscillator
@@ -84,4 +84,4 @@ private:
     // float polyBlep(float t) const noexcept;
 };
 
-} // namespace Nexus::DSP::Core
+} // namespace NEURONiK::DSP::Core

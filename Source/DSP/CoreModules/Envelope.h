@@ -13,7 +13,7 @@
 #include <juce_core/juce_core.h>
 #include <atomic>
 
-namespace Nexus::DSP::Core {
+namespace NEURONiK::DSP::Core {
 
 /**
  * @class Envelope
@@ -92,4 +92,4 @@ private:
     static constexpr float RELEASE_TARGET = 0.0001f; // Target near zero
 };
 
-} // namespace Nexus::DSP::Core
+} // namespace NEURONiK::DSP::Core

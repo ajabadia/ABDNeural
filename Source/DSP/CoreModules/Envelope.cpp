@@ -11,7 +11,7 @@
 #include "Envelope.h"
 #include <cmath>
 
-namespace Nexus::DSP::Core {
+namespace NEURONiK::DSP::Core {
 
 Envelope::Envelope() noexcept
 {
@@ -154,4 +154,4 @@ float Envelope::calculateMultiplier(float ms) const noexcept
     return std::exp(-1.0f / samples);
 }
 
-} // namespace Nexus::DSP::Core
+} // namespace NEURONiK::DSP::Core

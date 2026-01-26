@@ -11,10 +11,10 @@
 #include "XYPad.h"
 #include "../State/ParameterDefinitions.h"
 
-namespace Nexus::UI
+namespace NEURONiK::UI
 {
 
-using namespace Nexus::State; // Include the parameter IDs namespace
+using namespace NEURONiK::State; // Include the parameter IDs namespace
 
 XYPad::XYPad(juce::AudioProcessorValueTreeState& vtsIn)
     : vts(vtsIn)
@@ -81,6 +81,7 @@ void XYPad::mouseDrag(const juce::MouseEvent& event)
 
 void XYPad::mouseUp(const juce::MouseEvent& event)
 {
+    juce::ignoreUnused(event); // FIX: Silence the 'unused parameter' warning
     if (auto* xParam = vts.getParameter(IDs::morphX)) xParam->endChangeGesture();
     if (auto* yParam = vts.getParameter(IDs::morphY)) yParam->endChangeGesture();
 }
@@ -105,4 +106,4 @@ void XYPad::updateThumbPosition()
     }
 }
 
-} // namespace Nexus::UI
+} // namespace NEURONiK::UI

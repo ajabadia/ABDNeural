@@ -13,7 +13,7 @@
 #include <juce_core/juce_core.h>
 #include <cmath>
 
-namespace Nexus::DSP::Effects {
+namespace NEURONiK::DSP::Effects {
 
 /**
  * Saturation effect using a soft-clipping sigmoid function.
@@ -40,9 +40,21 @@ public:
     inline float processSample(float input) const noexcept
     {
         // Simple soft-clipping using atan or tanh approximation
-        // f(x) = (2 / PI) * atan(x * drive)
         float x = input * drive;
         return std::atan(x) * 0.63661977236f; // 2/PI constant
+    }
+
+    /**
+     * Processes an entire buffer of samples.
+     */
+    void processBlock(juce::AudioBuffer<float>& buffer) const noexcept
+    {
+        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+        {
+            float* data = buffer.getWritePointer(ch);
+            for (int s = 0; s < buffer.getNumSamples(); ++s)
+                data[s] = processSample(data[s]);
+        }
     }
 
 private:
@@ -51,4 +63,4 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Saturation)
 };
 
-} // namespace Nexus::DSP::Effects
+} // namespace NEURONiK::DSP::Effects

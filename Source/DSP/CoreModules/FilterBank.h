@@ -14,7 +14,7 @@
 #include <atomic>
 #include <vector>
 
-namespace Nexus::DSP::Core {
+namespace NEURONiK::DSP::Core {
 
 /**
  * @class FilterBank
@@ -78,4 +78,4 @@ private:
     std::atomic<bool> coefficientsDirty_{ true };
 };
 
-} // namespace Nexus::DSP::Core
+} // namespace NEURONiK::DSP::Core

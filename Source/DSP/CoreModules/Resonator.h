@@ -15,7 +15,7 @@
 #include <array>
 #include "Oscillator.h"
 
-namespace Nexus::DSP::Core {
+namespace NEURONiK::DSP::Core {
 
 /**
  * @struct SpectralModel
@@ -61,6 +61,9 @@ private:
     float entropyAmount = 0.0f;
 
     float normalizationFactor = 1.0f;
+
+    // Fast random seed
+    uint32_t randomSeed = 1234567;
 };
 
-} // namespace Nexus::DSP::Core
+} // namespace NEURONiK::DSP::Core

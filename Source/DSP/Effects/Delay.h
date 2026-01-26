@@ -13,7 +13,7 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <vector>
 
-namespace Nexus::DSP::Effects {
+namespace NEURONiK::DSP::Effects {
 
 /**
  * A simple stereo feedback delay.
@@ -95,4 +95,4 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Delay)
 };
 
-} // namespace Nexus::DSP::Effects
+} // namespace NEURONiK::DSP::Effects

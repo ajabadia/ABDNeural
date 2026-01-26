@@ -10,7 +10,7 @@
 
 #include "Oscillator.h"
 
-namespace Nexus::DSP::Core {
+namespace NEURONiK::DSP::Core {
 
 Oscillator::Oscillator() noexcept
 {
@@ -123,4 +123,4 @@ void Oscillator::updatePhaseIncrement() noexcept
     // Used if we want to cache it, but currently dynamic in processSample
 }
 
-} // namespace Nexus::DSP::Core
+} // namespace NEURONiK::DSP::Core

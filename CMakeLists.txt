@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(NEXUS_Synthesizer VERSION 0.1.0 LANGUAGES CXX)
+project(NEURONiK_Synthesizer VERSION 0.1.0 LANGUAGES CXX)
 
 # ============================================================================
 # PROJECT SETUP
@@ -37,12 +37,12 @@ endif()
 # ADD SOURCE FILES (DSP CORE)
 # ============================================================================
 
-set(NEXUS_SOURCES
+set(NEURONIK_SOURCES
     # Main
-    Source/Main/NEXUSProcessor.h
-    Source/Main/NEXUSProcessor.cpp
-    Source/Main/NEXUSEditor.h
-    Source/Main/NEXUSEditor.cpp
+    Source/Main/NEURONiKProcessor.h
+    Source/Main/NEURONiKProcessor.cpp
+    Source/Main/NEURONiKEditor.h
+    Source/Main/NEURONiKEditor.cpp
     
     # UI
     Source/UI/ParameterPanel.h
@@ -51,17 +51,28 @@ set(NEXUS_SOURCES
     Source/UI/SpectralVisualizer.cpp
     Source/UI/XYPad.h
     Source/UI/XYPad.cpp
+    Source/UI/MidiLearner.cpp
     Source/UI/Panels/OscillatorPanel.h
     Source/UI/Panels/OscillatorPanel.cpp
     Source/UI/Panels/FilterEnvPanel.h
     Source/UI/Panels/FilterEnvPanel.cpp
     Source/UI/Panels/FXPanel.h
     Source/UI/Panels/FXPanel.cpp
+    Source/UI/Panels/ModulationPanel.cpp
+    Source/UI/Panels/PresetPanel.h
+    Source/UI/Panels/PresetPanel.cpp
     
+    # UI - Browser
+    Source/UI/Browser/PresetBrowser.h
+    Source/UI/Browser/PresetBrowser.cpp
+
     # State
     Source/State/ParameterDefinitions.h
+    Source/Serialization/PresetManager.h
+    Source/Serialization/PresetManager.cpp
     
     # DSP - CoreModules
+    Source/DSP/CoreModules/LFO.cpp
     Source/DSP/CoreModules/Oscillator.h
     Source/DSP/CoreModules/Oscillator.cpp
     Source/DSP/CoreModules/Resonator.h
@@ -76,36 +87,36 @@ set(NEXUS_SOURCES
     Source/DSP/Synthesis/ResonatorVoice.h
     Source/DSP/Synthesis/ResonatorVoice.cpp
 )
-message(STATUS "NEXUS_SOURCES: ${NEXUS_SOURCES}")
+message(STATUS "NEURONIK_SOURCES: ${NEURONIK_SOURCES}")
 
 # ============================================================================
 # CREATE PLUGIN TARGET
 # ============================================================================
 
-juce_add_plugin(NEXUS
-    PRODUCT_NAME "NEXUS"
-    DESCRIPTION "NEXUS Synthesizer Plugin"
-    PLUGIN_MANUFACTURER_CODE Nxs1
-    PLUGIN_CODE Nxs1
+juce_add_plugin(NEURONiK
+    PRODUCT_NAME "NEURONiK"
+    DESCRIPTION "NEURONiK Synthesizer Plugin"
+    PLUGIN_MANUFACTURER_CODE Nrnk
+    PLUGIN_CODE Nrnk
     FORMATS VST3 AU Standalone
     IS_SYNTH TRUE
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
-    SOURCES ${NEXUS_SOURCES}
+    SOURCES ${NEURONIK_SOURCES}
 )
 
 
 # Reverted to standard to avoid linker conflicts with custom options button
-# target_compile_definitions(NEXUS PUBLIC JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
+# target_compile_definitions(NEURONiK PUBLIC JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
 
 
 
-if(TARGET NEXUS_Standalone)
-    target_sources(NEXUS_Standalone PRIVATE ${NEXUS_SOURCES})
+if(TARGET NEURONiK_Standalone)
+    target_sources(NEURONiK_Standalone PRIVATE ${NEURONIK_SOURCES})
 endif()
 
-target_link_libraries(NEXUS PRIVATE
+target_link_libraries(NEURONiK PRIVATE
     juce::juce_audio_basics
     juce::juce_audio_devices
     juce::juce_audio_formats

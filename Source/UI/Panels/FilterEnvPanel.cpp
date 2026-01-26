@@ -1,12 +1,13 @@
 #include "FilterEnvPanel.h"
+#include "../../Main/NEURONiKProcessor.h"
 #include "../../State/ParameterDefinitions.h"
 
-namespace Nexus::UI {
+namespace NEURONiK::UI {
 
-FilterEnvPanel::FilterEnvPanel(juce::AudioProcessorValueTreeState& vtsIn)
-    : vts(vtsIn)
+FilterEnvPanel::FilterEnvPanel(NEURONiKProcessor& p)
+    : processor(p), vts(p.getAPVTS())
 {
-    using namespace Nexus::State;
+    using namespace NEURONiK::State;
 
     setupControl(attack,    IDs::envAttack,    "ATTACK");
     setupControl(decay,     IDs::envDecay,     "DECAY");
@@ -26,10 +27,11 @@ void FilterEnvPanel::setupControl(RotaryControl& ctrl, const juce::String& param
     
     ctrl.label.setText(labelText, juce::dontSendNotification);
     ctrl.label.setJustificationType(juce::Justification::centred);
-    ctrl.label.setFont(juce::Font(12.0f).boldened());
+    ctrl.label.setFont(juce::Font(juce::FontOptions(12.0f).withStyle("Bold")));
     addAndMakeVisible(ctrl.label);
     
     ctrl.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(vts, paramID, ctrl.slider);
+    ctrl.midiLearner = std::make_unique<MidiLearner>(processor, ctrl.slider, paramID);
 }
 
 void FilterEnvPanel::paint(juce::Graphics& g)
@@ -70,4 +72,4 @@ void FilterEnvPanel::resized()
     layoutControl(release, envArea.reduced(10.0f, 5.0f));
 }
 
-} // namespace Nexus::UI
+} // namespace NEURONiK::UI

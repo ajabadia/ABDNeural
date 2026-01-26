@@ -11,7 +11,7 @@
 #include "FilterBank.h"
 #include <cmath>
 
-namespace Nexus::DSP::Core {
+namespace NEURONiK::DSP::Core {
 
 FilterBank::FilterBank() noexcept
 {
@@ -138,4 +138,4 @@ void FilterBank::updateCoefficients() noexcept
     coefficientsDirty_.store(false, std::memory_order_release);
 }
 
-} // namespace Nexus::DSP::Core
+} // namespace NEURONiK::DSP::Core

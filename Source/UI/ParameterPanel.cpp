@@ -1,21 +1,34 @@
 #include "ParameterPanel.h"
 #include "../State/ParameterDefinitions.h"
 
-namespace Nexus::UI {
+namespace NEURONiK::UI {
 
-ParameterPanel::ParameterPanel(juce::AudioProcessorValueTreeState& vtsIn)
-    : vts(vtsIn)
+using namespace NEURONiK::State;
+
+ParameterPanel::ParameterPanel(NEURONiKProcessor& p)
+    : processor(p), vts(p.getAPVTS()), presetPanel(p)
 {
-    using namespace Nexus::State;
+    addAndMakeVisible(presetPanel);
 
-    setupControl(rollOff,   IDs::resonatorRolloff, "HARMONIC TENSION");
-    setupControl(cutoff,    IDs::filterCutoff,     "BRILLANCE");
-    setupControl(resonance, IDs::masterLevel,      "VOLUME");
-    
     setupControl(attack,    IDs::envAttack,   "ATTACK");
     setupControl(decay,     IDs::envDecay,    "DECAY");
     setupControl(sustain,   IDs::envSustain,  "SUSTAIN");
     setupControl(release,   IDs::envRelease,  "RELEASE");
+    setupControl(cutoff,    IDs::filterCutoff, "BRILLANCE");
+    setupControl(resonance, IDs::masterLevel,  "VOLUME");
+
+    addAndMakeVisible(randomizeButton);
+    randomizeButton.onClick = [this] { randomizeParameters(); };
+
+    titleLabel.setFont(juce::Font(juce::FontOptions(28.0f).withStyle("Bold")));
+    titleLabel.setColour(juce::Label::textColourId, juce::Colours::cyan);
+    titleLabel.setJustificationType(juce::Justification::centredLeft);
+    addAndMakeVisible(titleLabel);
+
+    subtitleLabel.setFont(juce::Font(juce::FontOptions(14.0f).withStyle("Italic")));
+    subtitleLabel.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+    subtitleLabel.setJustificationType(juce::Justification::centredLeft);
+    addAndMakeVisible(subtitleLabel);
 }
 
 void ParameterPanel::setupControl(RotaryControl& ctrl, const juce::String& paramID, const juce::String& labelText)
@@ -27,10 +40,36 @@ void ParameterPanel::setupControl(RotaryControl& ctrl, const juce::String& param
     
     ctrl.label.setText(labelText, juce::dontSendNotification);
     ctrl.label.setJustificationType(juce::Justification::centred);
-    ctrl.label.setFont(juce::Font(12.0f).boldened());
+    ctrl.label.setFont(juce::Font(juce::FontOptions(12.0f).withStyle("Bold")));
     addAndMakeVisible(ctrl.label);
     
     ctrl.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(vts, paramID, ctrl.slider);
+    ctrl.midiLearner = std::make_unique<MidiLearner>(processor, ctrl.slider, paramID);
+}
+
+void ParameterPanel::randomizeParameters()
+{
+    auto& random = juce::Random::getSystemRandom();
+
+    auto randomizeParam = [&](const juce::String& id, float minVal, float maxVal) {
+        if (auto* param = vts.getParameter(id))
+        {
+            float range = maxVal - minVal;
+            float randomVal = minVal + random.nextFloat() * range;
+            param->setValueNotifyingHost(param->getNormalisableRange().convertTo0to1(randomVal));
+        }
+    };
+
+    randomizeParam(IDs::morphX, 0.0f, 1.0f);
+    randomizeParam(IDs::morphY, 0.0f, 1.0f);
+    randomizeParam(IDs::oscInharmonicity, 0.0f, 0.5f);
+    randomizeParam(IDs::oscRoughness, 0.0f, 0.4f);
+    randomizeParam(IDs::filterCutoff, 200.0f, 8000.0f);
+    randomizeParam(IDs::filterRes, 0.0f, 0.6f);
+    randomizeParam(IDs::envAttack, 0.001f, 0.5f);
+    randomizeParam(IDs::envDecay, 0.1f, 1.0f);
+    randomizeParam(IDs::envSustain, 0.2f, 0.8f);
+    randomizeParam(IDs::envRelease, 0.1f, 2.0f);
 }
 
 void ParameterPanel::paint(juce::Graphics& g)
@@ -52,34 +91,42 @@ void ParameterPanel::paint(juce::Graphics& g)
 void ParameterPanel::resized()
 {
     auto area = getLocalBounds().reduced(15);
-    auto floatArea = area.toFloat();
 
-    auto topRow = floatArea.removeFromTop(floatArea.getHeight() / 2.0f);
-    auto bottomRow = floatArea;
-    
-    const int labelHeight = 15;
-    const int textBoxHeight = 20;
+    presetPanel.setBounds(area.removeFromTop(40));
 
-    auto layoutControl = [&](RotaryControl& ctrl, juce::Rectangle<float> bounds) {
-        auto intBounds = bounds.toNearestInt();
-        ctrl.label.setBounds(intBounds.removeFromTop(labelHeight));
-        ctrl.slider.setBounds(intBounds.removeFromTop(intBounds.getHeight() - textBoxHeight));
+    auto titleArea = area.removeFromBottom(40);
+    titleLabel.setBounds(titleArea.removeFromLeft(200));
+    subtitleLabel.setBounds(titleArea);
+
+    auto controlsArea = area.reduced(10, 0);
+
+    const int numRows = 2;
+    const int numCols = 4;
+    auto rowHeight = controlsArea.getHeight() / numRows;
+    auto colWidth = controlsArea.getWidth() / numCols;
+
+    auto layoutControl = [&](RotaryControl& ctrl, int row, int col) {
+        auto bounds = controlsArea.withY(controlsArea.getY() + row * rowHeight)
+                                .withX(controlsArea.getX() + col * colWidth)
+                                .withHeight(rowHeight)
+                                .withWidth(colWidth);
+
+        ctrl.label.setBounds(bounds.removeFromTop(15));
+        ctrl.slider.setBounds(bounds.reduced(5));
     };
 
-    auto envArea = topRow.removeFromLeft(topRow.getWidth() * 0.65f);
-    auto envWidth = envArea.getWidth() / 4.0f;
-    
-    layoutControl(attack, envArea.removeFromLeft(envWidth).reduced(5.0f));
-    layoutControl(decay, envArea.removeFromLeft(envWidth).reduced(5.0f));
-    layoutControl(sustain, envArea.removeFromLeft(envWidth).reduced(5.0f));
-    layoutControl(release, envArea.reduced(5.0f));
-    
-    auto filterWidth = topRow.getWidth() / 2.0f;
-    layoutControl(cutoff, topRow.removeFromLeft(filterWidth).reduced(5.0f));
-    layoutControl(resonance, topRow.reduced(5.0f));
-    
-    auto resArea = bottomRow.removeFromLeft(bottomRow.getWidth() * 0.22f);
-    layoutControl(rollOff, resArea.reduced(5.0f));
+    layoutControl(attack, 0, 0);
+    layoutControl(decay, 0, 1);
+    layoutControl(sustain, 0, 2);
+    layoutControl(release, 0, 3);
+
+    layoutControl(cutoff, 1, 0);
+    layoutControl(resonance, 1, 1);
+
+    randomizeButton.setBounds(controlsArea.withY(controlsArea.getY() + rowHeight)
+                                        .withX(controlsArea.getX() + 3 * colWidth)
+                                        .withHeight(rowHeight)
+                                        .withWidth(colWidth).reduced(15));
 }
 
-} // namespace Nexus::UI
+} // namespace NEURONiK::UI

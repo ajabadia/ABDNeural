@@ -1,13 +1,17 @@
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "../MidiLearner.h"
 
-namespace Nexus::UI {
+// Forward declaration
+class NEURONiKProcessor;
+
+namespace NEURONiK::UI {
 
 class FilterEnvPanel : public juce::Component
 {
 public:
-    FilterEnvPanel(juce::AudioProcessorValueTreeState& vts);
+    FilterEnvPanel(NEURONiKProcessor& p);
     ~FilterEnvPanel() override = default;
 
     void paint(juce::Graphics& g) override;
@@ -18,10 +22,12 @@ private:
         juce::Slider slider;
         juce::Label label;
         std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
+        std::unique_ptr<MidiLearner> midiLearner;
     };
 
     void setupControl(RotaryControl& control, const juce::String& paramID, const juce::String& labelText);
 
+    NEURONiKProcessor& processor;
     juce::AudioProcessorValueTreeState& vts;
     
     RotaryControl attack, decay, sustain, release;
@@ -30,4 +36,4 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FilterEnvPanel)
 };
 
-} // namespace Nexus::UI
+} // namespace NEURONiK::UI
