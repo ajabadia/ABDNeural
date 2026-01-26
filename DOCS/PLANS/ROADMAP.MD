@@ -41,19 +41,19 @@ Este documento sirve como la guía técnica y filosófica para el desarrollo de 
 
 ---
 
-## 🟡 FASE 12: GESTIÓN Y CONTROL TOTAL [EN CURSO]
+## 🟢 FASE 12: GESTIÓN Y CONTROL TOTAL [COMPLETADO]
 *Objetivo: Dotar a NEURONiK de un sistema de gestión de sonidos profesional y control MIDI completo.*
 
-### Tarea 12.1: Sistema de Presets (.neuronikpreset) [EN CURSO]
+### Tarea 12.1: Sistema de Presets (.neuronikpreset) [COMPLETADO]
 - [x] **Especificación**: Implementar la capacidad de guardar y cargar el estado completo del sintetizador.
 - [x] **Backend**: Clase `PresetManager` implementada con persistencia en XML.
 - [x] **UI Básica**: Implementado `ComboBox` (desplegable) en el panel `Parameters` para selección rápida, reemplazando los botones anticuados.
 - [x] **UI Avanzada**: Creada pestaña "BROWSER" con 3 columnas (Bank, Preset, Info) y funcionalidad de búsqueda, inspirada en sintetizadores modernos como Osirus.
 
-### Tarea 12.2: Carga de Modelos Espectrales (.neuronikmodel) [PARCIALMENTE COMPLETADO]
+### Tarea 12.2: Carga de Modelos Espectrales (.neuronikmodel) [COMPLETADO]
 - [x] **UI**: Añadir cuatro botones ("Load A", "Load B", etc.) en el `OscillatorPanel`.
 - [x] **Lógica**: Implementar la carga de archivos JSON.
-- [ ] **Soporte Headless**: El preset deberá guardar las rutas a los archivos `.neuronikmodel` utilizados.
+- [x] **Soporte Headless**: El preset ahora guarda y restaura las rutas a los archivos `.neuronikmodel` utilizados automáticamente.
 
 ### Tarea 12.3: Mapeo de MIDI CC y Controles Estándar
 - [x] **Sub-tarea 12.3.1 (Hard-coded)**: Implementar Pitch Bend, Sustain Pedal, Mod Wheel, Main Volume.
@@ -64,6 +64,7 @@ Este documento sirve como la guía técnica y filosófica para el desarrollo de 
 - [x] **Sub-tarea 12.3.5 (Pitch Bend como Modulador)**: Implementado Pitch Bend y Mod Wheel como fuentes en la matriz de modulación.
 - [x] **Sub-tarea 12.3.6 (Corrección de Sincronía LFO)**: Corregido bug donde los LFOs avanzaban solo 1 muestra por bloque de audio. Implementada lógica de avance por bloques y mapeo de divisiones rítmicas.
 - [x] **Sub-tarea 12.3.7 (Escalado de Modulación)**: Corregido bug de escalado en la matriz donde los valores modulados no respetaban el rango real del parámetro destino (especialmente crítico en Filtro y Envolventes).
+- [x] **Sub-tarea 12.3.9 (Delay Sync)**: Implementada sincronización del Delay con el BPM (interno o del host) con selector de divisiones rítmicas.
 
 ---
 
@@ -76,11 +77,76 @@ Este documento sirve como la guía técnica y filosófica para el desarrollo de 
 
 ---
 
-## ⚫ FASE 17: GESTIÓN DE PRESETS AVANZADA [PENDIENTE]
+## 🟢 FASE 17: GESTIÓN DE PRESETS AVANZADA [COMPLETADO]
 *Objetivo: Mejorar la gestión y manipulación de presets.*
 
-- [ ] **Tarea 17.1: Copiar/Pegar Parámetros de Patch**: Implementar la funcionalidad de copiar y pegar todos los parámetros de un patch a otro. Esta opción estará disponible en un futuro menú "Edit".
-- [ ] **Tarea 17.2: Gestor de Presets en Pestaña GENERAL**: Añadir un gestor de presets en la pestaña "GENERAL" para navegar, cargar y guardar presets de forma visual e intuitiva, siguiendo estándares de plugins modernos.
+- [x] **Tarea 17.1: Copiar/Pegar Parámetros de Patch**: Implementada funcionalidad vía Portapapeles del sistema en el menú "Edit".
+- [x] **Tarea 17.2: Gestor de Presets Avanzado**: Creada pestaña "BROWSER" y selector rápido en "GENERAL" para gestión completa.
+
+---
+
+## 🔵 FASE 18: NEURONiK MODEL MAKER (PENDIENTE)
+*Objetivo: Permitir al usuario crear sus propios timbres (.neuronikmodel) a partir de muestras de audio.*
+
+- [ ] **Tarea 18.1: Infraestructura de Librería Compartida**: Separar la definición de `SpectralModel` en una carpeta `Common`.
+- [ ] **Tarea 18.2: Aplicación Model Maker (Standalone)**: Crear el proyecto de aplicación de escritorio JUCE independiente.
+- [ ] **Tarea 18.3: Análisis FFT y Extracción de Armónicos**: Implementar carga de audio y algoritmo de detección de picos espectrales para los 64 parciales.
+- [ ] **Tarea 18.4: Exportación de Modelos**: Guardar el resultado en formato JSON compatible con NEURONiK.
+
+---
+
+## 🟢 FASE 19: ESCULTURA ESPECTRAL AVANZADA [COMPLETADO]
+*Objetivo: Implementar la lógica DSP para los parámetros "Legacy" ya definidos en la UI.*
+
+- [x] **Tarea 19.1: Lógica de Parity (Odd/Even)**: Ajustada la ganancia de parciales impares/pares dinámicamente según el balance.
+- [x] **Tarea 19.2: Spectral Shift**: Desplazamiento del espectro de armónicos por encima o debajo de su frecuencia fundamental (estilo formante).
+- [x] **Tarea 19.3: Harmonic Roll-off**: Implementada la pendiente de caída global (exponencial) para suavizar o endurecer el timbre.
+
+---
+
+## 🟢 FASE 20: EXPANSIÓN DE EFECTOS (FX 2.0) [COMPLETADO]
+*Objetivo: Añadir profundidad espacial y carácter al sonido.*
+
+- [x] **Tarea 20.1: Reverb de Alta Calidad**: Implementado algoritmo de reverb (juce::Reverb) con controles de Size, Damp, Width y Mix.
+- [x] **Tarea 20.2: Chorus**: Implementado efecto de Chorus con modulación LFO de retardo, control de Rate, Depth y Mix.
+
+---
+
+## 🔴 FASE 21: ARPEGIADOR Y MIDI AVANZADO (PENDIENTE)
+*Objetivo: Mejorar la capacidad interpretativa del instrumento.*
+
+- [ ] **Tarea 21.1: Motor de Arpeggiador**: Modos Up, Down, Random, y Sync con el BPM interno/host.
+- [ ] **Tarea 21.2: Curvas de Velocidad y Aftertouch**: Permitir mapear la presión y velocidad a parámetros de síntesis (ej. Cutoff o Inharmonicity).
+- [ ] **Tarea 21.3: Mapeo MIDI Estándar y Documentación**: 
+    -   Definir mapa CC por defecto siguiendo estándar General MIDI (ej. 74 Cutoff, 71 Resonance) y convenciones de mercado.
+    -   Adaptar parámetros específicos al esquema del Hartmann Neuron original donde sea posible.
+    -   Usar NRPN para parámetros extendidos si se agotan los CCs.
+    -   Generar tabla de implementación y añadirla al menú de Ayuda.
+
+---
+
+## 🟢 FASE 22: MEJORA DE ALEATORIZACIÓN [COMPLETADO]
+*Objetivo: Dar más control sobre el motor de Randomización.*
+
+- [x] **Tarea 22.1: Randomization Strength**: Añadir un slider ("STRENGTH") que controle cuánto se desvían los parámetros de su valor actual al pulsar RANDOM.
+- [x] **Tarea 22.2: Bloqueo de Parámetros (Freeze)**: Permitir "bloquear" ciertos módulos (ej. Envolventes) para que no sean afectados por la aleatorización.
+
+---
+
+## 🟢 FASE 23: FEEDBACK VISUAL Y ANIMACIÓN [COMPLETADO]
+*Objetivo: Hacer que la interfaz refleje el estado dinámico del motor de síntesis.*
+
+- [x] **Tarea 23.1: Animación de Controles Modulados**: Los Knobs muestran un anillo cian que se mueve en tiempo real reflejando la modulación.
+- [x] **Tarea 23.2: Animación del Neural Pad**: Representación visual del movimiento del punto de morphing y "ghost cursor" para indicar el objetivo.
+- [x] **Tarea 23.3: Visualización de Envolventes**: Gráfico ADSR interactivo que se ilumina con la intensidad de la envolvente de las voces activas.
+
+---
+
+## 🔵 FASE 24: REDISEÑO DE INTERFAZ DE EFECTOS [PENDIENTE]
+*Objetivo: Organizar y limpiar la pestaña FX para mejorar la usabilidad.*
+
+- [ ] **Tarea 24.1: Reorganización FX**: Rediseñar `FXPanel` para eliminar el caos actual, agrupando controles lógica y estéticamente.
+- [ ] **Tarea 24.2: Animación FX**: Aplicar el sistema de feedback visual (anillos de modulación) a los controles de efectos.
 
 ---
 

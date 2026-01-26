@@ -4,6 +4,12 @@ trigger: always_on
 
 LAS  REGLAS CLAVE (Nunca romper)
 - CUANDO HAGAS UN IMPLEMENTATION_PLAN, hazlo con mucho detalle, paso a paso y, si es posible, haz referencias a la documentación de dónde se ha originado para poder consultarla cuando se llegue a esa parte o si se ha obtenido de alguna fuente o razonamiento o creas un archivo para que sirva de fuente o lo añades al propio plan, para no perder información valiosa. Además el contenido AÑÁDELO AL FICHERO ROADMAP.MD EN DOCS\PLANS\ PARA QUE QUEDE TRAZA DE LO REALIZADO Y ANTES DE AÑADIRLO, ACTUALIZA LO ANTERIOR PARA DEJAR REFLEJADO LO YA REALIZADO.
+- evita crear archivos grandes, mejor tenelo modularizado.
+- sigue la filosofía DRY siempre que se pueda
+
+Controles:
+- cada control que se cree tiene que tener asignado un control midi, preferiblemente siguiendo el estándar GM, salvo que sea una emulación/reinterpretación de un instrumento real (hardware o software) que habrá que ceñirse a los controles definidos en el original.
+- cada control tendrá que tener persistencia y poder ser guardado en el preset y cargado desde un preset, igualmente si se pueden guardar los preset a disco. Si es posible, mejor serializar el estado comleto de parámetros para evitar tener que definir los parámetros cada vez.
 
 
 - LOGS EN LOGS/ (nunca en raíz)
@@ -332,4 +338,3 @@ if (divisor < 0.001f) divisor = 0.001f;  // Before divide
  * Uses lock-free atomics.
  */
 void setFrequency(float hz) noexcept;
-

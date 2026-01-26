@@ -1,8 +1,8 @@
-# NEXUS - Advanced Hybrid Synthesizer
+# NEURONiK - Advanced Hybrid Synthesizer
 
-**NEXUS** is a next-generation polyphonic synthesizer plugin built with JUCE. It combines a powerful 64-partial additive synthesis engine with concepts inspired by neural networks to deliver a unique and expressive sound design experience. 
+**NEURONiK** is a next-generation polyphonic synthesizer plugin built with JUCE. It combines a powerful 64-partial additive synthesis engine with concepts inspired by neural networks to deliver a unique and expressive sound design experience. 
 
-While initially envisioned as a deep-learning-based instrument, NEXUS has evolved into a highly optimized C++ DSP engine that captures the *spirit* of neural synthesis—sonic complexity, rich harmonic textures, and fluid morphing capabilities—without the overhead of heavy AI frameworks.
+While initially envisioned as a deep-learning-based instrument, NEURONiK has evolved into a highly optimized C++ DSP engine that captures the *spirit* of neural synthesis—sonic complexity, rich harmonic textures, and fluid morphing capabilities—without the overhead of heavy AI frameworks.
 
 **Repository:** [https://github.com/ajabadia/ABDNeural](https://github.com/ajabadia/ABDNeural)
 
@@ -10,7 +10,7 @@ While initially envisioned as a deep-learning-based instrument, NEXUS has evolve
 
 ## Key Features
 
-*   **Hybrid Additive Engine**: At its core, NEXUS uses a 64-partial additive resonator that provides precise control over the harmonic content of the sound.
+*   **Hybrid Additive Engine**: At its core, NEURONiK uses a 64-partial additive resonator that provides precise control over the harmonic content of the sound.
 *   **Spectral Morphing**: Seamlessly blend between two different harmonic "models" (Model A and Model B) to create evolving textures and complex timbres.
 *   **Sonic Matter Sculpting**: Go beyond traditional synthesis with unique "matter" parameters:
     *   **Inharmonicity**: Stretches the harmonic series to create metallic, bell-like, or dissonant sounds.
@@ -20,7 +20,7 @@ While initially envisioned as a deep-learning-based instrument, NEXUS has evolve
 
 ## Technical Architecture
 
-NEXUS is built entirely in C++ using the **JUCE framework**. The architecture prioritizes performance and stability:
+NEURONiK is built entirely in C++ using the **JUCE framework**. The architecture prioritizes performance and stability:
 
 *   **Custom DSP Engine**: All audio processing is handled by a custom-built DSP engine designed for real-time performance with zero memory allocations on the audio thread.
 *   **APVTS-driven State**: Parameter management is centralized using `juce::AudioProcessorValueTreeState` for robust DAW integration, preset handling, and automation.
@@ -45,7 +45,7 @@ A PowerShell script is provided to manage the build process. Open a PowerShell t
 .\Scripts\manage.ps1 -Task Clean
 ```
 
-The compiled plugin (`NEXUS_Standalone.exe`, `NEXUS.vst3`) will be located in the `build_nexus/NEXUS_artefacts/` directory.
+The compiled plugin (`NEURONiK_Standalone.exe`, `NEURONiK.vst3`) will be located in the `build_neuronik/NEURONiK_artefacts/` directory.
 
 ## Project Roadmap
 

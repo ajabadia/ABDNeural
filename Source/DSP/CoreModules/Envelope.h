@@ -62,6 +62,7 @@ public:
     
     bool isActive() const noexcept { return currentState_ != State::Idle; }
     State getCurrentState() const noexcept { return currentState_; }
+    float getLastOutput() const noexcept { return currentLevel_; }
 
 private:
     // --- Internal Logic ---

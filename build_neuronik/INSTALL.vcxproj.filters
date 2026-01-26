@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="D:\desarrollos\ABDNeural\build_neuronik\CMakeFiles\8aa914a8de483b598a8687a3e374f3c7\INSTALL_force.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{BDDEA984-03D1-3239-8C87-D7448C619850}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

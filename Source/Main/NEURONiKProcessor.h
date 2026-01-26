@@ -8,12 +8,8 @@
 #include "../DSP/Synthesis/ResonatorVoice.h"
 #include "../DSP/Effects/Saturation.h"
 #include "../DSP/Effects/Delay.h"
-#include "../DSP/CoreModules/LFO.h"
-#include <atomic>
-#include <map>
-#include "../DSP/Synthesis/ResonatorVoice.h"
-#include "../DSP/Effects/Saturation.h"
-#include "../DSP/Effects/Delay.h"
+#include "../DSP/Effects/Chorus.h"
+#include "../DSP/Effects/Reverb.h"
 #include "../DSP/CoreModules/LFO.h"
 #include "../DSP/CoreModules/Resonator.h" // Include for SpectralModel
 #include "../Serialization/PresetManager.h"
@@ -21,11 +17,14 @@
 namespace NEURONiK::DSP::Effects {
     class Saturation;
     class Delay;
+    class Chorus;
+    class Reverb;
 }
 
 class NEURONiKProcessor : public juce::AudioProcessor,
                      public juce::AudioProcessorValueTreeState::Listener,
-                     public juce::MidiKeyboardState::Listener
+                     public juce::MidiKeyboardState::Listener,
+                     public juce::ValueTree::Listener
 {
 public:
     NEURONiKProcessor();
@@ -44,6 +43,11 @@ public:
 
     // --- Model Loading ---
     void loadModel(const juce::File& file, int slot);
+    void reloadModels();
+
+    // --- Patch Copy/Paste ---
+    void copyPatchToClipboard();
+    void pastePatchFromClipboard();
 
     // --- Editor Creation ---
     juce::AudioProcessorEditor* createEditor() override;
@@ -73,11 +77,31 @@ public:
 
     // --- Real-time spectral data for UI ---
     std::array<std::atomic<float>, 64> spectralDataForUI;
+    
+    // Phase 23: Visualization Data
+    std::atomic<float> uiMorphX { 0.5f };
+    std::atomic<float> uiMorphY { 0.5f };
+    std::atomic<float> uiEnvelope { 0.0f };
+    std::atomic<float> uiCutoff { 0.5f };
+    std::atomic<float> uiResonance { 0.0f };
+    std::atomic<float> uiInharmonicity { 0.0f };
+    std::atomic<float> uiRoughness { 0.0f };
+    std::atomic<float> uiParity { 0.5f };
+    std::atomic<float> uiShift { 1.0f };
+    std::atomic<float> uiRollOff { 1.0f };
+    std::atomic<float> uiAttack { 0.0f };
+    std::atomic<float> uiDecay { 0.0f };
+    std::atomic<float> uiSustain { 0.0f };
+    std::atomic<float> uiRelease { 0.0f };
 
 protected:
     // --- MidiKeyboardState::Listener overrides ---
     void handleNoteOn(juce::MidiKeyboardState*, int midiChannel, int midiNoteNumber, float velocity) override;
     void handleNoteOff(juce::MidiKeyboardState*, int midiChannel, int midiNoteNumber, float velocity) override;
+
+    // ValueTree::Listener
+    void valueTreePropertyChanged(juce::ValueTree& tree, const juce::Identifier& property) override;
+    void valueTreeRedirected(juce::ValueTree& tree) override;
 
 private:
     juce::AudioProcessorValueTreeState apvts;
@@ -132,6 +156,8 @@ private:
     // --- Global FX ---
     NEURONiK::DSP::Effects::Saturation saturationProcessor;
     NEURONiK::DSP::Effects::Delay delayProcessor;
+    NEURONiK::DSP::Effects::Chorus chorusProcessor;
+    NEURONiK::DSP::Effects::Reverb reverbProcessor;
     juce::LinearSmoothedValue<float> masterLevelSmoother;
 
     struct EditorSettings {

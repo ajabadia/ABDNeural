@@ -31,6 +31,15 @@ public:
     int loadNextPreset();
     int loadPreviousPreset();
 
+    // --- Bank Support ---
+    void saveBank(const juce::File& targetFile, const juce::File& sourceDir);
+    void loadBank(const juce::File& bankFile);
+
+    // --- Metadata Handling ---
+    void setTagsForPreset(const juce::File& file, const juce::StringArray& tags);
+    juce::StringArray getTagsForPreset(const juce::File& file) const;
+    juce::StringArray getAllUniqueTags() const;
+
     juce::StringArray getAllPresets() const;
     juce::String getCurrentPreset() const;
 

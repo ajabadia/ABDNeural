@@ -43,6 +43,9 @@ void ResonatorVoice::startNote(int midiNoteNumber, float velocity,
     // Force harmonic recalculation with the new frequency
     resonator.setStretching(currentParams.inharmonicity);
     resonator.setEntropy(currentParams.roughness * 0.5f);
+    resonator.setParity(currentParams.resonatorParity);
+    resonator.setShift(currentParams.resonatorShift);
+    resonator.setRollOff(currentParams.resonatorRollOff);
     resonator.updateHarmonicsFromModels(currentParams.morphX, currentParams.morphY);
 
     // FIX: Do NOT reset resonator phases to 0 here.
@@ -113,6 +116,10 @@ void ResonatorVoice::updateParameters(const VoiceParams& params)
     // Use the new Neural Model Engine for harmonic generation
     resonator.setStretching(params.inharmonicity);
     resonator.setEntropy(params.roughness * 0.5f);
+    resonator.setParity(params.resonatorParity);
+    resonator.setShift(params.resonatorShift);
+    resonator.setRollOff(params.resonatorRollOff);
+
     // FIX: Using params consistently
     resonator.updateHarmonicsFromModels(params.morphX, params.morphY);
 }

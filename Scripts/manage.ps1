@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Master Management Script for NEXUS Synthesizer.
+    Master Management Script for NEURONiK Synthesizer.
     Consolidates build, clean, test, and package tasks.
 
 .EXAMPLE
@@ -23,14 +23,14 @@ $ErrorActionPreference = "Stop"
 
 # --- Configuration ---
 $ProjectRoot = Get-Item $PSScriptRoot\..
-$BuildDir = "$($ProjectRoot.FullName)\build_nexus"
+$BuildDir = "$($ProjectRoot.FullName)\build_neuronik"
 # Try to find JUCE in common locations if not set
 $JuceDirCandidate = "C:\JUCE" 
 if (Test-Path $JuceDirCandidate) { $JuceDir = $JuceDirCandidate }
 
 function Show-Header {
     Write-Host "=========================================" -ForegroundColor Cyan
-    Write-Host "  NEXUS Synthesizer Management Script   " -ForegroundColor Cyan
+    Write-Host "  NEURONiK Synthesizer Management Script   " -ForegroundColor Cyan
     Write-Host "=========================================" -ForegroundColor Cyan
     Write-Host "Task: $task | Config: $config"
     Write-Host ""
@@ -104,8 +104,8 @@ function Update-BuildVersion {
 /* Auto-generated build version file */
 #pragma once
 
-#define NEXUS_BUILD_VERSION "@BUILD_NO@"
-#define NEXUS_BUILD_TIMESTAMP "@TIMESTAMP@"
+#define NEURONIK_BUILD_VERSION "@BUILD_NO@"
+#define NEURONIK_BUILD_TIMESTAMP "@TIMESTAMP@"
 '@ -replace "@BUILD_NO@", $buildNo -replace "@TIMESTAMP@", $timestamp
 
     $headerContent | Set-Content $headerFile -Encoding UTF8
@@ -115,26 +115,23 @@ function Update-BuildVersion {
 function Invoke-TaskBuild {
     Write-Host "Starting Build Process..." -ForegroundColor Green
     
-    # Force clean build if requested/needed to avoid cache issues with JUCE settings
     Invoke-TaskClean
 
-    # Find CMake
+    Update-BuildVersion
+
     $CMakePath = Find-CMake
     if (!$CMakePath) { throw "CMake not found. Please install CMake or run from VS Developer Command Prompt." }
     Write-Host "Found CMake: $CMakePath"
 
-    # Initialize Environment
     $vsVars = Find-VSVars
     $GeneratorParams = @("-B", $BuildDir)
     
-    # Add JUCE Path if found
     if ($JuceDir) {
         Write-Host "Setting JUCE Path: $JuceDir"
         $GeneratorParams += "-DCMAKE_PREFIX_PATH=`"$JuceDir`""
         $GeneratorParams += "-DJUCE_PATH=`"$JuceDir`""
     }
     
-    # Simple logic to detect generator based on available VS
     if ($vsVars -and $vsVars -match "2022") {
         Write-Host "Using Visual Studio 17 2022 Generator..."
         $GeneratorParams += "-G", "Visual Studio 17 2022", "-A", "x64"
@@ -155,13 +152,9 @@ function Invoke-TaskBuild {
     & $CMakePath @GeneratorParams "$($ProjectRoot.FullName)"
     if ($LASTEXITCODE -ne 0) { throw "CMake Configuration Failed" }
 
-    # Build Project
     Write-Host "Building Project ($config)..."
-    & $CMakePath --build $BuildDir --config $config --target NEXUS_Standalone
+    & $CMakePath --build $BuildDir --config $config --target NEURONiK_Standalone
     if ($LASTEXITCODE -ne 0) { throw "Build Failed" }
-
-    # Versioning
-    Update-BuildVersion
 
     Write-Host "Build Completed Successfully!" -ForegroundColor Green
 }

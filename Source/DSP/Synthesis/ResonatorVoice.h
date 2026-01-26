@@ -60,6 +60,7 @@ public:
     
     // --- Parameter Updates ---
     void updateParameters(const VoiceParams& params);
+    float getCurrentEnvelopeLevel() const { return ampEnvelope.getLastOutput(); }
 
     // --- Real-time Processing ---
     void renderNextBlock(juce::AudioBuffer<float>& outputBuffer,

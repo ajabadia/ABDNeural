@@ -56,8 +56,18 @@ private:
     juce::TextButton loadButton { "LOAD PRESET" };
     juce::TextButton saveButton { "SAVE AS..." };
     juce::TextButton deleteButton { "DELETE" };
+    
+    // Bank Buttons
+    juce::TextButton loadBankButton { "LOAD BANK" };
+    juce::TextButton saveBankButton { "SAVE BANK" };
+
     juce::Label titleInfo { "Preset Info", "Selection Details" };
     juce::Label metadataLabel;
+    
+    // Tag Editor
+    juce::Label tagsTitle { "tags", "TAGS:" };
+    juce::TextEditor tagsEditor;
+    juce::StringArray tagSuggestions;
 
     // --- Logic ---
     void scanBanks();
@@ -65,6 +75,8 @@ private:
     void connectCallbacks();
     void onPresetSelected(int index);
     void filterPresets(const juce::String& filterText);
+    void updateTagsForCurrentSelection();
+    void showTagSuggestions();
 
     juce::String currentSearchTerm;
 

@@ -51,6 +51,7 @@ set(NEURONIK_SOURCES
     Source/UI/SpectralVisualizer.cpp
     Source/UI/XYPad.h
     Source/UI/XYPad.cpp
+    Source/UI/EnvelopeVisualizer.h
     Source/UI/MidiLearner.cpp
     Source/UI/Panels/OscillatorPanel.h
     Source/UI/Panels/OscillatorPanel.cpp

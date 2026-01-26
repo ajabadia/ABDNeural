@@ -42,6 +42,9 @@ public:
     void updateHarmonicsFromModels(float morphX, float morphY) noexcept;
     void setStretching(float amount) noexcept;
     void setEntropy(float amount) noexcept;
+    void setParity(float amount) noexcept;
+    void setShift(float amount) noexcept;
+    void setRollOff(float amount) noexcept;
     float processSample() noexcept;
     void reset() noexcept;
 
@@ -59,6 +62,9 @@ private:
     
     float stretchingAmount = 0.0f;
     float entropyAmount = 0.0f;
+    float parityAmount = 0.5f;
+    float shiftAmount = 1.0f;
+    float rollOffAmount = 1.0f;
 
     float normalizationFactor = 1.0f;
 

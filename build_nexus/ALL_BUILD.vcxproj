@@ -174,29 +174,29 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </ProjectReference>
-    <ProjectReference Include="D:\desarrollos\ABDNeural\build_nexus\NEXUS.vcxproj">
-      <Project>{B58FEA24-1379-3601-A55B-685439909F45}</Project>
-      <Name>NEXUS</Name>
+    <ProjectReference Include="D:\desarrollos\ABDNeural\build_nexus\NEURONiK.vcxproj">
+      <Project>{859316F9-A6B4-3AB0-9B09-AA153B14ECEE}</Project>
+      <Name>NEURONiK</Name>
     </ProjectReference>
-    <ProjectReference Include="D:\desarrollos\ABDNeural\build_nexus\NEXUS_Standalone.vcxproj">
-      <Project>{83C96BF3-8DA2-3ED0-A056-77E74ED2533C}</Project>
-      <Name>NEXUS_Standalone</Name>
+    <ProjectReference Include="D:\desarrollos\ABDNeural\build_nexus\NEURONiK_Standalone.vcxproj">
+      <Project>{1F3E546E-0DC8-3B4E-8308-DCDCA86E742E}</Project>
+      <Name>NEURONiK_Standalone</Name>
     </ProjectReference>
-    <ProjectReference Include="D:\desarrollos\ABDNeural\build_nexus\NEXUS_VST3.vcxproj">
-      <Project>{5DF495CB-B3BA-3C7A-95C7-407A7D4025D5}</Project>
-      <Name>NEXUS_VST3</Name>
+    <ProjectReference Include="D:\desarrollos\ABDNeural\build_nexus\NEURONiK_VST3.vcxproj">
+      <Project>{195C471F-ACAA-3D6F-887F-5993BB0C9DFD}</Project>
+      <Name>NEURONiK_VST3</Name>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </ProjectReference>
-    <ProjectReference Include="D:\desarrollos\ABDNeural\build_nexus\NEXUS_rc_lib.vcxproj">
-      <Project>{BEAA5344-B458-3890-AF76-2BDAAEA0456F}</Project>
-      <Name>NEXUS_rc_lib</Name>
+    <ProjectReference Include="D:\desarrollos\ABDNeural\build_nexus\NEURONiK_rc_lib.vcxproj">
+      <Project>{C1844A54-DCC8-3150-ABE2-B64E9364C10D}</Project>
+      <Name>NEURONiK_rc_lib</Name>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </ProjectReference>
-    <ProjectReference Include="D:\desarrollos\ABDNeural\build_nexus\NEXUS_vst3_helper.vcxproj">
-      <Project>{26780F5E-55CC-35DC-A6D8-A4500CF1B54C}</Project>
-      <Name>NEXUS_vst3_helper</Name>
+    <ProjectReference Include="D:\desarrollos\ABDNeural\build_nexus\NEURONiK_vst3_helper.vcxproj">
+      <Project>{F891361C-2767-3232-9D9A-6758CC283580}</Project>
+      <Name>NEURONiK_vst3_helper</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

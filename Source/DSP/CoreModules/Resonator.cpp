@@ -95,35 +95,86 @@ void Resonator::setEntropy(float amount) noexcept
     entropyAmount = juce::jlimit(0.0f, 1.0f, amount);
 }
 
+void Resonator::setParity(float amount) noexcept
+{
+    parityAmount = juce::jlimit(0.0f, 1.0f, amount);
+}
+
+void Resonator::setShift(float amount) noexcept
+{
+    shiftAmount = juce::jlimit(0.1f, 4.0f, amount);
+}
+
+void Resonator::setRollOff(float amount) noexcept
+{
+    rollOffAmount = juce::jlimit(0.1f, 5.0f, amount);
+}
+
 void Resonator::updateHarmonicsFromModels(float morphX, float morphY) noexcept
 {
     morphX = juce::jlimit(0.0f, 1.0f, morphX);
     morphY = juce::jlimit(0.0f, 1.0f, morphY);
     normalizationFactor = 0.0f;
 
-    const auto& modelA = models[0]; // Top-left
-    const auto& modelB = models[1]; // Top-right
-    const auto& modelC = models[2]; // Bottom-left
-    const auto& modelD = models[3]; // Bottom-right
+    // Helper to check if a model is "empty" (all amplitudes zero)
+    auto isModelActive = [](const SpectralModel& m) {
+        return m.amplitudes[0] > 0.00001f || m.amplitudes[1] > 0.00001f || m.amplitudes[32] > 0.00001f; 
+        // Simple check: is there at least some energy in common spots? 
+        // Or better: check if the first 4 partials are all zero.
+    };
+
+    // Logic for loading fallbacks:
+    const SpectralModel* mA = &models[0];
+    const SpectralModel* mB = &models[1];
+    const SpectralModel* mC = &models[2];
+    const SpectralModel* mD = &models[3];
+
+    // Simple robust check:
+    bool bActive = std::accumulate(models[1].amplitudes.begin(), models[1].amplitudes.end(), 0.0f) > 0.001f;
+    bool cActive = std::accumulate(models[2].amplitudes.begin(), models[2].amplitudes.end(), 0.0f) > 0.001f;
+    bool dActive = std::accumulate(models[3].amplitudes.begin(), models[3].amplitudes.end(), 0.0f) > 0.001f;
+
+    if (!bActive) mB = mA;
+    if (!cActive) mC = mA;
+    if (!dActive) mD = (bActive ? mB : mA);
+    
+    // If only A and B are active (common 2-model case):
+    if (bActive && !cActive && !dActive) {
+        mC = mA;
+        mD = mB;
+    }
 
     for (int i = 0; i < 64; ++i)
     {
-        // Bilinear interpolation for amplitudes
-        float ampTop = lerp(modelA.amplitudes[i], modelB.amplitudes[i], morphX);
-        float ampBottom = lerp(modelC.amplitudes[i], modelD.amplitudes[i], morphX);
-        partialAmplitudes[i] = lerp(ampTop, ampBottom, morphY);
+        float harmonicNumber = static_cast<float>(i + 1);
+
+        // --- 1. Compute Base Amplitude from Morphing ---
+        float ampTop = lerp(mA->amplitudes[i], mB->amplitudes[i], morphX);
+        float ampBottom = lerp(mC->amplitudes[i], mD->amplitudes[i], morphX);
+        float baseAmp = lerp(ampTop, ampBottom, morphY);
         
+        // --- 2. Apply Parity (Odd/Even Balance) ---
+        bool isEven = ((i + 1) % 2 == 0);
+        float parityScale = isEven ? juce::jlimit(0.0f, 1.0f, parityAmount * 2.0f) 
+                                   : juce::jlimit(0.0f, 1.0f, (1.0f - parityAmount) * 2.0f);
+        
+        // --- 3. Apply Harmonic Roll-off ---
+        // rollOffAmount 1.0 is neutral. > 1.0 is darker, < 1.0 is brighter.
+        float rollOffScale = std::pow(harmonicNumber, -(rollOffAmount - 1.0f));
+
+        partialAmplitudes[i] = baseAmp * parityScale * rollOffScale;
         normalizationFactor += partialAmplitudes[i];
 
-        // Bilinear interpolation for frequency offsets
-        float offsetTop = lerp(modelA.frequencyOffsets[i], modelB.frequencyOffsets[i], morphX);
-        float offsetBottom = lerp(modelC.frequencyOffsets[i], modelD.frequencyOffsets[i], morphX);
+        // --- 4. Compute Frequency with Stretching and Shift ---
+        float offsetTop = lerp(mA->frequencyOffsets[i], mB->frequencyOffsets[i], morphX);
+        float offsetBottom = lerp(mC->frequencyOffsets[i], mD->frequencyOffsets[i], morphX);
         float morphedOffset = lerp(offsetTop, offsetBottom, morphY);
 
-        float harmonicNumber = static_cast<float>(i + 1);
-        
+        // Stretching logic
         float stretchedHarmonic = std::pow(harmonicNumber, 1.0f + stretchingAmount * 0.5f);
-        float partialFreq = baseFrequency * stretchedHarmonic + morphedOffset;
+        
+        // Spectral Shift (Frequency multiplier)
+        float partialFreq = (baseFrequency * stretchedHarmonic * shiftAmount) + morphedOffset;
 
         if (partialFreq < static_cast<float>(sampleRate * 0.45) && partialAmplitudes[i] > 0.0001f)
             partials[i].setFrequency(partialFreq);

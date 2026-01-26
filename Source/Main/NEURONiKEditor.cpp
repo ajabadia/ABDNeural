@@ -115,6 +115,9 @@ juce::PopupMenu NEURONiKEditor::getMenuForIndex(int, const juce::String& menuNam
         menu.addItem(1, "Load Preset...");
         menu.addItem(2, "Save Preset...");
         menu.addSeparator();
+        menu.addItem(60, "Copy Patch");
+        menu.addItem(61, "Paste Patch");
+        menu.addSeparator();
 
         juce::PopupMenu midiChannelMenu;
         auto* choiceParam = processor.getAPVTS().getParameter(IDs::midiChannel);
@@ -198,6 +201,14 @@ void NEURONiKEditor::menuItemSelected(int menuItemID, int)
             case 55: voices = 8; break;
         }
         processor.setPolyphony(voices);
+    }
+    else if (menuItemID == 60)
+    {
+        processor.copyPatchToClipboard();
+    }
+    else if (menuItemID == 61)
+    {
+        processor.pastePatchFromClipboard();
     }
     else if (menuItemID == 14)
     {

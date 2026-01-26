@@ -16,10 +16,10 @@ namespace NEURONiK::UI
 
 using namespace NEURONiK::State; // Include the parameter IDs namespace
 
-XYPad::XYPad(juce::AudioProcessorValueTreeState& vtsIn)
-    : vts(vtsIn)
+XYPad::XYPad(NEURONiKProcessor& p, juce::AudioProcessorValueTreeState& vtsIn)
+    : vts(vtsIn), processor(p)
 {
-    // We need to fetch the parameters manually, not using attachments for this custom component
+    for (auto& n : modelNames) n = "EMPTY";
     updateThumbPosition();
     startTimerHz(30);
 }
@@ -46,11 +46,31 @@ void XYPad::paint(juce::Graphics& g)
     g.setColour(juce::Colours::white.withAlpha(0.2f));
     g.drawRoundedRectangle(bounds, 8.0f, 1.0f);
 
-    // Thumb
+    // Thumb (Modulated Position)
     g.setColour(juce::Colours::cyan);
     g.fillEllipse(thumbPosition.x - 8, thumbPosition.y - 8, 16, 16);
+    
+    // Ghost Ring (Base Parameter Position) - Optional cool effect
+    float baseX = vts.getRawParameterValue(IDs::morphX)->load() * bounds.getWidth();
+    float baseY = (1.0f - vts.getRawParameterValue(IDs::morphY)->load()) * bounds.getHeight();
+    if (std::hypot(baseX - thumbPosition.x, baseY - thumbPosition.y) > 2.0f)
+    {
+        g.setColour(juce::Colours::white.withAlpha(0.3f));
+        g.drawEllipse(baseX - 6, baseY - 6, 12, 12, 1.0f);
+        g.drawLine(baseX, baseY, thumbPosition.x, thumbPosition.y, 1.0f);
+    }
+    
     g.setColour(juce::Colours::black.withAlpha(0.5f));
     g.drawEllipse(thumbPosition.x - 8, thumbPosition.y - 8, 16, 16, 1.0f);
+
+    // Labels
+    g.setColour(juce::Colours::white.withAlpha(0.5f));
+    g.setFont(10.0f);
+    float textPad = 30.0f; // Shift text inward to accommodate buttons
+    g.drawText(modelNames[0], static_cast<int>(textPad), 5, 100, 15, juce::Justification::topLeft);
+    g.drawText(modelNames[1], static_cast<int>(bounds.getRight() - 100 - textPad), 5, 100, 15, juce::Justification::topRight);
+    g.drawText(modelNames[2], static_cast<int>(textPad), static_cast<int>(bounds.getBottom() - 20), 100, 15, juce::Justification::bottomLeft);
+    g.drawText(modelNames[3], static_cast<int>(bounds.getRight() - 100 - textPad), static_cast<int>(bounds.getBottom() - 20), 100, 15, juce::Justification::bottomRight);
 }
 
 void XYPad::resized()
@@ -94,8 +114,13 @@ void XYPad::timerCallback()
 void XYPad::updateThumbPosition()
 {
     auto bounds = getLocalBounds();
-    auto newX = vts.getRawParameterValue(IDs::morphX)->load() * bounds.getWidth();
-    auto newY = (1.0f - vts.getRawParameterValue(IDs::morphY)->load()) * bounds.getHeight();
+    
+    // Use the realtime modulated values from the processor for visualization
+    float modX = processor.uiMorphX.load(std::memory_order_relaxed);
+    float modY = processor.uiMorphY.load(std::memory_order_relaxed);
+    
+    auto newX = modX * bounds.getWidth();
+    auto newY = (1.0f - modY) * bounds.getHeight();
 
     juce::Point<float> newThumbPosition(newX, newY);
 
@@ -104,6 +129,12 @@ void XYPad::updateThumbPosition()
         thumbPosition = newThumbPosition;
         repaint();
     }
+}
+
+void XYPad::setModelNames(const std::array<juce::String, 4>& names)
+{
+    modelNames = names;
+    repaint();
 }
 
 } // namespace NEURONiK::UI

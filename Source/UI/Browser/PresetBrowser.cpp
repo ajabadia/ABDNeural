@@ -1,88 +1,8 @@
-/*
-  ==============================================================================
-
-    PresetBrowser.cpp
-    Created: 25 Jan 2026
-    Description: Implementation of the Advanced Preset Browser.
-
-  ==============================================================================
-*/
-
 #include "PresetBrowser.h"
+#include "PresetListModels.h"
 
 namespace NEURONiK::UI::Browser
 {
-
-// ============================================================================
-// Internal List Models
-// ============================================================================
-
-class BankListModel : public juce::ListBoxModel
-{
-public:
-    BankListModel(juce::Array<juce::File>& _banks, std::function<void(int)> _callback)
-        : banks(_banks), onSelectionCtx(_callback) {}
-
-    int getNumRows() override { return banks.size(); }
-
-    void paintListBoxItem(int rowNumber, juce::Graphics& g, int width, int height, bool rowIsSelected) override
-    {
-        if (rowIsSelected)
-            g.fillAll(juce::Colour(0xFF004444)); // Cyan/Dark background
-
-        g.setColour(rowIsSelected ? juce::Colours::cyan : juce::Colours::grey);
-        g.setFont(juce::Font(juce::FontOptions(15.0f).withStyle(rowIsSelected ? "Bold" : "Plain")));
-        
-        g.drawText(banks[rowNumber].getFileName(), 5, 0, width - 5, height, juce::Justification::centredLeft);
-    }
-
-    void selectedRowsChanged(int lastRowSelected) override
-    {
-        if (onSelectionCtx) onSelectionCtx(lastRowSelected);
-    }
-
-private:
-    juce::Array<juce::File>& banks;
-    std::function<void(int)> onSelectionCtx;
-};
-
-class PresetListModel : public juce::ListBoxModel
-{
-public:
-    PresetListModel(juce::Array<juce::File>& _files, std::function<void(int)> _callback)
-        : files(_files), onSelectionCtx(_callback) {}
-
-    int getNumRows() override { return files.size(); }
-
-    void paintListBoxItem(int rowNumber, juce::Graphics& g, int width, int height, bool rowIsSelected) override
-    {
-        if (rowIsSelected)
-            g.fillAll(juce::Colour(0xFF005555));
-
-        g.setColour(rowIsSelected ? juce::Colours::white : juce::Colours::lightgrey);
-        g.setFont(14.0f);
-        
-        juce::String name = files[rowNumber].getFileNameWithoutExtension();
-        g.drawText(name, 10, 0, width - 10, height, juce::Justification::centredLeft);
-    }
-
-    void selectedRowsChanged(int lastRowSelected) override
-    {
-        if (onSelectionCtx) onSelectionCtx(lastRowSelected);
-    }
-
-    void listBoxItemClicked(int /*row*/, const juce::MouseEvent& e) override
-    {
-        if (e.mods.isPopupMenu())
-        {
-            // Optional: Right click menu
-        }
-    }
-
-private:
-    juce::Array<juce::File>& files;
-    std::function<void(int)> onSelectionCtx;
-};
 
 // ============================================================================
 // PresetBrowser Implementation
@@ -119,7 +39,28 @@ PresetBrowser::PresetBrowser(NEURONiKProcessor& p)
     };
 
     // --- Preset List Setup ---
-    presetModel = std::make_unique<PresetListModel>(presetFiles, [this](int idx) { onPresetSelected(idx); });
+    presetModel = std::make_unique<PresetListModel>(presetFiles, 
+        [this](int idx) { onPresetSelected(idx); },
+        [this](int idx) {
+            juce::PopupMenu m;
+            m.addItem(1, "Move to Bank...");
+            m.showMenuAsync(juce::PopupMenu::Options(), [this, idx](int res) {
+                if (res == 1) {
+                    juce::PopupMenu banksMenu;
+                    for (int i = 0; i < banks.size(); ++i)
+                        banksMenu.addItem(100 + i, banks[i].getFileName());
+                    
+                    banksMenu.showMenuAsync(juce::PopupMenu::Options(), [this, idx](int bankRes) {
+                        if (bankRes >= 100) {
+                            auto target = banks[bankRes - 100].getChildFile(presetFiles[idx].getFileName());
+                            if (presetFiles[idx].moveFileTo(target))
+                                refresh();
+                        }
+                    });
+                }
+            });
+        }
+    );
     presetList.setModel(presetModel.get());
     presetList.setRowHeight(25);
     presetList.setColour(juce::ListBox::backgroundColourId, juce::Colour(0xFF181818));
@@ -132,11 +73,21 @@ PresetBrowser::PresetBrowser(NEURONiKProcessor& p)
     searchBox.onTextChange = [this] { filterPresets(searchBox.getText()); };
     searchBox.setColour(juce::TextEditor::backgroundColourId, juce::Colour(0xFF222222));
 
-    // --- Info Area ---
-    addAndMakeVisible(titleInfo);
-    titleInfo.setColour(juce::Label::textColourId, juce::Colours::cyan);
-    titleInfo.setFont(juce::Font(juce::FontOptions(18.0f).withStyle("Bold")));
-    titleInfo.setJustificationType(juce::Justification::centred);
+    addAndMakeVisible(loadBankButton);
+    loadBankButton.onClick = [this] {
+        processor.getPresetManager().loadBank(juce::File()); // Simplified; would use chooser
+        refresh();
+    };
+
+    addAndMakeVisible(tagsTitle);
+    tagsTitle.setFont(juce::Font(juce::FontOptions(10.0f).withStyle("Bold")));
+    
+    addAndMakeVisible(tagsEditor);
+    tagsEditor.setTextToShowWhenEmpty("e.g. Bass, Lead...", juce::Colours::grey);
+    tagsEditor.onReturnKey = [this] { updateTagsForCurrentSelection(); };
+    // tagsEditor.onFocusLoss does not exist directly as a lambda member in standard JUCE TextEditor
+    // We can rely on onReturnKey or add a listener if strictly needed, but simply removing it fixes the error.
+    tagsEditor.onTextChange = [this] { showTagSuggestions(); };
 
     addAndMakeVisible(metadataLabel);
     metadataLabel.setColour(juce::Label::textColourId, juce::Colours::grey);
@@ -204,6 +155,33 @@ PresetBrowser::PresetBrowser(NEURONiKProcessor& p)
         }
     };
 
+    addAndMakeVisible(loadBankButton);
+    loadBankButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF335533));
+    loadBankButton.onClick = [this] {
+        auto fc = std::make_unique<juce::FileChooser>("Load Bank...", juce::File(), "*.neuronikbank");
+        fc->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [this](const juce::FileChooser& chooser) {
+            auto file = chooser.getResult();
+            if (file.exists()) {
+                processor.getPresetManager().loadBank(file);
+                refresh();
+            }
+        });
+    };
+
+    addAndMakeVisible(saveBankButton);
+    saveBankButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF553333));
+    saveBankButton.onClick = [this] {
+        int bankIdx = bankList.getSelectedRow();
+        if (bankIdx >= 0) {
+            auto fc = std::make_unique<juce::FileChooser>("Save Bank...", juce::File(), "*.neuronikbank");
+            fc->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles, [this, bankIdx](const juce::FileChooser& chooser) {
+                auto file = chooser.getResult();
+                if (file.getParentDirectory().exists()) // Check generally valid path
+                    processor.getPresetManager().saveBank(file, banks[bankIdx]);
+            });
+        }
+    };
+
     refresh();
 }
 
@@ -240,19 +218,35 @@ void PresetBrowser::scanBanks()
 void PresetBrowser::loadPresetsForBank(int bankIndex)
 {
     presetFiles.clear();
-    
     if (bankIndex >= 0 && bankIndex < banks.size())
     {
         juce::File bankDir = banks[bankIndex];
-        auto pattern = currentSearchTerm.isEmpty() ? "*.neuronikpreset" : "*" + currentSearchTerm + "*.neuronikpreset";
+        auto allFiles = bankDir.findChildFiles(juce::File::findFiles, false, "*.neuronikpreset");
         
-        auto files = bankDir.findChildFiles(juce::File::findFiles, false, pattern);
-        files.sort();
-        
-        for (const auto& f : files)
-            presetFiles.add(f);
+        for (const auto& f : allFiles)
+        {
+            if (currentSearchTerm.isEmpty()) {
+                presetFiles.add(f);
+                continue;
+            }
+
+            // Search in Name
+            if (f.getFileNameWithoutExtension().containsIgnoreCase(currentSearchTerm)) {
+                presetFiles.add(f);
+                continue;
+            }
+
+            // Search in Tags
+            auto tags = processor.getPresetManager().getTagsForPreset(f);
+            for (const auto& tag : tags) {
+                if (tag.containsIgnoreCase(currentSearchTerm)) {
+                    presetFiles.add(f);
+                    break;
+                }
+            }
+        }
+        presetFiles.sort();
     }
-    
     presetList.updateContent();
 }
 
@@ -261,7 +255,6 @@ void PresetBrowser::onPresetSelected(int index)
     if (index >= 0 && index < presetFiles.size())
     {
         juce::File f = presetFiles[index];
-        
         juce::String info;
         info << "NAME: " << f.getFileNameWithoutExtension().toUpperCase() << "\n\n";
         info << "LOCATION: " << f.getParentDirectory().getFileName() << "\n";
@@ -270,8 +263,64 @@ void PresetBrowser::onPresetSelected(int index)
         
         metadataLabel.setText(info, juce::dontSendNotification);
         
-        // Instant Preview
+        auto tags = processor.getPresetManager().getTagsForPreset(f);
+        tagsEditor.setText(tags.joinIntoString(", "), false);
+        
         processor.getPresetManager().loadPresetFromFile(f);
+    }
+}
+
+void PresetBrowser::updateTagsForCurrentSelection()
+{
+    int idx = presetList.getSelectedRow();
+    if (idx >= 0 && idx < presetFiles.size())
+    {
+        juce::StringArray tags;
+        tags.addTokens(tagsEditor.getText(), ",", "\"");
+        tags.trim();
+        tags.removeEmptyStrings();
+        processor.getPresetManager().setTagsForPreset(presetFiles[idx], tags);
+    }
+}
+
+void PresetBrowser::showTagSuggestions()
+{
+    juce::String text = tagsEditor.getText();
+    if (text.isEmpty()) return;
+
+    // Get the last token being typed
+    juce::StringArray tokens;
+    tokens.addTokens(text, ",", "\"");
+    if (tokens.size() == 0) return;
+    juce::String lastToken = tokens[tokens.size() - 1].trim();
+    if (lastToken.length() < 2) return;
+
+    auto allTags = processor.getPresetManager().getAllUniqueTags();
+    juce::PopupMenu m;
+    int count = 0;
+    for (const auto& tag : allTags)
+    {
+        if (tag.startsWithIgnoreCase(lastToken) && tag != lastToken)
+        {
+            m.addItem(++count, tag);
+            if (count > 10) break;
+        }
+    }
+
+    if (count > 0)
+    {
+       m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&tagsEditor), [this, tokens](int res) {
+           if (res > 0) {
+               auto allTags = processor.getPresetManager().getAllUniqueTags();
+               juce::String selected = allTags[res - 1];
+               
+               auto newTokens = tokens;
+               newTokens.remove(newTokens.size() - 1);
+               newTokens.add(selected);
+               tagsEditor.setText(newTokens.joinIntoString(", ") + ", ", true);
+               updateTagsForCurrentSelection();
+           }
+       });
     }
 }
 
@@ -334,13 +383,35 @@ void PresetBrowser::resized()
     // Column 3: Info
     auto infoArea = area;
     titleInfo.setBounds(infoArea.removeFromTop(30));
-    metadataLabel.setBounds(infoArea.removeFromTop(200).reduced(10));
+    metadataLabel.setBounds(infoArea.removeFromTop(120).reduced(10));
     
-    auto buttonArea = infoArea.removeFromBottom(130).reduced(10, 0); // Increased height
-    loadButton.setBounds(buttonArea.removeFromTop(35).reduced(2));
-    saveButton.setBounds(buttonArea.removeFromTop(35).reduced(2));
-    buttonArea.removeFromTop(5);
-    deleteButton.setBounds(buttonArea.removeFromTop(30).reduced(10, 2));
+    auto tagsArea = infoArea.removeFromTop(60).reduced(10, 0);
+    tagsTitle.setBounds(tagsArea.removeFromTop(15));
+    tagsEditor.setBounds(tagsArea.removeFromTop(25).reduced(2, 0));
+
+    auto buttonArea = infoArea.removeFromBottom(120).reduced(10, 0); // Reduced height for tighter packing
+    
+    // Grid Setup
+    int numCols = 2;
+    int colW = buttonArea.getWidth() / numCols;
+    int rowH = 35;
+    
+    // Row 1
+    auto row1 = buttonArea.removeFromTop(rowH);
+    loadButton.setBounds(row1.removeFromLeft(colW).reduced(2));
+    saveButton.setBounds(row1.reduced(2));
+    
+    buttonArea.removeFromTop(5); // Spacer
+
+    // Row 2
+    auto row2 = buttonArea.removeFromTop(rowH);
+    loadBankButton.setBounds(row2.removeFromLeft(colW).reduced(2));
+    saveBankButton.setBounds(row2.reduced(2));
+    
+    buttonArea.removeFromTop(5); // Spacer
+
+    // Row 3 (Delete takes full width)
+    deleteButton.setBounds(buttonArea.removeFromTop(rowH).reduced(2));
 }
 
 } // namespace NEURONiK::UI::Browser

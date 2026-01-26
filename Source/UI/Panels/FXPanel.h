@@ -17,7 +17,6 @@ public:
     void paint(juce::Graphics& g) override;
     void resized() override;
 
-private:
     struct RotaryControl {
         juce::Slider slider;
         juce::Label label;
@@ -25,12 +24,30 @@ private:
         std::unique_ptr<MidiLearner> midiLearner;
     };
 
+    struct ChoiceControl {
+        juce::ComboBox comboBox;
+        juce::Label label;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> attachment;
+    };
+
     void setupControl(RotaryControl& control, const juce::String& paramID, const juce::String& labelText);
+    void setupChoice(ChoiceControl& control, const juce::String& paramID, const juce::String& labelText);
 
     NEURONiKProcessor& processor;
     juce::AudioProcessorValueTreeState& vts;
     
-    RotaryControl saturation, delayTime, delayFeedback, masterLevel;
+    // Saturation & Delay
+    RotaryControl saturation, delayTime, delayFeedback;
+    ChoiceControl delaySync, delayDivision;
+
+    // Chorus
+    RotaryControl chorusRate, chorusDepth, chorusMix;
+
+    // Reverb
+    RotaryControl reverbSize, reverbDamping, reverbWidth, reverbMix;
+
+    // Master
+    RotaryControl masterLevel;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FXPanel)
 };

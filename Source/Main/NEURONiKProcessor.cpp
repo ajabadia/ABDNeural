@@ -55,6 +55,9 @@ NEURONiKProcessor::NEURONiKProcessor()
     LOAD_PARAM(fxSaturation);
     LOAD_PARAM(fxDelayTime);
     LOAD_PARAM(fxDelayFeedback);
+    LOAD_PARAM(resonatorParity);
+    LOAD_PARAM(resonatorShift);
+    LOAD_PARAM(resonatorRolloff);
     LOAD_PARAM(masterBPM);
     LOAD_PARAM(lfo1Waveform);
     LOAD_PARAM(lfo1RateHz);
@@ -81,10 +84,13 @@ NEURONiKProcessor::NEURONiKProcessor()
     #undef LOAD_PARAM
 
     masterLevelSmoother.setCurrentAndTargetValue(apvts.getRawParameterValue(IDs::masterLevel)->load());
+
+    apvts.state.addListener(this);
 }
 
 NEURONiKProcessor::~NEURONiKProcessor()
 {
+    apvts.state.removeListener(this);
     keyboardState.removeListener(this);
     for (auto& param : getParameters())
     {
@@ -108,6 +114,8 @@ void NEURONiKProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 
     masterLevelSmoother.reset(sampleRate, 0.05);
     delayProcessor.prepare(sampleRate, static_cast<int>(sampleRate * 2.0));
+    chorusProcessor.prepare(sampleRate);
+    reverbProcessor.prepare(sampleRate);
 }
 
 void NEURONiKProcessor::setupSynth()
@@ -169,6 +177,9 @@ void NEURONiKProcessor::parameterChanged(const juce::String& parameterID, float 
         else if (parameterID == IDs::filterRes) voiceParams.filterRes = newValue;
         else if (parameterID == IDs::oscInharmonicity) voiceParams.inharmonicity = newValue;
         else if (parameterID == IDs::oscRoughness) voiceParams.roughness = newValue;
+        else if (parameterID == IDs::resonatorParity) voiceParams.resonatorParity = newValue;
+        else if (parameterID == IDs::resonatorShift) voiceParams.resonatorShift = newValue;
+        else if (parameterID == IDs::resonatorRolloff) voiceParams.resonatorRollOff = newValue;
         else if (parameterID == IDs::fxSaturation) saturationProcessor.setAmount(newValue);
         else if (parameterID == IDs::fxDelayTime) delayProcessor.setParameters(newValue, apvts.getRawParameterValue(IDs::fxDelayFeedback)->load());
         else if (parameterID == IDs::fxDelayFeedback) delayProcessor.setParameters(apvts.getRawParameterValue(IDs::fxDelayTime)->load(), newValue);
@@ -176,6 +187,11 @@ void NEURONiKProcessor::parameterChanged(const juce::String& parameterID, float 
         else if (parameterID == IDs::masterBPM) {
             lfo1.setTempoBPM(newValue);
             lfo2.setTempoBPM(newValue);
+        }
+        else if (parameterID.startsWith("fx")) {
+            // Most FX are updated in updateVoiceParameters loop, 
+            // but we ensure the flag is set.
+            parametersNeedUpdating = true;
         }
         else if (parameterID.startsWith("lfo")) modulationNeedsUpdating = true;
 
@@ -196,6 +212,9 @@ void NEURONiKProcessor::updateVoiceParameters(int numSamples)
     float modulatedSaturation = apvts.getRawParameterValue(IDs::fxSaturation)->load();
     float modulatedDelayTime = apvts.getRawParameterValue(IDs::fxDelayTime)->load();
     float modulatedDelayFeedback = apvts.getRawParameterValue(IDs::fxDelayFeedback)->load();
+    float modulatedParity = apvts.getRawParameterValue(IDs::resonatorParity)->load();
+    float modulatedShift = apvts.getRawParameterValue(IDs::resonatorShift)->load();
+    float modulatedRollOff = apvts.getRawParameterValue(IDs::resonatorRolloff)->load();
 
     for (const auto& route : modulationMatrix)
     {
@@ -234,19 +253,76 @@ void NEURONiKProcessor::updateVoiceParameters(int numSamples)
             else if (destParamID == IDs::fxSaturation) modulatedSaturation = realValue;
             else if (destParamID == IDs::fxDelayTime) modulatedDelayTime = realValue;
             else if (destParamID == IDs::fxDelayFeedback) modulatedDelayFeedback = realValue;
+            else if (destParamID == IDs::resonatorParity) modulatedParity = realValue;
+            else if (destParamID == IDs::resonatorShift) modulatedShift = realValue;
+            else if (destParamID == IDs::resonatorRolloff) modulatedRollOff = realValue;
         }
+    }
+
+    modulatedParams.resonatorParity = modulatedParity;
+    modulatedParams.resonatorShift = modulatedShift;
+    modulatedParams.resonatorRollOff = modulatedRollOff;
+    
+    // Update visualization atoms
+    uiMorphX.store(modulatedParams.morphX, std::memory_order_relaxed);
+    uiMorphY.store(modulatedParams.morphY, std::memory_order_relaxed);
+    uiInharmonicity.store(modulatedParams.inharmonicity, std::memory_order_relaxed);
+    uiRoughness.store(modulatedParams.roughness, std::memory_order_relaxed);
+    uiCutoff.store(modulatedParams.filterCutoff, std::memory_order_relaxed);
+    uiResonance.store(modulatedParams.filterRes, std::memory_order_relaxed);
+    
+    uiParity.store(modulatedParams.resonatorParity, std::memory_order_relaxed);
+    uiShift.store(modulatedParams.resonatorShift, std::memory_order_relaxed);
+    uiRollOff.store(modulatedParams.resonatorRollOff, std::memory_order_relaxed);
+    
+    uiAttack.store(modulatedParams.attack, std::memory_order_relaxed);
+    uiDecay.store(modulatedParams.decay, std::memory_order_relaxed);
+    uiSustain.store(modulatedParams.sustain, std::memory_order_relaxed);
+    uiRelease.store(modulatedParams.release, std::memory_order_relaxed);
+
+    // --- Delay Sync Logic ---
+    bool delaySyncEnabled = apvts.getRawParameterValue(IDs::fxDelaySync)->load() > 0.5f;
+    if (delaySyncEnabled)
+    {
+        float bpm = apvts.getRawParameterValue(IDs::masterBPM)->load();
+        if (auto* ph = getPlayHead())
+        {
+            auto pos = ph->getPosition();
+            if (pos.hasValue() && pos->getBpm().hasValue())
+                bpm = static_cast<float>(*pos->getBpm());
+        }
+
+        int divIdx = static_cast<int>(apvts.getRawParameterValue(IDs::fxDelayDivision)->load());
+        float divisions[] = { 4.0f, 2.0f, 1.0f, 0.5f, 0.25f, 0.125f, 2.0f/3.0f, 1.0f/3.0f, 0.5f/3.0f };
+        float quarterNoteDir = 60.0f / bpm;
+        modulatedDelayTime = quarterNoteDir * divisions[juce::jlimit(0, 8, divIdx)];
     }
 
     saturationProcessor.setAmount(modulatedSaturation);
     delayProcessor.setParameters(modulatedDelayTime, modulatedDelayFeedback);
 
+    chorusProcessor.setParameters(apvts.getRawParameterValue(IDs::fxChorusRate)->load(), 
+                                  apvts.getRawParameterValue(IDs::fxChorusDepth)->load(), 
+                                  apvts.getRawParameterValue(IDs::fxChorusMix)->load());
+                                  
+    reverbProcessor.setParameters(apvts.getRawParameterValue(IDs::fxReverbSize)->load(), 
+                                  apvts.getRawParameterValue(IDs::fxReverbDamping)->load(), 
+                                  apvts.getRawParameterValue(IDs::fxReverbWidth)->load(), 
+                                  apvts.getRawParameterValue(IDs::fxReverbMix)->load());
+
+    float maxEnvLevel = 0.0f;
     for (int i = 0; i < synth.getNumVoices(); ++i)
     {
         if (auto* voice = dynamic_cast<NEURONiK::DSP::Synthesis::ResonatorVoice*>(synth.getVoice(i)))
         {
             voice->updateParameters(modulatedParams);
+            
+            // Track max envelope for visualization
+            float env = voice->getCurrentEnvelopeLevel();
+            if (env > maxEnvLevel) maxEnvLevel = env;
         }
     }
+    uiEnvelope.store(maxEnvLevel, std::memory_order_relaxed);
     parametersNeedUpdating = false;
 }
 
@@ -314,7 +390,7 @@ void NEURONiKProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     buffer.clear();
 
     { // Scoped lock for MIDI buffer access
-        const juce::ScopedLock lock(midiBufferLock);
+        const juce::ScopedLock midiLock(midiBufferLock);
         if (!uiMidiBuffer.isEmpty())
         {
             midiMessages.addEvents(uiMidiBuffer, 0, -1, 0);
@@ -406,7 +482,9 @@ void NEURONiKProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     synth.renderNextBlock(buffer, processedMidi, 0, buffer.getNumSamples());
 
     saturationProcessor.processBlock(buffer);
+    chorusProcessor.processBlock(buffer);
     delayProcessor.processBlock(buffer);
+    reverbProcessor.processBlock(buffer);
 
     masterLevelSmoother.applyGain(buffer, buffer.getNumSamples());
 }
@@ -467,6 +545,7 @@ void NEURONiKProcessor::setStateInformation(const void* data, int sizeInBytes)
         }
 
         apvts.replaceState(juce::ValueTree::fromXml(*xmlState));
+        reloadModels();
         parametersNeedUpdating = true;
         modulationNeedsUpdating = true;
 
@@ -492,6 +571,9 @@ void NEURONiKProcessor::setupModulatableParameters()
     modulatableParameters.push_back(IDs::fxSaturation);
     modulatableParameters.push_back(IDs::fxDelayTime);
     modulatableParameters.push_back(IDs::fxDelayFeedback);
+    modulatableParameters.push_back(IDs::resonatorParity);
+    modulatableParameters.push_back(IDs::resonatorShift);
+    modulatableParameters.push_back(IDs::resonatorRolloff);
 }
 
 int NEURONiKProcessor::getParameterIndex(const juce::String& paramID) const
@@ -539,9 +621,61 @@ void NEURONiKProcessor::loadModel(const juce::File& file, int slot)
             }
 
             modelNames[slot] = file.getFileNameWithoutExtension();
+            
+            // Save path in APVTS state for persistence
+            if (apvts.state.isValid())
+            {
+                apvts.state.setProperty("modelPath" + juce::String(slot), file.getFullPathName(), nullptr);
+            }
 
             if (auto* editor = dynamic_cast<NEURONiKEditor*>(getActiveEditor()))
                 editor->updateModelNames();
         }
+    }
+}
+
+void NEURONiKProcessor::reloadModels()
+{
+    for (int i = 0; i < 4; ++i)
+    {
+        juce::String path = apvts.state.getProperty("modelPath" + juce::String(i)).toString();
+        if (path.isNotEmpty() && path != "EMPTY")
+        {
+            juce::File file(path);
+            if (file.existsAsFile())
+                loadModel(file, i);
+        }
+    }
+}
+
+void NEURONiKProcessor::valueTreePropertyChanged(juce::ValueTree& tree, const juce::Identifier& property)
+{
+    juce::ignoreUnused(tree, property);
+    // If a model path changed (e.g. from a past or undo/redo), we might want to reload
+    // but loadModel already sets the property, so we must avoid recursion
+}
+
+void NEURONiKProcessor::valueTreeRedirected(juce::ValueTree& tree)
+{
+    // This is called when replaceState is used. Re-attach listener!
+    tree.addListener(this);
+    reloadModels();
+}
+
+void NEURONiKProcessor::copyPatchToClipboard()
+{
+    auto xml = apvts.copyState().createXml();
+    if (xml != nullptr)
+        juce::SystemClipboard::copyTextToClipboard(xml->toString());
+}
+
+void NEURONiKProcessor::pastePatchFromClipboard()
+{
+    auto xmlString = juce::SystemClipboard::getTextFromClipboard();
+    auto xml = juce::parseXML(xmlString);
+    if (xml != nullptr && xml->hasTagName(apvts.state.getType()))
+    {
+        apvts.replaceState(juce::ValueTree::fromXml(*xml));
+        // valueTreeRedirected will handle re-attachment and reloadModels()
     }
 }

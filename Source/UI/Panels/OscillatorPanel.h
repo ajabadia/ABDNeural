@@ -16,9 +16,10 @@ struct RotaryControl {
     juce::Label label;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
     std::unique_ptr<MidiLearner> midiLearner;
+    std::atomic<float>* boundModularValue = nullptr;
 };
 
-class OscillatorPanel : public juce::Component, public juce::Button::Listener
+class OscillatorPanel : public juce::Component, public juce::Button::Listener, private juce::Timer
 {
 public:
     // The constructor now takes the main processor reference
@@ -29,20 +30,25 @@ public:
     void resized() override;
     void buttonClicked(juce::Button* button) override;
     void setModelName(int slot, const juce::String& name);
+    void timerCallback() override;
 
 private:
-    void setupControl(RotaryControl& ctrl, const juce::String& paramID, const juce::String& labelText);
+    void setupControl(RotaryControl& ctrl, const juce::String& paramID, const juce::String& labelText, std::atomic<float>* modValue = nullptr);
 
     NEURONiKProcessor& processor;
 
     XYPad xyPad;
     RotaryControl inharmonicity;
     RotaryControl roughness;
+    RotaryControl parity;
+    RotaryControl shift;
+    RotaryControl rollOff;
 
     juce::TextButton loadA, loadB, loadC, loadD;
     std::array<juce::String, 4> modelNames;
 
     std::unique_ptr<juce::FileChooser> fileChooser;
+    std::vector<std::unique_ptr<juce::LookAndFeel_V4>> lnfs; // Store custom LNFs to keep them alive
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(OscillatorPanel)
 };

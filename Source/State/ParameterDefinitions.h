@@ -45,14 +45,29 @@ namespace IDs {
     const juce::String fxSaturation    = "fxSaturation";
     const juce::String fxDelayTime     = "fxDelayTime";
     const juce::String fxDelayFeedback = "fxDelayFeedback";
+    const juce::String fxDelaySync     = "fxDelaySync";
+    const juce::String fxDelayDivision = "fxDelayDivision";
+    
+    // Chorus
+    const juce::String fxChorusRate  = "fxChorusRate";
+    const juce::String fxChorusDepth = "fxChorusDepth";
+    const juce::String fxChorusMix   = "fxChorusMix";
 
-    // Master
-    const juce::String masterLevel = "masterLevel";
-    const juce::String masterBPM   = "masterBPM";
+    // Reverb
+    const juce::String fxReverbSize    = "fxReverbSize";
+    const juce::String fxReverbDamping = "fxReverbDamping";
+    const juce::String fxReverbWidth   = "fxReverbWidth";
+    const juce::String fxReverbMix     = "fxReverbMix";
 
-    // Global / MIDI
-    const juce::String midiThru = "midiThru";
-    const juce::String midiChannel = "midiChannel";
+    // Master / Global
+    const juce::String masterLevel    = "masterLevel";
+    const juce::String masterBPM      = "masterBPM";
+    const juce::String midiThru       = "midiThru";
+    const juce::String midiChannel    = "midiChannel";
+    const juce::String randomStrength = "randomStrength";
+    const juce::String freezeResonator = "freezeResonator";
+    const juce::String freezeFilter    = "freezeFilter";
+    const juce::String freezeEnvelopes = "freezeEnvelopes";
 
     // LFO 1
     const juce::String lfo1Waveform = "lfo1Waveform";
@@ -107,7 +122,27 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::fxSaturation, "Saturation", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::fxDelayTime, "Delay Time", juce::NormalisableRange<float>(0.01f, 2.0f, 0.0f, 0.5f), 0.3f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::fxDelayFeedback, "Delay FB", juce::NormalisableRange<float>(0.0f, 0.95f), 0.4f));
+    
+    juce::StringArray lfoSyncModes = { "Free", "Tempo Sync" };
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::fxDelaySync, "Delay Sync", lfoSyncModes, 0));
+    juce::StringArray rhythmicDivisions = { "1/1", "1/2", "1/4", "1/8", "1/16", "1/32", "1/4t", "1/8t", "1/16t" };
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::fxDelayDivision, "Delay Division", rhythmicDivisions, 2));
+
+    // Chorus
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::fxChorusRate, "Chorus Rate", juce::NormalisableRange<float>(0.1f, 10.0f, 0.0f, 0.5f), 1.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::fxChorusDepth, "Chorus Depth", juce::NormalisableRange<float>(0.0f, 1.0f), 0.2f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::fxChorusMix, "Chorus Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
+
+    // Reverb
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::fxReverbSize, "Reverb Size", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::fxReverbDamping, "Reverb Damping", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::fxReverbWidth, "Reverb Width", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::fxReverbMix, "Reverb Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterBool>(IDs::midiThru, "MIDI Thru", false));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::randomStrength, "Random Strength", 0.0f, 1.0f, 0.7f));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(IDs::freezeResonator, "Freeze Resonator", false));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(IDs::freezeFilter, "Freeze Filter", false));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(IDs::freezeEnvelopes, "Freeze Envelopes", false));
 
     juce::StringArray midiChannels = { "Omni", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16" };
     params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::midiChannel, "MIDI Channel", midiChannels, 0));
@@ -115,9 +150,9 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     juce::StringArray lfoWaveforms = { "Sine", "Triangle", "Saw Up", "Saw Down", "Square", "Random S&H" };
     params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::lfo1Waveform, "LFO 1 Wave", lfoWaveforms, 0));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::lfo1RateHz, "LFO 1 Rate", juce::NormalisableRange<float>(0.01f, 20.0f, 0.0f, 0.5f), 1.0f));
-    juce::StringArray lfoSyncModes = { "Free", "Tempo Sync" };
+    lfoSyncModes = { "Free", "Tempo Sync" };
     params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::lfo1SyncMode, "LFO 1 Sync", lfoSyncModes, 0));
-    juce::StringArray rhythmicDivisions = { "1/1", "1/2", "1/4", "1/8", "1/16", "1/32", "1/4t", "1/8t", "1/16t" };
+    rhythmicDivisions = { "1/1", "1/2", "1/4", "1/8", "1/16", "1/32", "1/4t", "1/8t", "1/16t" };
     params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::lfo1RhythmicDivision, "LFO 1 Div", rhythmicDivisions, 2));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::lfo1Depth, "LFO 1 Depth", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f));
 
