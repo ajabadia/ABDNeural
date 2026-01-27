@@ -18,90 +18,90 @@ namespace NEURONiK::State {
 
 namespace IDs {
     // Oscillator / Neural Core
-    const juce::String oscLevel         = "oscLevel";
-    const juce::String oscPitchCoarse   = "oscPitchCoarse";
-    const juce::String oscInharmonicity = "oscInharmonicity";
-    const juce::String oscRoughness     = "oscRoughness";
-    const juce::String harmMix          = "harmMix";
-    const juce::String morphX           = "morphX";
-    const juce::String morphY           = "morphY";
+    static constexpr const char* oscLevel         = "oscLevel";
+    static constexpr const char* oscPitchCoarse   = "oscPitchCoarse";
+    static constexpr const char* oscInharmonicity = "oscInharmonicity";
+    static constexpr const char* oscRoughness     = "oscRoughness";
+    static constexpr const char* harmMix          = "harmMix";
+    static constexpr const char* morphX           = "morphX";
+    static constexpr const char* morphY           = "morphY";
 
     // Resonator Advanced (Legacy)
-    const juce::String resonatorRolloff = "resonatorRolloff";
-    const juce::String resonatorParity  = "resonatorParity";
-    const juce::String resonatorShift   = "resonatorShift";
+    static constexpr const char* resonatorRolloff = "resonatorRolloff";
+    static constexpr const char* resonatorParity  = "resonatorParity";
+    static constexpr const char* resonatorShift   = "resonatorShift";
 
     // Envelope
-    const juce::String envAttack  = "envAttack";
-    const juce::String envDecay   = "envDecay";
-    const juce::String envSustain = "envSustain";
-    const juce::String envRelease = "envRelease";
+    static constexpr const char* envAttack  = "envAttack";
+    static constexpr const char* envDecay   = "envDecay";
+    static constexpr const char* envSustain = "envSustain";
+    static constexpr const char* envRelease = "envRelease";
 
     // Filter
-    const juce::String filterCutoff    = "filterCutoff";
-    const juce::String filterRes       = "filterRes";
-    const juce::String filterEnvAmount = "filterEnvAmount";
-    const juce::String filterAttack    = "filterAttack";
-    const juce::String filterDecay     = "filterDecay";
-    const juce::String filterSustain   = "filterSustain";
-    const juce::String filterRelease   = "filterRelease";
+    static constexpr const char* filterCutoff    = "filterCutoff";
+    static constexpr const char* filterRes       = "filterRes";
+    static constexpr const char* filterEnvAmount = "filterEnvAmount";
+    static constexpr const char* filterAttack    = "filterAttack";
+    static constexpr const char* filterDecay     = "filterDecay";
+    static constexpr const char* filterSustain   = "filterSustain";
+    static constexpr const char* filterRelease   = "filterRelease";
 
     // FX
-    const juce::String fxSaturation    = "fxSaturation";
-    const juce::String fxDelayTime     = "fxDelayTime";
-    const juce::String fxDelayFeedback = "fxDelayFeedback";
-    const juce::String fxDelaySync     = "fxDelaySync";
-    const juce::String fxDelayDivision = "fxDelayDivision";
+    static constexpr const char* fxSaturation    = "fxSaturation";
+    static constexpr const char* fxDelayTime     = "fxDelayTime";
+    static constexpr const char* fxDelayFeedback = "fxDelayFeedback";
+    static constexpr const char* fxDelaySync     = "fxDelaySync";
+    static constexpr const char* fxDelayDivision = "fxDelayDivision";
     
     // Chorus
-    const juce::String fxChorusRate  = "fxChorusRate";
-    const juce::String fxChorusDepth = "fxChorusDepth";
-    const juce::String fxChorusMix   = "fxChorusMix";
+    static constexpr const char* fxChorusRate  = "fxChorusRate";
+    static constexpr const char* fxChorusDepth = "fxChorusDepth";
+    static constexpr const char* fxChorusMix   = "fxChorusMix";
 
     // Reverb
-    const juce::String fxReverbSize    = "fxReverbSize";
-    const juce::String fxReverbDamping = "fxReverbDamping";
-    const juce::String fxReverbWidth   = "fxReverbWidth";
-    const juce::String fxReverbMix     = "fxReverbMix";
+    static constexpr const char* fxReverbSize    = "fxReverbSize";
+    static constexpr const char* fxReverbDamping = "fxReverbDamping";
+    static constexpr const char* fxReverbWidth   = "fxReverbWidth";
+    static constexpr const char* fxReverbMix     = "fxReverbMix";
 
     // Master / Global
-    const juce::String masterLevel    = "masterLevel";
-    const juce::String masterBPM      = "masterBPM";
-    const juce::String midiThru       = "midiThru";
-    const juce::String midiChannel    = "midiChannel";
-    const juce::String randomStrength = "randomStrength";
-    const juce::String freezeResonator = "freezeResonator";
-    const juce::String freezeFilter    = "freezeFilter";
-    const juce::String freezeEnvelopes = "freezeEnvelopes";
-    const juce::String velocityCurve    = "velocityCurve";
+    static constexpr const char* masterLevel    = "masterLevel";
+    static constexpr const char* masterBPM      = "masterBPM";
+    static constexpr const char* midiThru       = "midiThru";
+    static constexpr const char* midiChannel    = "midiChannel";
+    static constexpr const char* randomStrength = "randomStrength";
+    static constexpr const char* freezeResonator = "freezeResonator";
+    static constexpr const char* freezeFilter    = "freezeFilter";
+    static constexpr const char* freezeEnvelopes = "freezeEnvelopes";
+    static constexpr const char* velocityCurve    = "velocityCurve";
 
     // LFO 1
-    const juce::String lfo1Waveform = "lfo1Waveform";
-    const juce::String lfo1RateHz = "lfo1RateHz";
-    const juce::String lfo1SyncMode = "lfo1SyncMode";
-    const juce::String lfo1RhythmicDivision = "lfo1RhythmicDivision";
-    const juce::String lfo1Depth = "lfo1Depth";
+    static constexpr const char* lfo1Waveform = "lfo1Waveform";
+    static constexpr const char* lfo1RateHz = "lfo1RateHz";
+    static constexpr const char* lfo1SyncMode = "lfo1SyncMode";
+    static constexpr const char* lfo1RhythmicDivision = "lfo1RhythmicDivision";
+    static constexpr const char* lfo1Depth = "lfo1Depth";
 
     // LFO 2
-    const juce::String lfo2Waveform = "lfo2Waveform";
-    const juce::String lfo2RateHz = "lfo2RateHz";
-    const juce::String lfo2SyncMode = "lfo2SyncMode";
-    const juce::String lfo2RhythmicDivision = "lfo2RhythmicDivision";
-    const juce::String lfo2Depth = "lfo2Depth";
+    static constexpr const char* lfo2Waveform = "lfo2Waveform";
+    static constexpr const char* lfo2RateHz = "lfo2RateHz";
+    static constexpr const char* lfo2SyncMode = "lfo2SyncMode";
+    static constexpr const char* lfo2RhythmicDivision = "lfo2RhythmicDivision";
+    static constexpr const char* lfo2Depth = "lfo2Depth";
 
     // Modulation Matrix
-    const juce::String mod1Source = "mod1Source";
-    const juce::String mod1Destination = "mod1Destination";
-    const juce::String mod1Amount = "mod1Amount";
-    const juce::String mod2Source = "mod2Source";
-    const juce::String mod2Destination = "mod2Destination";
-    const juce::String mod2Amount = "mod2Amount";
-    const juce::String mod3Source = "mod3Source";
-    const juce::String mod3Destination = "mod3Destination";
-    const juce::String mod3Amount = "mod3Amount";
-    const juce::String mod4Source = "mod4Source";
-    const juce::String mod4Destination = "mod4Destination";
-    const juce::String mod4Amount = "mod4Amount";
+    static constexpr const char* mod1Source = "mod1Source";
+    static constexpr const char* mod1Destination = "mod1Destination";
+    static constexpr const char* mod1Amount = "mod1Amount";
+    static constexpr const char* mod2Source = "mod2Source";
+    static constexpr const char* mod2Destination = "mod2Destination";
+    static constexpr const char* mod2Amount = "mod2Amount";
+    static constexpr const char* mod3Source = "mod3Source";
+    static constexpr const char* mod3Destination = "mod3Destination";
+    static constexpr const char* mod3Amount = "mod3Amount";
+    static constexpr const char* mod4Source = "mod4Source";
+    static constexpr const char* mod4Destination = "mod4Destination";
+    static constexpr const char* mod4Amount = "mod4Amount";
 }
 
 inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()

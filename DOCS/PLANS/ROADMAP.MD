@@ -121,9 +121,9 @@ Este documento sirve como la guía técnica y filosófica para el desarrollo de 
     -   [x] Mapeo CC dinámico con persistencia y resolución de conflictos.
     -   [x] Menú "MIDI CONTROL" en LCD para asignación de CCs y reset de fábrica.
     -   [x] Soporte para Channel Pressure como fuente de modulación.
-- [ ] **Tarea 21.3: Tabla de Especificaciones MIDI**:
-    -   [ ] Implementar diálogo de ayuda con la tabla de implementación MIDI de fábrica.
-    -   [ ] Añadir acceso desde la barra de menú superior (Help -> MIDI Specs).
+- [x] **Tarea 21.3: Tabla de Especificaciones MIDI**:
+    -   [x] Implementar diálogo de ayuda con la tabla de implementación MIDI de fábrica.
+    -   [x] Añadir acceso desde la barra de menú superior (Help -> MIDI Specs).
 
 ---
 
@@ -156,7 +156,7 @@ Este documento sirve como la guía técnica y filosófica para el desarrollo de 
     -   Reorganización vertical de los selectores de Delay (Sync/Div) para maximizar el ancho de los desplegables.
     -   Aumento de tamaño del knob de `Drive` para coherencia visual con el resto de efectos.
 - [x] **Tarea 24.2: Animación FX [COMPLETADO]**: Aplicado el sistema de feedback visual (anillos de modulación) a todos los efectos.
-- [ ] **Tarea 24.3: Indicadores de Actividad (PENDIENTE)**: Añadir LEDs virtuales que indiquen si un efecto está activo o procesando señal.
+- [x] **Tarea 24.3: Indicadores de Actividad**: Añadidos LEDs virtuales que indican si un efecto está activo o procesando señal.
 
 ---
 
@@ -393,9 +393,9 @@ BANK SELECT
 - [ ] **Acción**: Realizar el caching de valores al inicio del bloque y procesar valores interpolados en el bucle de muestras.
 
 ### 📜 Tarea 26.2: Gestión de Identificadores ("Magic Strings")
-- [ ] **Problema**: Uso de literales de cadena para IDs de parámetros es propenso a errores de compilación indetectables.
-- [ ] **Solución**: Centralizar IDs en un namespace `Params` con `static constexpr const char*`.
-- [ ] **Acción**: Refactorizar APVTS y listeners para usar constantes centralizadas.
+- [x] **Problema**: Uso de literales de cadena para IDs de parámetros es propenso a errores de compilación indetectables.
+- [x] **Solución**: Centralizar IDs en un namespace `Params` con `static constexpr const char*`.
+- [x] **Acción**: Refactorizados todos los IDs y APVTS a constantes estáticas de tiempo de compilación.
 
 ### 🏗️ Tarea 26.3: Portabilidad del Sistema CMake
 - [ ] **Problema**: Rutas hardcodeadas (e.g., `C:\JUCE`) rompen la compilación en otros sistemas/entornos.

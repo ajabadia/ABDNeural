@@ -4,6 +4,8 @@
 
 namespace NEURONiK::UI {
 
+using namespace NEURONiK::State;
+
 FXPanel::FXPanel(NEURONiKProcessor& p)
     : processor(p), vts(p.getAPVTS())
 {
@@ -35,6 +37,13 @@ FXPanel::FXPanel(NEURONiKProcessor& p)
     setupControl(reverbMix,     IDs::fxReverbMix,      "MIX", reverbBox);
 
     setupControl(masterLevel,   IDs::masterLevel,      "LEVEL", masterBox);
+
+    saturationBox.addAndMakeVisible(saturationLed);
+    delayBox.addAndMakeVisible(delayLed);
+    chorusBox.addAndMakeVisible(chorusLed);
+    reverbBox.addAndMakeVisible(reverbLed);
+
+    startTimer(50); // 20fps for LEDs
 }
 
 void FXPanel::setupControl(RotaryControl& ctrl, const juce::String& paramID, const juce::String& labelText, juce::Component& parent, std::atomic<float>* modValue)
@@ -60,7 +69,14 @@ void FXPanel::setupChoice(ChoiceControl& ctrl, const juce::String& paramID, cons
 void FXPanel::paint(juce::Graphics& g)
 {
     juce::ignoreUnused(g);
-    // Background handled by glass boxes
+}
+
+void FXPanel::timerCallback()
+{
+    saturationLed.setValue(vts.getRawParameterValue(IDs::fxSaturation)->load());
+    delayLed.setValue(vts.getRawParameterValue(IDs::fxDelayFeedback)->load() * 1.05f); // Boost slightly for visibility
+    chorusLed.setValue(vts.getRawParameterValue(IDs::fxChorusMix)->load());
+    reverbLed.setValue(vts.getRawParameterValue(IDs::fxReverbMix)->load());
 }
 
 void FXPanel::resized()
@@ -79,6 +95,15 @@ void FXPanel::resized()
         ctrl.label.setBounds(bounds.removeFromTop(15));
         ctrl.slider.setBounds(bounds);
     };
+
+    auto layoutLed = [&](LedIndicator& led, juce::Component& box) {
+        led.setBounds(box.getWidth() - 20, 6, 12, 12);
+    };
+
+    layoutLed(saturationLed, saturationBox);
+    layoutLed(delayLed, delayBox);
+    layoutLed(chorusLed, chorusBox);
+    layoutLed(reverbLed, reverbBox);
 
     // Saturation Content
     {

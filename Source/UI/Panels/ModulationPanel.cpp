@@ -117,12 +117,12 @@ void ModulationPanel::setupLfoControls(int lfoIndex)
     box.addAndMakeVisible(lfo.syncMode);
     box.addAndMakeVisible(lfo.division);
 
-    lfo.waveformAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(vts, IDs::lfo1Waveform.replace("1", lfoId), lfo.waveform);
-    lfo.syncModeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(vts, IDs::lfo1SyncMode.replace("1", lfoId), lfo.syncMode);
-    lfo.divisionAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(vts, IDs::lfo1RhythmicDivision.replace("1", lfoId), lfo.division);
+    lfo.waveformAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(vts, juce::String(IDs::lfo1Waveform).replace("1", lfoId), lfo.waveform);
+    lfo.syncModeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(vts, juce::String(IDs::lfo1SyncMode).replace("1", lfoId), lfo.syncMode);
+    lfo.divisionAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(vts, juce::String(IDs::lfo1RhythmicDivision).replace("1", lfoId), lfo.division);
 
-    UIUtils::setupRotaryControl(box, lfo.rate, IDs::lfo1RateHz.replace("1", lfoId), "Speed", vts, processor, sharedLNF);
-    UIUtils::setupRotaryControl(box, lfo.depth, IDs::lfo1Depth.replace("1", lfoId), "Depth", vts, processor, sharedLNF);
+    UIUtils::setupRotaryControl(box, lfo.rate, juce::String(IDs::lfo1RateHz).replace("1", lfoId), "Speed", vts, processor, sharedLNF);
+    UIUtils::setupRotaryControl(box, lfo.depth, juce::String(IDs::lfo1Depth).replace("1", lfoId), "Depth", vts, processor, sharedLNF);
 }
 
 void ModulationPanel::setupModSlotControls(int slotIndex)
@@ -141,10 +141,10 @@ void ModulationPanel::setupModSlotControls(int slotIndex)
     matrixBox.addAndMakeVisible(slot.source);
     matrixBox.addAndMakeVisible(slot.destination);
 
-    slot.sourceAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(vts, IDs::mod1Source.replace("1", slotId), slot.source);
-    slot.destinationAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(vts, IDs::mod1Destination.replace("1", slotId), slot.destination);
+    slot.sourceAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(vts, juce::String(IDs::mod1Source).replace("1", slotId), slot.source);
+    slot.destinationAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(vts, juce::String(IDs::mod1Destination).replace("1", slotId), slot.destination);
   
-    setupAmountControl(slot.amount, IDs::mod1Amount.replace("1", slotId));
+    setupAmountControl(slot.amount, juce::String(IDs::mod1Amount).replace("1", slotId));
 }
 
 } // namespace NEURONiK::UI

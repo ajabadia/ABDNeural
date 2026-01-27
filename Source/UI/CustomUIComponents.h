@@ -228,4 +228,60 @@ public:
     }
 };
 
+/**
+ * A modular LED indicator component with a glow effect.
+ */
+class LedIndicator : public juce::Component
+{
+public:
+    LedIndicator(juce::Colour color = juce::Colours::cyan) : ledColor(color) {}
+
+    void setValue(float newValue) 
+    { 
+        if (value != newValue)
+        {
+            value = newValue; 
+            repaint(); 
+        }
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        auto area = getLocalBounds().toFloat().reduced(1.0f);
+        auto centre = area.getCentre();
+        auto radius = juce::jmin(area.getWidth(), area.getHeight()) * 0.5f;
+
+        // 1. Off/Dim background
+        g.setColour(ledColor.withAlpha(0.1f));
+        g.fillEllipse(area);
+
+        if (value > 0.001f)
+        {
+            float alpha = juce::jlimit(0.0f, 1.0f, value);
+            
+            // 2. Glow
+            juce::ColourGradient glow(ledColor.withAlpha(0.4f * alpha), centre.x, centre.y,
+                                     ledColor.withAlpha(0.0f), centre.x + radius * 2.0f, centre.y, true);
+            g.setGradientFill(glow);
+            g.fillEllipse(area.expanded(2.5f));
+
+            // 3. Core
+            g.setColour(ledColor.withAlpha(0.8f * alpha));
+            g.fillEllipse(area.reduced(1.5f));
+            
+            // 4. Center Shine
+            g.setColour(juce::Colours::white.withAlpha(0.4f * alpha));
+            g.fillEllipse(juce::Rectangle<float>(radius * 0.4f, radius * 0.4f).withCentre(centre.translated(-radius*0.25f, -radius*0.25f)));
+        }
+
+        // Border
+        g.setColour(juce::Colours::white.withAlpha(0.15f));
+        g.drawEllipse(area, 0.8f);
+    }
+
+private:
+    juce::Colour ledColor;
+    float value = 0.0f;
+};
+
 } // namespace NEURONiK::UI

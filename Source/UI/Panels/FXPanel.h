@@ -8,7 +8,8 @@ class NEURONiKProcessor;
 
 namespace NEURONiK::UI {
 
-class FXPanel : public juce::Component
+class FXPanel : public juce::Component,
+                  private juce::Timer
 {
 public:
     FXPanel(NEURONiKProcessor& p);
@@ -16,6 +17,7 @@ public:
 
     void paint(juce::Graphics& g) override;
     void resized() override;
+    void timerCallback() override;
 
     struct ChoiceControl {
         juce::ComboBox comboBox;
@@ -41,6 +43,9 @@ public:
 
     // Master
     RotaryControl masterLevel;
+
+    // LEDs
+    LedIndicator saturationLed, delayLed, chorusLed, reverbLed;
 
     GlassBox saturationBox { "SATURATION" }, delayBox { "DELAY" }, chorusBox { "CHORUS" }, reverbBox { "REVERB" }, masterBox { "MASTER" };
     SharedKnobLookAndFeel sharedLNF;
