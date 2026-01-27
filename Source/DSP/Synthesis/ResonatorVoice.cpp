@@ -91,6 +91,16 @@ void ResonatorVoice::setCurrentPlaybackSampleRate(double newRate)
     ampEnvelope.setSampleRate(newRate);
     filterEnvelope.setSampleRate(newRate);
     filter.setSampleRate(newRate);
+
+    cutoffSmoother.reset(newRate, 0.02);
+    resSmoother.reset(newRate, 0.02);
+    morphXSmoother.reset(newRate, 0.02);
+    morphYSmoother.reset(newRate, 0.02);
+    inharmonicitySmoother.reset(newRate, 0.02);
+    roughnessSmoother.reset(newRate, 0.02);
+    paritySmoother.reset(newRate, 0.02);
+    shiftSmoother.reset(newRate, 0.02);
+    rollOffSmoother.reset(newRate, 0.02);
 }
 
 void ResonatorVoice::pitchWheelMoved(int newPitchWheelValue)
@@ -124,19 +134,16 @@ void ResonatorVoice::updateParameters(const VoiceParams& params)
                                  params.fDecay * 1000.0f,
                                  params.fSustain,
                                  params.fRelease * 1000.0f);
-                               
-    filter.setCutoff(params.filterCutoff);
-    filter.setResonance(params.filterRes);
 
-    // Use the new Neural Model Engine for harmonic generation
-    resonator.setStretching(params.inharmonicity);
-    resonator.setEntropy(params.roughness * 0.5f);
-    resonator.setParity(params.resonatorParity);
-    resonator.setShift(params.resonatorShift);
-    resonator.setRollOff(params.resonatorRollOff);
-
-    // FIX: Using params consistently
-    resonator.updateHarmonicsFromModels(params.morphX, params.morphY);
+    cutoffSmoother.setTargetValue(params.filterCutoff);
+    resSmoother.setTargetValue(params.filterRes);
+    morphXSmoother.setTargetValue(params.morphX);
+    morphYSmoother.setTargetValue(params.morphY);
+    inharmonicitySmoother.setTargetValue(params.inharmonicity);
+    roughnessSmoother.setTargetValue(params.roughness);
+    paritySmoother.setTargetValue(params.resonatorParity);
+    shiftSmoother.setTargetValue(params.resonatorShift);
+    rollOffSmoother.setTargetValue(params.resonatorRollOff);
 }
 
 void ResonatorVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, 
@@ -163,16 +170,35 @@ void ResonatorVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer,
     // Processing loop
     for (int i = 0; i < numSamples; ++i)
     {
-        // 1. Generate Resonator Output (64 partials)
+        // Smooth parameter updates
+        float currentCutoff = cutoffSmoother.getNextValue();
+        float currentRes = resSmoother.getNextValue();
+        float currentMorphX = morphXSmoother.getNextValue();
+        float currentMorphY = morphYSmoother.getNextValue();
+        float currentInharmonicity = inharmonicitySmoother.getNextValue();
+        float currentRoughness = roughnessSmoother.getNextValue();
+        float currentParity = paritySmoother.getNextValue();
+        float currentShift = shiftSmoother.getNextValue();
+        float currentRollOff = rollOffSmoother.getNextValue();
+
+        // Update DSP modules per sample
+        resonator.setStretching(currentInharmonicity);
+        resonator.setEntropy(currentRoughness * 0.5f);
+        resonator.setParity(currentParity);
+        resonator.setShift(currentShift);
+        resonator.setRollOff(currentRollOff);
+        resonator.updateHarmonicsFromModels(currentMorphX, currentMorphY);
+
+        // 1. Generate Resonator Output
         float rawSample = resonator.processSample();
         
         // 2. Apply Filter Envelope to Cutoff
         float fEnv = filterEnvelope.processSample();
-        float cutoff = currentParams.filterCutoff;
         
-        // Simple linear modulation for now: offset up to 10k Hz based on amount
-        float targetCutoff = cutoff + (fEnv * currentParams.fEnvAmount * 18000.0f);
+        // Simple linear modulation: offset up to 18k Hz based on amount
+        float targetCutoff = currentCutoff + (fEnv * currentParams.fEnvAmount * 18000.0f);
         filter.setCutoff(juce::jlimit(20.0f, 20000.0f, targetCutoff));
+        filter.setResonance(currentRes);
         
         // 3. Apply it to the filter
         float filteredSample = filter.processSample(rawSample);

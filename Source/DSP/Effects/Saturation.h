@@ -27,38 +27,62 @@ public:
     ~Saturation() = default;
 
     /**
+     * Initializes the smoother with the sample rate.
+     */
+    void prepare(double sampleRate) noexcept
+    {
+        driveSmoother.reset(sampleRate, 0.02); // 20ms ramp
+    }
+
+    /**
      * Sets the amount of saturation.
      * @param amount Range [0.0, 1.0]
      */
     void setAmount(float amount) noexcept {
-        drive = 1.0f + (amount * 4.0f); // Scale drive for noticeable effect
+        driveSmoother.setTargetValue(1.0f + (amount * 4.0f)); // Scale drive for noticeable effect
     }
 
     /**
      * Processes a single sample.
      */
-    inline float processSample(float input) const noexcept
+    inline float processSample(float input) noexcept
     {
         // Simple soft-clipping using atan or tanh approximation
-        float x = input * drive;
+        float x = input * driveSmoother.getNextValue();
         return std::atan(x) * 0.63661977236f; // 2/PI constant
     }
 
     /**
      * Processes an entire buffer of samples.
      */
-    void processBlock(juce::AudioBuffer<float>& buffer) const noexcept
+    void processBlock(juce::AudioBuffer<float>& buffer) noexcept
     {
         for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
         {
-            float* data = buffer.getWritePointer(ch);
-            for (int s = 0; s < buffer.getNumSamples(); ++s)
-                data[s] = processSample(data[s]);
+            auto* data = buffer.getWritePointer(ch);
+            auto smootherCopy = driveSmoother; // Per-channel copy for consistency if needed, but per-sample getNextValue is better
+            
+            // To ensure phase sync between channels, we must update the smoother ONCE per sample frame
+            // In a simple stereo case, we can just process sample frames
+        }
+
+        // Better Implementation: process by sample frames to maintain smoother state across channels correctly
+        const int numSamples = buffer.getNumSamples();
+        const int numChannels = buffer.getNumChannels();
+
+        for (int s = 0; s < numSamples; ++s)
+        {
+            float currentDrive = driveSmoother.getNextValue();
+            for (int ch = 0; ch < numChannels; ++ch)
+            {
+                float x = buffer.getSample(ch, s) * currentDrive;
+                buffer.setSample(ch, s, std::atan(x) * 0.63661977236f);
+            }
         }
     }
 
 private:
-    float drive = 1.0f;
+    juce::LinearSmoothedValue<float> driveSmoother { 1.0f };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Saturation)
 };

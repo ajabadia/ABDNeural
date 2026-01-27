@@ -34,12 +34,15 @@ public:
         delayBuffer.setSize(2, maxDelaySamples + 1024);
         delayBuffer.clear();
         writePos = 0;
+
+        timeSmoother.reset(sampleRate, 0.05); // 50ms ramp for delay time to avoid pitch jumps
+        feedbackSmoother.reset(sampleRate, 0.02); // 20ms ramp
     }
 
     void setParameters(float timeInSeconds, float feedback) noexcept
     {
-        targetDelayInSamples = timeInSeconds * static_cast<float>(currentSampleRate);
-        feedbackGain = juce::jlimit(0.0f, 0.95f, feedback);
+        timeSmoother.setTargetValue(timeInSeconds * static_cast<float>(currentSampleRate));
+        feedbackSmoother.setTargetValue(juce::jlimit(0.0f, 0.95f, feedback));
     }
 
     void processBlock(juce::AudioBuffer<float>& buffer)
@@ -50,15 +53,15 @@ public:
 
         for (int sample = 0; sample < numSamples; ++sample)
         {
-            // Simple smoothing for delay time to avoid clicks
-            currentDelayInSamples += (targetDelayInSamples - currentDelayInSamples) * 0.001f;
+            float currentDelay = timeSmoother.getNextValue();
+            float currentFB = feedbackSmoother.getNextValue();
 
             for (int channel = 0; channel < numChannels; ++channel)
             {
                 float inputSample = buffer.getReadPointer(channel)[sample];
 
-                // Read from delay buffer (Linear Interpolation for smooth time changes)
-                float readPos = static_cast<float>(writePos) - currentDelayInSamples;
+                // Read from delay buffer (Linear Interpolation)
+                float readPos = static_cast<float>(writePos) - currentDelay;
                 if (readPos < 0) readPos += static_cast<float>(bufferSize);
 
                 int index1 = static_cast<int>(readPos);
@@ -69,9 +72,9 @@ public:
                                       fraction * delayBuffer.getSample(channel % 2, index2);
 
                 // Write to delay buffer (Input + Feedback)
-                delayBuffer.setSample(channel % 2, writePos, inputSample + (delayedSample * feedbackGain));
+                delayBuffer.setSample(channel % 2, writePos, inputSample + (delayedSample * currentFB));
 
-                // Mix (Wet/Dry could be added, here it's additive for simplicity)
+                // Mix
                 buffer.getWritePointer(channel)[sample] += delayedSample * 0.5f;
             }
 
@@ -82,15 +85,17 @@ public:
     void reset()
     {
         delayBuffer.clear();
+        timeSmoother.setCurrentAndTargetValue(timeSmoother.getTargetValue());
+        feedbackSmoother.setCurrentAndTargetValue(feedbackSmoother.getTargetValue());
     }
 
 private:
     juce::AudioBuffer<float> delayBuffer;
     int writePos = 0;
-    float feedbackGain = 0.4f;
-    float targetDelayInSamples = 0.0f;
-    float currentDelayInSamples = 0.0f;
     double currentSampleRate = 44100.0;
+
+    juce::LinearSmoothedValue<float> timeSmoother;
+    juce::LinearSmoothedValue<float> feedbackSmoother;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Delay)
 };

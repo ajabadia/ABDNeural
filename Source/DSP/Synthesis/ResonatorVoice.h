@@ -79,7 +79,18 @@ private:
     NEURONiK::DSP::Core::FilterBank filter;
 
     float currentVelocity = 0.0f;
-    VoiceParams currentParams; // Cached parameters
+    VoiceParams currentParams; // Cached parameters (for non-smoothed ones like envelopes)
+
+    // Smoothers for real-time parameters
+    juce::LinearSmoothedValue<float> cutoffSmoother;
+    juce::LinearSmoothedValue<float> resSmoother;
+    juce::LinearSmoothedValue<float> morphXSmoother;
+    juce::LinearSmoothedValue<float> morphYSmoother;
+    juce::LinearSmoothedValue<float> inharmonicitySmoother;
+    juce::LinearSmoothedValue<float> roughnessSmoother;
+    juce::LinearSmoothedValue<float> paritySmoother;
+    juce::LinearSmoothedValue<float> shiftSmoother;
+    juce::LinearSmoothedValue<float> rollOffSmoother;
 
     float originalFrequency = 440.0f;
     float pitchBendRatio = 1.0f;

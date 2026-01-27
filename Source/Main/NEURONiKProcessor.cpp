@@ -119,6 +119,7 @@ void NEURONiKProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     lfo2.reset();
 
     masterLevelSmoother.reset(sampleRate, 0.05);
+    saturationProcessor.prepare(sampleRate);
     delayProcessor.prepare(sampleRate, static_cast<int>(sampleRate * 2.0));
     chorusProcessor.prepare(sampleRate);
     reverbProcessor.prepare(sampleRate);

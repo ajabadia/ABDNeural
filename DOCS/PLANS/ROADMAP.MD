@@ -388,9 +388,9 @@ BANK SELECT
 *Objetivo: Mejorar la robustez técnica, el rendimiento y la portabilidad del motor NEURONiK.*
 
 ### 🛠️ Tarea 26.1: Acceso a Parámetros en el Hilo de Audio (DSP)
-- [ ] **Problema**: Zipper noise y overhead de atómicos en el bucle de proceso.
-- [ ] **Solución**: Implementar `juce::SmoothedValue<float>` para todos los parámetros del DSP.
-- [ ] **Acción**: Realizar el caching de valores al inicio del bloque y procesar valores interpolados en el bucle de muestras.
+- [x] **Problema**: Zipper noise y overhead de atómicos en el bucle de proceso.
+- [x] **Solución**: Implementar `juce::SmoothedValue<float>` para todos los parámetros del DSP.
+- [x] **Acción**: Añadidas rampas de suavizado (20-50ms) en todos los efectos globales y parámetros de voz.
 
 ### 📜 Tarea 26.2: Gestión de Identificadores ("Magic Strings")
 - [x] **Problema**: Uso de literales de cadena para IDs de parámetros es propenso a errores de compilación indetectables.

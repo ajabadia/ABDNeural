@@ -29,13 +29,17 @@ public:
         delayBuffer.setSize(2, static_cast<int>(sampleRate * 0.1)); // 100ms max delay
         delayBuffer.clear();
         phase = 0.0f;
+
+        rateSmoother.reset(sampleRate, 0.02);
+        depthSmoother.reset(sampleRate, 0.02);
+        mixSmoother.reset(sampleRate, 0.02);
     }
 
     void setParameters(float rateHz, float depth, float mix) noexcept
     {
-        rate = rateHz;
-        depthValue = depth;
-        mixValue = mix;
+        rateSmoother.setTargetValue(rateHz);
+        depthSmoother.setTargetValue(depth);
+        mixSmoother.setTargetValue(mix);
     }
 
     void processBlock(juce::AudioBuffer<float>& buffer)
@@ -44,13 +48,17 @@ public:
         const int numSamples = buffer.getNumSamples();
         const int bufferSize = delayBuffer.getNumSamples();
 
-        float phaseInc = juce::MathConstants<float>::twoPi * rate / static_cast<float>(currentSampleRate);
-
         for (int sample = 0; sample < numSamples; ++sample)
         {
+            float currentRate = rateSmoother.getNextValue();
+            float currentDepth = depthSmoother.getNextValue();
+            float currentMix = mixSmoother.getNextValue();
+
+            float phaseInc = juce::MathConstants<float>::twoPi * currentRate / static_cast<float>(currentSampleRate);
+
             // Modulation: LFO between 5ms and 30ms
             float mod = (std::sin(phase) + 1.0f) * 0.5f; // 0 to 1
-            float delaySamples = (0.005f + mod * 0.025f * depthValue) * static_cast<float>(currentSampleRate);
+            float delaySamples = (0.005f + mod * 0.025f * currentDepth) * static_cast<float>(currentSampleRate);
 
             for (int channel = 0; channel < numChannels; ++channel)
             {
@@ -71,7 +79,7 @@ public:
                                       fraction * delayBuffer.getSample(channel % 2, index2);
 
                 // Mix
-                float output = (inputSample * (1.0f - mixValue * 0.5f)) + (delayedSample * mixValue * 0.5f);
+                float output = (inputSample * (1.0f - currentMix * 0.5f)) + (delayedSample * currentMix * 0.5f);
                 buffer.getWritePointer(channel)[sample] = output;
             }
 
@@ -85,16 +93,20 @@ public:
     void reset()
     {
         delayBuffer.clear();
+        rateSmoother.setCurrentAndTargetValue(rateSmoother.getTargetValue());
+        depthSmoother.setCurrentAndTargetValue(depthSmoother.getTargetValue());
+        mixSmoother.setCurrentAndTargetValue(mixSmoother.getTargetValue());
     }
 
 private:
     juce::AudioBuffer<float> delayBuffer;
     int writePos = 0;
     float phase = 0.0f;
-    float rate = 1.0f;
-    float depthValue = 0.2f;
-    float mixValue = 0.0f;
     double currentSampleRate = 44100.0;
+
+    juce::LinearSmoothedValue<float> rateSmoother { 1.0f };
+    juce::LinearSmoothedValue<float> depthSmoother { 0.2f };
+    juce::LinearSmoothedValue<float> mixSmoother { 0.0f };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Chorus)
 };
