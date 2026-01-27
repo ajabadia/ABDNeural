@@ -178,6 +178,20 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <Project>{10B22E3F-6FCC-32C8-B305-DABEC101FA94}</Project>
       <Name>NEURONiK</Name>
     </ProjectReference>
+    <ProjectReference Include="D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Common.vcxproj">
+      <Project>{D24EDC14-B1C0-3DD6-AFC7-33697C2C03EE}</Project>
+      <Name>NEURONiK_Common</Name>
+    </ProjectReference>
+    <ProjectReference Include="D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker.vcxproj">
+      <Project>{3BE2720C-1D03-3887-B2BF-0D0559C1C8FF}</Project>
+      <Name>NEURONiK_ModelMaker</Name>
+    </ProjectReference>
+    <ProjectReference Include="D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker_rc_lib.vcxproj">
+      <Project>{DA72C6FE-8F82-35B5-90A3-8B81709FDA20}</Project>
+      <Name>NEURONiK_ModelMaker_rc_lib</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
     <ProjectReference Include="D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj">
       <Project>{9AD43384-D200-3D6C-B885-B35413180ED9}</Project>
       <Name>NEURONiK_Standalone</Name>

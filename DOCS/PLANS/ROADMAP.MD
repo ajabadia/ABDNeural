@@ -85,13 +85,13 @@ Este documento sirve como la guía técnica y filosófica para el desarrollo de 
 
 ---
 
-## 🔵 FASE 18: NEURONiK MODEL MAKER (PENDIENTE)
+## 🟢 FASE 18: NEURONiK MODEL MAKER [COMPLETADO]
 *Objetivo: Permitir al usuario crear sus propios timbres (.neuronikmodel) a partir de muestras de audio.*
 
-- [ ] **Tarea 18.1: Infraestructura de Librería Compartida**: Separar la definición de `SpectralModel` en una carpeta `Common`.
-- [ ] **Tarea 18.2: Aplicación Model Maker (Standalone)**: Crear el proyecto de aplicación de escritorio JUCE independiente.
-- [ ] **Tarea 18.3: Análisis FFT y Extracción de Armónicos**: Implementar carga de audio y algoritmo de detección de picos espectrales para los 64 parciales.
-- [ ] **Tarea 18.4: Exportación de Modelos**: Guardar el resultado en formato JSON compatible con NEURONiK.
+- [x] **Tarea 18.1: Infraestructura de Librería Compartida**: Separar la definición de `SpectralModel` en una carpeta `Common`.
+- [x] **Tarea 18.2: Aplicación Model Maker (Standalone)**: Crear el proyecto de aplicación de escritorio JUCE independiente.
+- [x] **Tarea 18.3: Análisis FFT y Extracción de Armónicos**: Implementar carga de audio y algoritmo de detección de picos espectrales para los 64 parciales.
+- [x] **Tarea 18.4: Exportación de Modelos**: Guardar el resultado en formato JSON compatible con NEURONiK.
 
 ---
 

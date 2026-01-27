@@ -95,6 +95,22 @@ set(NEURONIK_SOURCES
 message(STATUS "NEURONIK_SOURCES: ${NEURONIK_SOURCES}")
 
 # ============================================================================
+# SHARED LIBRARY (COMMON)
+# ============================================================================
+
+add_library(NEURONiK_Common STATIC
+    Source/Common/SpectralModel.h
+)
+
+target_link_libraries(NEURONiK_Common PRIVATE
+    juce::juce_core
+)
+
+target_include_directories(NEURONiK_Common PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Common"
+)
+
+# ============================================================================
 # CREATE PLUGIN TARGET
 # ============================================================================
 
@@ -134,5 +150,32 @@ target_link_libraries(NEURONiK PRIVATE
     juce::juce_events
     juce::juce_graphics
     juce::juce_gui_basics
+    juce::juce_gui_basics
     juce::juce_gui_extra
+    NEURONiK_Common
+)
+
+# ============================================================================
+# MODEL MAKER APP (STANDALONE)
+# ============================================================================
+
+juce_add_gui_app(NEURONiK_ModelMaker
+    PRODUCT_NAME "NEURONiK Model Maker"
+    VERSION 1.0.0
+    SOURCES
+        Source/ModelMaker/Main.cpp
+        Source/ModelMaker/MainComponent.h
+        Source/ModelMaker/MainComponent.cpp
+        Source/ModelMaker/Analysis/SpectralAnalyzer.h
+        Source/ModelMaker/Analysis/SpectralAnalyzer.cpp
+)
+
+target_link_libraries(NEURONiK_ModelMaker PRIVATE
+    juce::juce_core
+    juce::juce_data_structures
+    juce::juce_events
+    juce::juce_graphics
+    juce::juce_gui_basics
+    juce::juce_gui_extra
+    NEURONiK_Common
 )

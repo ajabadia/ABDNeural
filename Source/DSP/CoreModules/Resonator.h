@@ -15,18 +15,11 @@
 #include <array>
 #include "Oscillator.h"
 
+#include "SpectralModel.h"
+
 namespace NEURONiK::DSP::Core {
 
-/**
- * @struct SpectralModel
- * @brief Holds a snapshot of 64 partials, including amplitudes and frequency offsets.
- * This structure defines a specific timbre that the Resonator can synthesize.
- */
-struct SpectralModel
-{
-    std::array<float, 64> amplitudes;
-    std::array<float, 64> frequencyOffsets;
-};
+using NEURONiK::Common::SpectralModel;
 
 class Resonator {
 public:
