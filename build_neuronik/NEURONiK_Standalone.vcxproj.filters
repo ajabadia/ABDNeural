@@ -7,6 +7,9 @@
     <ClCompile Include="D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="D:\desarrollos\ABDNeural\Source\Main\MidiMappingManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="D:\desarrollos\ABDNeural\Source\UI\ParameterPanel.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -32,6 +35,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="D:\desarrollos\ABDNeural\Source\UI\Panels\PresetPanel.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\desarrollos\ABDNeural\Source\UI\LcdDisplay.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="D:\desarrollos\ABDNeural\Source\UI\Browser\PresetBrowser.cpp">
@@ -90,6 +96,9 @@
     <ClInclude Include="D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\Main\MidiMappingManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="D:\desarrollos\ABDNeural\Source\UI\ParameterPanel.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -100,6 +109,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="D:\desarrollos\ABDNeural\Source\UI\EnvelopeVisualizer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\UI\CustomUIComponents.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="D:\desarrollos\ABDNeural\Source\UI\Panels\OscillatorPanel.h">

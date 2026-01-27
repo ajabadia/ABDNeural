@@ -13,6 +13,7 @@
 #include "../DSP/CoreModules/LFO.h"
 #include "../DSP/CoreModules/Resonator.h" // Include for SpectralModel
 #include "../Serialization/PresetManager.h"
+#include "MidiMappingManager.h"
 
 namespace NEURONiK::DSP::Effects {
     class Saturation;
@@ -74,6 +75,7 @@ public:
     juce::MidiKeyboardState& getKeyboardState() { return keyboardState; }
     const std::array<juce::String, 4>& getModelNames() const { return modelNames; }
     NEURONiK::Serialization::PresetManager& getPresetManager() { return *presetManager; }
+    NEURONiK::Main::MidiMappingManager& getMidiMappingManager() { return *midiMappingManager; }
 
     // --- Real-time spectral data for UI ---
     std::array<std::atomic<float>, 64> spectralDataForUI;
@@ -139,11 +141,12 @@ private:
     // --- MIDI Real-time values for Modulation ---
     std::atomic<float> pitchBendValue { 0.5f };
     std::atomic<float> modWheelValue { 0.0f };
+    std::atomic<float> aftertouchValue { 0.0f };
 
     // --- MIDI Learn ---
     std::atomic<bool> midiLearnActive { false };
     juce::String parameterToLearn;
-    std::map<int, juce::String> midiCCMap;
+    std::unique_ptr<NEURONiK::Main::MidiMappingManager> midiMappingManager;
 
     // --- Modulation Matrix ---
     struct ModulationRoute { int source=0, destination=0; float amount=0.0f; };

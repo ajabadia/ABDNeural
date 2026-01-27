@@ -59,6 +59,7 @@ void FXPanel::setupChoice(ChoiceControl& ctrl, const juce::String& paramID, cons
 
 void FXPanel::paint(juce::Graphics& g)
 {
+    juce::ignoreUnused(g);
     // Background handled by glass boxes
 }
 

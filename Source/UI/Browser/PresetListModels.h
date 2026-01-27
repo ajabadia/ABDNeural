@@ -25,13 +25,24 @@ public:
 
     void paintListBoxItem(int rowNumber, juce::Graphics& g, int width, int height, bool rowIsSelected) override
     {
-        if (rowIsSelected)
-            g.fillAll(juce::Colour(0xFF004444)); 
+        auto bounds = juce::Rectangle<int>(0, 0, width, height).reduced(4, 2);
 
-        g.setColour(rowIsSelected ? juce::Colours::cyan : juce::Colours::grey);
-        g.setFont(juce::Font(juce::FontOptions(15.0f).withStyle(rowIsSelected ? "Bold" : "Plain")));
+        if (rowIsSelected)
+        {
+            // Selected background: subtle cyan gradient
+            juce::ColourGradient grad(juce::Colour(0xFF004444).withAlpha(0.6f), bounds.getTopLeft().toFloat(),
+                                     juce::Colour(0xFF002222).withAlpha(0.4f), bounds.getBottomLeft().toFloat(), false);
+            g.setGradientFill(grad);
+            g.fillRoundedRectangle(bounds.toFloat(), 4.0f);
+            
+            g.setColour(juce::Colours::cyan.withAlpha(0.4f));
+            g.drawRoundedRectangle(bounds.toFloat(), 4.0f, 1.0f);
+        }
+
+        g.setColour(rowIsSelected ? juce::Colours::cyan : juce::Colours::white.withAlpha(0.6f));
+        g.setFont(juce::Font(juce::FontOptions(14.0f).withStyle(rowIsSelected ? "Bold" : "Plain")));
         
-        g.drawText(banks[rowNumber].getFileName(), 5, 0, width - 5, height, juce::Justification::centredLeft);
+        g.drawText(banks[rowNumber].getFileName().toUpperCase(), 12, 0, width - 20, height, juce::Justification::centredLeft);
     }
 
     void selectedRowsChanged(int lastRowSelected) override
@@ -54,14 +65,28 @@ public:
 
     void paintListBoxItem(int rowNumber, juce::Graphics& g, int width, int height, bool rowIsSelected) override
     {
-        if (rowIsSelected)
-            g.fillAll(juce::Colour(0xFF005555));
+        auto bounds = juce::Rectangle<int>(0, 0, width, height).reduced(6, 1);
 
-        g.setColour(rowIsSelected ? juce::Colours::white : juce::Colours::lightgrey);
-        g.setFont(14.0f);
+        if (rowIsSelected)
+        {
+            g.setColour(juce::Colours::cyan.withAlpha(0.15f));
+            g.fillRoundedRectangle(bounds.toFloat(), 3.0f);
+            
+            g.setColour(juce::Colours::cyan.withAlpha(0.3f));
+            g.drawRoundedRectangle(bounds.toFloat(), 3.0f, 1.0f);
+        }
+        else
+        {
+            // Subtle separator
+            g.setColour(juce::Colours::white.withAlpha(0.03f));
+            g.drawHorizontalLine(height - 1, 10.0f, (float)width - 10.0f);
+        }
+
+        g.setColour(rowIsSelected ? juce::Colours::white : juce::Colours::white.withAlpha(0.8f));
+        g.setFont(juce::Font(juce::FontOptions(13.0f).withStyle(rowIsSelected ? "Bold" : "Plain")));
         
         juce::String name = files[rowNumber].getFileNameWithoutExtension();
-        g.drawText(name, 10, 0, width - 10, height, juce::Justification::centredLeft);
+        g.drawText(name, 15, 0, width - 20, height, juce::Justification::centredLeft);
     }
 
     void selectedRowsChanged(int lastRowSelected) override

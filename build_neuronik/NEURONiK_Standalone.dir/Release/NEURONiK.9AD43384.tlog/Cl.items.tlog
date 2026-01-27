@@ -1,5 +1,6 @@
 D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.cpp;D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.dir\Release\NEURONiKProcessor.obj
 D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp;D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.dir\Release\NEURONiKEditor.obj
+D:\desarrollos\ABDNeural\Source\Main\MidiMappingManager.cpp;D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.dir\Release\MidiMappingManager.obj
 D:\desarrollos\ABDNeural\Source\UI\ParameterPanel.cpp;D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.dir\Release\ParameterPanel.obj
 D:\desarrollos\ABDNeural\Source\UI\SpectralVisualizer.cpp;D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.dir\Release\SpectralVisualizer.obj
 D:\desarrollos\ABDNeural\Source\UI\XYPad.cpp;D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.dir\Release\XYPad.obj
@@ -9,6 +10,7 @@ D:\desarrollos\ABDNeural\Source\UI\Panels\FilterEnvPanel.cpp;D:\desarrollos\ABDN
 D:\desarrollos\ABDNeural\Source\UI\Panels\FXPanel.cpp;D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.dir\Release\FXPanel.obj
 D:\desarrollos\ABDNeural\Source\UI\Panels\ModulationPanel.cpp;D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.dir\Release\ModulationPanel.obj
 D:\desarrollos\ABDNeural\Source\UI\Panels\PresetPanel.cpp;D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.dir\Release\PresetPanel.obj
+D:\desarrollos\ABDNeural\Source\UI\LcdDisplay.cpp;D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.dir\Release\LcdDisplay.obj
 D:\desarrollos\ABDNeural\Source\UI\Browser\PresetBrowser.cpp;D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.dir\Release\PresetBrowser.obj
 D:\desarrollos\ABDNeural\Source\Serialization\PresetManager.cpp;D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.dir\Release\PresetManager.obj
 D:\desarrollos\ABDNeural\Source\DSP\CoreModules\LFO.cpp;D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.dir\Release\LFO.obj

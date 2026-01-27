@@ -108,20 +108,22 @@ Este documento sirve como la guía técnica y filosófica para el desarrollo de 
 *Objetivo: Añadir profundidad espacial y carácter al sonido.*
 
 - [x] **Tarea 20.1: Reverb de Alta Calidad**: Implementado algoritmo de reverb (juce::Reverb) con controles de Size, Damp, Width y Mix.
-- [x] **Tarea 20.2: Chorus**: Implementado efecto de Chorus con modulación LFO de retardo, control de Rate, Depth y Mix.
+- [x] **Tarea 20.2: Chorus Estéreo**: Implementado chorus de tres voces con modulación LFO interna.
+- [x] **Tarea 20.3: Panel de Control de Efectos**: Creado `FXPanel` dedicado con sliders de cristal y visualización de estado.
 
 ---
 
-## 🔴 FASE 21: ARPEGIADOR Y MIDI AVANZADO (PENDIENTE)
-*Objetivo: Mejorar la capacidad interpretativa del instrumento.*
+## 🟢 FASE 21: EXPANSIÓN DE CONTROL MIDI [COMPLETADO]
+*Objetivo: Mejorar la capacidad interpretativa y control externo del instrumento.*
 
-- [ ] **Tarea 21.1: Motor de Arpeggiador**: Modos Up, Down, Random, y Sync con el BPM interno/host.
-- [ ] **Tarea 21.2: Curvas de Velocidad y Aftertouch**: Permitir mapear la presión y velocidad a parámetros de síntesis (ej. Cutoff o Inharmonicity).
-- [ ] **Tarea 21.3: Mapeo MIDI Estándar y Documentación**: 
-    -   Definir mapa CC por defecto siguiendo estándar General MIDI (ej. 74 Cutoff, 71 Resonance) y convenciones de mercado.
-    -   Adaptar parámetros específicos al esquema del Hartmann Neuron original donde sea posible.
-    -   Usar NRPN para parámetros extendidos si se agotan los CCs.
-    -   Generar tabla de implementación y añadirla al menú de Ayuda.
+- [x] **Tarea 21.1: Curvas de Velocidad y Aftertouch**: Mapeo de presión y velocidad (Linear, Soft, Hard) a parámetros de síntesis.
+- [x] **Tarea 21.2: Mapeo MIDI Estándar y Gestión LCD**: 
+    -   [x] Mapeo CC dinámico con persistencia y resolución de conflictos.
+    -   [x] Menú "MIDI CONTROL" en LCD para asignación de CCs y reset de fábrica.
+    -   [x] Soporte para Channel Pressure como fuente de modulación.
+- [ ] **Tarea 21.3: Tabla de Especificaciones MIDI**:
+    -   [ ] Implementar diálogo de ayuda con la tabla de implementación MIDI de fábrica.
+    -   [ ] Añadir acceso desde la barra de menú superior (Help -> MIDI Specs).
 
 ---
 
@@ -139,23 +141,47 @@ Este documento sirve como la guía técnica y filosófica para el desarrollo de 
 - [x] **Tarea 23.1: Animación de Controles Modulados**: Los Knobs muestran un anillo cian que se mueve en tiempo real reflejando la modulación.
 - [x] **Tarea 23.2: Animación del Neural Pad**: Representación visual del movimiento del punto de morphing y "ghost cursor" para indicar el objetivo.
 - [x] **Tarea 23.3: Visualización de Envolventes**: Gráfico ADSR interactivo que se ilumina con la intensidad de la envolvente de las voces activas.
+- [x] **Tarea 23.4: Refinamiento "Knobs 2.0" [COMPLETADO]**: 
+    -   Mejorada la estética de los anillos de modulación.
+    -   Limitada la visualización a **2 decimales** en todos los controles para mayor legibilidad.
+    -   Añadida profundidad visual y unificación de colores.
 
 ---
 
-## 🔵 FASE 24: REDISEÑO DE INTERFAZ DE EFECTOS [PENDIENTE]
+## 🟢 FASE 24: REDISEÑO DE INTERFAZ DE EFECTOS [COMPLETADO]
 *Objetivo: Organizar y limpiar la pestaña FX para mejorar la usabilidad.*
 
-- [ ] **Tarea 24.1: Reorganización FX**: Rediseñar `FXPanel` para eliminar el caos actual, agrupando controles lógica y estéticamente.
-- [ ] **Tarea 24.2: Animación FX**: Aplicar el sistema de feedback visual (anillos de modulación) a los controles de efectos.
+- [x] **Tarea 24.1: Reorganización FX [COMPLETADO]**: 
+    -   Rediseñado `FXPanel` agrupando controles en módulos visuales "GlassBox".
+    -   Reorganización vertical de los selectores de Delay (Sync/Div) para maximizar el ancho de los desplegables.
+    -   Aumento de tamaño del knob de `Drive` para coherencia visual con el resto de efectos.
+- [x] **Tarea 24.2: Animación FX [COMPLETADO]**: Aplicado el sistema de feedback visual (anillos de modulación) a todos los efectos.
+- [ ] **Tarea 24.3: Indicadores de Actividad (PENDIENTE)**: Añadir LEDs virtuales que indiquen si un efecto está activo o procesando señal.
 
 ---
 
-## 🟤 FASE 13: INTERFAZ DE HARDWARE VIRTUAL (Pantalla LCD) (PENDIENTE)
+## 🟢 FASE 25: ENVOLVENTE DE FILTRO Y REFINAMIENTO BROWSER [COMPLETADO]
+*Objetivo: Expandir las capacidades de síntesis y perfeccionar la estética del sistema de navegación.*
+
+- [x] **Tarea 25.1: Envolvente de Filtro ADSR**:
+    -   Implementación DSP en cada voz y lógica de seguimiento de picos (Peak Tracking) para la UI.
+    -   Creación de la pestaña `FILTER/ENV` con visualizador dinámico.
+- [x] **Tarea 25.2: Overhaul Estético del Browser**:
+    -   Migración completa al esquema de colores NEURONiK (Glass Dark).
+    -   Implementación de gradientes de cristalería en las selecciones de bancos y presets.
+    -   Unificación de fuentes y bordes neon de baja intensidad.
+
+---
+
+## 🟢 FASE 13: INTERFAZ DE HARDWARE VIRTUAL (Pantalla LCD) [COMPLETADO]
 *Objetivo: Reemplazar el título estático por una pantalla LCD informativa y funcional, clave para el modo headless.*
 
-- [ ] **Especificación de Hardware**: La pantalla LCD será de tipo 16x2 (16 caracteres, 2 filas) para asegurar la compatibilidad con el hardware de referencia de [MiniDexed](https://github.com/probonopd/MiniDexed) en la futura versión para Raspberry Pi.
-- [ ] **Tareas 13.1 a 13.4**: Implementar el componente `LcdDisplay`, la lógica de navegación por bancos de parámetros, la gestión de archivos desde el LCD y la abstracción para hardware físico.
-- [x] **Tarea 13.5: Mover Título a Pestaña GENERAL**: Mover el título "NEURONiK" y la versión a la pestaña "GENERAL" para liberar el espacio del cabecera para la pantalla LCD.
+- [x] **Especificación de Hardware**: La pantalla LCD será de tipo 16x2 (16 caracteres, 2 filas) compatible con estándares industriales.
+- [x] **Tarea 13.1: Emulación Matriz LCD**: Implementación del componente `LcdDisplay` con efectos de persistencia y scrolling.
+- [x] **Tarea 13.2: LcdMenuManager**: State machine para navegación jerárquica (Idle, Menu, Edit).
+- [x] **Tarea 13.3: Hardware D-Pad**: Reemplazo del encoder por botones físicos (`< > ^ v`) con lógica de "Turbo Acceleration".
+- [x] **Tarea 13.4: CustomButton Component**: Unificación estética de botones bajo el esquema "Neural Glass".
+- [x] **Tarea 13.5: Mover Título a Pestaña GENERAL**: Reubicación de branding para optimizar el área de cabecera.
 
 ### Referencia de Menús para Hardware (Estilo Vintage)
 Esta sección recopila información sobre estructuras de menú y valores típicos de sintetizadores hardware para guiar el desarrollo de la interfaz LCD.
@@ -356,4 +382,32 @@ text
 BANK SELECT
 ├── MSB > 00-127 | Most Significant Byte (CC#0, coarse bank)
 ├── LSB > 00-127 | Least Significant Byte (CC#32, fine bank)
-└── PC > 0
+---
+
+## 🟡 FASE 26: AUDITORÍA DE ARQUITECTURA Y BUENAS PRÁCTICAS (MANTENIMIENTO)
+*Objetivo: Mejorar la robustez técnica, el rendimiento y la portabilidad del motor NEURONiK.*
+
+### 🛠️ Tarea 26.1: Acceso a Parámetros en el Hilo de Audio (DSP)
+- [ ] **Problema**: Zipper noise y overhead de atómicos en el bucle de proceso.
+- [ ] **Solución**: Implementar `juce::SmoothedValue<float>` para todos los parámetros del DSP.
+- [ ] **Acción**: Realizar el caching de valores al inicio del bloque y procesar valores interpolados en el bucle de muestras.
+
+### 📜 Tarea 26.2: Gestión de Identificadores ("Magic Strings")
+- [ ] **Problema**: Uso de literales de cadena para IDs de parámetros es propenso a errores de compilación indetectables.
+- [ ] **Solución**: Centralizar IDs en un namespace `Params` con `static constexpr const char*`.
+- [ ] **Acción**: Refactorizar APVTS y listeners para usar constantes centralizadas.
+
+### 🏗️ Tarea 26.3: Portabilidad del Sistema CMake
+- [ ] **Problema**: Rutas hardcodeadas (e.g., `C:\JUCE`) rompen la compilación en otros sistemas/entornos.
+- [ ] **Solución**: Usar `find_package(JUCE CONFIG REQUIRED)` y targets modernos.
+- [ ] **Acción**: Eliminar dependencias de rutas absolutas y usar variables de entorno/CLI para la configuración.
+
+### 📐 Tarea 26.4: UI Dinámica y Responsiva
+- [ ] **Problema**: Layouts de tamaño fijo dificultan el redimensionado y portabilidad de la UI.
+- [ ] **Solución**: Migrar a `juce::FlexBox`, `juce::Grid` o división proporcional con `Rectangle`.
+- [ ] **Acción**: Refactorizar métodos `resized()` para eliminar coordenadas "mágicas".
+
+### 🐧 Tarea 26.5: Scripts Multiplataforma
+- [ ] **Problema**: Flujo de compilación limitado a Windows por `manage.ps1`.
+- [ ] **Solución**: Crear `manage.sh` (Bash) equivalente para macOS/Linux.
+- [ ] **Acción**: Asegurar paridad de funcionalidades en los scripts de automatización.

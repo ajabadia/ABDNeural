@@ -43,6 +43,8 @@ set(NEURONIK_SOURCES
     Source/Main/NEURONiKProcessor.cpp
     Source/Main/NEURONiKEditor.h
     Source/Main/NEURONiKEditor.cpp
+    Source/Main/MidiMappingManager.h
+    Source/Main/MidiMappingManager.cpp
     
     # UI
     Source/UI/ParameterPanel.h
@@ -52,6 +54,7 @@ set(NEURONIK_SOURCES
     Source/UI/XYPad.h
     Source/UI/XYPad.cpp
     Source/UI/EnvelopeVisualizer.h
+    Source/UI/CustomUIComponents.h
     Source/UI/MidiLearner.cpp
     Source/UI/Panels/OscillatorPanel.h
     Source/UI/Panels/OscillatorPanel.cpp
@@ -62,6 +65,7 @@ set(NEURONIK_SOURCES
     Source/UI/Panels/ModulationPanel.cpp
     Source/UI/Panels/PresetPanel.h
     Source/UI/Panels/PresetPanel.cpp
+    Source/UI/LcdDisplay.cpp
     
     # UI - Browser
     Source/UI/Browser/PresetBrowser.h

@@ -10,13 +10,20 @@
 #>
 
 param (
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory = $false)]
     [ValidateSet("build", "clean", "test", "sign")]
     [string]$task,
 
     [Parameter(Mandatory = $false)]
     [ValidateSet("Release", "Debug")]
-    [string]$config = "Release"
+    [string]$config = "Release",
+
+    [Parameter(Mandatory = $false)]
+    [switch]$FullClean,
+
+    [Parameter(Mandatory = $false)]
+    [Alias("h", "?")]
+    [switch]$Help
 )
 
 $ErrorActionPreference = "Stop"
@@ -24,16 +31,47 @@ $ErrorActionPreference = "Stop"
 # --- Configuration ---
 $ProjectRoot = Get-Item $PSScriptRoot\..
 $BuildDir = "$($ProjectRoot.FullName)\build_neuronik"
+$AppName = "NEURONiK"
 # Try to find JUCE in common locations if not set
 $JuceDirCandidate = "C:\JUCE" 
 if (Test-Path $JuceDirCandidate) { $JuceDir = $JuceDirCandidate }
+
+function Show-Help {
+    Write-Host "Usage: .\Scripts\manage.ps1 -Task <Task> [-Config <Config>] [-FullClean] [-Help]" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Tasks:" -ForegroundColor White
+    Write-Host "  build     - Configures and builds the project (incremental by default)."
+    Write-Host "  clean     - Removes the build directory (closes app if running)."
+    Write-Host "  test      - Runs unit tests using ctest."
+    Write-Host "  sign      - Not implemented."
+    Write-Host ""
+    Write-Host "Flags:" -ForegroundColor White
+    Write-Host "  -Config      - Configuration to build (Release [default] or Debug)."
+    Write-Host "  -FullClean   - When used with 'build', performs a full wipe of the build folder first."
+    Write-Host "  -Help / -h   - Shows this help message."
+    Write-Host ""
+    Write-Host "Examples:" -ForegroundColor Cyan
+    Write-Host "  .\Scripts\manage.ps1 -Task build"
+    Write-Host "  .\Scripts\manage.ps1 -Task build -Config Debug -FullClean"
+    Write-Host "  .\Scripts\manage.ps1 -Help"
+}
 
 function Show-Header {
     Write-Host "=========================================" -ForegroundColor Cyan
     Write-Host "  NEURONiK Synthesizer Management Script   " -ForegroundColor Cyan
     Write-Host "=========================================" -ForegroundColor Cyan
     Write-Host "Task: $task | Config: $config"
+    if ($FullClean) { Write-Host "Mode: Full Clean Build" -ForegroundColor Yellow }
     Write-Host ""
+}
+
+function Stop-AppProcess {
+    $proc = Get-Process $AppName -ErrorAction SilentlyContinue
+    if ($proc) {
+        Write-Host "[INFO] Closing running instance of $AppName..." -ForegroundColor Yellow
+        $proc | Stop-Process -Force
+        Start-Sleep -Seconds 1 # Give OS time to release file locks
+    }
 }
 
 function Find-VSPath {
@@ -115,7 +153,12 @@ function Update-BuildVersion {
 function Invoke-TaskBuild {
     Write-Host "Starting Build Process..." -ForegroundColor Green
     
-    Invoke-TaskClean
+    if ($FullClean) {
+        Invoke-TaskClean
+    }
+    else {
+        Stop-AppProcess
+    }
 
     Update-BuildVersion
 
@@ -161,6 +204,9 @@ function Invoke-TaskBuild {
 
 function Invoke-TaskClean {
     Write-Host "Cleaning Build directory..." -ForegroundColor Yellow
+    
+    Stop-AppProcess
+
     if (Test-Path $BuildDir) {
         $maxRetries = 5
         $retryDelay = 2 # seconds
@@ -175,7 +221,8 @@ function Invoke-TaskClean {
                     Write-Host "Warning: Could not delete '$BuildDir'. Another process might be locking it." -ForegroundColor Yellow
                     Write-Host "Retrying in $retryDelay seconds... (Attempt $i of $maxRetries)" -ForegroundColor Yellow
                     Start-Sleep -Seconds $retryDelay
-                } else {
+                }
+                else {
                     Write-Host "Error: Failed to delete '$BuildDir' after several retries." -ForegroundColor Red
                     throw "Could not clean build directory. Please ensure no processes (like debuggers or the app itself) are using it."
                 }
@@ -202,6 +249,11 @@ function Invoke-TaskSign {
 }
 
 # --- Main Flow ---
+if ($Help -or [string]::IsNullOrEmpty($task)) {
+    Show-Help
+    exit 0
+}
+
 Show-Header
 
 try {

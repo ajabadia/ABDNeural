@@ -189,4 +189,43 @@ private:
     juce::Label titleLabel;
 };
 
+/**
+ * A standardized "Neural Glass" button for NEURONiK.
+ */
+class CustomButton : public juce::TextButton
+{
+public:
+    CustomButton(const juce::String& name = "") : juce::TextButton(name) 
+    {
+        setMouseCursor(juce::MouseCursor::PointingHandCursor);
+    }
+
+    void paintButton(juce::Graphics& g, bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown) override
+    {
+        auto area = getLocalBounds().toFloat();
+        auto cornerSize = 4.0f;
+
+        // 1. Background (Matte Dark Glass)
+        g.setColour(juce::Colour(0xFF151515).withAlpha(0.8f));
+        g.fillRoundedRectangle(area, cornerSize);
+
+        // 2. Dynamic Border
+        float borderAlpha = shouldDrawButtonAsDown ? 0.9f : (shouldDrawButtonAsHighlighted ? 0.6f : 0.3f);
+        g.setColour(juce::Colours::cyan.withAlpha(borderAlpha));
+        g.drawRoundedRectangle(area.reduced(0.5f), cornerSize, 1.0f);
+
+        // 3. Inner Glow on press
+        if (shouldDrawButtonAsDown)
+        {
+            g.setColour(juce::Colours::cyan.withAlpha(0.1f));
+            g.fillRoundedRectangle(area.reduced(1.0f), cornerSize);
+        }
+
+        // 4. Text / Label
+        g.setColour(shouldDrawButtonAsDown ? juce::Colours::white : juce::Colours::cyan.withAlpha(0.8f));
+        g.setFont(juce::Font(juce::FontOptions(area.getHeight() * 0.5f).withStyle("Bold")));
+        g.drawText(getButtonText(), area, juce::Justification::centred, false);
+    }
+};
+
 } // namespace NEURONiK::UI

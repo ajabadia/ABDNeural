@@ -64,7 +64,7 @@ void FilterEnvPanel::resized()
 {
     auto area = getLocalBounds().reduced(5);
     
-    auto leftArea = area.removeFromLeft(area.getWidth() * 0.4f).reduced(3);
+    auto leftArea = area.removeFromLeft(static_cast<int>(area.getWidth() * 0.4f)).reduced(3);
     auto rightArea = area.reduced(3);
 
     filterBox.setBounds(leftArea);
@@ -89,7 +89,7 @@ void FilterEnvPanel::resized()
     {
         auto c = fEnvBox.getContentArea();
         auto vizHeight = c.getHeight() * 0.45f;
-        fEnvVisualizer->setBounds(c.removeFromTop(vizHeight).reduced(10));
+        fEnvVisualizer->setBounds(c.removeFromTop(static_cast<int>(vizHeight)).reduced(10));
         
         auto knobArea = c;
         auto knobW = knobArea.getWidth() / 4;

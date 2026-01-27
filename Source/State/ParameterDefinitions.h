@@ -73,6 +73,7 @@ namespace IDs {
     const juce::String freezeResonator = "freezeResonator";
     const juce::String freezeFilter    = "freezeFilter";
     const juce::String freezeEnvelopes = "freezeEnvelopes";
+    const juce::String velocityCurve    = "velocityCurve";
 
     // LFO 1
     const juce::String lfo1Waveform = "lfo1Waveform";
@@ -153,6 +154,9 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     params.push_back(std::make_unique<juce::AudioParameterBool>(IDs::freezeResonator, "Freeze Resonator", false));
     params.push_back(std::make_unique<juce::AudioParameterBool>(IDs::freezeFilter, "Freeze Filter", false));
     params.push_back(std::make_unique<juce::AudioParameterBool>(IDs::freezeEnvelopes, "Freeze Envelopes", false));
+    
+    juce::StringArray curves = { "Linear", "Soft", "Hard" };
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::velocityCurve, "Velocity Curve", curves, 0));
 
     juce::StringArray midiChannels = { "Omni", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16" };
     params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::midiChannel, "MIDI Channel", midiChannels, 0));
@@ -179,7 +183,7 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
         "Flt Attack", "Flt Decay", "Flt Sustain", "Flt Release",
         "Saturation", "Delay Time", "Delay FB",
         "Odd/Even Bal", "Spectral Shift", "Harm Roll-off" };
-    juce::StringArray modSources = { "Off", "LFO 1", "LFO 2", "Pitch Bend", "Mod Wheel" };
+    juce::StringArray modSources = { "Off", "LFO 1", "LFO 2", "Pitch Bend", "Mod Wheel", "Aftertouch" };
 
     params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::mod1Source, "Mod 1 Source", modSources, 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::mod1Destination, "Mod 1 Dest", modDestinations, 0));

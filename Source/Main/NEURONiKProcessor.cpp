@@ -10,6 +10,7 @@ NEURONiKProcessor::NEURONiKProcessor()
     : apvts(*this, nullptr, "Parameters", createParameterLayout())
 {
     presetManager = std::make_unique<NEURONiK::Serialization::PresetManager>(apvts);
+    midiMappingManager = std::make_unique<NEURONiK::Main::MidiMappingManager>(apvts);
 
     keyboardState.addListener(this);
 
@@ -190,6 +191,7 @@ void NEURONiKProcessor::parameterChanged(const juce::String& parameterID, float 
         else if (parameterID == IDs::filterDecay) voiceParams.fDecay = newValue;
         else if (parameterID == IDs::filterSustain) voiceParams.fSustain = newValue;
         else if (parameterID == IDs::filterRelease) voiceParams.fRelease = newValue;
+        else if (parameterID == IDs::velocityCurve) voiceParams.velocityCurve = static_cast<int>(newValue);
         else if (parameterID == IDs::fxSaturation) saturationProcessor.setAmount(newValue);
         else if (parameterID == IDs::fxDelayTime) delayProcessor.setParameters(newValue, apvts.getRawParameterValue(IDs::fxDelayFeedback)->load());
         else if (parameterID == IDs::fxDelayFeedback) delayProcessor.setParameters(apvts.getRawParameterValue(IDs::fxDelayTime)->load(), newValue);
@@ -216,6 +218,7 @@ void NEURONiKProcessor::updateVoiceParameters(int numSamples)
 
     auto pbValue = (pitchBendValue.load(std::memory_order_relaxed) - 0.5f) * 2.0f; // Bipolar
     auto mwValue = modWheelValue.load(std::memory_order_relaxed); // Unipolar
+    auto atValue = aftertouchValue.load(std::memory_order_relaxed); // Unipolar (usually)
 
     auto modulatedParams = voiceParams;
 
@@ -237,6 +240,7 @@ void NEURONiKProcessor::updateVoiceParameters(int numSamples)
             case 2: modSourceValue = lfo2Value; break;
             case 3: modSourceValue = pbValue; break;
             case 4: modSourceValue = mwValue; break;
+            case 5: modSourceValue = atValue; break;
             default: break;
         }
 
@@ -277,6 +281,8 @@ void NEURONiKProcessor::updateVoiceParameters(int numSamples)
     modulatedParams.resonatorParity = modulatedParity;
     modulatedParams.resonatorShift = modulatedShift;
     modulatedParams.resonatorRollOff = modulatedRollOff;
+    modulatedParams.velocityCurve = static_cast<int>(apvts.getRawParameterValue(IDs::velocityCurve)->load());
+    modulatedParams.masterAftertouch = atValue;
     
     // Update visualization atoms
     uiMorphX.store(modulatedParams.morphX, std::memory_order_relaxed);
@@ -373,6 +379,23 @@ void NEURONiKProcessor::updateModulation()
         }
     };
 
+    float lfo1Val = lfo1.processSample();
+    float lfo2Val = lfo2.processSample();
+    float pbVal = pitchBendValue.load();
+    float mwVal = modWheelValue.load();
+    float atVal = aftertouchValue.load();
+
+    auto getSourceValue = [&](int source) -> float {
+        switch (source) {
+            case 1: return lfo1Val;
+            case 2: return lfo2Val;
+            case 3: return pbVal;
+            case 4: return mwVal;
+            case 5: return atVal;
+            default: return 0.0f;
+        }
+    };
+
     lfo1.setWaveform(static_cast<NEURONiK::DSP::Core::LFO::Waveform>((int)apvts.getRawParameterValue(IDs::lfo1Waveform)->load()));
     lfo1.setRate(apvts.getRawParameterValue(IDs::lfo1RateHz)->load());
     lfo1.setSyncMode(static_cast<NEURONiK::DSP::Core::LFO::SyncMode>((int)apvts.getRawParameterValue(IDs::lfo1SyncMode)->load()));
@@ -403,14 +426,7 @@ void NEURONiKProcessor::enterMidiLearnMode(const juce::String& paramID)
 
 void NEURONiKProcessor::clearMidiLearnForParameter(const juce::String& paramID)
 {
-    for (auto it = midiCCMap.begin(); it != midiCCMap.end(); ++it)
-    {
-        if (it->second == paramID)
-        {
-            midiCCMap.erase(it);
-            break;
-        }
-    }
+    midiMappingManager->clearMapping(paramID);
 }
 
 void NEURONiKProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
@@ -472,27 +488,32 @@ void NEURONiKProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
         if (message.isController())
         {
             int controllerNumber = message.getControllerNumber();
+            float valNorm = message.getControllerValue() / 127.0f;
 
             if (midiLearnActive.load())
             {
-                midiCCMap[controllerNumber] = parameterToLearn;
+                midiMappingManager->setMapping(parameterToLearn, controllerNumber);
                 midiLearnActive = false;
                 parameterToLearn = "";
             }
-            else if (midiCCMap.count(controllerNumber))
+            else 
             {
-                apvts.getParameter(midiCCMap[controllerNumber])->setValueNotifyingHost(message.getControllerValue() / 127.0f);
-            }
-            else
-            {
-                switch (controllerNumber)
+                juce::String paramID = midiMappingManager->getParamForCC(controllerNumber);
+                if (paramID.isNotEmpty())
                 {
-                    case 1: // Mod Wheel
-                        modWheelValue.store(message.getControllerValue() / 127.0f, std::memory_order_relaxed);
-                        break;
-                    case 7: // Main Volume
-                        apvts.getParameter(IDs::masterLevel)->setValueNotifyingHost(message.getControllerValue() / 127.0f);
-                        break;
+                    if (auto* p = apvts.getParameter(paramID))
+                        p->setValueNotifyingHost(valNorm);
+                }
+                
+                // Specific hardcoded behaviors for Mod Wheel (CC 1) if not remapped
+                if (controllerNumber == 1 && paramID.isEmpty())
+                {
+                    modWheelValue.store(valNorm, std::memory_order_relaxed);
+                }
+                // Main Volume (CC 7) if not remapped
+                else if (controllerNumber == 7 && paramID.isEmpty())
+                {
+                    apvts.getParameter(IDs::masterLevel)->setValueNotifyingHost(valNorm);
                 }
             }
         }
@@ -500,6 +521,10 @@ void NEURONiKProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
         {
             pitchBendValue.store(message.getPitchWheelValue() / 16383.0f, std::memory_order_relaxed);
             synth.handlePitchWheel(message.getChannel(), message.getPitchWheelValue());
+        }
+        else if (message.isChannelPressure())
+        {
+            aftertouchValue.store(message.getChannelPressureValue() / 127.0f, std::memory_order_relaxed);
         }
     }
 
@@ -553,6 +578,8 @@ const juce::String NEURONiKProcessor::getName() const
 void NEURONiKProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
+    midiMappingManager->saveToValueTree(state);
+    
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
 
     auto* modelsNode = new juce::XmlElement("MODELS");
@@ -566,6 +593,7 @@ void NEURONiKProcessor::getStateInformation(juce::MemoryBlock& destData)
 void NEURONiKProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
     std::unique_ptr<juce::XmlElement> xmlState(getXmlFromBinary(data, sizeInBytes));
+
     if (xmlState.get() != nullptr && xmlState->hasTagName(apvts.state.getType()))
     {
         if (auto* modelsNode = xmlState->getChildByName("MODELS"))
@@ -574,7 +602,10 @@ void NEURONiKProcessor::setStateInformation(const void* data, int sizeInBytes)
                 modelNames[i] = modelsNode->getStringAttribute("model" + juce::String(i), "EMPTY");
         }
 
-        apvts.replaceState(juce::ValueTree::fromXml(*xmlState));
+        auto tree = juce::ValueTree::fromXml(*xmlState);
+        apvts.replaceState(tree);
+        midiMappingManager->loadFromValueTree(tree);
+
         reloadModels();
         parametersNeedUpdating = true;
         modulationNeedsUpdating = true;

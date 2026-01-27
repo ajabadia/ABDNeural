@@ -44,7 +44,10 @@ private:
     std::unique_ptr<MidiLearner> freezeResMidi, freezeFltMidi, freezeEnvMidi;
     SharedKnobLookAndFeel sharedLNF;
 
-    GlassBox ampEnvBox { "AMPLITUDE ENVELOPE" }, globalBox { "GLOBAL" };
+    GlassBox ampEnvBox { "AMPLITUDE ENVELOPE" }, globalBox { "DASHBOARD / GLOBAL" };
+    
+    juce::Label titleLabel { "title", "NEURONiK" };
+    juce::Label versionLabel { "version", "Advanced Hybrid Synthesizer" };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ParameterPanel)
 };

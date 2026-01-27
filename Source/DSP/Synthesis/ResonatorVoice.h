@@ -46,6 +46,8 @@ public:
         float morphY = 0.5f;
         float inharmonicity = 0.0f;
         float roughness = 0.0f;
+        int velocityCurve = 0; // 0: Linear, 1: Soft, 2: Hard
+        float masterAftertouch = 0.0f;
     };
 
     void loadModel(const NEURONiK::DSP::Core::SpectralModel& model, int slot);

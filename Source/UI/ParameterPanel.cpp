@@ -13,6 +13,16 @@ ParameterPanel::ParameterPanel(NEURONiKProcessor& p)
     addAndMakeVisible(ampEnvBox);
     addAndMakeVisible(globalBox);
 
+    globalBox.addAndMakeVisible(titleLabel);
+    globalBox.addAndMakeVisible(versionLabel);
+
+    titleLabel.setFont(juce::Font(juce::FontOptions(32.0f).withStyle("Bold")));
+    titleLabel.setColour(juce::Label::textColourId, juce::Colours::cyan);
+    titleLabel.setJustificationType(juce::Justification::centred);
+
+    versionLabel.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+    versionLabel.setJustificationType(juce::Justification::centred);
+
     setupControl(attack,    IDs::envAttack,   "ATTACK",  &processor.uiAttack);
     setupControl(decay,     IDs::envDecay,    "DECAY",   &processor.uiDecay);
     setupControl(sustain,   IDs::envSustain,  "SUSTAIN", &processor.uiSustain);
@@ -136,7 +146,7 @@ void ParameterPanel::resized()
 {
     auto area = getLocalBounds().reduced(5);
     
-    auto leftArea = area.removeFromLeft(area.getWidth() * 0.7f).reduced(3);
+    auto leftArea = area.removeFromLeft(static_cast<int>(area.getWidth() * 0.7f)).reduced(3);
     auto rightArea = area.reduced(3);
 
     ampEnvBox.setBounds(leftArea);
@@ -146,7 +156,7 @@ void ParameterPanel::resized()
     {
         auto c = ampEnvBox.getContentArea();
         auto vizH = c.getHeight() * 0.5f;
-        adsrVisualizer->setBounds(c.removeFromTop(vizH).reduced(10));
+        adsrVisualizer->setBounds(c.removeFromTop(static_cast<int>(vizH)).reduced(10));
         
         auto knobArea = c;
         auto knobW = knobArea.getWidth() / 4;
@@ -155,21 +165,25 @@ void ParameterPanel::resized()
             ctrl.slider.setBounds(bounds);
         };
 
-        layoutRotary(attack, knobArea.removeFromLeft(knobW).reduced(5));
-        layoutRotary(decay, knobArea.removeFromLeft(knobW).reduced(5));
-        layoutRotary(sustain, knobArea.removeFromLeft(knobW).reduced(5));
+
+        layoutRotary(attack, knobArea.removeFromLeft(static_cast<int>(knobW)).reduced(5));
+        layoutRotary(decay, knobArea.removeFromLeft(static_cast<int>(knobW)).reduced(5));
+        layoutRotary(sustain, knobArea.removeFromLeft(static_cast<int>(knobW)).reduced(5));
         layoutRotary(release, knobArea.reduced(5));
     }
 
     // Layout Global
     {
         auto c = globalBox.getContentArea();
-        auto knobH = c.getHeight() / 4;
+        auto knobH = c.getHeight() / 6; // Reduced to fit title
         
         auto layoutRotary = [&](RotaryControl& ctrl, juce::Rectangle<int> bounds) {
             ctrl.label.setBounds(bounds.removeFromTop(15));
             ctrl.slider.setBounds(bounds);
         };
+
+        titleLabel.setBounds(c.removeFromTop(45));
+        versionLabel.setBounds(c.removeFromTop(15));
 
         layoutRotary(masterBPM, c.removeFromTop(knobH).reduced(15, 2));
         layoutRotary(randomStrength, c.removeFromTop(knobH).reduced(15, 2));

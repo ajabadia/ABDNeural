@@ -15,7 +15,9 @@ While initially envisioned as a deep-learning-based instrument, NEURONiK has evo
 *   **Sonic Matter Sculpting**: Go beyond traditional synthesis with unique "matter" parameters:
     *   **Inharmonicity**: Stretches the harmonic series to create metallic, bell-like, or dissonant sounds.
     *   **Roughness/Entropy**: Introduces controlled chaos and micro-variations into the sound for a more organic and less sterile character.
-*   **Modern UI**: A clean, hardware-inspired user interface with tabbed sections for clear and intuitive control.
+*   **Expressive Control**: Support for **Velocity Curves** (Linear, Soft, Hard) and **Aftertouch** modulation for dynamic performances.
+*   **Flexible MIDI Mapping**: A robust CC mapping system with persistence, auto-conflict resolution, and a dedicated "MIDI CONTROL" LCD menu for hardware-style configuration.
+*   **Modern UI**: A clean, hardware-inspired user interface with tabbed sections for clear and intuitive control, plus a "MIDI Specifications" help dialog.
 *   **Cross-Platform**: Built with JUCE and CMake for portability across Windows, macOS, and Linux.
 
 ## Technical Architecture

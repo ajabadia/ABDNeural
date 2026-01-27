@@ -17,7 +17,7 @@ PresetBrowser::PresetBrowser(NEURONiKProcessor& p)
     bankModel = std::make_unique<BankListModel>(banks, [this](int idx) { loadPresetsForBank(idx); });
     bankList.setModel(bankModel.get());
     bankList.setRowHeight(30);
-    bankList.setColour(juce::ListBox::backgroundColourId, juce::Colour(0xFF1A1A1A));
+    bankList.setColour(juce::ListBox::backgroundColourId, juce::Colour(0xFF222222).withAlpha(0.6f));
     bankList.setColour(juce::ListBox::outlineColourId, juce::Colours::white.withAlpha(0.1f));
     bankList.setOutlineThickness(1);
     addAndMakeVisible(bankList);
@@ -63,9 +63,9 @@ PresetBrowser::PresetBrowser(NEURONiKProcessor& p)
         }
     );
     presetList.setModel(presetModel.get());
-    presetList.setRowHeight(25);
-    presetList.setColour(juce::ListBox::backgroundColourId, juce::Colour(0xFF1E1E1E));
-    presetList.setColour(juce::ListBox::outlineColourId, juce::Colours::white.withAlpha(0.1f));
+    presetList.setRowHeight(28); // Slightly taller for cleaner look
+    presetList.setColour(juce::ListBox::backgroundColourId, juce::Colour(0xFF252525).withAlpha(0.5f));
+    presetList.setColour(juce::ListBox::outlineColourId, juce::Colours::white.withAlpha(0.08f));
     presetList.setOutlineThickness(1);
     addAndMakeVisible(presetList);
 
@@ -73,8 +73,9 @@ PresetBrowser::PresetBrowser(NEURONiKProcessor& p)
     addAndMakeVisible(searchBox);
     searchBox.setTextToShowWhenEmpty("Filter presets...", juce::Colours::grey);
     searchBox.onTextChange = [this] { filterPresets(searchBox.getText()); };
-    searchBox.setColour(juce::TextEditor::backgroundColourId, juce::Colour(0xFF252525));
-    searchBox.setColour(juce::TextEditor::outlineColourId, juce::Colours::white.withAlpha(0.1f));
+    searchBox.setColour(juce::TextEditor::backgroundColourId, juce::Colour(0xFF1A1A1A));
+    searchBox.setColour(juce::TextEditor::outlineColourId, juce::Colours::cyan.withAlpha(0.3f));
+    searchBox.setColour(juce::TextEditor::focusedOutlineColourId, juce::Colours::cyan.withAlpha(0.8f));
 
     addAndMakeVisible(loadBankButton);
     loadBankButton.onClick = [this] {
@@ -83,14 +84,15 @@ PresetBrowser::PresetBrowser(NEURONiKProcessor& p)
     };
 
     addAndMakeVisible(tagsTitle);
-    tagsTitle.setFont(juce::Font(juce::FontOptions(10.0f).withStyle("Bold")));
+    tagsTitle.setFont(juce::Font(juce::FontOptions(11.0f).withStyle("Bold")));
+    tagsTitle.setColour(juce::Label::textColourId, juce::Colours::cyan.withAlpha(0.8f));
     
     addAndMakeVisible(tagsEditor);
     tagsEditor.setTextToShowWhenEmpty("e.g. Bass, Lead...", juce::Colours::grey);
     tagsEditor.onReturnKey = [this] { updateTagsForCurrentSelection(); };
-    // tagsEditor.onFocusLoss does not exist directly as a lambda member in standard JUCE TextEditor
-    // We can rely on onReturnKey or add a listener if strictly needed, but simply removing it fixes the error.
     tagsEditor.onTextChange = [this] { showTagSuggestions(); };
+    tagsEditor.setColour(juce::TextEditor::backgroundColourId, juce::Colour(0xFF1A1A1A));
+    tagsEditor.setColour(juce::TextEditor::outlineColourId, juce::Colours::cyan.withAlpha(0.3f));
 
     addAndMakeVisible(metadataLabel);
     metadataLabel.setColour(juce::Label::textColourId, juce::Colours::grey);
@@ -334,17 +336,27 @@ void PresetBrowser::refresh()
 
 void PresetBrowser::paint(juce::Graphics& g)
 {
-    g.fillAll(juce::Colour(0xFF1A1A1A)); // Match main background
+    auto backgroundColor = juce::Colour(0xFF1A1A1A);
+    g.fillAll(backgroundColor); 
     
     auto area = getLocalBounds();
     int colWidth = area.getWidth() / 3;
     
-    g.setColour(juce::Colours::white.withAlpha(0.02f));
+    // Column backgrounds with subtle neural glow
+    g.setColour(juce::Colours::black.withAlpha(0.25f));
     g.fillRect(area.removeFromLeft(colWidth)); 
     
-    g.setColour(juce::Colours::cyan.withAlpha(0.15f));
+    // Separators updated to cyan with glow
+    juce::Colour separatorColor = juce::Colours::cyan.withAlpha(0.2f);
+    g.setColour(separatorColor);
     g.drawVerticalLine(colWidth, 0.0f, (float)getHeight());
     g.drawVerticalLine(colWidth * 2, 0.0f, (float)getHeight());
+
+    // Decorative glow at the top
+    juce::ColourGradient topGlow(juce::Colours::cyan.withAlpha(0.05f), 0, 0,
+                               juce::Colours::transparentBlack, 0, 40, false);
+    g.setGradientFill(topGlow);
+    g.fillRect(getLocalBounds().removeFromTop(40));
 }
 
 void PresetBrowser::resized()

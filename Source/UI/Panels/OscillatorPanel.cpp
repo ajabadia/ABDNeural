@@ -67,7 +67,7 @@ void OscillatorPanel::resized()
 {
     auto area = getLocalBounds().reduced(5);
     
-    auto leftArea = area.removeFromLeft(area.getWidth() * 0.45f).reduced(3);
+    auto leftArea = area.removeFromLeft(static_cast<int>(area.getWidth() * 0.45f)).reduced(3);
     auto rightArea = area.reduced(3);
 
     modelBox.setBounds(leftArea);

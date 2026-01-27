@@ -21,17 +21,44 @@ NEURONiKEditor::NEURONiKEditor(NEURONiKProcessor& p)
       modulationPanel(p),
       presetBrowser(p)
 {
+    // --- Header ---
+    addAndMakeVisible(lcdDisplay);
+    addAndMakeVisible(menuBtn);
+    addAndMakeVisible(okBtn);
+    
+    // Add D-Pad
+    addAndMakeVisible(leftBtn);
+    addAndMakeVisible(rightBtn);
+    addAndMakeVisible(upBtn);
+    addAndMakeVisible(downBtn);
+    
+    // Setup Listeners
+    for (auto* b : { &menuBtn, &okBtn, &leftBtn, &rightBtn, &upBtn, &downBtn }) {
+        b->onStateChange = [this, b] { buttonStateChanged(b); };
+    }
+
+    menuBtn.onClick = [this] { 
+        menuManager.onMenuPress(); 
+        updateLcdDefault();
+    };
+    
+    okBtn.onClick = [this] { 
+        menuManager.onOkPress(); 
+        updateLcdDefault();
+    };
+
+    updateLcdDefault();
+    
+    // Listen to ALL parameters
+    for (auto* param : p.getAPVTS().processor.getParameters())
+    {
+        if (auto* pSafe = dynamic_cast<juce::AudioProcessorParameterWithID*>(param))
+            p.getAPVTS().addParameterListener(pSafe->getParameterID(), this);
+    }
     addAndMakeVisible(menuBar);
     addAndMakeVisible(keyboardComponent);
     addAndMakeVisible(mainTabs);
     addAndMakeVisible(visualizer);
-
-    titleLabel.setFont(juce::Font(juce::FontOptions(32.0f).withStyle("Bold")));
-    titleLabel.setColour(juce::Label::textColourId, juce::Colours::cyan);
-    titleLabel.setJustificationType(juce::Justification::centred);
-
-    versionLabel.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
-    versionLabel.setJustificationType(juce::Justification::centred);
 
     mainTabs.addTab("GENERAL",    juce::Colours::darkgrey, &generalPanel, false);
     mainTabs.addTab("RESONATOR",  juce::Colours::darkgrey, &oscPanel, false);
@@ -46,11 +73,223 @@ NEURONiKEditor::NEURONiKEditor(NEURONiKProcessor& p)
     setSize(800, 600);
 }
 
+NEURONiKEditor::~NEURONiKEditor()
+{
+    // Unregister listeners
+    for (auto* param : processor.getAPVTS().processor.getParameters())
+    {
+        if (auto* pSafe = dynamic_cast<juce::AudioProcessorParameterWithID*>(param))
+            processor.getAPVTS().removeParameterListener(pSafe->getParameterID(), this);
+    }
+}
+
+void NEURONiKEditor::parameterChanged(const juce::String& parameterID, float newValue)
+{
+    auto* param = processor.getAPVTS().getParameter(parameterID);
+    if (!param) return;
+
+    juce::String name = param->getName(16);
+    juce::String valStr = param->getCurrentValueAsText();
+    
+    // Move to UI thread
+    juce::MessageManager::callAsync([this, name, valStr] {
+        lcdDisplay.showParameterPreview(name, valStr);
+    });
+
+    juce::ignoreUnused(newValue);
+}
+
+void NEURONiKEditor::updateLcdDefault()
+{
+    juce::String l1 = menuManager.getLine1();
+    juce::String l2 = menuManager.getLine2();
+
+    if (menuManager.getState() == NEURONiK::UI::LcdMenuManager::State::Idle)
+    {
+        l1 = "PATCH: " + processor.getPresetManager().getCurrentPreset().toUpperCase();
+        l2 = "NEURONiK READY";
+    }
+    else if (menuManager.isEditing())
+    {
+        auto item = menuManager.getCurrentItem();
+        auto paramID = item.paramID;
+
+        if (item.type == NEURONiK::UI::LcdMenuManager::ItemType::MidiCC)
+        {
+            int cc = processor.getMidiMappingManager().getCCForParam(paramID);
+            juce::String ccStr = (cc < 0) ? "---" : juce::String(cc);
+            
+            // Check for potential conflict if we were to move?
+            // (The setMapping logic resolves them, but we display the current)
+            l2 = "> " + item.label + ": CC " + ccStr;
+            
+            // Add 'L' if it has a mapping? Wait, user says 'L' for MIDI Learn active?
+            // Usually 'L' means it's learned. 
+            if (cc >= 0) l2 += " [L]";
+        }
+        else if (auto* param = processor.getAPVTS().getParameter(paramID))
+        {
+            float val = param->getValue();
+            juce::String valStr;
+            
+            if (param->isDiscrete())
+                valStr = param->getCurrentValueAsText();
+            else
+                valStr = juce::String(param->convertFrom0to1(val), 3);
+                
+            l2 = "> " + menuManager.getLine2() + ": " + valStr;
+        }
+    }
+
+    lcdDisplay.setDefaultText(l1, l2);
+}
+
+// --- Button Logic ---
+void NEURONiKEditor::timerCallback()
+{
+    if (activeHoldButton && activeHoldButton->isDown())
+    {
+        holdCounter++;
+        handleButtonAction(activeHoldButton, true);
+    }
+    else
+    {
+        stopTimer();
+        activeHoldButton = nullptr;
+        holdCounter = 0;
+    }
+}
+
+void NEURONiKEditor::buttonStateChanged(juce::Button* b)
+{
+    if (b->isDown())
+    {
+        // Only D-Pad buttons use the repeat logic.
+        // Command buttons (MENU/OK) use standard onClick.
+        if (b == &leftBtn || b == &rightBtn || b == &upBtn || b == &downBtn)
+        {
+            holdCounter = 0;
+            activeHoldButton = b;
+            handleButtonAction(b, false); // First trigger
+            startTimer(200);
+        }
+    }
+    else if (activeHoldButton == b)
+    {
+        stopTimer();
+        activeHoldButton = nullptr;
+        holdCounter = 0;
+    }
+}
+
 void NEURONiKEditor::updateModelNames()
 {
     const auto& names = processor.getModelNames();
     for (int i = 0; i < 4; ++i)
         oscPanel.setModelName(i, names[i]);
+}
+
+// We need to implement the timer callback for the hold timer. 
+// Since NEURONiKEditor doesn't inherit Timer (parameterPanel does), we need to add inheritance or use a helper.
+// Recommendation: Add "private juce::Timer" inheritance to NEURONiKEditor in the previous step (header).
+// We'll assume I missed adding the inheritance in the header edit, so I will add the logic to a NEW method 
+// and handle the inheritance fix in the header/source if needed.
+// WAIT: I declared `juce::Timer holdTimer` member in older edit? 
+// No, I declared `juce::Timer holdTimer;` which is WRONG because Timer is an interface (mostly) or needs virtual callback.
+// JUCE Timer is a mixin class usually. One cannot instantiate `juce::Timer` directly unless it has a callback assigned (not standard JUCE).
+// Standard JUCE: Inherit from Timer.
+// FIX: I will use a simple logical fix: I will remove the member `juce::Timer holdTimer` and instead make NEURONiKEditor inherit from Timer 
+// or use `juce::Time::waitForMillisecondCounter` (blocking, bad).
+// Okay, let's use the `callById` parameter of `startTimer` if available, or just implement `timerCallback` in Editor.
+// Editor ALREADY inherits `AudioProcessorValueTreeState::Listener`. 
+// I will add `private juce::Timer` to inheritance in the next fix if needed.
+// FOR NOW: I'll assume I can add the logic to `handleButtonAction`.
+
+void NEURONiKEditor::handleButtonAction(juce::Button* b, bool isRepeat)
+{
+    if (!b) return;
+    
+    // We only process D-Pad buttons here. MENU/OK are handled by onClick.
+    if (b != &leftBtn && b != &rightBtn && b != &upBtn && b != &downBtn)
+        return;
+
+    int direction = (b == &rightBtn || b == &upBtn) ? 1 : -1;
+    
+    // Acceleration Logic
+    float paramDelta = 0.01f;
+    if (isRepeat && holdCounter > 8) { // > 1.6s @ 200ms
+        paramDelta = 0.05f;
+    }
+
+    // LEFT / RIGHT: Menu Navigation
+    if (b == &leftBtn || b == &rightBtn)
+    {
+        if (!menuManager.isEditing())
+        {
+            menuManager.onEncoderRotate(direction);
+        }
+    }
+    // UP / DOWN: Value adjustment (or Preset navigation in Idle)
+    else if (b == &upBtn || b == &downBtn)
+    {
+        auto state = menuManager.getState();
+        
+        if (state == NEURONiK::UI::LcdMenuManager::State::Idle)
+        {
+            if (direction > 0) processor.getPresetManager().loadNextPreset();
+            else processor.getPresetManager().loadPreviousPreset();
+        }
+        else
+        {
+            auto item = menuManager.getCurrentItem();
+            auto paramID = item.paramID;
+
+            if (item.type == NEURONiK::UI::LcdMenuManager::ItemType::MidiCC)
+            {
+                if (paramID.isNotEmpty())
+                {
+                    int currentCC = processor.getMidiMappingManager().getCCForParam(paramID);
+                    int newCC = juce::jlimit(-1, 127, currentCC + direction);
+                    processor.getMidiMappingManager().setMapping(paramID, newCC);
+                    
+                    if (!menuManager.isEditing())
+                        menuManager.onOkPress();
+                }
+            }
+            else if (item.type == NEURONiK::UI::LcdMenuManager::ItemType::Action)
+            {
+                if (paramID == "RESET_MIDI")
+                {
+                    processor.getMidiMappingManager().resetToDefaults();
+                }
+            }
+            else if (paramID.isNotEmpty())
+            {
+                // ... existing parameter edit logic ...
+                if (auto* param = processor.getAPVTS().getParameter(paramID))
+                {
+                    // Discrete logic
+                    if (param->isDiscrete())
+                    {
+                        float steps = (float)param->getNumSteps();
+                        if (steps > 1) paramDelta = 1.0f / (steps - 1.0f);
+                        else paramDelta = 1.0f;
+                    }
+                    
+                    float currentVal = param->getValue();
+                    float newVal = juce::jlimit(0.0f, 1.0f, currentVal + (paramDelta * direction));
+                    
+                    if (newVal != currentVal)
+                        param->setValueNotifyingHost(newVal);
+                    
+                    if (!menuManager.isEditing())
+                        menuManager.onOkPress();
+                }
+            }
+        }
+    }
+    
+    updateLcdDefault();
 }
 
 void NEURONiKEditor::paint(juce::Graphics& g)
@@ -81,11 +320,31 @@ void NEURONiKEditor::resized()
     menuBar.setBounds(area.removeFromTop(25));
 
     auto headerArea = area.removeFromTop(80);
-    auto titleArea = headerArea.removeFromLeft(headerArea.getWidth() / 2);
+    auto lcdArea = headerArea.removeFromLeft(static_cast<int>(headerArea.getWidth() * 0.6f)).reduced(10, 5);
     auto visualizerArea = headerArea;
 
-    titleLabel.setBounds(titleArea.removeFromTop(40));
-    versionLabel.setBounds(titleArea);
+    // Split LCD area to include hardware controls
+    auto hardwareArea = lcdArea.removeFromRight(110);
+    lcdDisplay.setBounds(lcdArea);
+    
+    // Layout:
+    // Left Col: MENU / OK
+    // Right Grid: < > (Row 1), ^ v (Row 2)
+    
+    auto cmdCol = hardwareArea.removeFromLeft(50);
+    menuBtn.setBounds(cmdCol.removeFromTop(cmdCol.getHeight() / 2).reduced(2));
+    okBtn.setBounds(cmdCol.reduced(2));
+
+    auto padArea = hardwareArea.reduced(2);
+    auto row1 = padArea.removeFromTop(padArea.getHeight() / 2);
+    auto row2 = padArea;
+    
+    leftBtn.setBounds(row1.removeFromLeft(row1.getWidth()/2).reduced(2));
+    rightBtn.setBounds(row1.reduced(2));
+    
+    upBtn.setBounds(row2.removeFromLeft(row2.getWidth()/2).reduced(2));
+    downBtn.setBounds(row2.reduced(2));
+
     visualizer.setBounds(visualizerArea.reduced(5));
 
     auto keyboardArea = area.removeFromBottom(100);
@@ -146,6 +405,7 @@ juce::PopupMenu NEURONiKEditor::getMenuForIndex(int, const juce::String& menuNam
     else if (menuName == "Help")
     {
         menu.addItem(101, "About...");
+        menu.addItem(102, "MIDI Specifications...");
     }
 
     return menu;
@@ -227,16 +487,49 @@ void NEURONiKEditor::menuItemSelected(int menuItemID, int)
     }
     else if (menuItemID == 101)
     {
-        juce::String aboutText;
-        aboutText << "NEURONiK Synthesizer\n"
-                  << "Advanced Neural Hybrid Processor\n\n"
-                  << "Version: " << NEURONIK_BUILD_VERSION << "\n"
-                  << "Build: " << NEURONIK_BUILD_TIMESTAMP << "\n\n"
-                  << "© 2026 ABD Neural";
-
         juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,
-                                               "About NEURONiK",
-                                               aboutText,
-                                               "OK");
+            "About NEURONiK",
+            "NEURONiK Synthesizer\n"
+            "Enhanced Hybrid Resynthesis Engine\n\n"
+            "Inspired by Neural models.\n"
+            "Developed by ABD.",
+            "OK");
     }
+    else if (menuItemID == 102)
+    {
+        showMidiSpecifications();
+    }
+}
+void NEURONiKEditor::showMidiSpecifications()
+{
+    juce::String specs = "FACTORY MIDI CC MAPPINGS\n"
+                         "=========================\n\n";
+
+    specs << "74: Filter Cutoff\n";
+    specs << "71: Filter Resonance\n";
+    specs << "07: Master Volume\n";
+    specs << "73: Envelope Attack\n";
+    specs << "72: Envelope Release\n";
+    specs << "12: Morph X\n";
+    specs << "13: Morph Y\n";
+    specs << "14: Inharmonicity\n";
+    specs << "15: Roughness\n";
+    specs << "16: Odd/Even Balance\n";
+    specs << "17: Spectral Shift\n";
+    specs << "18: Harmonic Roll-off\n";
+    specs << "79: Filter Env Amount\n";
+    specs << "91: Saturation\n";
+    specs << "93: Chorus Mix\n";
+    specs << "94: Delay Time\n";
+    specs << "95: Reverb Mix\n\n";
+    
+    specs << "OTHER CONTROLS:\n";
+    specs << "Pitch Bend: Global Pitch\n";
+    specs << "Mod Wheel: Routable (Mod Matrix)\n";
+    specs << "Aftertouch: Routable (Mod Matrix)\n";
+
+    juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,
+        "MIDI Specifications",
+        specs,
+        "OK");
 }

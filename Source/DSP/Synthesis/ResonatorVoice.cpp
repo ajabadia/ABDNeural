@@ -36,7 +36,13 @@ void ResonatorVoice::startNote(int midiNoteNumber, float velocity,
                                juce::SynthesiserSound* /*sound*/, 
                                int currentPitchWheelPosition)
 {
-    currentVelocity = velocity;
+    float curvedVelocity = velocity;
+    if (currentParams.velocityCurve == 1) // Soft (exponential)
+        curvedVelocity = velocity * velocity;
+    else if (currentParams.velocityCurve == 2) // Hard (logarithmic-ish)
+        curvedVelocity = std::sqrt(velocity);
+
+    currentVelocity = curvedVelocity;
     originalFrequency = static_cast<float>(juce::MidiMessage::getMidiNoteInHertz(midiNoteNumber));
     pitchWheelMoved(currentPitchWheelPosition); // Apply initial pitch bend
 
