@@ -30,20 +30,22 @@ public:
 
     struct VoiceParams
     {
-        float oscLevel;
-        float attack, decay, sustain, release;
-        float filterCutoff, filterRes;
+        float oscLevel = 1.0f;
+        float attack = 0.01f, decay = 0.1f, sustain = 0.7f, release = 0.5f;
+        float filterCutoff = 20000.0f, filterRes = 0.1f;
+        float fEnvAmount = 0.0f;
+        float fAttack = 0.01f, fDecay = 0.1f, fSustain = 0.7f, fRelease = 0.5f;
 
         // Legacy parameters (to be phased out)
-        float resonatorRollOff;
-        float resonatorParity;
-        float resonatorShift;
+        float resonatorRollOff = 1.0f;
+        float resonatorParity = 0.5f;
+        float resonatorShift = 1.0f;
 
         // Neural Engine parameters
-        float morphX;
-        float morphY;
-        float inharmonicity;
-        float roughness;
+        float morphX = 0.5f;
+        float morphY = 0.5f;
+        float inharmonicity = 0.0f;
+        float roughness = 0.0f;
     };
 
     void loadModel(const NEURONiK::DSP::Core::SpectralModel& model, int slot);
@@ -61,6 +63,7 @@ public:
     // --- Parameter Updates ---
     void updateParameters(const VoiceParams& params);
     float getCurrentEnvelopeLevel() const { return ampEnvelope.getLastOutput(); }
+    float getCurrentFilterEnvelopeLevel() const { return filterEnvelope.getLastOutput(); }
 
     // --- Real-time Processing ---
     void renderNextBlock(juce::AudioBuffer<float>& outputBuffer,
@@ -70,6 +73,7 @@ private:
     // --- DSP Chain ---
     NEURONiK::DSP::Core::Resonator resonator;
     NEURONiK::DSP::Core::Envelope ampEnvelope;
+    NEURONiK::DSP::Core::Envelope filterEnvelope;
     NEURONiK::DSP::Core::FilterBank filter;
 
     float currentVelocity = 0.0f;

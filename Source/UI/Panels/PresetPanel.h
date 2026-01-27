@@ -1,6 +1,7 @@
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "../CustomUIComponents.h"
 
 class NEURONiKProcessor;
 
@@ -24,14 +25,15 @@ private:
     void promptForPresetName();
 
     NEURONiKProcessor& processor;
+    juce::AudioProcessorValueTreeState& vts;
 
     juce::ComboBox presetCombo;
     juce::TextButton saveButton{ "SAVE" };
     juce::TextButton deleteButton{ "DEL" };
 
-    juce::Slider bpmSlider;
-    juce::Label bpmLabel;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> bpmAttachment;
+    // Glass Boxes
+    GlassBox presetBox { "PRESET BROWSER" };
+    // We can add more boxes later, like "MACROS" or "SETLIST"
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PresetPanel)
 };

@@ -1,44 +1,38 @@
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_processors/juce_audio_processors.h>
-#include "../Main/NEURONiKProcessor.h"
-#include "MidiLearner.h"
-#include "Panels/PresetPanel.h"
+#include "CustomUIComponents.h"
+#include "EnvelopeVisualizer.h"
+
+class NEURONiKProcessor;
 
 namespace NEURONiK::UI {
 
-class ParameterPanel : public juce::Component, private juce::Timer
+class ParameterPanel : public juce::Component, public juce::Timer
 {
 public:
     ParameterPanel(NEURONiKProcessor& p);
-    ~ParameterPanel() override = default;
+    ~ParameterPanel() override;
 
     void paint(juce::Graphics& g) override;
     void resized() override;
+    void timerCallback() override;
 
 private:
-    struct RotaryControl {
-        juce::Slider slider;
-        juce::Label label;
-        std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
-        std::unique_ptr<MidiLearner> midiLearner;
-        std::atomic<float>* boundModularValue = nullptr;
-    };
-
     void setupControl(RotaryControl& control, const juce::String& paramID, const juce::String& labelText, std::atomic<float>* modValue = nullptr);
     void randomizeParameters();
-    void timerCallback() override;
 
     NEURONiKProcessor& processor;
     juce::AudioProcessorValueTreeState& vts;
-
-    PresetPanel presetPanel;
 
     // Envelope Controls
     RotaryControl attack, decay, sustain, release;
 
     // Filter & Master Controls
-    RotaryControl cutoff, resonance, randomStrength;
+    RotaryControl randomStrength;
+    RotaryControl masterBPM;
+
+    std::unique_ptr<EnvelopeVisualizer> adsrVisualizer;
 
     juce::TextButton randomizeButton{ "RANDOM" };
     
@@ -48,10 +42,9 @@ private:
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> freezeResAttach, freezeFltAttach, freezeEnvAttach;
     std::unique_ptr<MidiLearner> freezeResMidi, freezeFltMidi, freezeEnvMidi;
-    std::vector<std::unique_ptr<juce::LookAndFeel_V4>> lnfs;
+    SharedKnobLookAndFeel sharedLNF;
 
-    juce::Label titleLabel{ "title", "NEURONiK" };
-    juce::Label subtitleLabel{ "subtitle", "Advanced Hybrid Synthesizer" };
+    GlassBox ampEnvBox { "AMPLITUDE ENVELOPE" }, globalBox { "GLOBAL" };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ParameterPanel)
 };

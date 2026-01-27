@@ -38,8 +38,13 @@ namespace IDs {
     const juce::String envRelease = "envRelease";
 
     // Filter
-    const juce::String filterCutoff = "filterCutoff";
-    const juce::String filterRes    = "filterRes";
+    const juce::String filterCutoff    = "filterCutoff";
+    const juce::String filterRes       = "filterRes";
+    const juce::String filterEnvAmount = "filterEnvAmount";
+    const juce::String filterAttack    = "filterAttack";
+    const juce::String filterDecay     = "filterDecay";
+    const juce::String filterSustain   = "filterSustain";
+    const juce::String filterRelease   = "filterRelease";
 
     // FX
     const juce::String fxSaturation    = "fxSaturation";
@@ -116,6 +121,11 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::envRelease, "Release", juce::NormalisableRange<float>(0.01f, 5.0f, 0.0f, 0.5f), 0.5f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::filterCutoff, "Cutoff", juce::NormalisableRange<float>(20.0f, 20000.0f, 0.0f, 0.3f), 20000.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::filterRes, "Resonance", juce::NormalisableRange<float>(0.0f, 1.0f), 0.1f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::filterEnvAmount, "Filter Env Amount", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::filterAttack, "Filter Attack", juce::NormalisableRange<float>(0.001f, 5.0f, 0.0f, 0.5f), 0.01f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::filterDecay, "Filter Decay", juce::NormalisableRange<float>(0.001f, 5.0f, 0.0f, 0.5f), 0.1f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::filterSustain, "Filter Sustain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.7f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::filterRelease, "Filter Release", juce::NormalisableRange<float>(0.01f, 5.0f, 0.0f, 0.5f), 0.5f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::resonatorRolloff, "Harmonic Roll-off", juce::NormalisableRange<float>(0.1f, 4.0f, 0.0f, 0.5f), 1.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::resonatorParity, "Odd/Even Balance", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::resonatorShift, "Spectral Shift", juce::NormalisableRange<float>(0.5f, 2.0f, 0.0f, 0.5f), 1.0f));
@@ -162,7 +172,13 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::lfo2RhythmicDivision, "LFO 2 Div", rhythmicDivisions, 2));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::lfo2Depth, "LFO 2 Depth", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f));
 
-    juce::StringArray modDestinations = { "Off", "Osc Level", "Inharmonicity", "Roughness", "Morph X", "Morph Y", "Attack", "Decay", "Sustain", "Release", "Filter Cutoff", "Filter Res", "Saturation", "Delay Time", "Delay FB" };
+    juce::StringArray modDestinations = { 
+        "Off", "Osc Level", "Inharmonicity", "Roughness", "Morph X", "Morph Y", 
+        "Amp Attack", "Amp Decay", "Amp Sustain", "Amp Release", 
+        "Filter Cutoff", "Filter Res", "Filter Env Amt",
+        "Flt Attack", "Flt Decay", "Flt Sustain", "Flt Release",
+        "Saturation", "Delay Time", "Delay FB",
+        "Odd/Even Bal", "Spectral Shift", "Harm Roll-off" };
     juce::StringArray modSources = { "Off", "LFO 1", "LFO 2", "Pitch Bend", "Mod Wheel" };
 
     params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::mod1Source, "Mod 1 Source", modSources, 0));

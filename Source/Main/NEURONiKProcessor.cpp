@@ -58,6 +58,11 @@ NEURONiKProcessor::NEURONiKProcessor()
     LOAD_PARAM(resonatorParity);
     LOAD_PARAM(resonatorShift);
     LOAD_PARAM(resonatorRolloff);
+    LOAD_PARAM(filterEnvAmount);
+    LOAD_PARAM(filterAttack);
+    LOAD_PARAM(filterDecay);
+    LOAD_PARAM(filterSustain);
+    LOAD_PARAM(filterRelease);
     LOAD_PARAM(masterBPM);
     LOAD_PARAM(lfo1Waveform);
     LOAD_PARAM(lfo1RateHz);
@@ -180,6 +185,11 @@ void NEURONiKProcessor::parameterChanged(const juce::String& parameterID, float 
         else if (parameterID == IDs::resonatorParity) voiceParams.resonatorParity = newValue;
         else if (parameterID == IDs::resonatorShift) voiceParams.resonatorShift = newValue;
         else if (parameterID == IDs::resonatorRolloff) voiceParams.resonatorRollOff = newValue;
+        else if (parameterID == IDs::filterEnvAmount) voiceParams.fEnvAmount = newValue;
+        else if (parameterID == IDs::filterAttack) voiceParams.fAttack = newValue;
+        else if (parameterID == IDs::filterDecay) voiceParams.fDecay = newValue;
+        else if (parameterID == IDs::filterSustain) voiceParams.fSustain = newValue;
+        else if (parameterID == IDs::filterRelease) voiceParams.fRelease = newValue;
         else if (parameterID == IDs::fxSaturation) saturationProcessor.setAmount(newValue);
         else if (parameterID == IDs::fxDelayTime) delayProcessor.setParameters(newValue, apvts.getRawParameterValue(IDs::fxDelayFeedback)->load());
         else if (parameterID == IDs::fxDelayFeedback) delayProcessor.setParameters(apvts.getRawParameterValue(IDs::fxDelayTime)->load(), newValue);
@@ -250,6 +260,11 @@ void NEURONiKProcessor::updateVoiceParameters(int numSamples)
             else if (destParamID == IDs::envRelease) modulatedParams.release = realValue;
             else if (destParamID == IDs::filterCutoff) modulatedParams.filterCutoff = realValue;
             else if (destParamID == IDs::filterRes) modulatedParams.filterRes = realValue;
+            else if (destParamID == IDs::filterEnvAmount) modulatedParams.fEnvAmount = realValue;
+            else if (destParamID == IDs::filterAttack) modulatedParams.fAttack = realValue;
+            else if (destParamID == IDs::filterDecay) modulatedParams.fDecay = realValue;
+            else if (destParamID == IDs::filterSustain) modulatedParams.fSustain = realValue;
+            else if (destParamID == IDs::filterRelease) modulatedParams.fRelease = realValue;
             else if (destParamID == IDs::fxSaturation) modulatedSaturation = realValue;
             else if (destParamID == IDs::fxDelayTime) modulatedDelayTime = realValue;
             else if (destParamID == IDs::fxDelayFeedback) modulatedDelayFeedback = realValue;
@@ -279,6 +294,16 @@ void NEURONiKProcessor::updateVoiceParameters(int numSamples)
     uiDecay.store(modulatedParams.decay, std::memory_order_relaxed);
     uiSustain.store(modulatedParams.sustain, std::memory_order_relaxed);
     uiRelease.store(modulatedParams.release, std::memory_order_relaxed);
+
+    uiFAttack.store(modulatedParams.fAttack, std::memory_order_relaxed);
+    uiFDecay.store(modulatedParams.fDecay, std::memory_order_relaxed);
+    uiFSustain.store(modulatedParams.fSustain, std::memory_order_relaxed);
+    uiFRelease.store(modulatedParams.fRelease, std::memory_order_relaxed);
+    uiFEnvAmount.store(modulatedParams.fEnvAmount, std::memory_order_relaxed);
+
+    uiSaturation.store(modulatedSaturation, std::memory_order_relaxed);
+    uiDelayTime.store(modulatedDelayTime, std::memory_order_relaxed);
+    uiDelayFB.store(modulatedDelayFeedback, std::memory_order_relaxed);
 
     // --- Delay Sync Logic ---
     bool delaySyncEnabled = apvts.getRawParameterValue(IDs::fxDelaySync)->load() > 0.5f;
@@ -311,18 +336,23 @@ void NEURONiKProcessor::updateVoiceParameters(int numSamples)
                                   apvts.getRawParameterValue(IDs::fxReverbMix)->load());
 
     float maxEnvLevel = 0.0f;
+    float maxFEnvLevel = 0.0f;
     for (int i = 0; i < synth.getNumVoices(); ++i)
     {
         if (auto* voice = dynamic_cast<NEURONiK::DSP::Synthesis::ResonatorVoice*>(synth.getVoice(i)))
         {
             voice->updateParameters(modulatedParams);
             
-            // Track max envelope for visualization
+            // Track max envelopes for visualization
             float env = voice->getCurrentEnvelopeLevel();
             if (env > maxEnvLevel) maxEnvLevel = env;
+
+            float fEnv = voice->getCurrentFilterEnvelopeLevel();
+            if (fEnv > maxFEnvLevel) maxFEnvLevel = fEnv;
         }
     }
     uiEnvelope.store(maxEnvLevel, std::memory_order_relaxed);
+    uiFEnvelope.store(maxFEnvLevel, std::memory_order_relaxed);
     parametersNeedUpdating = false;
 }
 
@@ -568,6 +598,11 @@ void NEURONiKProcessor::setupModulatableParameters()
     modulatableParameters.push_back(IDs::envRelease);
     modulatableParameters.push_back(IDs::filterCutoff);
     modulatableParameters.push_back(IDs::filterRes);
+    modulatableParameters.push_back(IDs::filterEnvAmount);
+    modulatableParameters.push_back(IDs::filterAttack);
+    modulatableParameters.push_back(IDs::filterDecay);
+    modulatableParameters.push_back(IDs::filterSustain);
+    modulatableParameters.push_back(IDs::filterRelease);
     modulatableParameters.push_back(IDs::fxSaturation);
     modulatableParameters.push_back(IDs::fxDelayTime);
     modulatableParameters.push_back(IDs::fxDelayFeedback);

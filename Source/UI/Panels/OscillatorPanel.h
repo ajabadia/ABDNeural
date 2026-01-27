@@ -3,21 +3,12 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "../XYPad.h"
-#include "../MidiLearner.h"
+#include "../CustomUIComponents.h"
 
 // Forward declaration to avoid including NEURONiKProcessor.h in a header
 class NEURONiKProcessor;
 
 namespace NEURONiK::UI {
-
-// A small helper struct for our rotary controls
-struct RotaryControl {
-    juce::Slider slider;
-    juce::Label label;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
-    std::unique_ptr<MidiLearner> midiLearner;
-    std::atomic<float>* boundModularValue = nullptr;
-};
 
 class OscillatorPanel : public juce::Component, public juce::Button::Listener, private juce::Timer
 {
@@ -48,7 +39,8 @@ private:
     std::array<juce::String, 4> modelNames;
 
     std::unique_ptr<juce::FileChooser> fileChooser;
-    std::vector<std::unique_ptr<juce::LookAndFeel_V4>> lnfs; // Store custom LNFs to keep them alive
+    SharedKnobLookAndFeel sharedLNF;
+    GlassBox modelBox { "NEURAL MODELS" }, engineBox { "SPECTRAL ENGINE" };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(OscillatorPanel)
 };

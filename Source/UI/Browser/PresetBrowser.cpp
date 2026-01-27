@@ -17,7 +17,8 @@ PresetBrowser::PresetBrowser(NEURONiKProcessor& p)
     bankModel = std::make_unique<BankListModel>(banks, [this](int idx) { loadPresetsForBank(idx); });
     bankList.setModel(bankModel.get());
     bankList.setRowHeight(30);
-    bankList.setColour(juce::ListBox::backgroundColourId, juce::Colour(0xFF111111));
+    bankList.setColour(juce::ListBox::backgroundColourId, juce::Colour(0xFF1A1A1A));
+    bankList.setColour(juce::ListBox::outlineColourId, juce::Colours::white.withAlpha(0.1f));
     bankList.setOutlineThickness(1);
     addAndMakeVisible(bankList);
 
@@ -63,7 +64,8 @@ PresetBrowser::PresetBrowser(NEURONiKProcessor& p)
     );
     presetList.setModel(presetModel.get());
     presetList.setRowHeight(25);
-    presetList.setColour(juce::ListBox::backgroundColourId, juce::Colour(0xFF181818));
+    presetList.setColour(juce::ListBox::backgroundColourId, juce::Colour(0xFF1E1E1E));
+    presetList.setColour(juce::ListBox::outlineColourId, juce::Colours::white.withAlpha(0.1f));
     presetList.setOutlineThickness(1);
     addAndMakeVisible(presetList);
 
@@ -71,7 +73,8 @@ PresetBrowser::PresetBrowser(NEURONiKProcessor& p)
     addAndMakeVisible(searchBox);
     searchBox.setTextToShowWhenEmpty("Filter presets...", juce::Colours::grey);
     searchBox.onTextChange = [this] { filterPresets(searchBox.getText()); };
-    searchBox.setColour(juce::TextEditor::backgroundColourId, juce::Colour(0xFF222222));
+    searchBox.setColour(juce::TextEditor::backgroundColourId, juce::Colour(0xFF252525));
+    searchBox.setColour(juce::TextEditor::outlineColourId, juce::Colours::white.withAlpha(0.1f));
 
     addAndMakeVisible(loadBankButton);
     loadBankButton.onClick = [this] {
@@ -331,15 +334,15 @@ void PresetBrowser::refresh()
 
 void PresetBrowser::paint(juce::Graphics& g)
 {
-    g.fillAll(juce::Colour(0xFF141414));
+    g.fillAll(juce::Colour(0xFF1A1A1A)); // Match main background
     
     auto area = getLocalBounds();
     int colWidth = area.getWidth() / 3;
     
-    g.setColour(juce::Colours::black.withAlpha(0.2f));
+    g.setColour(juce::Colours::white.withAlpha(0.02f));
     g.fillRect(area.removeFromLeft(colWidth)); 
     
-    g.setColour(juce::Colours::cyan.withAlpha(0.1f));
+    g.setColour(juce::Colours::cyan.withAlpha(0.15f));
     g.drawVerticalLine(colWidth, 0.0f, (float)getHeight());
     g.drawVerticalLine(colWidth * 2, 0.0f, (float)getHeight());
 }

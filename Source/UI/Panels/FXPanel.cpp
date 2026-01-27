@@ -9,141 +9,125 @@ FXPanel::FXPanel(NEURONiKProcessor& p)
 {
     using namespace NEURONiK::State;
 
-    setupControl(saturation,    IDs::fxSaturation,     "DRIVE");
+    addAndMakeVisible(saturationBox);
+    addAndMakeVisible(delayBox);
+    addAndMakeVisible(chorusBox);
+    addAndMakeVisible(reverbBox);
+    addAndMakeVisible(masterBox);
+
+    setupControl(saturation,    IDs::fxSaturation,     "DRIVE", saturationBox, &processor.uiSaturation);
     
     // Delay
-    setupControl(delayTime,     IDs::fxDelayTime,      "TIME");
-    setupControl(delayFeedback, IDs::fxDelayFeedback,  "FEEDBACK");
-    setupChoice(delaySync,      IDs::fxDelaySync,      "SYNC");
-    setupChoice(delayDivision,  IDs::fxDelayDivision,  "DIV");
+    setupControl(delayTime,     IDs::fxDelayTime,      "TIME", delayBox, &processor.uiDelayTime);
+    setupControl(delayFeedback, IDs::fxDelayFeedback,  "FEEDBACK", delayBox, &processor.uiDelayFB);
+    setupChoice(delaySync,      IDs::fxDelaySync,      "SYNC", delayBox);
+    setupChoice(delayDivision,  IDs::fxDelayDivision,  "DIV", delayBox);
 
     // Chorus
-    setupControl(chorusRate,    IDs::fxChorusRate,     "CH RATE");
-    setupControl(chorusDepth,   IDs::fxChorusDepth,    "DEPTH");
-    setupControl(chorusMix,     IDs::fxChorusMix,      "MIX");
+    setupControl(chorusRate,    IDs::fxChorusRate,     "RATE", chorusBox);
+    setupControl(chorusDepth,   IDs::fxChorusDepth,    "DEPTH", chorusBox);
+    setupControl(chorusMix,     IDs::fxChorusMix,      "MIX", chorusBox);
 
     // Reverb
-    setupControl(reverbSize,    IDs::fxReverbSize,     "ROOM");
-    setupControl(reverbDamping, IDs::fxReverbDamping,  "DAMP");
-    setupControl(reverbWidth,   IDs::fxReverbWidth,    "WIDTH");
-    setupControl(reverbMix,     IDs::fxReverbMix,      "REVERB");
+    setupControl(reverbSize,    IDs::fxReverbSize,     "ROOM", reverbBox);
+    setupControl(reverbDamping, IDs::fxReverbDamping,  "DAMP", reverbBox);
+    setupControl(reverbWidth,   IDs::fxReverbWidth,    "WIDTH", reverbBox);
+    setupControl(reverbMix,     IDs::fxReverbMix,      "MIX", reverbBox);
 
-    setupControl(masterLevel,   IDs::masterLevel,      "MASTER");
+    setupControl(masterLevel,   IDs::masterLevel,      "LEVEL", masterBox);
 }
 
-void FXPanel::setupControl(RotaryControl& ctrl, const juce::String& paramID, const juce::String& labelText)
+void FXPanel::setupControl(RotaryControl& ctrl, const juce::String& paramID, const juce::String& labelText, juce::Component& parent, std::atomic<float>* modValue)
 {
-    ctrl.slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    ctrl.slider.setTextBoxStyle(juce::Slider::TextBoxBelow, true, 60, 20);
-    ctrl.slider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    addAndMakeVisible(ctrl.slider);
-    
-    ctrl.label.setText(labelText, juce::dontSendNotification);
-    ctrl.label.setJustificationType(juce::Justification::centred);
-    ctrl.label.setFont(juce::Font(juce::FontOptions(12.0f).withStyle("Bold")));
-    addAndMakeVisible(ctrl.label);
-    
-    ctrl.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(vts, paramID, ctrl.slider);
-    ctrl.midiLearner = std::make_unique<MidiLearner>(processor, ctrl.slider, paramID);
+    UIUtils::setupRotaryControl(parent, ctrl, paramID, labelText, vts, processor, sharedLNF, modValue);
 }
 
-void FXPanel::setupChoice(ChoiceControl& ctrl, const juce::String& paramID, const juce::String& labelText)
+void FXPanel::setupChoice(ChoiceControl& ctrl, const juce::String& paramID, const juce::String& labelText, juce::Component& parent)
 {
     ctrl.label.setText(labelText, juce::dontSendNotification);
     ctrl.label.setJustificationType(juce::Justification::centred);
     ctrl.label.setFont(juce::Font(juce::FontOptions(10.0f).withStyle("Bold")));
-    addAndMakeVisible(ctrl.label);
+    parent.addAndMakeVisible(ctrl.label);
 
     auto* param = vts.getParameter(paramID);
     if (auto* choice = dynamic_cast<juce::AudioParameterChoice*>(param))
         ctrl.comboBox.addItemList(choice->choices, 1);
 
-    addAndMakeVisible(ctrl.comboBox);
+    parent.addAndMakeVisible(ctrl.comboBox);
     ctrl.attachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(vts, paramID, ctrl.comboBox);
 }
 
 void FXPanel::paint(juce::Graphics& g)
 {
-    auto area = getLocalBounds().toFloat();
-    juce::ColourGradient glassGrad(juce::Colours::white.withAlpha(0.05f), 0, 0,
-                                  juce::Colours::white.withAlpha(0.01f), 0, area.getHeight(), false);
-    g.setGradientFill(glassGrad);
-    g.fillRoundedRectangle(area, 10.0f);
-    g.setColour(juce::Colours::white.withAlpha(0.1f));
-    g.drawRoundedRectangle(area, 10.0f, 1.0f);
+    // Background handled by glass boxes
 }
 
 void FXPanel::resized()
 {
-    auto area = getLocalBounds().reduced(15);
-    auto masterArea = area.removeFromRight(80);
+    auto area = getLocalBounds().reduced(10);
     
-    // Layout Master
-    masterLevel.label.setBounds(masterArea.removeFromTop(20));
-    masterLevel.slider.setBounds(masterArea.removeFromTop(masterArea.getHeight() - 20));
+    auto colWidth = area.getWidth() / 5;
+    
+    saturationBox.setBounds(area.removeFromLeft(colWidth).reduced(3));
+    delayBox.setBounds(area.removeFromLeft(colWidth).reduced(3));
+    chorusBox.setBounds(area.removeFromLeft(colWidth).reduced(3));
+    reverbBox.setBounds(area.removeFromLeft(colWidth).reduced(3));
+    masterBox.setBounds(area.reduced(3));
 
-    auto colWidth = area.getWidth() / 4;
-
-    // Helper to layout vertical stack
-    auto layoutStack = [&](juce::Rectangle<int> col, std::vector<juce::Component*> comps) {
-        int h = col.getHeight() / static_cast<int>(comps.size());
-        for (auto* c : comps) {
-            c->setBounds(col.removeFromTop(h).reduced(5, 2));
-        }
+    auto layoutRotary = [&](RotaryControl& ctrl, juce::Rectangle<int> bounds) {
+        ctrl.label.setBounds(bounds.removeFromTop(15));
+        ctrl.slider.setBounds(bounds);
     };
 
-    // Col 1: Saturation
-    auto satCol = area.removeFromLeft(colWidth);
-    saturation.label.setBounds(satCol.removeFromTop(20));
-    saturation.slider.setBounds(satCol.reduced(10, 20));
-
-    // Col 2: Delay
-    auto delayCol = area.removeFromLeft(colWidth);
+    // Saturation Content
     {
-        auto top = delayCol.removeFromTop(delayCol.getHeight() / 2);
-        auto bot = delayCol;
-        
-        auto topLeft = top.removeFromLeft(top.getWidth() / 2);
-        delaySync.label.setBounds(topLeft.removeFromTop(15));
-        delaySync.comboBox.setBounds(topLeft.reduced(2));
-        
-        delayDivision.label.setBounds(top.removeFromTop(15));
-        delayDivision.comboBox.setBounds(top.reduced(2));
-        
-        auto botLeft = bot.removeFromLeft(bot.getWidth() / 2);
-        delayTime.label.setBounds(botLeft.removeFromTop(15));
-        delayTime.slider.setBounds(botLeft);
-        
-        delayFeedback.label.setBounds(bot.removeFromTop(15));
-        delayFeedback.slider.setBounds(bot);
+        auto c = saturationBox.getContentArea();
+        // Increased knob size to match delay/reverb (120 height instead of 80)
+        layoutRotary(saturation, c.withSizeKeepingCentre(c.getWidth(), 120));
     }
 
-    // Col 3: Chorus
-    auto chorusCol = area.removeFromLeft(colWidth);
-    chorusRate.label.setBounds(chorusCol.removeFromTop(15));
-    chorusRate.slider.setBounds(chorusCol.removeFromTop(chorusCol.getHeight() / 3));
-    chorusDepth.label.setBounds(chorusCol.removeFromTop(15));
-    chorusDepth.slider.setBounds(chorusCol.removeFromTop(chorusCol.getHeight() / 2));
-    chorusMix.label.setBounds(chorusCol.removeFromTop(15));
-    chorusMix.slider.setBounds(chorusCol);
-
-    // Col 4: Reverb
-    auto reverbCol = area;
+    // Delay Content
     {
-        auto r1 = reverbCol.removeFromTop(reverbCol.getHeight() / 2);
-        auto r2 = reverbCol;
+        auto c = delayBox.getContentArea();
+        auto top = c.removeFromTop(c.getHeight() / 2);
         
-        auto r11 = r1.removeFromLeft(r1.getWidth() / 2);
-        reverbSize.label.setBounds(r11.removeFromTop(15));
-        reverbSize.slider.setBounds(r11);
-        reverbDamping.label.setBounds(r1.removeFromTop(15));
-        reverbDamping.slider.setBounds(r1);
+        // Vertical distribution for Sync and Div as requested
+        auto syncArea = top.removeFromTop(top.getHeight() / 2);
+        delaySync.label.setBounds(syncArea.removeFromTop(12));
+        delaySync.comboBox.setBounds(syncArea.withSizeKeepingCentre(syncArea.getWidth(), 22).reduced(10, 0));
         
-        auto r21 = r2.removeFromLeft(r2.getWidth() / 2);
-        reverbWidth.label.setBounds(r21.removeFromTop(15));
-        reverbWidth.slider.setBounds(r21);
-        reverbMix.label.setBounds(r2.removeFromTop(15));
-        reverbMix.slider.setBounds(r2);
+        delayDivision.label.setBounds(top.removeFromTop(12));
+        delayDivision.comboBox.setBounds(top.withSizeKeepingCentre(top.getWidth(), 22).reduced(10, 0));
+        
+        auto bot = c;
+        auto knobW = bot.getWidth() / 2;
+        layoutRotary(delayTime, bot.removeFromLeft(knobW));
+        layoutRotary(delayFeedback, bot);
+    }
+
+    // Chorus Content
+    {
+        auto c = chorusBox.getContentArea();
+        auto h = c.getHeight() / 3;
+        layoutRotary(chorusRate, c.removeFromTop(h));
+        layoutRotary(chorusDepth, c.removeFromTop(h));
+        layoutRotary(chorusMix, c);
+    }
+
+    // Reverb Content
+    {
+        auto c = reverbBox.getContentArea();
+        auto top = c.removeFromTop(c.getHeight() / 2);
+        layoutRotary(reverbSize, top.removeFromLeft(top.getWidth() / 2));
+        layoutRotary(reverbDamping, top);
+        layoutRotary(reverbWidth, c.removeFromLeft(c.getWidth() / 2));
+        layoutRotary(reverbMix, c);
+    }
+
+    // Master Content
+    {
+        auto c = masterBox.getContentArea();
+        layoutRotary(masterLevel, c.withSizeKeepingCentre(c.getWidth(), 80));
     }
 }
 

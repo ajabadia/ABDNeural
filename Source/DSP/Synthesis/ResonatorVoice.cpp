@@ -59,6 +59,7 @@ void ResonatorVoice::startNote(int midiNoteNumber, float velocity,
     // Ideally, we crossfade or the envelope handles retrigger. 
     // But for now, just removing resonator reset fixes the phase discontinuity click.
     ampEnvelope.noteOn();
+    filterEnvelope.noteOn();
 }
 
 void ResonatorVoice::stopNote(float /*velocity*/, bool allowTailOff)
@@ -66,10 +67,12 @@ void ResonatorVoice::stopNote(float /*velocity*/, bool allowTailOff)
     if (allowTailOff)
     {
         ampEnvelope.noteOff();
+        filterEnvelope.noteOff();
     }
     else
     {
         ampEnvelope.reset();
+        filterEnvelope.reset();
         clearCurrentNote();
     }
 }
@@ -80,6 +83,7 @@ void ResonatorVoice::setCurrentPlaybackSampleRate(double newRate)
     
     resonator.setSampleRate(newRate);
     ampEnvelope.setSampleRate(newRate);
+    filterEnvelope.setSampleRate(newRate);
     filter.setSampleRate(newRate);
 }
 
@@ -110,6 +114,11 @@ void ResonatorVoice::updateParameters(const VoiceParams& params)
                               params.sustain, 
                               params.release * 1000.0f);
                               
+    filterEnvelope.setParameters(params.fAttack * 1000.0f,
+                                 params.fDecay * 1000.0f,
+                                 params.fSustain,
+                                 params.fRelease * 1000.0f);
+                               
     filter.setCutoff(params.filterCutoff);
     filter.setResonance(params.filterRes);
 
@@ -151,10 +160,18 @@ void ResonatorVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer,
         // 1. Generate Resonator Output (64 partials)
         float rawSample = resonator.processSample();
         
-        // 2. Apply it to the filter
+        // 2. Apply Filter Envelope to Cutoff
+        float fEnv = filterEnvelope.processSample();
+        float cutoff = currentParams.filterCutoff;
+        
+        // Simple linear modulation for now: offset up to 10k Hz based on amount
+        float targetCutoff = cutoff + (fEnv * currentParams.fEnvAmount * 18000.0f);
+        filter.setCutoff(juce::jlimit(20.0f, 20000.0f, targetCutoff));
+        
+        // 3. Apply it to the filter
         float filteredSample = filter.processSample(rawSample);
         
-        // 3. Apply Amplitude Envelope
+        // 4. Apply Amplitude Envelope
         float envValue = ampEnvelope.processSample();
         float finalSample = filteredSample * envValue * currentVelocity * currentParams.oscLevel;
         

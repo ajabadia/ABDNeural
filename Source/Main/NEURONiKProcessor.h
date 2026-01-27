@@ -93,6 +93,19 @@ public:
     std::atomic<float> uiDecay { 0.0f };
     std::atomic<float> uiSustain { 0.0f };
     std::atomic<float> uiRelease { 0.0f };
+    
+    // FX Animation
+    std::atomic<float> uiSaturation { 0.0f };
+    std::atomic<float> uiDelayTime { 0.3f };
+    std::atomic<float> uiDelayFB { 0.4f };
+    
+    // Filter Env Animation
+    std::atomic<float> uiFEnvelope { 0.0f };
+    std::atomic<float> uiFAttack { 0.0f };
+    std::atomic<float> uiFDecay { 0.0f };
+    std::atomic<float> uiFSustain { 0.0f };
+    std::atomic<float> uiFRelease { 0.0f };
+    std::atomic<float> uiFEnvAmount { 0.0f };
 
 protected:
     // --- MidiKeyboardState::Listener overrides ---
