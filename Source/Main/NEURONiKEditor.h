@@ -47,9 +47,11 @@ public:
     void menuItemSelected(int menuItemID, int topLevelMenuIndex) override;
 
     void showMidiSpecifications();
+    void setZoom(float scale);
 
 private:
     NEURONiKProcessor& processor;
+    float zoomScale = 1.0f;
 
     juce::MenuBarComponent menuBar;
     juce::MidiKeyboardComponent keyboardComponent;

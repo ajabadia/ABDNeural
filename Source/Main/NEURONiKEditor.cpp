@@ -356,6 +356,24 @@ void NEURONiKEditor::resized()
     mainTabs.setBounds(area.reduced(10));
 }
 
+void NEURONiKEditor::setZoom(float scale)
+{
+    zoomScale = scale;
+    
+    // Base size is 800x600
+    int newWidth = juce::roundToInt(800.0f * zoomScale);
+    int newHeight = juce::roundToInt(600.0f * zoomScale);
+    
+    // If we are in a wrapper (plugin), we might need to notify the host.
+    // AudioProcessorEditor::setSize will do this.
+    setSize(newWidth, newHeight);
+    
+    // Apply affine transform if we want a "real" visual zoom 
+    // but JUCE's setSize + resized logic is usually cleaner for plugins.
+    // However, for advanced scaling, using AffineTransform on the top level is smoother.
+    setTransform(juce::AffineTransform::scale(zoomScale));
+}
+
 juce::StringArray NEURONiKEditor::getMenuBarNames()
 {
     return { "File", "Edit", "Help" };
@@ -399,6 +417,15 @@ juce::PopupMenu NEURONiKEditor::getMenuForIndex(int, const juce::String& menuNam
         voicesMenu.addItem(55, "8 Voices", true, currentVoices == 8);
 
         menu.addSubMenu("Voices", voicesMenu);
+        menu.addSeparator();
+
+        juce::PopupMenu zoomMenu;
+        zoomMenu.addItem(300, "1x (Normal)", true, zoomScale == 1.0f);
+        zoomMenu.addItem(301, "2x", true, zoomScale == 2.0f);
+        zoomMenu.addItem(302, "3x", true, zoomScale == 3.0f);
+        zoomMenu.addItem(303, "4x", true, zoomScale == 4.0f);
+        menu.addSubMenu("Zoom", zoomMenu);
+
         menu.addSeparator();
         menu.addItem(14, "Options...");
     }
@@ -498,6 +525,10 @@ void NEURONiKEditor::menuItemSelected(int menuItemID, int)
     else if (menuItemID == 102)
     {
         showMidiSpecifications();
+    }
+    else if (menuItemID >= 300 && menuItemID <= 303)
+    {
+        setZoom(static_cast<float>(menuItemID - 299));
     }
 }
 void NEURONiKEditor::showMidiSpecifications()
