@@ -10,87 +10,25 @@
 
 #pragma once
 
+#include <juce_core/juce_core.h>
+#include <juce_data_structures/juce_data_structures.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <juce_audio_formats/juce_audio_formats.h>
+#include <juce_audio_devices/juce_audio_devices.h>
 #include "Analysis/SpectralAnalyzer.h"
+#include "../DSP/CoreModules/Resonator.h" // Reuse existing Resonator from plugin
 
-namespace NEURONiK::ModelMaker {
+#include "ModelMakerWidgets.h"
 
-// --- Look & Feel Components (Local copies for standalone independence) ---
-
-class GlassBox : public juce::Component
-{
-public:
-    GlassBox(const juce::String& name = "") : title(name) 
-    {
-        titleLabel.setText(title, juce::dontSendNotification);
-        titleLabel.setJustificationType(juce::Justification::centredLeft);
-        titleLabel.setFont(juce::Font(juce::FontOptions(13.0f).withStyle("Bold")));
-        titleLabel.setColour(juce::Label::textColourId, juce::Colours::cyan.withAlpha(0.7f));
-        addAndMakeVisible(titleLabel);
-    }
-
-    void paint(juce::Graphics& g) override
-    {
-        auto area = getLocalBounds().toFloat();
-        juce::ColourGradient glassGrad(juce::Colours::white.withAlpha(0.06f), 0, 0,
-                                      juce::Colours::white.withAlpha(0.01f), 0, area.getHeight(), false);
-        g.setGradientFill(glassGrad);
-        g.fillRoundedRectangle(area, 8.0f);
-        g.setColour(juce::Colours::white.withAlpha(0.1f));
-        g.drawRoundedRectangle(area, 8.0f, 1.0f);
-
-        if (title.isNotEmpty())
-        {
-            auto lineY = 22.0f;
-            g.setColour(juce::Colours::cyan.withAlpha(0.2f));
-            g.drawLine(8.0f, lineY, area.getWidth() - 8.0f, lineY, 1.0f);
-        }
-    }
-
-    void resized() override
-    {
-        if (title.isNotEmpty())
-            titleLabel.setBounds(10, 2, getWidth() - 20, 18);
-    }
-
-private:
-    juce::String title;
-    juce::Label titleLabel;
-};
-
-class CustomButton : public juce::TextButton
-{
-public:
-    CustomButton(const juce::String& name = "") : juce::TextButton(name) 
-    {
-        setMouseCursor(juce::MouseCursor::PointingHandCursor);
-    }
-
-    void paintButton(juce::Graphics& g, bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown) override
-    {
-        auto area = getLocalBounds().toFloat();
-        auto cornerSize = 4.0f;
-        g.setColour(juce::Colour(0xFF151515).withAlpha(0.8f));
-        g.fillRoundedRectangle(area, cornerSize);
-        float borderAlpha = shouldDrawButtonAsDown ? 0.9f : (shouldDrawButtonAsHighlighted ? 0.6f : 0.3f);
-        g.setColour(juce::Colours::cyan.withAlpha(borderAlpha));
-        g.drawRoundedRectangle(area.reduced(0.5f), cornerSize, 1.0f);
-        if (shouldDrawButtonAsDown)
-        {
-            g.setColour(juce::Colours::cyan.withAlpha(0.1f));
-            g.fillRoundedRectangle(area.reduced(1.0f), cornerSize);
-        }
-        g.setColour(shouldDrawButtonAsDown ? juce::Colours::white : juce::Colours::cyan.withAlpha(0.8f));
-        g.setFont(juce::Font(juce::FontOptions(area.getHeight() * 0.4f).withStyle("Bold")));
-        g.drawText(getButtonText(), area, juce::Justification::centred, false);
-    }
-};
+namespace NEURONiK {
+namespace ModelMaker {
 
 // --- Main Component ---
 
-class MainComponent : public juce::Component
+class MainComponent : public juce::Component,
+                      public juce::AudioIODeviceCallback,
+                      public juce::MenuBarModel
 {
 public:
     MainComponent();
@@ -99,25 +37,43 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
 
+    // MenuBarModel Overrides
+    juce::StringArray getMenuBarNames() override;
+    juce::PopupMenu getMenuForIndex(int menuIndex, const juce::String& menuName) override;
+    void menuItemSelected(int menuItemID, int topLevelMenuIndex) override;
+
 private:
     // Header
+    // juce::Label titleLabel; // Replaced by MenuBar mostly, or kept below
     juce::Label titleLabel;
-    CustomButton loadButton { "LOAD AUDIO" };
+    juce::MenuBarComponent menuBar;
+    CustomButton loadButton;
     juce::Label fileNameLabel;
 
     // Visualizers
-    GlassBox waveBox { "WAVEFORM INPUT" };
-    GlassBox spectralBox { "SPECTRAL ANALYSIS (64 PARTIALS)" };
+    GlassBox waveBox;
+    GlassBox spectralBox;
 
     // Footer Controls
-    CustomButton analyzeButton { "ANALYZE" };
-    CustomButton exportButton { "EXPORT MODEL" };
+    juce::Label pitchLabel;
+    juce::TextEditor pitchEditor;
+    juce::ComboBox noteCombo;
+    juce::ComboBox octaveCombo;
+    CustomButton analyzeButton;
+    CustomButton playOriginalButton;
+    CustomButton playModelButton;
+    CustomButton recordButton;
+    CustomButton stopButton;
+    CustomButton exportButton;
 
     // State
     juce::AudioFormatManager formatManager;
     std::unique_ptr<juce::FileChooser> fileChooser;
     juce::AudioBuffer<float> loadedAudio;
+    juce::AudioBuffer<float> recordingBuffer;
     double loadedSampleRate = 44100.0;
+    float detectedFrequency = 0.0f;
+    bool isRecording = false;
     
     // Tools
     juce::AudioThumbnailCache thumbnailCache { 1 };
@@ -128,10 +84,48 @@ private:
     // Helpers
     void loadFile();
     void analyzeAudio();
+    void performAnalysis(float f0);
     void exportModel();
+    void startRecording();
+    void stopRecording();
+    void updateFreqFromRootNote();
+    void updateRootNoteFromFreq(float freqHz);
     void paintSpectralView(juce::Graphics& g, juce::Rectangle<int> area);
 
+    // Audio Callbacks
+    void audioDeviceIOCallbackWithContext (const float* const* inputChannelData,
+                                           int numInputChannels,
+                                           float* const* outputChannelData,
+                                           int numOutputChannels,
+                                           int numSamples,
+                                           const juce::AudioIODeviceCallbackContext& context) override;
+    
+    void audioDeviceAboutToStart (juce::AudioIODevice* device) override;
+    void audioDeviceStopped() override;
+
+    // Playback Helpers
+    void playOriginal();
+    void playModel();
+    void stopPlayback();
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
+
+private:
+    // Audio Engine
+    juce::AudioDeviceManager deviceManager;
+    juce::AudioTransportSource transportSource;
+    std::unique_ptr<juce::AudioFormatReaderSource> readerSource;
+    NEURONiK::DSP::Core::Resonator previewResonator;
+    
+    // Playback State
+    bool isPlayingModel = false;
+    double currentSampleRate = 48000.0;
+    
+    // Persistence Helpers
+    juce::File getSettingsFile();
+    void saveSetting(const juce::String& key, const juce::String& value);
+    juce::String loadSetting(const juce::String& key);
 };
 
-} // namespace NEURONiK::ModelMaker
+} // namespace ModelMaker
+} // namespace NEURONiK

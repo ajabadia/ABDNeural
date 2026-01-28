@@ -66,6 +66,9 @@ public:
     void updateParameters(const VoiceParams& params);
     float getCurrentEnvelopeLevel() const { return ampEnvelope.getLastOutput(); }
     float getCurrentFilterEnvelopeLevel() const { return filterEnvelope.getLastOutput(); }
+    
+    // --- Access for Serialization ---
+    const NEURONiK::DSP::Core::Resonator& getResonator() const noexcept { return resonator; }
 
     // --- Real-time Processing ---
     void renderNextBlock(juce::AudioBuffer<float>& outputBuffer,

@@ -28,14 +28,15 @@ NEURONiK::Common::SpectralModel SpectralAnalyzer::analyze(const juce::AudioBuffe
     int numSamples = juce::jmin(audio.getNumSamples(), fftSize);
     const float* left = audio.getReadPointer(0);
     const float* right = (audio.getNumChannels() > 1) ? audio.getReadPointer(1) : nullptr;
-
     for (int i = 0; i < numSamples; ++i)
     {
         float sample = left[i];
         if (right != nullptr) sample = (sample + right[i]) * 0.5f;
         
-        fftData[static_cast<size_t>(i)] = sample * window.multiplyWithWindowingTable(i, static_cast<float>(numSamples)); // Apply window
+        fftData[static_cast<size_t>(i)] = sample;
     }
+
+    window.multiplyWithWindowingTable(fftData.data(), static_cast<size_t>(numSamples));
 
     // 2. Perform FFT
     fft.performFrequencyOnlyForwardTransform(fftData.data());
@@ -68,6 +69,86 @@ NEURONiK::Common::SpectralModel SpectralAnalyzer::analyze(const juce::AudioBuffe
     }
 
     return model;
+}
+
+float SpectralAnalyzer::detectPitch(const juce::AudioBuffer<float>& audio, double sampleRate)
+{
+    if (audio.getNumSamples() == 0) return 0.0f;
+
+    // 1. Prepare Audio (Mono Mix + Windowing)
+    std::fill(fftData.begin(), fftData.end(), 0.0f);
+    int numSamples = juce::jmin(audio.getNumSamples(), fftSize);
+    
+    for (int i = 0; i < numSamples; ++i)
+    {
+        float s = audio.getSample(0, i);
+        if (audio.getNumChannels() > 1) s = (s + audio.getSample(1, i)) * 0.5f;
+        fftData[static_cast<size_t>(i)] = s;
+    }
+    
+    // Apply window to the filled buffer
+    window.multiplyWithWindowingTable(fftData.data(), static_cast<size_t>(numSamples));
+
+    // 2. Perform FFT & Compute Magnitude Spectrum
+    fft.performFrequencyOnlyForwardTransform(fftData.data());
+    
+    int numBins = fftSize / 2 + 1;
+    std::vector<float> hps(static_cast<size_t>(numBins), 0.0f);
+    
+    for (int i = 0; i < numBins; ++i)
+        hps[static_cast<size_t>(i)] = fftData[static_cast<size_t>(i)];
+
+    // 3. Harmonic Product Spectrum (Downsample & Multiply)
+    // We'll use up to 4 harmonics
+    for (int down = 2; down <= 4; ++down)
+    {
+        for (int i = 0; i < numBins / down; ++i)
+        {
+            hps[static_cast<size_t>(i)] *= fftData[static_cast<size_t>(i * down)];
+        }
+        // Zero out the rest of the buffer to avoid carrying over high frequency noise
+        for (int i = numBins / down; i < numBins; ++i)
+        {
+            hps[static_cast<size_t>(i)] = 0.0f;
+        }
+    }
+
+    // 4. Find Peak in valid range (Musical range: 50Hz to 2000Hz)
+    float binWidth = static_cast<float>(sampleRate) / static_cast<float>(fftSize);
+    int minBin = static_cast<int>(50.0f / binWidth);
+    int maxBin = static_cast<int>(2000.0f / binWidth);
+    
+    minBin = juce::jlimit(2, numBins - 1, minBin);
+    maxBin = juce::jlimit(2, numBins - 1, maxBin);
+
+    float maxVal = -1.0f;
+    int bestBin = 0;
+
+    for (int i = minBin; i <= maxBin; ++i)
+    {
+        if (hps[static_cast<size_t>(i)] > maxVal)
+        {
+            maxVal = hps[static_cast<size_t>(i)];
+            bestBin = i;
+        }
+    }
+
+    if (bestBin == 0) return 130.81f; // Default C3 if nothing found
+
+    // 5. Refined Frequency (Parabolic Interpolation)
+    float frequency = static_cast<float>(bestBin) * binWidth;
+    
+    if (bestBin > 0 && bestBin < numBins - 1)
+    {
+        float alpha = hps[static_cast<size_t>(bestBin - 1)];
+        float beta = hps[static_cast<size_t>(bestBin)];
+        float gamma = hps[static_cast<size_t>(bestBin + 1)];
+        
+        float p = 0.5f * (alpha - gamma) / (alpha - 2.0f * beta + gamma);
+        frequency = (static_cast<float>(bestBin) + p) * binWidth;
+    }
+
+    return frequency;
 }
 
 float SpectralAnalyzer::getMagnitudeForFrequency(float frequency, double sampleRate)

@@ -5,36 +5,43 @@
 -- Exporting juceaide
 -- Testing juceaide
 -- Finished setting up juceaide
--- NEURONIK_SOURCES: Source/Main/NEURONiKProcessor.h;Source/Main/NEURONiKProcessor.cpp;Source/Main/NEURONiKEditor.h;Source/Main/NEURONiKEditor.cpp;Source/UI/ParameterPanel.h;Source/UI/ParameterPanel.cpp;Source/UI/SpectralVisualizer.h;Source/UI/SpectralVisualizer.cpp;Source/UI/XYPad.h;Source/UI/XYPad.cpp;Source/UI/EnvelopeVisualizer.h;Source/UI/CustomUIComponents.h;Source/UI/MidiLearner.cpp;Source/UI/Panels/OscillatorPanel.h;Source/UI/Panels/OscillatorPanel.cpp;Source/UI/Panels/FilterEnvPanel.h;Source/UI/Panels/FilterEnvPanel.cpp;Source/UI/Panels/FXPanel.h;Source/UI/Panels/FXPanel.cpp;Source/UI/Panels/ModulationPanel.cpp;Source/UI/Panels/PresetPanel.h;Source/UI/Panels/PresetPanel.cpp;Source/UI/Browser/PresetBrowser.h;Source/UI/Browser/PresetBrowser.cpp;Source/State/ParameterDefinitions.h;Source/Serialization/PresetManager.h;Source/Serialization/PresetManager.cpp;Source/DSP/CoreModules/LFO.cpp;Source/DSP/CoreModules/Oscillator.h;Source/DSP/CoreModules/Oscillator.cpp;Source/DSP/CoreModules/Resonator.h;Source/DSP/CoreModules/Resonator.cpp;Source/DSP/CoreModules/Envelope.h;Source/DSP/CoreModules/Envelope.cpp;Source/DSP/CoreModules/FilterBank.h;Source/DSP/CoreModules/FilterBank.cpp;Source/DSP/Synthesis/ResonatorSound.h;Source/DSP/Synthesis/ResonatorVoice.h;Source/DSP/Synthesis/ResonatorVoice.cpp
--- Configuring done (4.6s)
--- Generating done (0.3s)
+-- NEURONIK_SOURCES: Source/Main/NEURONiKProcessor.h;Source/Main/NEURONiKProcessor.cpp;Source/Main/NEURONiKEditor.h;Source/Main/NEURONiKEditor.cpp;Source/Main/MidiMappingManager.h;Source/Main/MidiMappingManager.cpp;Source/UI/ParameterPanel.h;Source/UI/ParameterPanel.cpp;Source/UI/SpectralVisualizer.h;Source/UI/SpectralVisualizer.cpp;Source/UI/XYPad.h;Source/UI/XYPad.cpp;Source/UI/EnvelopeVisualizer.h;Source/UI/CustomUIComponents.h;Source/UI/MidiLearner.cpp;Source/UI/Panels/OscillatorPanel.h;Source/UI/Panels/OscillatorPanel.cpp;Source/UI/Panels/FilterEnvPanel.h;Source/UI/Panels/FilterEnvPanel.cpp;Source/UI/Panels/FXPanel.h;Source/UI/Panels/FXPanel.cpp;Source/UI/Panels/ModulationPanel.cpp;Source/UI/Panels/PresetPanel.h;Source/UI/Panels/PresetPanel.cpp;Source/UI/LcdDisplay.cpp;Source/UI/Browser/PresetBrowser.h;Source/UI/Browser/PresetBrowser.cpp;Source/State/ParameterDefinitions.h;Source/Serialization/PresetManager.h;Source/Serialization/PresetManager.cpp;Source/DSP/CoreModules/LFO.cpp;Source/DSP/CoreModules/Oscillator.h;Source/DSP/CoreModules/Oscillator.cpp;Source/DSP/CoreModules/Resonator.h;Source/DSP/CoreModules/Resonator.cpp;Source/DSP/CoreModules/Envelope.h;Source/DSP/CoreModules/Envelope.cpp;Source/DSP/CoreModules/FilterBank.h;Source/DSP/CoreModules/FilterBank.cpp;Source/DSP/Synthesis/ResonatorSound.h;Source/DSP/Synthesis/ResonatorVoice.h;Source/DSP/Synthesis/ResonatorVoice.cpp
+-- Configuring done (1.5s)
+-- Generating done (0.2s)
 -- Build files have been written to: D:/desarrollos/ABDNeural/build_neuronik
 Versi├│n de MSBuild 18.3.0-preview-25570-20+708535641 para .NET Framework
 
   Checking File Globs
-  NEURONiK_rc_lib.vcxproj -> D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_rc_lib.dir\Debug\NEURONiK_rc_lib.lib
-  NEURONiK.vcxproj -> D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_artefacts\Debug\NEURONiK_SharedCode.lib
-  NEURONiKProcessor.cpp
-  NEURONiKEditor.cpp
-  ParameterPanel.cpp
-D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(89,11): warning C4189: 'params': la variable local se ha inicializado pero no se hace referencia a ella [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
-D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(113,18): error C2084: la funci├│n 'NEURONiKEditor::~NEURONiKEditor(void)' ya tiene un cuerpo [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
-      D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.h(24,6):
-      vea la definici├│n anterior de ÔÇ£NEURONiKEditor::~NEURONiKEditorÔÇØ
+  Auto-incrementing Model Maker version...
+  Incremented version to 0.1.4
+C:\Program Files\Microsoft Visual Studio\18\Insiders\MSBuild\Microsoft\VC\v180\Microsoft.CppCommon.targets(254,5): warning MSB8065: La compilaci├│n personalizada del elemento "D:\desarrollos\ABDNeural\build_neuronik\CMakeFiles\5e5a1bf8937b12faa5ae5f73dda69939\force_version_update.rule" se realiz├│ correctamente, pero no se ha creado la salida "d:\desarrollos\abdneural\build_neuronik\force_version_update" especificada. Esto puede hacer que la compilaci├│n incremental no funcione correctamente. [D:\desarrollos\ABDNeural\build_neuronik\UpdateVersion.vcxproj]
+  NEURONiK_Common.vcxproj -> D:\desarrollos\ABDNeural\build_neuronik\Release\NEURONiK_Common.lib
+  Main.cpp
+D:\desarrollos\ABDNeural\Source\ModelMaker\MainComponent.h(42,21): error C3668: 'NEURONiK::ModelMaker::MainComponent::getPopupMenu': el m├®todo con el especificador de invalidaci├│n 'override' no invalid├│ ning├║n m├®todo de clase base [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker.vcxproj]
+  (compilando archivo de origen "../Source/ModelMaker/Main.cpp")
   
-D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(203,68): warning C4244: 'argumento': conversi├│n de 'float' a 'ValueType'; posible p├®rdida de datos [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
-D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(203,68): warning C4244:         with [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
-D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(203,68): warning C4244:         [ [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
-D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(203,68): warning C4244:             ValueType=int [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
-D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(203,68): warning C4244:         ] [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
-D:\desarrollos\ABDNeural\Source\UI\ParameterPanel.cpp(149,57): warning C4244: 'argumento': conversi├│n de 'float' a 'ValueType'; posible p├®rdida de datos [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
-D:\desarrollos\ABDNeural\Source\UI\ParameterPanel.cpp(149,57): warning C4244:         with [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
-D:\desarrollos\ABDNeural\Source\UI\ParameterPanel.cpp(149,57): warning C4244:         [ [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
-D:\desarrollos\ABDNeural\Source\UI\ParameterPanel.cpp(149,57): warning C4244:             ValueType=int [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
-D:\desarrollos\ABDNeural\Source\UI\ParameterPanel.cpp(149,57): warning C4244:         ] [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
-D:\desarrollos\ABDNeural\Source\UI\ParameterPanel.cpp(159,51): warning C4244: 'argumento': conversi├│n de 'float' a 'ValueType'; posible p├®rdida de datos [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
-D:\desarrollos\ABDNeural\Source\UI\ParameterPanel.cpp(159,51): warning C4244:         with [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
-D:\desarrollos\ABDNeural\Source\UI\ParameterPanel.cpp(159,51): warning C4244:         [ [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
-D:\desarrollos\ABDNeural\Source\UI\ParameterPanel.cpp(159,51): warning C4244:             ValueType=int [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
-D:\desarrollos\ABDNeural\Source\UI\ParameterPanel.cpp(159,51): warning C4244:         ] [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+D:\desarrollos\ABDNeural\Source\ModelMaker\Main.cpp(58,55): error C2259: "NEURONiK::ModelMaker::MainComponent": no se puede crear una instancia de una clase abstract [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker.vcxproj]
+      D:\desarrollos\ABDNeural\Source\ModelMaker\MainComponent.h(29,7):
+      vea la declaraci├│n de 'NEURONiK::ModelMaker::MainComponent'
+      D:\desarrollos\ABDNeural\Source\ModelMaker\Main.cpp(58,55):
+      debido a los siguientes miembros:
+      D:\desarrollos\ABDNeural\Source\ModelMaker\Main.cpp(58,55):
+      'juce::PopupMenu juce::MenuBarModel::getMenuForIndex(int,const juce::String &)': es abstracto
+      C:\JUCE\modules\juce_gui_basics\menus\juce_MenuBarModel.h(131,23):
+      vea la declaraci├│n de 'juce::MenuBarModel::getMenuForIndex'
+  
+D:\desarrollos\ABDNeural\Source\ModelMaker\Main.cpp(58,68): error C2259: "NEURONiK::ModelMaker::MainComponent": no se puede crear una instancia de una clase abstract [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker.vcxproj]
+      D:\desarrollos\ABDNeural\Source\ModelMaker\MainComponent.h(29,7):
+      vea la declaraci├│n de 'NEURONiK::ModelMaker::MainComponent'
+      D:\desarrollos\ABDNeural\Source\ModelMaker\Main.cpp(58,68):
+      debido a los siguientes miembros:
+      D:\desarrollos\ABDNeural\Source\ModelMaker\Main.cpp(58,68):
+      'juce::PopupMenu juce::MenuBarModel::getMenuForIndex(int,const juce::String &)': es abstracto
+      C:\JUCE\modules\juce_gui_basics\menus\juce_MenuBarModel.h(131,23):
+      vea la declaraci├│n de 'juce::MenuBarModel::getMenuForIndex'
+  
+  MainComponent.cpp
+D:\desarrollos\ABDNeural\Source\ModelMaker\MainComponent.h(42,21): error C3668: 'NEURONiK::ModelMaker::MainComponent::getPopupMenu': el m├®todo con el especificador de invalidaci├│n 'override' no invalid├│ ning├║n m├®todo de clase base [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker.vcxproj]
+  (compilando archivo de origen "../Source/ModelMaker/MainComponent.cpp")
+  
   Generando c├│digo...

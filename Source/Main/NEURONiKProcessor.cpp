@@ -584,11 +584,39 @@ void NEURONiKProcessor::getStateInformation(juce::MemoryBlock& destData)
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
 
     auto* modelsNode = new juce::XmlElement("MODELS");
-    for (int i = 0; i < 4; ++i)
-        modelsNode->setAttribute("model" + juce::String(i), modelNames[i]);
-    xml->addChildElement(modelsNode);
-
-    copyXmlToBinary(*xml, destData);
+    
+    // Get models from the first voice (all voices share them)
+    if (auto* voice = dynamic_cast<NEURONiK::DSP::Synthesis::ResonatorVoice*>(synth.getVoice(0)))
+    {
+        const auto& models = voice->getResonator().getModels();
+        for (int i = 0; i < 4; ++i)
+        {
+            auto* sNode = new juce::XmlElement("SLOT" + juce::String(i));
+            sNode->setAttribute("name", modelNames[i]);
+            
+            juce::StringArray amps;
+            juce::StringArray freqs;
+            for (int j = 0; j < 64; ++j) 
+            {
+                amps.add(juce::String(models[i].amplitudes[j], 4));
+                freqs.add(juce::String(models[i].frequencyOffsets[j], 4));
+            }
+            sNode->setAttribute("amplitudes", amps.joinIntoString(","));
+            sNode->setAttribute("offsets", freqs.joinIntoString(","));
+            
+            modelsNode->addChildElement(sNode);
+        }
+    }
+    
+    if (xml != nullptr)
+    {
+        xml->addChildElement(modelsNode);
+        copyXmlToBinary(*xml, destData);
+    }
+    else
+    {
+        delete modelsNode;
+    }
 }
 
 void NEURONiKProcessor::setStateInformation(const void* data, int sizeInBytes)
@@ -600,14 +628,43 @@ void NEURONiKProcessor::setStateInformation(const void* data, int sizeInBytes)
         if (auto* modelsNode = xmlState->getChildByName("MODELS"))
         {
             for (int i = 0; i < 4; ++i)
-                modelNames[i] = modelsNode->getStringAttribute("model" + juce::String(i), "EMPTY");
+            {
+                if (auto* sNode = modelsNode->getChildByName("SLOT" + juce::String(i)))
+                {
+                    modelNames[i] = sNode->getStringAttribute("name", "EMPTY");
+                    
+                    NEURONiK::Common::SpectralModel model;
+                    juce::StringArray amps;
+                    amps.addTokens(sNode->getStringAttribute("amplitudes"), ",", "");
+                    juce::StringArray freqs;
+                    freqs.addTokens(sNode->getStringAttribute("offsets"), ",", "");
+                    
+                    // Safety check for array sizes
+                    int numAmps = juce::jmin(64, amps.size());
+                    int numFreqs = juce::jmin(64, freqs.size());
+                    
+                    for (int j = 0; j < numAmps; ++j) model.amplitudes[j] = amps[j].getFloatValue();
+                    for (int j = 0; j < numFreqs; ++j) model.frequencyOffsets[j] = freqs[j].getFloatValue();
+                    
+                    // Push to all voices
+                    for (int v = 0; v < synth.getNumVoices(); ++v) 
+                    {
+                        if (auto* voice = dynamic_cast<NEURONiK::DSP::Synthesis::ResonatorVoice*>(synth.getVoice(v)))
+                            voice->loadModel(model, i);
+                    }
+                }
+            }
         }
 
         auto tree = juce::ValueTree::fromXml(*xmlState);
         apvts.replaceState(tree);
         midiMappingManager->loadFromValueTree(tree);
 
-        reloadModels();
+        // Preference to embedded models, so we don't strictly NEED reloadModels() from disk anymore
+        // but we'll call it for backward compatibility if embedded data was missing
+        if (xmlState->getChildByName("MODELS") == nullptr)
+            reloadModels();
+            
         parametersNeedUpdating = true;
         modulationNeedsUpdating = true;
 

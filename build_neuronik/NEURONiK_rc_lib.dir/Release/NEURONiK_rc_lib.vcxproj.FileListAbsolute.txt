@@ -1,1 +1,0 @@
-D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_rc_lib.dir\Release\NEURONiK_rc_lib.lib

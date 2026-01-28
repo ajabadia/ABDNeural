@@ -20,15 +20,17 @@ endif()
 # FIND OR INCLUDE JUCE
 # ============================================================================
 
-# Allow passing JUCE_PATH from command line/script
-if(NOT JUCE_PATH AND EXISTS "C:/JUCE")
-    set(JUCE_PATH "C:/JUCE")
+# Use JUCE_PATH from environment if not set via CLI
+if(NOT JUCE_PATH AND DEFINED ENV{JUCE_PATH})
+    set(JUCE_PATH "$ENV{JUCE_PATH}")
 endif()
 
+# Handle JUCE as a subdirectory if path is provided and valid
 if(JUCE_PATH AND EXISTS "${JUCE_PATH}/CMakeLists.txt")
     message(STATUS "Including JUCE from local path: ${JUCE_PATH}")
     add_subdirectory("${JUCE_PATH}" JUCE)
 else()
+    # Otherwise, search for JUCE using find_package (pre-installed or via CMAKE_PREFIX_PATH)
     message(STATUS "Searching for JUCE as a system package...")
     find_package(JUCE CONFIG REQUIRED)
 endif()
@@ -150,7 +152,6 @@ target_link_libraries(NEURONiK PRIVATE
     juce::juce_events
     juce::juce_graphics
     juce::juce_gui_basics
-    juce::juce_gui_basics
     juce::juce_gui_extra
     NEURONiK_Common
 )
@@ -159,20 +160,37 @@ target_link_libraries(NEURONiK PRIVATE
 # MODEL MAKER APP (STANDALONE)
 # ============================================================================
 
-juce_add_gui_app(NEURONiK_ModelMaker
-    PRODUCT_NAME "NEURONiK Model Maker"
-    VERSION 1.0.0
-    SOURCES
-        Source/ModelMaker/Main.cpp
-        Source/ModelMaker/MainComponent.h
-        Source/ModelMaker/MainComponent.cpp
-        Source/ModelMaker/Analysis/SpectralAnalyzer.h
-        Source/ModelMaker/Analysis/SpectralAnalyzer.cpp
+# Increment Version (Windows)
+add_custom_command(
+    OUTPUT force_version_update
+    COMMAND powershell -ExecutionPolicy Bypass -File "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/update_version.ps1"
+    COMMENT "Auto-incrementing Model Maker version..."
+    VERBATIM
 )
 
+# Dummy target to force header update
+add_custom_target(UpdateVersion DEPENDS force_version_update)
+
+add_executable(NEURONiK_ModelMaker WIN32
+    Source/ModelMaker/Main.cpp
+    Source/ModelMaker/MainComponent.h
+    Source/ModelMaker/MainComponent.cpp
+    Source/ModelMaker/Analysis/SpectralAnalyzer.h
+    Source/ModelMaker/Analysis/SpectralAnalyzer.cpp
+    Source/DSP/CoreModules/Oscillator.cpp
+    Source/DSP/CoreModules/Resonator.cpp
+)
+
+add_dependencies(NEURONiK_ModelMaker UpdateVersion)
+
 target_link_libraries(NEURONiK_ModelMaker PRIVATE
+    juce::juce_audio_basics
+    juce::juce_audio_devices
+    juce::juce_audio_formats
+    juce::juce_audio_utils
     juce::juce_core
     juce::juce_data_structures
+    juce::juce_dsp
     juce::juce_events
     juce::juce_graphics
     juce::juce_gui_basics

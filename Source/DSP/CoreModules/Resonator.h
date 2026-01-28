@@ -42,6 +42,7 @@ public:
     void reset() noexcept;
 
     const std::array<float, 64>& getPartialAmplitudes() const noexcept { return partialAmplitudes; }
+    const std::array<SpectralModel, 4>& getModels() const noexcept { return models; }
 
 private:
     std::array<Oscillator, 64> partials;

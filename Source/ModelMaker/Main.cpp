@@ -8,11 +8,11 @@
   ==============================================================================
 */
 
+#include <juce_core/juce_core.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "MainComponent.h"
 
-namespace NEURONiK::ModelMaker {
-
+// Moved to global namespace to eliminate any macro-related linker issues
 class ModelMakerApplication : public juce::JUCEApplication
 {
 public:
@@ -53,7 +53,11 @@ public:
                              DocumentWindow::allButtons)
         {
             setUsingNativeTitleBar(true);
-            setContentOwned(new MainComponent(), true);
+            setUsingNativeTitleBar(true);
+            
+            auto* content = new NEURONiK::ModelMaker::MainComponent();
+            setContentOwned(content, true);
+            
             setResizable(true, true);
             
             // Set default size similar to a utility app
@@ -74,7 +78,5 @@ private:
     std::unique_ptr<MainWindow> mainWindow;
 };
 
-} // namespace NEURONiK::ModelMaker
-
-// This macro generates the main() function that launches the app.
-START_JUCE_APPLICATION(NEURONiK::ModelMaker::ModelMakerApplication)
+// This macro generates the application factory and standard entry point.
+START_JUCE_APPLICATION(ModelMakerApplication)

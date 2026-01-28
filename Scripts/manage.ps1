@@ -22,6 +22,9 @@ param (
     [switch]$FullClean,
 
     [Parameter(Mandatory = $false)]
+    [string]$Target = "NEURONiK_Standalone",
+
+    [Parameter(Mandatory = $false)]
     [Alias("h", "?")]
     [switch]$Help
 )
@@ -32,9 +35,9 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = Get-Item $PSScriptRoot\..
 $BuildDir = "$($ProjectRoot.FullName)\build_neuronik"
 $AppName = "NEURONiK"
-# Try to find JUCE in common locations if not set
-$JuceDirCandidate = "C:\JUCE" 
-if (Test-Path $JuceDirCandidate) { $JuceDir = $JuceDirCandidate }
+
+# Try to find JUCE via environment variable first, or let CMake handle it
+$JuceDir = $env:JUCE_PATH
 
 function Show-Help {
     Write-Host "Usage: .\Scripts\manage.ps1 -Task <Task> [-Config <Config>] [-FullClean] [-Help]" -ForegroundColor Cyan
@@ -195,8 +198,8 @@ function Invoke-TaskBuild {
     & $CMakePath @GeneratorParams "$($ProjectRoot.FullName)"
     if ($LASTEXITCODE -ne 0) { throw "CMake Configuration Failed" }
 
-    Write-Host "Building Project ($config)..."
-    & $CMakePath --build $BuildDir --config $config --target NEURONiK_Standalone
+    Write-Host "Building Project ($config) Target ($Target)..."
+    & $CMakePath --build $BuildDir --config $config --target $Target
     if ($LASTEXITCODE -ne 0) { throw "Build Failed" }
 
     Write-Host "Build Completed Successfully!" -ForegroundColor Green

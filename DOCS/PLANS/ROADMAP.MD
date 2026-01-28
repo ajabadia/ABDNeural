@@ -82,6 +82,7 @@ Este documento sirve como la guía técnica y filosófica para el desarrollo de 
 
 - [x] **Tarea 17.1: Copiar/Pegar Parámetros de Patch**: Implementada funcionalidad vía Portapapeles del sistema en el menú "Edit".
 - [x] **Tarea 17.2: Gestor de Presets Avanzado**: Creada pestaña "BROWSER" y selector rápido en "GENERAL" para gestión completa.
+- [x] **Tarea 17.3: Portabilidad Total (Embedded Models)**: Los presets (`.neuronikpreset`) ahora serializan internamente los datos de los modelos espectrales usados. Esto elimina la dependencia de archivos externos al compartir patches.
 
 ---
 
@@ -93,10 +94,22 @@ Este documento sirve como la guía técnica y filosófica para el desarrollo de 
 - [x] **Tarea 18.3: Análisis FFT y Extracción de Armónicos**: Implementar carga de audio y algoritmo de detección de picos espectrales para los 64 parciales.
 - [x] **Tarea 18.4: Exportación de Modelos**: Guardar el resultado en formato JSON compatible con NEURONiK.
 
+## 🟢 FASE 18.5: REFINAMIENTO DE DETECCIÓN DE PITCH [COMPLETADO]
+*Objetivo: Mejorar la precisión del análisis espectral para la creación de modelos.*
+
+- [x] **Tarea 18.5.1: Algoritmo HPS (Harmonic Product Spectrum)**: Implementado para una detección robusta de la frecuencia fundamental.
+- [x] **Tarea 18.5.2: UI de Confirmación**: Añadido display de frecuencia detectada y campo de edición manual para correcciones del usuario antes del análisis.
+- [x] **Tarea 18.5.3: Integración**: El análisis de armónicos ahora usa la frecuencia confirmada (detectada o manual) para la extracción precisa de parciales.
+
 ---
 
-## 🟢 FASE 19: ESCULTURA ESPECTRAL AVANZADA [COMPLETADO]
+## 🟢 FASE 19: ESCULTURA ESPECTRAL AVANZADA [COMPLETADO & VERIFICADO]
 *Objetivo: Implementar la lógica DSP para los parámetros "Legacy" ya definidos en la UI.*
+
+- [x] **Tarea 19.1: Parity (Odd/Even Balance)**: Control de balance entre armónicos pares e impares.
+- [x] **Tarea 19.2: Spectral Shift**: Multiplicador de frecuencia para desplazamiento de formantes.
+- [x] **Tarea 19.3: Harmonic Roll-off**: Control de caída de amplitud de armónicos superiores (Brillantez).
+- [x] **Tarea 19.4: Integración en ModMatrix**: Los 3 parámetros ahora son destinos de modulación.
 
 - [x] **Tarea 19.1: Lógica de Parity (Odd/Even)**: Ajustada la ganancia de parciales impares/pares dinámicamente según el balance.
 - [x] **Tarea 19.2: Spectral Shift**: Desplazamiento del espectro de armónicos por encima o debajo de su frecuencia fundamental (estilo formante).
@@ -124,6 +137,23 @@ Este documento sirve como la guía técnica y filosófica para el desarrollo de 
 - [x] **Tarea 21.3: Tabla de Especificaciones MIDI**:
     -   [x] Implementar diálogo de ayuda con la tabla de implementación MIDI de fábrica.
     -   [x] Añadir acceso desde la barra de menú superior (Help -> MIDI Specs).
+
+---
+
+## 🟢 FASE 20.8: AUDIO RECORDING & ROOT NOTE (MODEL MAKER) [COMPLETADO]
+*Objetivo: Facilitar la creación de modelos permitiendo grabación directa y gestión precisa de la nota raíz.*
+
+- [x] **Tarea 20.8.1: Grabación de Audio**:
+    -   [x] Habilitación de entradas de audio en `deviceManager`.
+    -   [x] Implementación de lógica de grabación circular en buffer temporal.
+    -   [x] Botón "REC" dinámico con estados de grabación/parada.
+- [x] **Tarea 20.8.2: Selección de Nota Raíz Dividida**:
+    -   [x] Reemplazo de selector único por selectores independientes de Nota y Octava.
+    -   [x] Modo "Auto" por defecto para sincronización con detección de pitch.
+- [x] **Tarea 20.8.3: Sincronización y Validación de Pitch**:
+    -   [x] Detección automática de pitch tras carga/grabación de audio.
+    -   [x] Lógica de discrepancia: aviso al usuario si la nota seleccionada varía > 1 semitono del pitch detectado.
+    -   [x] Refactorización de proceso de análisis para soportar diálogos asíncronos.
 
 ---
 
@@ -398,9 +428,9 @@ BANK SELECT
 - [x] **Acción**: Refactorizados todos los IDs y APVTS a constantes estáticas de tiempo de compilación.
 
 ### 🏗️ Tarea 26.3: Portabilidad del Sistema CMake
-- [ ] **Problema**: Rutas hardcodeadas (e.g., `C:\JUCE`) rompen la compilación en otros sistemas/entornos.
-- [ ] **Solución**: Usar `find_package(JUCE CONFIG REQUIRED)` y targets modernos.
-- [ ] **Acción**: Eliminar dependencias de rutas absolutas y usar variables de entorno/CLI para la configuración.
+- [x] **Problema**: Rutas hardcodeadas (e.g., `C:\JUCE`) rompen la compilación en otros sistemas/entornos.
+- [x] **Solución**: Usar `find_package(JUCE CONFIG REQUIRED)` y permitir `JUCE_PATH` vía entorno/CLI.
+- [x] **Acción**: Eliminadas las rutas absolutas de `CMakeLists.txt` y `manage.ps1`. Implementada detección dinámica vía `env:JUCE_PATH`.
 
 ### 📐 Tarea 26.4: UI Dinámica y Responsiva
 - [ ] **Problema**: Layouts de tamaño fijo dificultan el redimensionado y portabilidad de la UI.

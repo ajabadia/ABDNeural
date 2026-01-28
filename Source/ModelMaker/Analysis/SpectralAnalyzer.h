@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include <vector>
 #include <juce_dsp/juce_dsp.h>
 #include "../../../Source/Common/SpectralModel.h"
 
@@ -28,6 +29,11 @@ public:
      * @param rootFrequency The fundamental frequency (F0) to search harmonics for.
      */
     NEURONiK::Common::SpectralModel analyze(const juce::AudioBuffer<float>& audio, double sampleRate, float rootFrequency);
+
+    /**
+     * Attempts to detect the fundamental frequency (F0) of the audio.
+     */
+    float detectPitch(const juce::AudioBuffer<float>& audio, double sampleRate);
 
 private:
     // FFT Configuration

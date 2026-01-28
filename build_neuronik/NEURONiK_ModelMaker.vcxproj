@@ -59,34 +59,34 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
     <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
-    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker_artefacts\Debug\</OutDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">D:\desarrollos\ABDNeural\build_neuronik\Debug\</OutDir>
     <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NEURONiK_ModelMaker.dir\Debug\</IntDir>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NEURONiK Model Maker</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NEURONiK_ModelMaker</TargetName>
     <TargetExt Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.exe</TargetExt>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</LinkIncremental>
     <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</GenerateManifest>
-    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker_artefacts\Release\</OutDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">D:\desarrollos\ABDNeural\build_neuronik\Release\</OutDir>
     <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NEURONiK_ModelMaker.dir\Release\</IntDir>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NEURONiK Model Maker</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NEURONiK_ModelMaker</TargetName>
     <TargetExt Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.exe</TargetExt>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkIncremental>
     <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</GenerateManifest>
-    <OutDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker_artefacts\MinSizeRel\</OutDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">D:\desarrollos\ABDNeural\build_neuronik\MinSizeRel\</OutDir>
     <IntDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">NEURONiK_ModelMaker.dir\MinSizeRel\</IntDir>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">NEURONiK Model Maker</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">NEURONiK_ModelMaker</TargetName>
     <TargetExt Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">.exe</TargetExt>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">false</LinkIncremental>
     <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">true</GenerateManifest>
-    <OutDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker_artefacts\RelWithDebInfo\</OutDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">D:\desarrollos\ABDNeural\build_neuronik\RelWithDebInfo\</OutDir>
     <IntDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">NEURONiK_ModelMaker.dir\RelWithDebInfo\</IntDir>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">NEURONiK Model Maker</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">NEURONiK_ModelMaker</TargetName>
     <TargetExt Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">.exe</TargetExt>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">true</LinkIncremental>
     <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">true</GenerateManifest>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker_artefacts\JuceLibraryCode;C:\JUCE\modules;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\JUCE\modules;C:\JUCE\modules\juce_audio_processors_headless\format_types\VST3_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lv2;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\serd;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord\src;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sratom;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv\src;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions) /bigobj</AdditionalOptions>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
@@ -104,16 +104,16 @@
       <TreatWChar_tAsBuiltInType></TreatWChar_tAsBuiltInType>
       <UseFullPaths>false</UseFullPaths>
       <WarningLevel>Level4</WarningLevel>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;JUCE_STANDALONE_APPLICATION=1;JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1;DEBUG=1;_DEBUG=1;JUCE_MODULE_AVAILABLE_juce_core=1;JUCE_MODULE_AVAILABLE_juce_data_structures=1;JUCE_MODULE_AVAILABLE_juce_events=1;JUCE_MODULE_AVAILABLE_juce_graphics=1;JUCE_MODULE_AVAILABLE_juce_gui_basics=1;JUCE_MODULE_AVAILABLE_juce_gui_extra=1;CMAKE_INTDIR="Debug"</PreprocessorDefinitions>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;JUCE_MODULE_AVAILABLE_juce_audio_basics=1;JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1;DEBUG=1;_DEBUG=1;JUCE_MODULE_AVAILABLE_juce_core=1;JUCE_MODULE_AVAILABLE_juce_audio_devices=1;JUCE_MODULE_AVAILABLE_juce_events=1;JUCE_MODULE_AVAILABLE_juce_audio_formats=1;JUCE_MODULE_AVAILABLE_juce_audio_utils=1;JUCE_MODULE_AVAILABLE_juce_audio_processors=1;JUCE_MODULE_AVAILABLE_juce_gui_extra=1;JUCE_MODULE_AVAILABLE_juce_gui_basics=1;JUCE_MODULE_AVAILABLE_juce_graphics=1;JUCE_MODULE_AVAILABLE_juce_data_structures=1;JUCE_MODULE_AVAILABLE_juce_audio_processors_headless=1;JUCE_MODULE_AVAILABLE_juce_dsp=1;CMAKE_INTDIR="Debug"</PreprocessorDefinitions>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
     </ClCompile>
     <ResourceCompile>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_DEBUG;_WINDOWS;JUCE_STANDALONE_APPLICATION=1;JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1;DEBUG=1;_DEBUG=1;JUCE_MODULE_AVAILABLE_juce_core=1;JUCE_MODULE_AVAILABLE_juce_data_structures=1;JUCE_MODULE_AVAILABLE_juce_events=1;JUCE_MODULE_AVAILABLE_juce_graphics=1;JUCE_MODULE_AVAILABLE_juce_gui_basics=1;JUCE_MODULE_AVAILABLE_juce_gui_extra=1;CMAKE_INTDIR=\"Debug\"</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker_artefacts\JuceLibraryCode;C:\JUCE\modules;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_DEBUG;_WINDOWS;JUCE_MODULE_AVAILABLE_juce_audio_basics=1;JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1;DEBUG=1;_DEBUG=1;JUCE_MODULE_AVAILABLE_juce_core=1;JUCE_MODULE_AVAILABLE_juce_audio_devices=1;JUCE_MODULE_AVAILABLE_juce_events=1;JUCE_MODULE_AVAILABLE_juce_audio_formats=1;JUCE_MODULE_AVAILABLE_juce_audio_utils=1;JUCE_MODULE_AVAILABLE_juce_audio_processors=1;JUCE_MODULE_AVAILABLE_juce_gui_extra=1;JUCE_MODULE_AVAILABLE_juce_gui_basics=1;JUCE_MODULE_AVAILABLE_juce_graphics=1;JUCE_MODULE_AVAILABLE_juce_data_structures=1;JUCE_MODULE_AVAILABLE_juce_audio_processors_headless=1;JUCE_MODULE_AVAILABLE_juce_dsp=1;CMAKE_INTDIR=\"Debug\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\JUCE\modules;C:\JUCE\modules\juce_audio_processors_headless\format_types\VST3_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lv2;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\serd;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord\src;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sratom;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv\src;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker_artefacts\JuceLibraryCode;C:\JUCE\modules;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\JUCE\modules;C:\JUCE\modules\juce_audio_processors_headless\format_types\VST3_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lv2;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\serd;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord\src;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sratom;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv\src;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -122,15 +122,15 @@
     </Midl>
     <Link>
       <AdditionalDependencies>Debug\NEURONiK_Common.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:/JUCE/modules/juce_core/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_core/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_data_structures/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_data_structures/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_events/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_events/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_graphics/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_graphics/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_gui_basics/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_gui_basics/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_gui_extra/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_gui_extra/libs/VisualStudio2026/x64/MDd/$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>C:/JUCE/modules/juce_audio_basics/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_basics/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_core/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_core/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_audio_devices/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_devices/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_events/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_events/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_audio_formats/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_formats/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_audio_utils/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_utils/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_audio_processors/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_processors/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_gui_extra/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_gui_extra/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_gui_basics/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_gui_basics/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_graphics/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_graphics/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_data_structures/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_data_structures/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_audio_processors_headless/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_processors_headless/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_dsp/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_dsp/libs/VisualStudio2026/x64/MDd/$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
       <DataExecutionPrevention></DataExecutionPrevention>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <ImageHasSafeExceptionHandlers></ImageHasSafeExceptionHandlers>
-      <ImportLibrary>D:/desarrollos/ABDNeural/build_neuronik/NEURONiK_ModelMaker_artefacts/Debug/NEURONiK Model Maker.lib</ImportLibrary>
+      <ImportLibrary>D:/desarrollos/ABDNeural/build_neuronik/Debug/NEURONiK_ModelMaker.lib</ImportLibrary>
       <LinkErrorReporting></LinkErrorReporting>
-      <ProgramDataBaseFile>D:/desarrollos/ABDNeural/build_neuronik/NEURONiK_ModelMaker_artefacts/Debug/NEURONiK Model Maker.pdb</ProgramDataBaseFile>
+      <ProgramDataBaseFile>D:/desarrollos/ABDNeural/build_neuronik/Debug/NEURONiK_ModelMaker.pdb</ProgramDataBaseFile>
       <RandomizedBaseAddress></RandomizedBaseAddress>
       <SubSystem>Windows</SubSystem>
     </Link>
@@ -140,7 +140,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker_artefacts\JuceLibraryCode;C:\JUCE\modules;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\JUCE\modules;C:\JUCE\modules\juce_audio_processors_headless\format_types\VST3_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lv2;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\serd;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord\src;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sratom;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv\src;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions) /bigobj</AdditionalOptions>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
@@ -157,18 +157,18 @@
       <TreatWChar_tAsBuiltInType></TreatWChar_tAsBuiltInType>
       <UseFullPaths>false</UseFullPaths>
       <WarningLevel>Level4</WarningLevel>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JUCE_STANDALONE_APPLICATION=1;JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1;NDEBUG=1;_NDEBUG=1;JUCE_MODULE_AVAILABLE_juce_core=1;JUCE_MODULE_AVAILABLE_juce_data_structures=1;JUCE_MODULE_AVAILABLE_juce_events=1;JUCE_MODULE_AVAILABLE_juce_graphics=1;JUCE_MODULE_AVAILABLE_juce_gui_basics=1;JUCE_MODULE_AVAILABLE_juce_gui_extra=1;CMAKE_INTDIR="Release"</PreprocessorDefinitions>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JUCE_MODULE_AVAILABLE_juce_audio_basics=1;JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1;NDEBUG=1;_NDEBUG=1;JUCE_MODULE_AVAILABLE_juce_core=1;JUCE_MODULE_AVAILABLE_juce_audio_devices=1;JUCE_MODULE_AVAILABLE_juce_events=1;JUCE_MODULE_AVAILABLE_juce_audio_formats=1;JUCE_MODULE_AVAILABLE_juce_audio_utils=1;JUCE_MODULE_AVAILABLE_juce_audio_processors=1;JUCE_MODULE_AVAILABLE_juce_gui_extra=1;JUCE_MODULE_AVAILABLE_juce_gui_basics=1;JUCE_MODULE_AVAILABLE_juce_graphics=1;JUCE_MODULE_AVAILABLE_juce_data_structures=1;JUCE_MODULE_AVAILABLE_juce_audio_processors_headless=1;JUCE_MODULE_AVAILABLE_juce_dsp=1;CMAKE_INTDIR="Release"</PreprocessorDefinitions>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <DebugInformationFormat>
       </DebugInformationFormat>
       <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
     </ClCompile>
     <ResourceCompile>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JUCE_STANDALONE_APPLICATION=1;JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1;NDEBUG=1;_NDEBUG=1;JUCE_MODULE_AVAILABLE_juce_core=1;JUCE_MODULE_AVAILABLE_juce_data_structures=1;JUCE_MODULE_AVAILABLE_juce_events=1;JUCE_MODULE_AVAILABLE_juce_graphics=1;JUCE_MODULE_AVAILABLE_juce_gui_basics=1;JUCE_MODULE_AVAILABLE_juce_gui_extra=1;CMAKE_INTDIR=\"Release\"</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker_artefacts\JuceLibraryCode;C:\JUCE\modules;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JUCE_MODULE_AVAILABLE_juce_audio_basics=1;JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1;NDEBUG=1;_NDEBUG=1;JUCE_MODULE_AVAILABLE_juce_core=1;JUCE_MODULE_AVAILABLE_juce_audio_devices=1;JUCE_MODULE_AVAILABLE_juce_events=1;JUCE_MODULE_AVAILABLE_juce_audio_formats=1;JUCE_MODULE_AVAILABLE_juce_audio_utils=1;JUCE_MODULE_AVAILABLE_juce_audio_processors=1;JUCE_MODULE_AVAILABLE_juce_gui_extra=1;JUCE_MODULE_AVAILABLE_juce_gui_basics=1;JUCE_MODULE_AVAILABLE_juce_graphics=1;JUCE_MODULE_AVAILABLE_juce_data_structures=1;JUCE_MODULE_AVAILABLE_juce_audio_processors_headless=1;JUCE_MODULE_AVAILABLE_juce_dsp=1;CMAKE_INTDIR=\"Release\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\JUCE\modules;C:\JUCE\modules\juce_audio_processors_headless\format_types\VST3_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lv2;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\serd;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord\src;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sratom;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv\src;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker_artefacts\JuceLibraryCode;C:\JUCE\modules;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\JUCE\modules;C:\JUCE\modules\juce_audio_processors_headless\format_types\VST3_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lv2;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\serd;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord\src;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sratom;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv\src;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -177,15 +177,15 @@
     </Midl>
     <Link>
       <AdditionalDependencies>Release\NEURONiK_Common.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:/JUCE/modules/juce_core/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_core/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_data_structures/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_data_structures/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_events/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_events/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_graphics/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_graphics/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_gui_basics/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_gui_basics/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_gui_extra/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_gui_extra/libs/VisualStudio2026/x64/MDd/$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>C:/JUCE/modules/juce_audio_basics/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_basics/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_core/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_core/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_audio_devices/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_devices/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_events/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_events/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_audio_formats/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_formats/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_audio_utils/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_utils/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_audio_processors/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_processors/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_gui_extra/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_gui_extra/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_gui_basics/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_gui_basics/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_graphics/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_graphics/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_data_structures/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_data_structures/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_audio_processors_headless/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_processors_headless/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_dsp/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_dsp/libs/VisualStudio2026/x64/MDd/$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
       <DataExecutionPrevention></DataExecutionPrevention>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <ImageHasSafeExceptionHandlers></ImageHasSafeExceptionHandlers>
-      <ImportLibrary>D:/desarrollos/ABDNeural/build_neuronik/NEURONiK_ModelMaker_artefacts/Release/NEURONiK Model Maker.lib</ImportLibrary>
+      <ImportLibrary>D:/desarrollos/ABDNeural/build_neuronik/Release/NEURONiK_ModelMaker.lib</ImportLibrary>
       <LinkErrorReporting></LinkErrorReporting>
-      <ProgramDataBaseFile>D:/desarrollos/ABDNeural/build_neuronik/NEURONiK_ModelMaker_artefacts/Release/NEURONiK Model Maker.pdb</ProgramDataBaseFile>
+      <ProgramDataBaseFile>D:/desarrollos/ABDNeural/build_neuronik/Release/NEURONiK_ModelMaker.pdb</ProgramDataBaseFile>
       <RandomizedBaseAddress></RandomizedBaseAddress>
       <SubSystem>Windows</SubSystem>
     </Link>
@@ -195,7 +195,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker_artefacts\JuceLibraryCode;C:\JUCE\modules;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\JUCE\modules;C:\JUCE\modules\juce_audio_processors_headless\format_types\VST3_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lv2;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\serd;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord\src;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sratom;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv\src;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions) /bigobj</AdditionalOptions>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
@@ -212,18 +212,18 @@
       <TreatWChar_tAsBuiltInType></TreatWChar_tAsBuiltInType>
       <UseFullPaths>false</UseFullPaths>
       <WarningLevel>Level4</WarningLevel>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JUCE_STANDALONE_APPLICATION=1;JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1;NDEBUG=1;_NDEBUG=1;JUCE_MODULE_AVAILABLE_juce_core=1;JUCE_MODULE_AVAILABLE_juce_data_structures=1;JUCE_MODULE_AVAILABLE_juce_events=1;JUCE_MODULE_AVAILABLE_juce_graphics=1;JUCE_MODULE_AVAILABLE_juce_gui_basics=1;JUCE_MODULE_AVAILABLE_juce_gui_extra=1;CMAKE_INTDIR="MinSizeRel"</PreprocessorDefinitions>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JUCE_MODULE_AVAILABLE_juce_audio_basics=1;JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1;NDEBUG=1;_NDEBUG=1;JUCE_MODULE_AVAILABLE_juce_core=1;JUCE_MODULE_AVAILABLE_juce_audio_devices=1;JUCE_MODULE_AVAILABLE_juce_events=1;JUCE_MODULE_AVAILABLE_juce_audio_formats=1;JUCE_MODULE_AVAILABLE_juce_audio_utils=1;JUCE_MODULE_AVAILABLE_juce_audio_processors=1;JUCE_MODULE_AVAILABLE_juce_gui_extra=1;JUCE_MODULE_AVAILABLE_juce_gui_basics=1;JUCE_MODULE_AVAILABLE_juce_graphics=1;JUCE_MODULE_AVAILABLE_juce_data_structures=1;JUCE_MODULE_AVAILABLE_juce_audio_processors_headless=1;JUCE_MODULE_AVAILABLE_juce_dsp=1;CMAKE_INTDIR="MinSizeRel"</PreprocessorDefinitions>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <DebugInformationFormat>
       </DebugInformationFormat>
       <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
     </ClCompile>
     <ResourceCompile>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JUCE_STANDALONE_APPLICATION=1;JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1;NDEBUG=1;_NDEBUG=1;JUCE_MODULE_AVAILABLE_juce_core=1;JUCE_MODULE_AVAILABLE_juce_data_structures=1;JUCE_MODULE_AVAILABLE_juce_events=1;JUCE_MODULE_AVAILABLE_juce_graphics=1;JUCE_MODULE_AVAILABLE_juce_gui_basics=1;JUCE_MODULE_AVAILABLE_juce_gui_extra=1;CMAKE_INTDIR=\"MinSizeRel\"</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker_artefacts\JuceLibraryCode;C:\JUCE\modules;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JUCE_MODULE_AVAILABLE_juce_audio_basics=1;JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1;NDEBUG=1;_NDEBUG=1;JUCE_MODULE_AVAILABLE_juce_core=1;JUCE_MODULE_AVAILABLE_juce_audio_devices=1;JUCE_MODULE_AVAILABLE_juce_events=1;JUCE_MODULE_AVAILABLE_juce_audio_formats=1;JUCE_MODULE_AVAILABLE_juce_audio_utils=1;JUCE_MODULE_AVAILABLE_juce_audio_processors=1;JUCE_MODULE_AVAILABLE_juce_gui_extra=1;JUCE_MODULE_AVAILABLE_juce_gui_basics=1;JUCE_MODULE_AVAILABLE_juce_graphics=1;JUCE_MODULE_AVAILABLE_juce_data_structures=1;JUCE_MODULE_AVAILABLE_juce_audio_processors_headless=1;JUCE_MODULE_AVAILABLE_juce_dsp=1;CMAKE_INTDIR=\"MinSizeRel\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\JUCE\modules;C:\JUCE\modules\juce_audio_processors_headless\format_types\VST3_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lv2;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\serd;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord\src;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sratom;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv\src;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker_artefacts\JuceLibraryCode;C:\JUCE\modules;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\JUCE\modules;C:\JUCE\modules\juce_audio_processors_headless\format_types\VST3_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lv2;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\serd;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord\src;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sratom;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv\src;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -232,15 +232,15 @@
     </Midl>
     <Link>
       <AdditionalDependencies>MinSizeRel\NEURONiK_Common.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:/JUCE/modules/juce_core/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_core/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_data_structures/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_data_structures/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_events/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_events/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_graphics/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_graphics/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_gui_basics/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_gui_basics/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_gui_extra/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_gui_extra/libs/VisualStudio2026/x64/MDd/$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>C:/JUCE/modules/juce_audio_basics/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_basics/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_core/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_core/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_audio_devices/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_devices/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_events/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_events/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_audio_formats/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_formats/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_audio_utils/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_utils/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_audio_processors/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_processors/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_gui_extra/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_gui_extra/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_gui_basics/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_gui_basics/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_graphics/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_graphics/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_data_structures/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_data_structures/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_audio_processors_headless/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_processors_headless/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_dsp/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_dsp/libs/VisualStudio2026/x64/MDd/$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
       <DataExecutionPrevention></DataExecutionPrevention>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <ImageHasSafeExceptionHandlers></ImageHasSafeExceptionHandlers>
-      <ImportLibrary>D:/desarrollos/ABDNeural/build_neuronik/NEURONiK_ModelMaker_artefacts/MinSizeRel/NEURONiK Model Maker.lib</ImportLibrary>
+      <ImportLibrary>D:/desarrollos/ABDNeural/build_neuronik/MinSizeRel/NEURONiK_ModelMaker.lib</ImportLibrary>
       <LinkErrorReporting></LinkErrorReporting>
-      <ProgramDataBaseFile>D:/desarrollos/ABDNeural/build_neuronik/NEURONiK_ModelMaker_artefacts/MinSizeRel/NEURONiK Model Maker.pdb</ProgramDataBaseFile>
+      <ProgramDataBaseFile>D:/desarrollos/ABDNeural/build_neuronik/MinSizeRel/NEURONiK_ModelMaker.pdb</ProgramDataBaseFile>
       <RandomizedBaseAddress></RandomizedBaseAddress>
       <SubSystem>Windows</SubSystem>
     </Link>
@@ -250,7 +250,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker_artefacts\JuceLibraryCode;C:\JUCE\modules;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\JUCE\modules;C:\JUCE\modules\juce_audio_processors_headless\format_types\VST3_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lv2;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\serd;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord\src;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sratom;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv\src;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions) /bigobj</AdditionalOptions>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
@@ -268,16 +268,16 @@
       <TreatWChar_tAsBuiltInType></TreatWChar_tAsBuiltInType>
       <UseFullPaths>false</UseFullPaths>
       <WarningLevel>Level4</WarningLevel>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JUCE_STANDALONE_APPLICATION=1;JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1;NDEBUG=1;_NDEBUG=1;JUCE_MODULE_AVAILABLE_juce_core=1;JUCE_MODULE_AVAILABLE_juce_data_structures=1;JUCE_MODULE_AVAILABLE_juce_events=1;JUCE_MODULE_AVAILABLE_juce_graphics=1;JUCE_MODULE_AVAILABLE_juce_gui_basics=1;JUCE_MODULE_AVAILABLE_juce_gui_extra=1;CMAKE_INTDIR="RelWithDebInfo"</PreprocessorDefinitions>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JUCE_MODULE_AVAILABLE_juce_audio_basics=1;JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1;NDEBUG=1;_NDEBUG=1;JUCE_MODULE_AVAILABLE_juce_core=1;JUCE_MODULE_AVAILABLE_juce_audio_devices=1;JUCE_MODULE_AVAILABLE_juce_events=1;JUCE_MODULE_AVAILABLE_juce_audio_formats=1;JUCE_MODULE_AVAILABLE_juce_audio_utils=1;JUCE_MODULE_AVAILABLE_juce_audio_processors=1;JUCE_MODULE_AVAILABLE_juce_gui_extra=1;JUCE_MODULE_AVAILABLE_juce_gui_basics=1;JUCE_MODULE_AVAILABLE_juce_graphics=1;JUCE_MODULE_AVAILABLE_juce_data_structures=1;JUCE_MODULE_AVAILABLE_juce_audio_processors_headless=1;JUCE_MODULE_AVAILABLE_juce_dsp=1;CMAKE_INTDIR="RelWithDebInfo"</PreprocessorDefinitions>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
     </ClCompile>
     <ResourceCompile>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JUCE_STANDALONE_APPLICATION=1;JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1;NDEBUG=1;_NDEBUG=1;JUCE_MODULE_AVAILABLE_juce_core=1;JUCE_MODULE_AVAILABLE_juce_data_structures=1;JUCE_MODULE_AVAILABLE_juce_events=1;JUCE_MODULE_AVAILABLE_juce_graphics=1;JUCE_MODULE_AVAILABLE_juce_gui_basics=1;JUCE_MODULE_AVAILABLE_juce_gui_extra=1;CMAKE_INTDIR=\"RelWithDebInfo\"</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker_artefacts\JuceLibraryCode;C:\JUCE\modules;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;JUCE_MODULE_AVAILABLE_juce_audio_basics=1;JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1;NDEBUG=1;_NDEBUG=1;JUCE_MODULE_AVAILABLE_juce_core=1;JUCE_MODULE_AVAILABLE_juce_audio_devices=1;JUCE_MODULE_AVAILABLE_juce_events=1;JUCE_MODULE_AVAILABLE_juce_audio_formats=1;JUCE_MODULE_AVAILABLE_juce_audio_utils=1;JUCE_MODULE_AVAILABLE_juce_audio_processors=1;JUCE_MODULE_AVAILABLE_juce_gui_extra=1;JUCE_MODULE_AVAILABLE_juce_gui_basics=1;JUCE_MODULE_AVAILABLE_juce_graphics=1;JUCE_MODULE_AVAILABLE_juce_data_structures=1;JUCE_MODULE_AVAILABLE_juce_audio_processors_headless=1;JUCE_MODULE_AVAILABLE_juce_dsp=1;CMAKE_INTDIR=\"RelWithDebInfo\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\JUCE\modules;C:\JUCE\modules\juce_audio_processors_headless\format_types\VST3_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lv2;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\serd;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord\src;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sratom;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv\src;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker_artefacts\JuceLibraryCode;C:\JUCE\modules;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\JUCE\modules;C:\JUCE\modules\juce_audio_processors_headless\format_types\VST3_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lv2;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\serd;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sord\src;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\sratom;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv;C:\JUCE\modules\juce_audio_processors_headless\format_types\LV2_SDK\lilv\src;D:\desarrollos\ABDNeural\Source\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -286,15 +286,15 @@
     </Midl>
     <Link>
       <AdditionalDependencies>RelWithDebInfo\NEURONiK_Common.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:/JUCE/modules/juce_core/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_core/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_data_structures/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_data_structures/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_events/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_events/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_graphics/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_graphics/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_gui_basics/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_gui_basics/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_gui_extra/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_gui_extra/libs/VisualStudio2026/x64/MDd/$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>C:/JUCE/modules/juce_audio_basics/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_basics/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_core/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_core/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_audio_devices/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_devices/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_events/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_events/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_audio_formats/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_formats/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_audio_utils/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_utils/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_audio_processors/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_processors/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_gui_extra/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_gui_extra/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_gui_basics/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_gui_basics/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_graphics/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_graphics/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_data_structures/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_data_structures/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_audio_processors_headless/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_audio_processors_headless/libs/VisualStudio2026/x64/MDd/$(Configuration);C:/JUCE/modules/juce_dsp/libs/VisualStudio2026/x64/MDd;C:/JUCE/modules/juce_dsp/libs/VisualStudio2026/x64/MDd/$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
       <DataExecutionPrevention></DataExecutionPrevention>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <ImageHasSafeExceptionHandlers></ImageHasSafeExceptionHandlers>
-      <ImportLibrary>D:/desarrollos/ABDNeural/build_neuronik/NEURONiK_ModelMaker_artefacts/RelWithDebInfo/NEURONiK Model Maker.lib</ImportLibrary>
+      <ImportLibrary>D:/desarrollos/ABDNeural/build_neuronik/RelWithDebInfo/NEURONiK_ModelMaker.lib</ImportLibrary>
       <LinkErrorReporting></LinkErrorReporting>
-      <ProgramDataBaseFile>D:/desarrollos/ABDNeural/build_neuronik/NEURONiK_ModelMaker_artefacts/RelWithDebInfo/NEURONiK Model Maker.pdb</ProgramDataBaseFile>
+      <ProgramDataBaseFile>D:/desarrollos/ABDNeural/build_neuronik/RelWithDebInfo/NEURONiK_ModelMaker.pdb</ProgramDataBaseFile>
       <RandomizedBaseAddress></RandomizedBaseAddress>
       <SubSystem>Windows</SubSystem>
     </Link>
@@ -360,16 +360,31 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     </CustomBuild>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="D:\desarrollos\ABDNeural\Source\ModelMaker\Main.cpp" />
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\ModelMaker\MainComponent.h" />
+    <ClCompile Include="D:\desarrollos\ABDNeural\Source\ModelMaker\MainComponent.cpp" />
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\ModelMaker\Analysis\SpectralAnalyzer.h" />
+    <ClCompile Include="D:\desarrollos\ABDNeural\Source\ModelMaker\Analysis\SpectralAnalyzer.cpp" />
+    <ClCompile Include="D:\desarrollos\ABDNeural\Source\DSP\CoreModules\Oscillator.cpp" />
+    <ClCompile Include="D:\desarrollos\ABDNeural\Source\DSP\CoreModules\Resonator.cpp" />
+    <ClCompile Include="C:\JUCE\modules\juce_audio_basics\juce_audio_basics.cpp" />
     <ClCompile Include="C:\JUCE\modules\juce_core\juce_core.cpp" />
     <ClCompile Include="C:\JUCE\modules\juce_core\juce_core_CompilationTime.cpp" />
-    <ClCompile Include="C:\JUCE\modules\juce_data_structures\juce_data_structures.cpp" />
+    <ClCompile Include="C:\JUCE\modules\juce_audio_devices\juce_audio_devices.cpp" />
     <ClCompile Include="C:\JUCE\modules\juce_events\juce_events.cpp" />
+    <ClCompile Include="C:\JUCE\modules\juce_audio_formats\juce_audio_formats.cpp" />
+    <ClCompile Include="C:\JUCE\modules\juce_audio_utils\juce_audio_utils.cpp" />
+    <ClCompile Include="C:\JUCE\modules\juce_audio_processors\juce_audio_processors.cpp" />
+    <ClCompile Include="C:\JUCE\modules\juce_gui_extra\juce_gui_extra.cpp" />
+    <ClCompile Include="C:\JUCE\modules\juce_gui_basics\juce_gui_basics.cpp" />
     <ClCompile Include="C:\JUCE\modules\juce_graphics\juce_graphics.cpp" />
     <ClCompile Include="C:\JUCE\modules\juce_graphics\juce_graphics_Harfbuzz.cpp" />
     <ClCompile Include="C:\JUCE\modules\juce_graphics\juce_graphics_Sheenbidi.c" />
-    <ClCompile Include="C:\JUCE\modules\juce_gui_basics\juce_gui_basics.cpp" />
-    <ClCompile Include="C:\JUCE\modules\juce_gui_extra\juce_gui_extra.cpp" />
-    <Object Include="D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker_rc_lib.dir\$(Configuration)\NEURONiK_ModelMaker_resources.res" />
+    <ClCompile Include="C:\JUCE\modules\juce_data_structures\juce_data_structures.cpp" />
+    <ClCompile Include="C:\JUCE\modules\juce_audio_processors_headless\juce_audio_processors_headless.cpp" />
+    <ClCompile Include="C:\JUCE\modules\juce_audio_processors_headless\juce_audio_processors_headless_ara.cpp" />
+    <ClCompile Include="C:\JUCE\modules\juce_audio_processors_headless\juce_audio_processors_headless_lv2_libs.cpp" />
+    <ClCompile Include="C:\JUCE\modules\juce_dsp\juce_dsp.cpp" />
   </ItemGroup>
   <ItemGroup />
   <ItemGroup>
@@ -383,9 +398,9 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <Project>{D24EDC14-B1C0-3DD6-AFC7-33697C2C03EE}</Project>
       <Name>NEURONiK_Common</Name>
     </ProjectReference>
-    <ProjectReference Include="D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_ModelMaker_rc_lib.vcxproj">
-      <Project>{DA72C6FE-8F82-35B5-90A3-8B81709FDA20}</Project>
-      <Name>NEURONiK_ModelMaker_rc_lib</Name>
+    <ProjectReference Include="D:\desarrollos\ABDNeural\build_neuronik\UpdateVersion.vcxproj">
+      <Project>{B5A6A896-B1E0-30A1-BD75-08A03D989708}</Project>
+      <Name>UpdateVersion</Name>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </ProjectReference>
