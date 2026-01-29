@@ -25,6 +25,11 @@ if(NOT JUCE_PATH AND DEFINED ENV{JUCE_PATH})
     set(JUCE_PATH "$ENV{JUCE_PATH}")
 endif()
 
+# Fallback to C:/JUCE on Windows if still not found
+if(NOT JUCE_PATH AND WIN32 AND EXISTS "C:/JUCE")
+    set(JUCE_PATH "C:/JUCE")
+endif()
+
 # Handle JUCE as a subdirectory if path is provided and valid
 if(JUCE_PATH AND EXISTS "${JUCE_PATH}/CMakeLists.txt")
     message(STATUS "Including JUCE from local path: ${JUCE_PATH}")

@@ -118,7 +118,11 @@ MainComponent::MainComponent()
     exportButton.setEnabled(false);
     analyzeButton.setEnabled(false);
 
-    setSize(800, 600);
+    juce::String savedZoom = loadSetting("zoomScale");
+    if (savedZoom.isNotEmpty())
+        setZoom(savedZoom.getFloatValue());
+    else
+        setSize(800, 600);
 }
 
 MainComponent::~MainComponent()
@@ -525,52 +529,70 @@ void MainComponent::paintSpectralView(juce::Graphics& g, juce::Rectangle<int> ar
 void MainComponent::resized()
 {
     auto area = getLocalBounds();
-    
-    // Menu Bar
-    menuBar.setBounds(area.removeFromTop(juce::LookAndFeel::getDefaultLookAndFeel().getDefaultMenuBarHeight()));
+    if (area.isEmpty()) return;
 
-    area.reduce(20, 20); // Add padding after menu
+    // Fixed base dimension for proportions
+    const float baseW = 800.0f;
+    const float baseH = 600.0f;
+    float scaleX = (float)area.getWidth() / baseW;
+    float scaleY = (float)area.getHeight() / baseH;
+    float scale = juce::jmin(scaleX, scaleY);
+    if (scale < 0.5f) scale = 0.5f;
+
+    // Menu Bar
+    menuBar.setBounds(area.removeFromTop(juce::roundToInt(24.0f * scaleY)));
+
+    area.reduce(juce::roundToInt(20.0f * scaleX), juce::roundToInt(20.0f * scaleY)); 
 
     // Header
-    auto headerArea = area.removeFromTop(40);
-    titleLabel.setBounds(headerArea.removeFromLeft(300));
-    exportButton.setBounds(headerArea.removeFromRight(120).reduced(0, 4));
-    headerArea.removeFromRight(20); 
-    loadButton.setBounds(headerArea.removeFromRight(100).reduced(0, 4));
-    fileNameLabel.setBounds(headerArea); // Remaining space
+    auto headerArea = area.removeFromTop(juce::roundToInt(40.0f * scaleY));
+    titleLabel.setFont(juce::Font(juce::FontOptions(24.0f * scale).withStyle("Bold")));
+    titleLabel.setBounds(headerArea.removeFromLeft(juce::roundToInt(300.0f * scaleX)));
+    
+    exportButton.setBounds(headerArea.removeFromRight(juce::roundToInt(120.0f * scaleX)).reduced(0, juce::roundToInt(4.0f * scaleY)));
+    headerArea.removeFromRight(juce::roundToInt(20.0f * scaleX)); 
+    loadButton.setBounds(headerArea.removeFromRight(juce::roundToInt(100.0f * scaleX)).reduced(0, juce::roundToInt(4.0f * scaleY)));
+    fileNameLabel.setBounds(headerArea); 
 
-    area.removeFromTop(20); // Spacer
+    area.removeFromTop(juce::roundToInt(20.0f * scaleY)); // Spacer
 
     // Footer
-    auto footerArea = area.removeFromBottom(40);
+    auto footerArea = area.removeFromBottom(juce::roundToInt(40.0f * scaleY));
     
     // Left side: Playback & Record
-    recordButton.setBounds(footerArea.removeFromLeft(60).reduced(0, 4));
-    footerArea.removeFromLeft(10);
-    playOriginalButton.setBounds(footerArea.removeFromLeft(120).reduced(0, 4));
-    footerArea.removeFromLeft(10);
-    playModelButton.setBounds(footerArea.removeFromLeft(120).reduced(0, 4));
-    footerArea.removeFromLeft(10);
-    stopButton.setBounds(footerArea.removeFromLeft(80).reduced(0, 4));
+    recordButton.setBounds(footerArea.removeFromLeft(juce::roundToInt(60.0f * scaleX)).reduced(0, juce::roundToInt(4.0f * scaleY)));
+    footerArea.removeFromLeft(juce::roundToInt(10.0f * scaleX));
+    playOriginalButton.setBounds(footerArea.removeFromLeft(juce::roundToInt(120.0f * scaleX)).reduced(0, juce::roundToInt(4.0f * scaleY)));
+    footerArea.removeFromLeft(juce::roundToInt(10.0f * scaleX));
+    playModelButton.setBounds(footerArea.removeFromLeft(juce::roundToInt(120.0f * scaleX)).reduced(0, juce::roundToInt(4.0f * scaleY)));
+    footerArea.removeFromLeft(juce::roundToInt(10.0f * scaleX));
+    stopButton.setBounds(footerArea.removeFromLeft(juce::roundToInt(80.0f * scaleX)).reduced(0, juce::roundToInt(4.0f * scaleY)));
 
     // Right side: Analysis & Pitch
-    analyzeButton.setBounds(footerArea.removeFromRight(120).reduced(0, 2));
-    footerArea.removeFromRight(20);
+    analyzeButton.setBounds(footerArea.removeFromRight(juce::roundToInt(120.0f * scaleX)).reduced(0, juce::roundToInt(2.0f * scaleY)));
+    footerArea.removeFromRight(juce::roundToInt(20.0f * scaleX));
     
     // Pitch & Note
-    pitchEditor.setBounds(footerArea.removeFromRight(60).reduced(0, 8));
-    pitchLabel.setBounds(footerArea.removeFromRight(100));
+    pitchEditor.setBounds(footerArea.removeFromRight(juce::roundToInt(60.0f * scaleX)).reduced(0, juce::roundToInt(8.0f * scaleY)));
+    pitchLabel.setBounds(footerArea.removeFromRight(juce::roundToInt(100.0f * scaleX)));
     
-    footerArea.removeFromRight(10);
-    octaveCombo.setBounds(footerArea.removeFromRight(50).reduced(0, 8));
-    noteCombo.setBounds(footerArea.removeFromRight(60).reduced(0, 8));
+    footerArea.removeFromRight(juce::roundToInt(10.0f * scaleX));
+    octaveCombo.setBounds(footerArea.removeFromRight(juce::roundToInt(50.0f * scaleX)).reduced(0, juce::roundToInt(8.0f * scaleY)));
+    noteCombo.setBounds(footerArea.removeFromRight(juce::roundToInt(60.0f * scaleX)).reduced(0, juce::roundToInt(8.0f * scaleY)));
     
-    area.removeFromBottom(20); // Spacer
+    // Proportional Fonts
+    auto labelFont = juce::Font(juce::FontOptions(14.0f * scale));
+    auto editorFont = juce::Font(juce::FontOptions(16.0f * scale).withStyle("Bold"));
+    
+    pitchLabel.setFont(labelFont);
+    pitchEditor.setFont(editorFont);
+    // noteCombo and octaveCombo fonts are handled by LookAndFeel, ComboBox doesn't have setFont()
+    fileNameLabel.setFont(juce::Font(juce::FontOptions(13.0f * scale)));
 
     // Boxes (Split remaining space)
-    auto boxHeight = area.getHeight() / 2 - 10;
+    auto boxHeight = area.getHeight() / 2 - juce::roundToInt(10.0f * scaleY);
     waveBox.setBounds(area.removeFromTop(boxHeight));
-    area.removeFromTop(20);
+    area.removeFromTop(juce::roundToInt(20.0f * scaleY));
     spectralBox.setBounds(area);
 }
 
@@ -638,6 +660,15 @@ juce::PopupMenu MainComponent::getMenuForIndex(int menuIndex, const juce::String
         menu.addItem(6, "Play Model", playModelButton.isEnabled(), false);
         menu.addItem(7, "Stop", stopButton.isEnabled(), false);
         menu.addSeparator();
+        
+        juce::PopupMenu zoomMenu;
+        zoomMenu.addItem(300, "1x (Normal)", true, zoomScale == 1.0f);
+        zoomMenu.addItem(301, "2x", true, zoomScale == 2.0f);
+        zoomMenu.addItem(302, "3x", true, zoomScale == 3.0f);
+        zoomMenu.addItem(303, "4x", true, zoomScale == 4.0f);
+        menu.addSubMenu("Zoom", zoomMenu);
+
+        menu.addSeparator();
         menu.addItem(9, "Options...", true, false);
     }
     else if (menuIndex == 2) // Help
@@ -685,7 +716,21 @@ void MainComponent::menuItemSelected(int menuItemID, int /*topLevelMenuIndex*/)
             opt.launchAsync();
             break;
         }
+        case 300: case 301: case 302: case 303:
+            setZoom(static_cast<float>(menuItemID - 299));
+            break;
     }
+}
+
+void MainComponent::setZoom(float scale)
+{
+    zoomScale = juce::jlimit(1.0f, 4.0f, scale);
+    saveSetting("zoomScale", juce::String(zoomScale, 1));
+
+    // For proportional resizing, we just change the size and let resized() handle it
+    setSize(juce::roundToInt(800.0f * zoomScale), juce::roundToInt(600.0f * zoomScale));
+    
+    // We don't use setTransform here because we have a fully responsive resized() logic.
 }
 
 } // namespace NEURONiK::ModelMaker

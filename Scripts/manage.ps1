@@ -36,8 +36,9 @@ $ProjectRoot = Get-Item $PSScriptRoot\..
 $BuildDir = "$($ProjectRoot.FullName)\build_neuronik"
 $AppName = "NEURONiK"
 
-# Try to find JUCE via environment variable first, or let CMake handle it
+# Try to find JUCE via environment variable first, or fallback to C:\JUCE
 $JuceDir = $env:JUCE_PATH
+if (-not $JuceDir -and (Test-Path "C:\JUCE")) { $JuceDir = "C:\JUCE" }
 
 function Show-Help {
     Write-Host "Usage: .\Scripts\manage.ps1 -Task <Task> [-Config <Config>] [-FullClean] [-Help]" -ForegroundColor Cyan

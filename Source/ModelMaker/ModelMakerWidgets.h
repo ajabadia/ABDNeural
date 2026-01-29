@@ -25,25 +25,35 @@ public:
     void paint(juce::Graphics& g) override
     {
         auto area = getLocalBounds().toFloat();
+        float scale = area.getHeight() / 200.0f; // Guessing a base height for scale
+        if (scale < 0.5f) scale = 0.5f;
+
         juce::ColourGradient glassGrad(juce::Colours::white.withAlpha(0.06f), 0, 0,
                                       juce::Colours::white.withAlpha(0.01f), 0, area.getHeight(), false);
         g.setGradientFill(glassGrad);
-        g.fillRoundedRectangle(area, 8.0f);
+        g.fillRoundedRectangle(area, 8.0f * scale);
         g.setColour(juce::Colours::white.withAlpha(0.1f));
-        g.drawRoundedRectangle(area, 8.0f, 1.0f);
+        g.drawRoundedRectangle(area, 8.0f * scale, 1.0f * scale);
 
         if (title.isNotEmpty())
         {
-            auto lineY = 22.0f;
+            float lineY = 22.0f * (area.getHeight() / (area.getHeight() > 0 ? area.getHeight() : 1.0f)); 
+            // Better: use fixed margin for title area
+            lineY = juce::jmin(30.0f, area.getHeight() * 0.15f);
             g.setColour(juce::Colours::cyan.withAlpha(0.2f));
-            g.drawLine(8.0f, lineY, area.getWidth() - 8.0f, lineY, 1.0f);
+            g.drawLine(8.0f * scale, lineY, area.getWidth() - 8.0f * scale, lineY, 1.0f * scale);
+            
+            titleLabel.setFont(juce::Font(juce::FontOptions(juce::jmax(10.0f, lineY * 0.6f)).withStyle("Bold")));
         }
     }
 
     void resized() override
     {
         if (title.isNotEmpty())
-            titleLabel.setBounds(10, 2, getWidth() - 20, 18);
+        {
+            float titleH = juce::jmin(30.0f, getHeight() * 0.15f);
+            titleLabel.setBounds(10, 2, getWidth() - 20, (int)titleH - 4);
+        }
     }
 
 private:

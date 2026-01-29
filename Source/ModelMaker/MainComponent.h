@@ -41,6 +41,8 @@ public:
     juce::StringArray getMenuBarNames() override;
     juce::PopupMenu getMenuForIndex(int menuIndex, const juce::String& menuName) override;
     void menuItemSelected(int menuItemID, int topLevelMenuIndex) override;
+    
+    void setZoom(float scale);
 
 private:
     // Header
@@ -125,6 +127,8 @@ private:
     juce::File getSettingsFile();
     void saveSetting(const juce::String& key, const juce::String& value);
     juce::String loadSetting(const juce::String& key);
+    
+    float zoomScale = 1.0f;
 };
 
 } // namespace ModelMaker
