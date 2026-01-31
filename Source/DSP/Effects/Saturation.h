@@ -42,6 +42,10 @@ public:
         driveSmoother.setTargetValue(1.0f + (amount * 4.0f)); // Scale drive for noticeable effect
     }
 
+    void setDrive(float drive) noexcept {
+        setAmount(drive);
+    }
+
     /**
      * Processes a single sample.
      */
@@ -57,28 +61,31 @@ public:
      */
     void processBlock(juce::AudioBuffer<float>& buffer) noexcept
     {
-        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-        {
-            auto* data = buffer.getWritePointer(ch);
-            auto smootherCopy = driveSmoother; // Per-channel copy for consistency if needed, but per-sample getNextValue is better
-            
-            // To ensure phase sync between channels, we must update the smoother ONCE per sample frame
-            // In a simple stereo case, we can just process sample frames
-        }
-
-        // Better Implementation: process by sample frames to maintain smoother state across channels correctly
         const int numSamples = buffer.getNumSamples();
         const int numChannels = buffer.getNumChannels();
 
         for (int s = 0; s < numSamples; ++s)
         {
             float currentDrive = driveSmoother.getNextValue();
-            for (int ch = 0; ch < numChannels; ++ch)
+            
+            // Optimization: if drive is approx 1.0, do nothing (1.0 is the baseline)
+            if (currentDrive > 1.001f)
             {
-                float x = buffer.getSample(ch, s) * currentDrive;
-                buffer.setSample(ch, s, std::atan(x) * 0.63661977236f);
+                for (int ch = 0; ch < numChannels; ++ch)
+                {
+                    float x = buffer.getSample(ch, s) * currentDrive;
+                    buffer.setSample(ch, s, std::atan(x) * 0.63661977236f);
+                }
             }
         }
+    }
+
+    /**
+     * Resets the effect state.
+     */
+    void resetState() noexcept
+    {
+        driveSmoother.setCurrentAndTargetValue(1.0f);
     }
 
 private:

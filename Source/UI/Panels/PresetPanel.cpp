@@ -1,4 +1,5 @@
 #include "PresetPanel.h"
+#include "../ThemeManager.h"
 #include "../../Main/NEURONiKProcessor.h"
 #include "../../State/ParameterDefinitions.h"
 

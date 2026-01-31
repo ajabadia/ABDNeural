@@ -1,12 +1,13 @@
 #include "LcdDisplay.h"
+#include "ThemeManager.h"
 
 namespace NEURONiK::UI
 {
 
 LcdDisplay::LcdDisplay()
 {
-    defaultLines[0] = "NEURONIK SYNTH";
-    defaultLines[1] = "READY...";
+    defaultLines[0] = "NEURONIK";
+    defaultLines[1] = "SPECTRAL MORPHING";
     
     currentLines[0] = defaultLines[0];
     currentLines[1] = defaultLines[1];
@@ -27,9 +28,10 @@ void LcdDisplay::paint(juce::Graphics& g)
     g.setColour(juce::Colour(0xFF151515));
     g.fillRoundedRectangle(area, 4.0f);
     
-    // --- Screen Background (Deep Blue-Green Backlight) ---
+    // --- Screen Background (Product-Specific Backlight) ---
     auto screenArea = area.reduced(4.0f);
-    g.setColour(juce::Colour(0xFF002222)); // Very dark cyan/blue
+    const auto& theme = ThemeManager::getCurrentTheme();
+    g.setColour(theme.lcdBackground.withAlpha(1.0f)); // Background is already alpha-aware in theme
     g.fillRoundedRectangle(screenArea, 2.0f);
     
     // --- Subtle Grid Pattern (Emulate Matrix Pixels) ---
@@ -43,7 +45,7 @@ void LcdDisplay::paint(juce::Graphics& g)
 
     // --- Text Rendering ---
     // Using a monospaced-style font
-    g.setColour(juce::Colours::cyan.withAlpha(0.9f));
+    g.setColour(theme.lcdText);
     g.setFont(juce::Font(juce::FontOptions(charH * 0.8f).withStyle("Bold")));
 
     for (int line = 0; line < 2; ++line)
@@ -59,7 +61,7 @@ void LcdDisplay::paint(juce::Graphics& g)
     }
     
     // Scanline/Glass overlay
-    juce::ColourGradient glass(juce::Colours::white.withAlpha(0.05f), 0, 0,
+    juce::ColourGradient glass(theme.text.withAlpha(0.05f), 0, 0,
                               juce::Colours::transparentBlack, 0, static_cast<float>(getHeight()), false);
     g.setGradientFill(glass);
     g.fillRect(screenArea);

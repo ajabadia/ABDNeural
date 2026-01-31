@@ -9,6 +9,7 @@
 */
 
 #include "XYPad.h"
+#include "ThemeManager.h"
 #include "../State/ParameterDefinitions.h"
 
 namespace NEURONiK::UI
@@ -34,20 +35,21 @@ void XYPad::paint(juce::Graphics& g)
     auto bounds = getLocalBounds().toFloat();
 
     // Background
-    g.setColour(juce::Colours::black.withAlpha(0.5f));
+    const auto& theme = ThemeManager::getCurrentTheme();
+    g.setColour(theme.background.withAlpha(0.5f));
     g.fillRoundedRectangle(bounds, 8.0f);
 
     // Grid lines
-    g.setColour(juce::Colours::white.withAlpha(0.1f));
+    g.setColour(theme.text.withAlpha(0.1f));
     g.drawHorizontalLine((int)bounds.getCentreY(), bounds.getX(), bounds.getRight());
     g.drawVerticalLine((int)bounds.getCentreX(), bounds.getY(), bounds.getBottom());
 
     // Border
-    g.setColour(juce::Colours::white.withAlpha(0.2f));
+    g.setColour(theme.text.withAlpha(0.2f));
     g.drawRoundedRectangle(bounds, 8.0f, 1.0f);
 
     // Thumb (Modulated Position)
-    g.setColour(juce::Colours::cyan);
+    g.setColour(theme.accent);
     g.fillEllipse(thumbPosition.x - 8, thumbPosition.y - 8, 16, 16);
     
     // Ghost Ring (Base Parameter Position) - Optional cool effect
@@ -55,16 +57,16 @@ void XYPad::paint(juce::Graphics& g)
     float baseY = (1.0f - vts.getRawParameterValue(IDs::morphY)->load()) * bounds.getHeight();
     if (std::hypot(baseX - thumbPosition.x, baseY - thumbPosition.y) > 2.0f)
     {
-        g.setColour(juce::Colours::white.withAlpha(0.3f));
+        g.setColour(theme.text.withAlpha(0.3f));
         g.drawEllipse(baseX - 6, baseY - 6, 12, 12, 1.0f);
         g.drawLine(baseX, baseY, thumbPosition.x, thumbPosition.y, 1.0f);
     }
     
-    g.setColour(juce::Colours::black.withAlpha(0.5f));
+    g.setColour(theme.background.withAlpha(0.5f));
     g.drawEllipse(thumbPosition.x - 8, thumbPosition.y - 8, 16, 16, 1.0f);
 
     // Labels
-    g.setColour(juce::Colours::white.withAlpha(0.5f));
+    g.setColour(theme.text.withAlpha(0.5f));
     g.setFont(10.0f);
     float textPad = 30.0f; // Shift text inward to accommodate buttons
     g.drawText(modelNames[0], static_cast<int>(textPad), 5, 100, 15, juce::Justification::topLeft);
@@ -116,11 +118,16 @@ void XYPad::updateThumbPosition()
     auto bounds = getLocalBounds();
     
     // Use the realtime modulated values from the processor for visualization
-    float modX = processor.uiMorphX.load(std::memory_order_relaxed);
-    float modY = processor.uiMorphY.load(std::memory_order_relaxed);
+    float baseX = vts.getRawParameterValue(IDs::morphX)->load();
+    float modX  = processor.getModulationValue(::NEURONiK::ModulationTarget::MorphX).load();
+    float finalX = juce::jlimit(0.0f, 1.0f, baseX + modX);
+
+    float baseY = vts.getRawParameterValue(IDs::morphY)->load();
+    float modY  = processor.getModulationValue(::NEURONiK::ModulationTarget::MorphY).load();
+    float finalY = juce::jlimit(0.0f, 1.0f, baseY + modY);
     
-    auto newX = modX * bounds.getWidth();
-    auto newY = (1.0f - modY) * bounds.getHeight();
+    auto newX = finalX * bounds.getWidth();
+    auto newY = (1.0f - finalY) * bounds.getHeight();
 
     juce::Point<float> newThumbPosition(newX, newY);
 

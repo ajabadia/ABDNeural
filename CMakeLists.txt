@@ -62,6 +62,10 @@ set(NEURONIK_SOURCES
     Source/UI/XYPad.cpp
     Source/UI/EnvelopeVisualizer.h
     Source/UI/CustomUIComponents.h
+    Source/UI/CustomUIComponents.cpp
+    Source/UI/ThemeManager.h
+    Source/UI/ThemeManager.cpp
+    Source/UI/MidiLearner.h
     Source/UI/MidiLearner.cpp
     Source/UI/Panels/OscillatorPanel.h
     Source/UI/Panels/OscillatorPanel.cpp
@@ -69,9 +73,11 @@ set(NEURONIK_SOURCES
     Source/UI/Panels/FilterEnvPanel.cpp
     Source/UI/Panels/FXPanel.h
     Source/UI/Panels/FXPanel.cpp
+    Source/UI/Panels/ModulationPanel.h
     Source/UI/Panels/ModulationPanel.cpp
     Source/UI/Panels/PresetPanel.h
     Source/UI/Panels/PresetPanel.cpp
+    Source/UI/LcdDisplay.h
     Source/UI/LcdDisplay.cpp
     
     # UI - Browser
@@ -93,12 +99,28 @@ set(NEURONIK_SOURCES
     Source/DSP/CoreModules/Envelope.cpp
     Source/DSP/CoreModules/FilterBank.h
     Source/DSP/CoreModules/FilterBank.cpp
+    Source/DSP/CoreModules/ResonatorBank.h
+    Source/DSP/CoreModules/ResonatorBank.cpp
+    Source/DSP/CoreModules/NeuronikEngine.h
+    Source/DSP/CoreModules/NeuronikEngine.cpp
+    Source/DSP/CoreModules/NeurotikEngine.h
+    Source/DSP/CoreModules/NeurotikEngine.cpp
+    Source/DSP/BaseEngine.h
+    Source/DSP/BaseEngine.cpp
     
     # DSP - Synthesis
-    Source/DSP/Synthesis/ResonatorSound.h
-    Source/DSP/Synthesis/ResonatorVoice.h
-    Source/DSP/Synthesis/ResonatorVoice.cpp
+    Source/DSP/IVoice.h
+    Source/DSP/ISynthesisEngine.h
+    Source/DSP/Synthesis/AdditiveVoice.h
+    Source/DSP/Synthesis/AdditiveVoice.cpp
+    Source/DSP/Synthesis/NeurotikVoice.h
+    Source/DSP/Synthesis/NeurotikVoice.cpp
 )
+
+if(MSVC)
+    list(APPEND NEURONIK_SOURCES Resources/NEURONiK.rc)
+endif()
+
 message(STATUS "NEURONIK_SOURCES: ${NEURONIK_SOURCES}")
 
 # ============================================================================
@@ -138,11 +160,43 @@ juce_add_plugin(NEURONiK
 # Reverted to standard to avoid linker conflicts with custom options button
 # target_compile_definitions(NEURONiK PUBLIC JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
 
-
+# WORKAROUND: JUCE is not propagating SOURCES to plugin targets
+# Explicitly add sources to all plugin targets
+target_sources(NEURONiK PRIVATE ${NEURONIK_SOURCES})
 
 if(TARGET NEURONiK_Standalone)
     target_sources(NEURONiK_Standalone PRIVATE ${NEURONIK_SOURCES})
+    
+    # Also link libraries if they aren't propagated (safeguard)
+    target_link_libraries(NEURONiK_Standalone PRIVATE
+        juce::juce_audio_basics
+        juce::juce_audio_devices
+        juce::juce_audio_formats
+        juce::juce_audio_plugin_client
+        juce::juce_audio_processors
+        juce::juce_audio_utils
+        juce::juce_core
+        juce::juce_data_structures
+        juce::juce_dsp
+        juce::juce_events
+        juce::juce_graphics
+        juce::juce_gui_basics
+        juce::juce_gui_extra
+        NEURONiK_Common
+    )
+    
+    # And include dirs
+    target_include_directories(NEURONiK_Standalone PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Source/Main"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Source/UI"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Source/State"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Source/Serialization"
+    )
 endif()
+
+
 
 target_link_libraries(NEURONiK PRIVATE
     juce::juce_audio_basics
@@ -159,6 +213,16 @@ target_link_libraries(NEURONiK PRIVATE
     juce::juce_gui_basics
     juce::juce_gui_extra
     NEURONiK_Common
+)
+
+# Add include directories for source files
+target_include_directories(NEURONiK PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Main"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/UI"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/State"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Serialization"
 )
 
 # ============================================================================
@@ -184,6 +248,7 @@ add_executable(NEURONiK_ModelMaker WIN32
     Source/ModelMaker/Analysis/SpectralAnalyzer.cpp
     Source/DSP/CoreModules/Oscillator.cpp
     Source/DSP/CoreModules/Resonator.cpp
+    $<$<PLATFORM_ID:Windows>:Resources/ModelMaker.rc>
 )
 
 add_dependencies(NEURONiK_ModelMaker UpdateVersion)

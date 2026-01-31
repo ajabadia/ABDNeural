@@ -9,6 +9,7 @@
 */
 
 #include "LFO.h"
+#include "../DSPUtils.h"
 
 namespace NEURONiK::DSP::Core {
 
@@ -42,7 +43,8 @@ void LFO::setWaveform(Waveform newWaveform) noexcept
 
 void LFO::setRate(float newRateHz) noexcept
 {
-    rateHz_.store(newRateHz, std::memory_order_relaxed);
+    float validatedRate = validateAudioParam(newRateHz, 0.01f, 100.0f, 1.0f, "LFO rateHz");
+    rateHz_.store(validatedRate, std::memory_order_relaxed);
     if (currentSyncMode_.load(std::memory_order_relaxed) == SyncMode::Free)
         updatePhaseIncrement();
 }
@@ -55,21 +57,24 @@ void LFO::setSyncMode(SyncMode newSyncMode) noexcept
 
 void LFO::setTempoBPM(double newTempoBPM) noexcept
 {
-    tempoBPM_.store(newTempoBPM, std::memory_order_relaxed);
+    double validatedBPM = validateAudioParam(static_cast<float>(newTempoBPM), 10.0f, 300.0f, 120.0f, "LFO tempoBPM");
+    tempoBPM_.store(validatedBPM, std::memory_order_relaxed);
     if (currentSyncMode_.load(std::memory_order_relaxed) == SyncMode::TempoSync)
         updatePhaseIncrement();
 }
 
 void LFO::setRhythmicDivision(float newDivision) noexcept
 {
-    rhythmicDivision_.store(newDivision, std::memory_order_relaxed);
+    float validatedDiv = validateAudioParam(newDivision, 0.0625f, 32.0f, 1.0f, "LFO rhythmicDivision");
+    rhythmicDivision_.store(validatedDiv, std::memory_order_relaxed);
     if (currentSyncMode_.load(std::memory_order_relaxed) == SyncMode::TempoSync)
         updatePhaseIncrement();
 }
 
 void LFO::setDepth(float newDepth) noexcept
 {
-    depth_.store(newDepth, std::memory_order_relaxed);
+    float validatedDepth = validateAudioParam(newDepth, 0.0f, 1.0f, 1.0f, "LFO depth");
+    depth_.store(validatedDepth, std::memory_order_relaxed);
 }
 
 float LFO::processBlock(int numSamples) noexcept
@@ -177,7 +182,18 @@ float LFO::getSyncedRateHz() const noexcept
 
 float LFO::generateSine() const noexcept
 {
-    return std::sin(phase_ * juce::MathConstants<float>::twoPi);
+    // Fast Parabolic Sine Approximation (Bhaskara I variant)
+    // t is phase in [0, 1]
+    // x is shifted to [-PI, PI] for the approximation
+    float x = (phase_ - 0.5f) * juce::MathConstants<float>::twoPi * -1.0f; // Shifted and flipped to match sine starting at 0
+    
+    constexpr float B = 4.0f / juce::MathConstants<float>::pi;
+    constexpr float C = -4.0f / (juce::MathConstants<float>::pi * juce::MathConstants<float>::pi);
+    
+    float y = B * x + C * x * std::abs(x);
+    
+    // Error correction
+    return 0.225f * (y * std::abs(y) - y) + y;
 }
 
 float LFO::generateTriangle() const noexcept

@@ -1,4 +1,5 @@
 #include "ModulationPanel.h"
+#include "../ThemeManager.h"
 #include "../../Main/NEURONiKProcessor.h"
 #include "../../State/ParameterDefinitions.h"
 
@@ -26,9 +27,13 @@ ModulationPanel::ModulationPanel(NEURONiKProcessor& p)
     sourceTitle.setFont(titleFont);
     destTitle.setFont(titleFont);
     amountTitle.setFont(titleFont);
-    sourceTitle.setColour(juce::Label::textColourId, juce::Colours::cyan.withAlpha(0.6f));
-    destTitle.setColour(juce::Label::textColourId, juce::Colours::cyan.withAlpha(0.6f));
-    amountTitle.setColour(juce::Label::textColourId, juce::Colours::cyan.withAlpha(0.6f));
+    
+    const auto& theme = ThemeManager::getCurrentTheme();
+    sourceTitle.setColour(juce::Label::textColourId, theme.accent.withAlpha(0.6f));
+    destTitle.setColour(juce::Label::textColourId, theme.accent.withAlpha(0.6f));
+    amountTitle.setColour(juce::Label::textColourId, theme.accent.withAlpha(0.6f));
+    
+    startTimer(100);
 }
 
 void ModulationPanel::paint(juce::Graphics& g)
@@ -95,8 +100,10 @@ void ModulationPanel::setupAmountControl(RotaryControl& ctrl, const juce::String
 {
     ctrl.slider.setSliderStyle(juce::Slider::LinearHorizontal);
     ctrl.slider.setTextBoxStyle(juce::Slider::TextBoxRight, true, 45, 18);
-    ctrl.slider.setColour(juce::Slider::thumbColourId, juce::Colours::orange);
-    ctrl.slider.setColour(juce::Slider::trackColourId, juce::Colours::orange.withAlpha(0.3f));
+    
+    const auto& theme = ThemeManager::getCurrentTheme();
+    ctrl.slider.setColour(juce::Slider::thumbColourId, theme.accent);
+    ctrl.slider.setColour(juce::Slider::trackColourId, theme.accent.withAlpha(0.3f));
     matrixBox.addAndMakeVisible(ctrl.slider);
     
     ctrl.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(vts, paramID, ctrl.slider);
@@ -130,13 +137,8 @@ void ModulationPanel::setupModSlotControls(int slotIndex)
     auto& slot = modSlots[slotIndex];
     auto slotId = juce::String(slotIndex + 1);
 
-    slot.source.addItemList({ "Off", "LFO 1", "LFO 2", "Pitch Bend", "Mod Wheel" }, 1);
-    slot.destination.addItemList({ 
-        "Off", "Osc Level", "Inharmonicity", "Roughness", "Morph X", "Morph Y", 
-        "Amp Attack", "Amp Decay", "Amp Sustain", "Amp Release", 
-        "Filter Cutoff", "Filter Res", "Filter Env Amt",
-        "Flt Attack", "Flt Decay", "Flt Sustain", "Flt Release",
-        "Saturation", "Delay Time", "Delay FB" }, 1);
+    slot.source.addItemList(State::getModSources(), 1);
+    slot.destination.addItemList(State::getModDestinations(), 1);
 
     matrixBox.addAndMakeVisible(slot.source);
     matrixBox.addAndMakeVisible(slot.destination);
@@ -145,6 +147,43 @@ void ModulationPanel::setupModSlotControls(int slotIndex)
     slot.destinationAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(vts, juce::String(IDs::mod1Destination).replace("1", slotId), slot.destination);
   
     setupAmountControl(slot.amount, juce::String(IDs::mod1Amount).replace("1", slotId));
+}
+
+void ModulationPanel::timerCallback()
+{
+    auto* param = processor.getAPVTS().getRawParameterValue(IDs::engineType);
+    if (param == nullptr) return;
+
+    int engineType = static_cast<int>(param->load());
+    bool isNeuronik = (engineType == 0);
+
+    // List of indices to disable in ComboBox (1-indexed based on addItemList)
+    // Destinations list in ParameterDefinitions.h:
+    // 0: Off, 1: Osc Level, 2: Inharmonicity, 3: Roughness, 4: Morph X, 5: Morph Y, ...
+    // 20: Odd/Even Bal, 21: Spectral Shift, 22: Harm Roll-off
+    // 23: Excite Noise, 24: Excite Color, 25: Impulse Mix, 26: Res Bank Res
+    
+    for (int i = 0; i < 4; ++i)
+    {
+        auto& combo = modSlots[i].destination;
+        
+        // Neuronik exclusive (indices 21, 22, 23 in 1-based addItemList for 20, 21, 22)
+        // Adjust for "Off" at index 1.
+        // indices are: Odd/Even(21), Spectral Shift(22), Harm Roll-off(23)
+        for (int idx : { 21, 22, 23 })
+            combo.setItemEnabled(idx, isNeuronik);
+            
+        // Neurotik exclusive (indices 24, 25, 26, 27)
+        for (int idx : { 24, 25, 26, 27 })
+            combo.setItemEnabled(idx, !isNeuronik);
+            
+        // If current selection is disabled, reset to Off (1)
+        int currentId = combo.getSelectedId();
+        if (currentId > 1 && !combo.isItemEnabled(currentId))
+        {
+            combo.setSelectedId(1, juce::sendNotification);
+        }
+    }
 }
 
 } // namespace NEURONiK::UI

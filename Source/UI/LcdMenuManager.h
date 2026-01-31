@@ -33,28 +33,41 @@ public:
     };
 
     LcdMenuManager() {
-        setupMenu();
+        setupMenu(0);
     }
 
-    void setupMenu() {
+    void setupMenu(int engineType) {
+        bool isNeuronik = (engineType == 0);
+
         // GLOBAL
         MenuItem global { "GLOBAL", "", ItemType::Parameter, {
             { "MASTER VOL", "masterLevel" },
+            { "ENGINE SELECT", "engineType" },
             { "MASTER BPM", "masterBPM" },
             { "MIDI CH", "midiChannel" },
             { "VEL CURVE", "velocityCurve" }
         }};
 
         // RESONATOR / NEURAL PAD
-        MenuItem resonator { "RESONATOR", "", ItemType::Parameter, {
-            { "MORPH X", "morphX" },
-            { "MORPH Y", "morphY" },
-            { "INHARMONICITY", "oscInharmonicity" },
-            { "ROUGHNESS", "oscRoughness" },
-            { "ODD/EVEN BAL", "resonatorParity" },
-            { "SPECTRAL SHIFT", "resonatorShift" },
-            { "HARM ROLLOFF", "resonatorRolloff" }
-        }};
+        std::vector<MenuItem> resSubItems;
+        resSubItems.push_back({ "UNISON DETUNE", "unisonDetune" });
+        
+        if (isNeuronik) {
+            resSubItems.push_back({ "MORPH X", "morphX" });
+            resSubItems.push_back({ "MORPH Y", "morphY" });
+            resSubItems.push_back({ "INHARMONICITY", "oscInharmonicity" });
+            resSubItems.push_back({ "ROUGHNESS", "oscRoughness" });
+            resSubItems.push_back({ "ODD/EVEN BAL", "resonatorParity" });
+            resSubItems.push_back({ "SPECTRAL SHIFT", "resonatorShift" });
+            resSubItems.push_back({ "HARM ROLLOFF", "resonatorRolloff" });
+        } else {
+            resSubItems.push_back({ "EXCITE NOISE", "oscExciteNoise" });
+            resSubItems.push_back({ "EXCITE COLOR", "excitationColor" });
+            resSubItems.push_back({ "IMPULSE MIX", "impulseMix" });
+            resSubItems.push_back({ "RES BANK RES", "resonatorRes" });
+        }
+
+        MenuItem resonator { "RESONATOR", "", ItemType::Parameter, resSubItems };
 
         // FILTER
         MenuItem filter { "FILTER", "", ItemType::Parameter, {
@@ -72,20 +85,22 @@ public:
         }};
 
         // MIDI CONTROL (Phase 21.3)
-        MenuItem midi { "MIDI CONTROL", "", ItemType::MidiCC, {
-            { "CC CUTOFF", "filterCutoff", ItemType::MidiCC },
-            { "CC RESON", "filterRes", ItemType::MidiCC },
-            { "CC OSC LVL", "oscLevel", ItemType::MidiCC },
-            { "CC ATTACK", "envAttack", ItemType::MidiCC },
-            { "CC DECAY", "envDecay", ItemType::MidiCC },
-            { "CC SUSTAIN", "envSustain", ItemType::MidiCC },
-            { "CC RELEASE", "envRelease", ItemType::MidiCC },
-            { "CC MORPH X", "morphX", ItemType::MidiCC },
-            { "CC MORPH Y", "morphY", ItemType::MidiCC },
-            { "CC INHARM", "oscInharmonicity", ItemType::MidiCC },
-            { "CC ROUGH", "oscRoughness", ItemType::MidiCC },
-            { "RESET ALL", "RESET_MIDI", ItemType::Action }
-        }};
+        std::vector<MenuItem> midiSubItems;
+        midiSubItems.push_back({ "CC CUTOFF", "filterCutoff", ItemType::MidiCC });
+        midiSubItems.push_back({ "CC RESON", "filterRes", ItemType::MidiCC });
+        midiSubItems.push_back({ "CC OSC LVL", "oscLevel", ItemType::MidiCC });
+        midiSubItems.push_back({ "CC ATTACK", "envAttack", ItemType::MidiCC });
+        
+        if (isNeuronik) {
+            midiSubItems.push_back({ "CC MORPH X", "morphX", ItemType::MidiCC });
+            midiSubItems.push_back({ "CC MORPH Y", "morphY", ItemType::MidiCC });
+            midiSubItems.push_back({ "CC INHARM", "oscInharmonicity", ItemType::MidiCC });
+            midiSubItems.push_back({ "CC ROUGH", "oscRoughness", ItemType::MidiCC });
+        }
+
+        midiSubItems.push_back({ "RESET ALL", "RESET_MIDI", ItemType::Action });
+
+        MenuItem midi { "MIDI CONTROL", "", ItemType::MidiCC, midiSubItems };
 
         rootItems = { global, resonator, filter, fx, midi };
     }

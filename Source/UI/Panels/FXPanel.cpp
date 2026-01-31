@@ -1,10 +1,13 @@
 #include "FXPanel.h"
+#include "../ThemeManager.h"
 #include "../../Main/NEURONiKProcessor.h"
 #include "../../State/ParameterDefinitions.h"
 
 namespace NEURONiK::UI {
 
 using namespace NEURONiK::State;
+using namespace NEURONiK::State;
+using ::NEURONiK::ModulationTarget;
 
 FXPanel::FXPanel(NEURONiKProcessor& p)
     : processor(p), vts(p.getAPVTS())
@@ -17,26 +20,26 @@ FXPanel::FXPanel(NEURONiKProcessor& p)
     addAndMakeVisible(reverbBox);
     addAndMakeVisible(masterBox);
 
-    setupControl(saturation,    IDs::fxSaturation,     "DRIVE", saturationBox, &processor.uiSaturation);
+    setupControl(saturation,    IDs::fxSaturation,     "DRIVE", saturationBox, ModulationTarget::FxSaturation);
     
     // Delay
-    setupControl(delayTime,     IDs::fxDelayTime,      "TIME", delayBox, &processor.uiDelayTime);
-    setupControl(delayFeedback, IDs::fxDelayFeedback,  "FEEDBACK", delayBox, &processor.uiDelayFB);
+    setupControl(delayTime,     IDs::fxDelayTime,      "TIME", delayBox, ModulationTarget::FxDelayTime);
+    setupControl(delayFeedback, IDs::fxDelayFeedback,  "FEEDBACK", delayBox, ModulationTarget::FxDelayFeedback);
     setupChoice(delaySync,      IDs::fxDelaySync,      "SYNC", delayBox);
     setupChoice(delayDivision,  IDs::fxDelayDivision,  "DIV", delayBox);
 
     // Chorus
     setupControl(chorusRate,    IDs::fxChorusRate,     "RATE", chorusBox);
     setupControl(chorusDepth,   IDs::fxChorusDepth,    "DEPTH", chorusBox);
-    setupControl(chorusMix,     IDs::fxChorusMix,      "MIX", chorusBox);
+    setupControl(chorusMix,     IDs::fxChorusMix,      "MIX", chorusBox, ModulationTarget::Count);
 
     // Reverb
     setupControl(reverbSize,    IDs::fxReverbSize,     "ROOM", reverbBox);
     setupControl(reverbDamping, IDs::fxReverbDamping,  "DAMP", reverbBox);
     setupControl(reverbWidth,   IDs::fxReverbWidth,    "WIDTH", reverbBox);
-    setupControl(reverbMix,     IDs::fxReverbMix,      "MIX", reverbBox);
+    setupControl(reverbMix,     IDs::fxReverbMix,      "MIX", reverbBox, ModulationTarget::Count);
 
-    setupControl(masterLevel,   IDs::masterLevel,      "LEVEL", masterBox);
+    setupControl(masterBPM,     IDs::masterBPM,        "BPM", masterBox, ModulationTarget::Count);
 
     saturationBox.addAndMakeVisible(saturationLed);
     delayBox.addAndMakeVisible(delayLed);
@@ -46,9 +49,9 @@ FXPanel::FXPanel(NEURONiKProcessor& p)
     startTimer(50); // 20fps for LEDs
 }
 
-void FXPanel::setupControl(RotaryControl& ctrl, const juce::String& paramID, const juce::String& labelText, juce::Component& parent, std::atomic<float>* modValue)
+void FXPanel::setupControl(RotaryControl& ctrl, const juce::String& paramID, const juce::String& labelText, juce::Component& parent, ::NEURONiK::ModulationTarget modTarget)
 {
-    UIUtils::setupRotaryControl(parent, ctrl, paramID, labelText, vts, processor, sharedLNF, modValue);
+    UIUtils::setupRotaryControl(parent, ctrl, paramID, labelText, vts, processor, sharedLNF, modTarget);
 }
 
 void FXPanel::setupChoice(ChoiceControl& ctrl, const juce::String& paramID, const juce::String& labelText, juce::Component& parent)
@@ -77,6 +80,12 @@ void FXPanel::timerCallback()
     delayLed.setValue(vts.getRawParameterValue(IDs::fxDelayFeedback)->load() * 1.05f); // Boost slightly for visibility
     chorusLed.setValue(vts.getRawParameterValue(IDs::fxChorusMix)->load());
     reverbLed.setValue(vts.getRawParameterValue(IDs::fxReverbMix)->load());
+
+    saturation.slider.repaint();
+    delayTime.slider.repaint();
+    delayFeedback.slider.repaint();
+    chorusMix.slider.repaint();
+    reverbMix.slider.repaint();
 }
 
 void FXPanel::resized()
@@ -150,10 +159,10 @@ void FXPanel::resized()
         layoutRotary(reverbMix, c);
     }
 
-    // Master Content
+    // BPM Content
     {
         auto c = masterBox.getContentArea();
-        layoutRotary(masterLevel, c.withSizeKeepingCentre(c.getWidth(), 80));
+        layoutRotary(masterBPM, c.withSizeKeepingCentre(c.getWidth(), 80));
     }
 }
 

@@ -1,0 +1,12 @@
+﻿ Progreso UI/UX Improvements:
+
+1. Icono compilado
+2. Master Volume  GENERAL
+3. BPM  FX
+4. Layout reorganizado (2 filas)
+5. Compilación exitosa
+
+Pendiente:
+- Slider vertical volumen
+- Animaciones modulación
+- Audio Neurotik engine

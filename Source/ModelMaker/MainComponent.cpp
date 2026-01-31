@@ -662,10 +662,12 @@ juce::PopupMenu MainComponent::getMenuForIndex(int menuIndex, const juce::String
         menu.addSeparator();
         
         juce::PopupMenu zoomMenu;
-        zoomMenu.addItem(300, "1x (Normal)", true, zoomScale == 1.0f);
-        zoomMenu.addItem(301, "2x", true, zoomScale == 2.0f);
-        zoomMenu.addItem(302, "3x", true, zoomScale == 3.0f);
-        zoomMenu.addItem(303, "4x", true, zoomScale == 4.0f);
+        zoomMenu.addItem(300, "0.5x", true, zoomScale == 0.5f);
+        zoomMenu.addItem(301, "1x (Normal)", true, zoomScale == 1.0f);
+        zoomMenu.addItem(302, "1.25x", true, zoomScale == 1.25f);
+        zoomMenu.addItem(303, "1.5x", true, zoomScale == 1.5f);
+        zoomMenu.addItem(304, "2x", true, zoomScale == 2.0f);
+        zoomMenu.addItem(305, "3x", true, zoomScale == 3.0f);
         menu.addSubMenu("Zoom", zoomMenu);
 
         menu.addSeparator();
@@ -699,7 +701,9 @@ void MainComponent::menuItemSelected(int menuItemID, int /*topLevelMenuIndex*/)
             juce::AlertWindow::showMessageBoxAsync(
                 juce::AlertWindow::InfoIcon,
                 "About NEURONiK Model Maker",
-                "NEURONiK Model Maker\nVersion " + version + "\n\n"
+                "NEURONiK Model Maker\n"
+                "Enhanced Spectral Morphing Suite\n"
+                "Version " + version + "\n\n"
                 "Part of the NEURONiK Synthesizer Suite.\n"
                 "(c) 2026 ABD Neural Audio",
                 "OK"
@@ -716,9 +720,12 @@ void MainComponent::menuItemSelected(int menuItemID, int /*topLevelMenuIndex*/)
             opt.launchAsync();
             break;
         }
-        case 300: case 301: case 302: case 303:
-            setZoom(static_cast<float>(menuItemID - 299));
-            break;
+        case 300: setZoom(0.5f); break;
+        case 301: setZoom(1.0f); break;
+        case 302: setZoom(1.25f); break;
+        case 303: setZoom(1.5f); break;
+        case 304: setZoom(2.0f); break;
+        case 305: setZoom(3.0f); break;
     }
 }
 

@@ -2,6 +2,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "../CustomUIComponents.h"
+#include "../../Main/ModulationTargets.h"
 
 // Forward declaration
 class NEURONiKProcessor;
@@ -25,7 +26,7 @@ public:
         std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> attachment;
     };
 
-    void setupControl(RotaryControl& control, const juce::String& paramID, const juce::String& labelText, juce::Component& parent, std::atomic<float>* modValue = nullptr);
+    void setupControl(RotaryControl& control, const juce::String& paramID, const juce::String& labelText, juce::Component& parent, ::NEURONiK::ModulationTarget modTarget = ::NEURONiK::ModulationTarget::Count);
     void setupChoice(ChoiceControl& control, const juce::String& paramID, const juce::String& labelText, juce::Component& parent);
 
     NEURONiKProcessor& processor;
@@ -41,13 +42,13 @@ public:
     // Reverb
     RotaryControl reverbSize, reverbDamping, reverbWidth, reverbMix;
 
-    // Master
-    RotaryControl masterLevel;
+    // BPM
+    RotaryControl masterBPM;
 
     // LEDs
     LedIndicator saturationLed, delayLed, chorusLed, reverbLed;
 
-    GlassBox saturationBox { "SATURATION" }, delayBox { "DELAY" }, chorusBox { "CHORUS" }, reverbBox { "REVERB" }, masterBox { "MASTER" };
+    GlassBox saturationBox { "SATURATION" }, delayBox { "DELAY" }, chorusBox { "CHORUS" }, reverbBox { "REVERB" }, masterBox { "BPM" };
     SharedKnobLookAndFeel sharedLNF;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FXPanel)

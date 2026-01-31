@@ -18,6 +18,7 @@ namespace NEURONiK::State {
 
 namespace IDs {
     // Oscillator / Neural Core
+    static constexpr const char* engineType       = "engineType";
     static constexpr const char* oscLevel         = "oscLevel";
     static constexpr const char* oscPitchCoarse   = "oscPitchCoarse";
     static constexpr const char* oscInharmonicity = "oscInharmonicity";
@@ -25,6 +26,13 @@ namespace IDs {
     static constexpr const char* harmMix          = "harmMix";
     static constexpr const char* morphX           = "morphX";
     static constexpr const char* morphY           = "morphY";
+    static constexpr const char* oscExciteNoise   = "oscExciteNoise";
+    static constexpr const char* excitationColor  = "excitationColor";
+    static constexpr const char* impulseMix       = "impulseMix";
+    static constexpr const char* resonatorRes     = "resonatorRes";
+    static constexpr const char* unisonDetune     = "unisonDetune";
+    static constexpr const char* unisonSpread     = "unisonSpread";
+    static constexpr const char* unisonEnabled    = "unisonEnabled";
 
     // Resonator Advanced (Legacy)
     static constexpr const char* resonatorRolloff = "resonatorRolloff";
@@ -110,12 +118,23 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::masterLevel, "Master Level", juce::NormalisableRange<float>(0.0f, 1.0f), 0.8f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::masterBPM, "Master BPM", juce::NormalisableRange<float>(20.0f, 400.0f), 120.0f));
+    
+    juce::StringArray engines = { "NEURONiK", "Neurotik" };
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::engineType, "Engine Type", engines, 0));
+
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::oscLevel, "Osc Level", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::oscInharmonicity, "Inharmonicity", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::oscRoughness, "Roughness", juce::NormalisableRange<float>(0.0f, 0.5f), 0.0f)); // Range reduced
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::harmMix, "Harmonic Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::morphX, "Morph X", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::morphY, "Morph Y", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::oscExciteNoise, "Excite Noise", juce::NormalisableRange<float>(0.0f, 1.0f), 0.1f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::excitationColor, "Excite Color", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::impulseMix, "Impulse Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 0.8f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::resonatorRes, "Res Bank Resonance", juce::NormalisableRange<float>(0.5f, 1.0f, 0.0f, 0.4f), 0.99f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::unisonDetune, "Spectral Detune", juce::NormalisableRange<float>(0.0f, 0.1f, 0.0f, 0.5f), 0.01f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::unisonSpread, "Spectral Spread", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(IDs::unisonEnabled, "Spectral Unison", false));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::envAttack, "Attack", juce::NormalisableRange<float>(0.001f, 5.0f, 0.0f, 0.5f), 0.01f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::envDecay, "Decay", juce::NormalisableRange<float>(0.001f, 5.0f, 0.0f, 0.5f), 0.1f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::envSustain, "Sustain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.7f));
@@ -182,7 +201,8 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
         "Filter Cutoff", "Filter Res", "Filter Env Amt",
         "Flt Attack", "Flt Decay", "Flt Sustain", "Flt Release",
         "Saturation", "Delay Time", "Delay FB",
-        "Odd/Even Bal", "Spectral Shift", "Harm Roll-off" };
+        "Odd/Even Bal", "Spectral Shift", "Harm Roll-off",
+        "Excite Noise", "Excite Color", "Impulse Mix", "Res Bank Res", "Unison Detune" };
     juce::StringArray modSources = { "Off", "LFO 1", "LFO 2", "Pitch Bend", "Mod Wheel", "Aftertouch" };
 
     params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::mod1Source, "Mod 1 Source", modSources, 0));
@@ -202,6 +222,23 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::mod4Amount, "Mod 4 Amount", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f));
 
     return { params.begin(), params.end() };
+}
+
+inline juce::StringArray getModSources()
+{
+    return { "Off", "LFO 1", "LFO 2", "Pitch Bend", "Mod Wheel", "Aftertouch" };
+}
+
+inline juce::StringArray getModDestinations()
+{
+    return { 
+        "Off", "Osc Level", "Inharmonicity", "Roughness", "Morph X", "Morph Y", 
+        "Amp Attack", "Amp Decay", "Amp Sustain", "Amp Release", 
+        "Filter Cutoff", "Filter Res", "Filter Env Amt",
+        "Flt Attack", "Flt Decay", "Flt Sustain", "Flt Release",
+        "Saturation", "Delay Time", "Delay FB",
+        "Odd/Even Bal", "Spectral Shift", "Harm Roll-off",
+        "Excite Noise", "Excite Color", "Impulse Mix", "Res Bank Res", "Unison Detune" };
 }
 
 } // namespace NEURONiK::State

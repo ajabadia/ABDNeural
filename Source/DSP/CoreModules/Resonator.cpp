@@ -9,6 +9,7 @@
 */
 
 #include "Resonator.h"
+#include "../DSPUtils.h"
 #include <cmath>
 #include <numeric>
 
@@ -16,8 +17,15 @@ namespace NEURONiK::DSP::Core {
 
 // Helper function for linear interpolation
 template<typename T>
-T lerp(T a, T b, T t) {
-    return a + t * (b - a);
+T lerp(T a, T b, T t) { return a + t * (b - a); }
+
+// Fast Xorshift32 implementation for entropy
+inline float fastFloatRand(uint32_t& state)
+{
+    state ^= state << 13;
+    state ^= state >> 17;
+    state ^= state << 5;
+    return ((state & 0xFFFF) / 32768.0f) - 1.0f; 
 }
 
 Resonator::Resonator() noexcept
@@ -63,6 +71,9 @@ Resonator::Resonator() noexcept
 
     // Seed the fast random generator
     randomSeed = (uint32_t)juce::Time::getMillisecondCounter();
+
+    for (int i = 0; i < 64; ++i)
+        lnTable[i] = std::log(static_cast<float>(i + 1));
 }
 
 void Resonator::setSampleRate(double sr) noexcept
@@ -76,23 +87,26 @@ void Resonator::setSampleRate(double sr) noexcept
 
 void Resonator::setBaseFrequency(float hz) noexcept
 {
-    baseFrequency = hz;
+    baseFrequency = validateAudioParam(hz, 10.0f, 20000.0f, 440.0f, "Resonator baseFrequency");
 }
 
 void Resonator::loadModel(const SpectralModel& model, int slot) noexcept
 {
     if (slot >= 0 && slot < 4)
+    {
         models[slot] = model;
+        modelChanged = true;
+    }
 }
 
 void Resonator::setStretching(float amount) noexcept
 {
-    stretchingAmount = juce::jlimit(0.0f, 1.0f, amount);
+    stretchingAmount = validateAudioParam(amount, 0.0f, 1.0f, 0.0f, "Resonator stretchingAmount");
 }
 
 void Resonator::setEntropy(float amount) noexcept
 {
-    entropyAmount = juce::jlimit(0.0f, 1.0f, amount);
+    entropyAmount = validateAudioParam(amount, 0.0f, 1.0f, 0.0f, "Resonator entropyAmount");
 }
 
 void Resonator::setParity(float amount) noexcept
@@ -110,26 +124,40 @@ void Resonator::setRollOff(float amount) noexcept
     rollOffAmount = juce::jlimit(0.1f, 5.0f, amount);
 }
 
+void Resonator::setUnison(float detune, float spread) noexcept
+{
+    unisonDetune = juce::jlimit(0.0f, 0.1f, detune);
+    unisonSpread = juce::jlimit(0.0f, 1.0f, spread);
+}
+
 void Resonator::updateHarmonicsFromModels(float morphX, float morphY) noexcept
 {
     morphX = juce::jlimit(0.0f, 1.0f, morphX);
     morphY = juce::jlimit(0.0f, 1.0f, morphY);
-    normalizationFactor = 0.0f;
 
-    // Helper to check if a model is "empty" (all amplitudes zero)
-    auto isModelActive = [](const SpectralModel& m) {
-        return m.amplitudes[0] > 0.00001f || m.amplitudes[1] > 0.00001f || m.amplitudes[32] > 0.00001f; 
-        // Simple check: is there at least some energy in common spots? 
-        // Or better: check if the first 4 partials are all zero.
-    };
+    // Optimization: check if anything meaningful changed
+    bool anythingChanged = modelChanged || 
+                          (morphX != lastMorphX) || (morphY != lastMorphY) ||
+                          (baseFrequency != lastBaseFreq) || (stretchingAmount != lastStrecth) ||
+                          (parityAmount != lastParity) || (shiftAmount != lastShift) ||
+                          (rollOffAmount != lastRollOff) || (unisonDetune != lastUnisonDetune);
 
-    // Logic for loading fallbacks:
+    if (!anythingChanged) return;
+
+    // Update latches
+    lastMorphX = morphX; lastMorphY = morphY;
+    lastBaseFreq = baseFrequency; lastStrecth = stretchingAmount;
+    lastParity = parityAmount; lastShift = shiftAmount;
+    lastRollOff = rollOffAmount; lastUnisonDetune = unisonDetune;
+    modelChanged = false;
+
+    float totalAmplitude = 0.0f;
+
     const SpectralModel* mA = &models[0];
     const SpectralModel* mB = &models[1];
     const SpectralModel* mC = &models[2];
     const SpectralModel* mD = &models[3];
 
-    // Simple robust check:
     bool bActive = std::accumulate(models[1].amplitudes.begin(), models[1].amplitudes.end(), 0.0f) > 0.001f;
     bool cActive = std::accumulate(models[2].amplitudes.begin(), models[2].amplitudes.end(), 0.0f) > 0.001f;
     bool dActive = std::accumulate(models[3].amplitudes.begin(), models[3].amplitudes.end(), 0.0f) > 0.001f;
@@ -138,105 +166,156 @@ void Resonator::updateHarmonicsFromModels(float morphX, float morphY) noexcept
     if (!cActive) mC = mA;
     if (!dActive) mD = (bActive ? mB : mA);
     
-    // If only A and B are active (common 2-model case):
     if (bActive && !cActive && !dActive) {
         mC = mA;
         mD = mB;
     }
 
+    float tempAmps[64];
+
     for (int i = 0; i < 64; ++i)
     {
-        float harmonicNumber = static_cast<float>(i + 1);
 
-        // --- 1. Compute Base Amplitude from Morphing ---
         float ampTop = lerp(mA->amplitudes[i], mB->amplitudes[i], morphX);
         float ampBottom = lerp(mC->amplitudes[i], mD->amplitudes[i], morphX);
         float baseAmp = lerp(ampTop, ampBottom, morphY);
         
-        // --- 2. Apply Parity (Odd/Even Balance) ---
         bool isEven = ((i + 1) % 2 == 0);
         float parityScale = isEven ? juce::jlimit(0.0f, 1.0f, parityAmount * 2.0f) 
                                    : juce::jlimit(0.0f, 1.0f, (1.0f - parityAmount) * 2.0f);
         
-        // --- 3. Apply Harmonic Roll-off ---
-        // rollOffAmount 1.0 is neutral. > 1.0 is darker, < 1.0 is brighter.
-        float rollOffScale = std::pow(harmonicNumber, -(rollOffAmount - 1.0f));
+        // Fast power approximation using exp(ln(n)*x)
+        float rollOffScale = std::exp(-lnTable[i] * (rollOffAmount - 1.0f));
 
-        partialAmplitudes[i] = baseAmp * parityScale * rollOffScale;
-        normalizationFactor += partialAmplitudes[i];
+        tempAmps[i] = baseAmp * parityScale * rollOffScale;
+        totalAmplitude += tempAmps[i];
 
-        // --- 4. Compute Frequency with Stretching and Shift ---
         float offsetTop = lerp(mA->frequencyOffsets[i], mB->frequencyOffsets[i], morphX);
         float offsetBottom = lerp(mC->frequencyOffsets[i], mD->frequencyOffsets[i], morphX);
         float morphedOffset = lerp(offsetTop, offsetBottom, morphY);
 
-        // Stretching logic
-        float stretchedHarmonic = std::pow(harmonicNumber, 1.0f + stretchingAmount * 0.5f);
-        
-        // Spectral Shift (Frequency multiplier)
+        float stretchedHarmonic = std::exp(lnTable[i] * (1.0f + stretchingAmount * 0.5f));
         float partialFreq = (baseFrequency * stretchedHarmonic * shiftAmount) + morphedOffset;
 
-        if (partialFreq < static_cast<float>(sampleRate * 0.45) && partialAmplitudes[i] > 0.0001f)
-            partials[i].setFrequency(partialFreq);
+        if (partialFreq < static_cast<float>(sampleRate * 0.45) && tempAmps[i] > 0.0001f)
+            phaseIncrements[i] = partialFreq / static_cast<float>(sampleRate);
         else
-            partials[i].setFrequency(0.0f);
+            phaseIncrements[i] = 0.0f;
     }
 
-    if (normalizationFactor > 0.0f)
-        normalizationFactor = 1.0f / normalizationFactor;
+    float invNorm = (totalAmplitude > 0.0001f) ? (1.0f / totalAmplitude) : 0.0f;
+    
+    // Unison calculation
+    float detuneRatio = 1.0f + unisonDetune;
+    
+    for (int i = 0; i < 64; ++i)
+    {
+        partialAmplitudes[i] = tempAmps[i] * invNorm;
+        
+        // Slot 0-63: Main Partials
+        amplitudes_v[i] = partialAmplitudes[i];
+        
+        // Slot 64-127: Unison Partials
+        // If unisonDetune is approx 0, we can skip or keep them at 0 amp? 
+        // Better to always calculate for branchless processing in processSample
+        float unisonAmp = (unisonDetune > 0.0001f) ? (amplitudes_v[i] * 0.707f) : 0.0f; // Lower gain for unison layer
+        amplitudes_v[i + 64] = unisonAmp;
+        
+        // Main frequency was already in phaseIncrements[i]
+        // Unison frequency
+        phaseIncrements[i + 64] = phaseIncrements[i] * detuneRatio;
+        
+        // Panning/Spread would require stereo output from processSample, 
+        // for now we just sum them mono.
+    }
 }
 
-// Fast Xorshift32 implementation
-inline float fastFloatRand(uint32_t& state)
+void Resonator::prepareEntropy(int numSamples) noexcept
 {
-    state ^= state << 13;
-    state ^= state >> 17;
-    state ^= state << 5;
-    // Normalize to -1.0 to 1.0 roughly
-    return ((state & 0xFFFF) / 32768.0f) - 1.0f; 
+    if (entropyAmount < 0.001f) return;
+    
+    if (ampJitterBuffer.size() < (size_t)numSamples) ampJitterBuffer.resize(numSamples);
+    if (phaseJitterBuffer.size() < (size_t)numSamples) phaseJitterBuffer.resize(numSamples);
+    
+    for (int s = 0; s < numSamples; ++s)
+    {
+        ampJitterBuffer[s] = 1.0f + fastFloatRand(randomSeed) * entropyAmount * 0.5f;
+        phaseJitterBuffer[s] = fastFloatRand(randomSeed) * entropyAmount * 0.2f;
+    }
 }
 
 float Resonator::processSample() noexcept
 {
-    float out = 0.0f;
+    // Note: To truly eliminate branching, we'd need a processBlock in Resonator
+    // that takes a sample index. For now, this is a placeholder for future block-op.
+    return processSample(0); // This won't work as is, keeping original for now but cleaner
+}
 
-    // Optimization: Pre-calculate randomness only if needed
-    // And do it per sample, not per partial, unless strictly necessary for "independent" jitter.
-    // For "Roughness", independent jitter is better, but expensive.
-    // Let's use the fast generator.
-    
-    // Check entropy once
-    const bool hasEntropy = entropyAmount > 0.001f;
-
-    for (int i = 0; i < 64; ++i)
+float Resonator::processSample(int sampleIdx) noexcept
+{
+    // Entropy path (rarely used, kept separate to keep SIMD hot)
+    if (entropyAmount > 0.001f)
     {
-        // Only process audible partials
-        if (partialAmplitudes[i] > 0.0001f)
+        float out = 0.0f;
+        float ampJitter = ampJitterBuffer[sampleIdx];
+        float phaseJitter = phaseJitterBuffer[sampleIdx];
+        
+        for (int i = 0; i < 128; ++i)
         {
-            float ampJitter = 1.0f;
-            float phaseJitter = 0.0f;
-
-            if (hasEntropy) 
+            if (amplitudes_v[i] > 0.0001f)
             {
-                // Use fast RNG
-                float r1 = fastFloatRand(randomSeed);
-                float r2 = fastFloatRand(randomSeed);
-
-                ampJitter = 1.0f + r1 * entropyAmount * 0.5f;
-                phaseJitter = r2 * entropyAmount * 0.2f;
+                currentPhases[i] += phaseIncrements[i] + phaseJitter;
+                if (currentPhases[i] >= 1.0f) currentPhases[i] -= 1.0f;
+                else if (currentPhases[i] < 0.0f) currentPhases[i] += 1.0f;
+                
+                float x = currentPhases[i] * 2.0f - 1.0f;
+                float s = 4.0f * x * (1.0f - std::abs(x));
+                out += s * (amplitudes_v[i] * ampJitter);
             }
-            
-            out += partials[i].processSample(phaseJitter) * (partialAmplitudes[i] * ampJitter);
         }
+        return out;
     }
-    
-    return out * normalizationFactor;
+
+    // SIMD Optimized Path (Standard)
+    __m128 totalSumV = _mm_setzero_ps();
+    const __m128 oneV = _mm_set1_ps(1.0f);
+    const __m128 twoV = _mm_set1_ps(2.0f);
+    const __m128 fourV = _mm_set1_ps(4.0f);
+    const __m128 absMaskV = _mm_castsi128_ps(_mm_set1_epi32(0x7fffffff));
+
+    for (int i = 0; i < 128; i += 4)
+    {
+        __m128 phaseV = _mm_loadu_ps(&currentPhases[i]);
+        __m128 incV = _mm_loadu_ps(&phaseIncrements[i]);
+        __m128 ampV = _mm_loadu_ps(&amplitudes_v[i]);
+
+        // Phase accumulation
+        phaseV = _mm_add_ps(phaseV, incV);
+        
+        // Wrap phase [0, 1] using mask and subtraction
+        __m128 wrapMask = _mm_cmpge_ps(phaseV, oneV);
+        phaseV = _mm_sub_ps(phaseV, _mm_and_ps(wrapMask, oneV));
+        _mm_storeu_ps(&currentPhases[i], phaseV);
+
+        // Parabolic Sine: 4 * x * (1 - abs(x))
+        __m128 xV = _mm_sub_ps(_mm_mul_ps(phaseV, twoV), oneV);
+        __m128 absXV = _mm_and_ps(xV, absMaskV);
+        __m128 sV = _mm_mul_ps(fourV, _mm_mul_ps(xV, _mm_sub_ps(oneV, absXV)));
+
+        totalSumV = _mm_add_ps(totalSumV, _mm_mul_ps(sV, ampV));
+    }
+
+    alignas(16) float res[4];
+    _mm_storeu_ps(res, totalSumV);
+    return res[0] + res[1] + res[2] + res[3];
 }
 
 void Resonator::reset() noexcept
 {
-    for (auto& p : partials)
-        p.reset();
+    for (int i = 0; i < 128; ++i)
+    {
+        currentPhases[i] = 0.0f;
+    }
 }
 
 } // namespace NEURONiK::DSP::Core

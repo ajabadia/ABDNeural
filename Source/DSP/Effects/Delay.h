@@ -39,8 +39,9 @@ public:
         feedbackSmoother.reset(sampleRate, 0.02); // 20ms ramp
     }
 
-    void setParameters(float timeInSeconds, float feedback) noexcept
+    void setParameters(float timeInSeconds, float feedback, float mix = 0.5f) noexcept
     {
+        juce::ignoreUnused(mix);
         timeSmoother.setTargetValue(timeInSeconds * static_cast<float>(currentSampleRate));
         feedbackSmoother.setTargetValue(juce::jlimit(0.0f, 0.95f, feedback));
     }

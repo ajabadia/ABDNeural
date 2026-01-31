@@ -25,6 +25,7 @@ struct SpectralModel
 {
     std::array<float, 64> amplitudes;
     std::array<float, 64> frequencyOffsets;
+    bool isValid = false;
 
     // Optional: Add JSON serialization helper later
 };

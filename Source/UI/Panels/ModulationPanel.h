@@ -9,7 +9,7 @@ class NEURONiKProcessor;
 
 namespace NEURONiK::UI {
 
-class ModulationPanel : public juce::Component
+class ModulationPanel : public juce::Component, private juce::Timer
 {
 public:
     ModulationPanel(NEURONiKProcessor& p);
@@ -17,6 +17,7 @@ public:
 
     void paint(juce::Graphics& g) override;
     void resized() override;
+    void timerCallback() override;
 
 private:
     struct LfoUiElements {

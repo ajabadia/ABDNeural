@@ -1,0 +1,19 @@
+-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+-- Including JUCE from local path: C:\JUCE
+-- Configuring juceaide
+-- Building juceaide
+-- Exporting juceaide
+-- Testing juceaide
+-- Finished setting up juceaide
+-- NEURONIK_SOURCES: Source/Main/NEURONiKProcessor.h;Source/Main/NEURONiKProcessor.cpp;Source/Main/NEURONiKEditor.h;Source/Main/NEURONiKEditor.cpp;Source/Main/MidiMappingManager.h;Source/Main/MidiMappingManager.cpp;Source/UI/ParameterPanel.h;Source/UI/ParameterPanel.cpp;Source/UI/SpectralVisualizer.h;Source/UI/SpectralVisualizer.cpp;Source/UI/XYPad.h;Source/UI/XYPad.cpp;Source/UI/EnvelopeVisualizer.h;Source/UI/CustomUIComponents.h;Source/UI/CustomUIComponents.cpp;Source/UI/ThemeManager.h;Source/UI/ThemeManager.cpp;Source/UI/MidiLearner.h;Source/UI/MidiLearner.cpp;Source/UI/Panels/OscillatorPanel.h;Source/UI/Panels/OscillatorPanel.cpp;Source/UI/Panels/FilterEnvPanel.h;Source/UI/Panels/FilterEnvPanel.cpp;Source/UI/Panels/FXPanel.h;Source/UI/Panels/FXPanel.cpp;Source/UI/Panels/ModulationPanel.h;Source/UI/Panels/ModulationPanel.cpp;Source/UI/Panels/PresetPanel.h;Source/UI/Panels/PresetPanel.cpp;Source/UI/LcdDisplay.h;Source/UI/LcdDisplay.cpp;Source/UI/Browser/PresetBrowser.h;Source/UI/Browser/PresetBrowser.cpp;Source/State/ParameterDefinitions.h;Source/Serialization/PresetManager.h;Source/Serialization/PresetManager.cpp;Source/DSP/CoreModules/LFO.cpp;Source/DSP/CoreModules/Oscillator.h;Source/DSP/CoreModules/Oscillator.cpp;Source/DSP/CoreModules/Resonator.h;Source/DSP/CoreModules/Resonator.cpp;Source/DSP/CoreModules/Envelope.h;Source/DSP/CoreModules/Envelope.cpp;Source/DSP/CoreModules/FilterBank.h;Source/DSP/CoreModules/FilterBank.cpp;Source/DSP/CoreModules/ResonatorBank.h;Source/DSP/CoreModules/ResonatorBank.cpp;Source/DSP/CoreModules/NeuronikEngine.h;Source/DSP/CoreModules/NeuronikEngine.cpp;Source/DSP/CoreModules/NeurotikEngine.h;Source/DSP/CoreModules/NeurotikEngine.cpp;Source/DSP/BaseEngine.h;Source/DSP/BaseEngine.cpp;Source/DSP/IVoice.h;Source/DSP/ISynthesisEngine.h;Source/DSP/Synthesis/AdditiveVoice.h;Source/DSP/Synthesis/AdditiveVoice.cpp;Source/DSP/Synthesis/NeurotikVoice.h;Source/DSP/Synthesis/NeurotikVoice.cpp;Resources/NEURONiK.rc
+-- Configuring done (2.7s)
+-- Generating done (0.1s)
+-- Build files have been written to: D:/desarrollos/ABDNeural/build_neuronik
+Versi??n de MSBuild 18.3.0-preview-25570-20+708535641 para .NET Framework
+
+  Checking File Globs
+  NEURONiK_rc_lib.vcxproj -> D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_rc_lib.dir\Debug\NEURONiK_rc_lib.lib
+  NEURONiK_Common.vcxproj -> D:\desarrollos\ABDNeural\build_neuronik\Debug\NEURONiK_Common.lib
+  NEURONiK.vcxproj -> D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_artefacts\Debug\NEURONiK_SharedCode.lib
+juce_audio_plugin_client_Standalone.obj : error LNK2019: s??mbolo externo "class juce::AudioProcessor * __cdecl createPluginFilter(void)" (?createPluginFilter@@YAPEAVAudioProcessor@juce@@XZ) sin resolver al que se hace referencia en la funci??n "class std::unique_ptr<class juce::AudioProcessor,struct std::default_delete<class juce::AudioProcessor> > __cdecl juce::createPluginFilterOfType(enum juce::AudioProcessor::WrapperType)" (?createPluginFilterOfType@juce@@YA?AV?$unique_ptr@VAudioProcessor@juce@@U?$default_delete@VAudioProcessor@juce@@@std@@@std@@W4WrapperType@AudioProcessor@1@@Z) [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_artefacts\Debug\Standalone\NEURONiK.exe : fatal error LNK1120: 1 externos sin resolver [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]

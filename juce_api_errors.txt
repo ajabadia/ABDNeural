@@ -1,0 +1,134 @@
+
+> D:\desarrollos\ABDNeural\So
+urce\Main\NEURONiKEditor.cpp(
+67,25): error C2653: 
+'ThemeManager': no es un 
+nombre de clase o espacio de 
+nombres [D:\desarrollos\ABDNe
+ural\build_neuronik\NEURONiK.
+vcxproj]
+> D:\desarrollos\ABDNeural\So
+urce\Main\NEURONiKEditor.cpp(
+67,39): error C3861: 
+'getCurrentTheme': no se 
+encontr?? el identificador [D
+:\desarrollos\ABDNeural\build
+_neuronik\NEURONiK.vcxproj]
+> D:\desarrollos\ABDNeural\So
+urce\Main\NEURONiKEditor.cpp(
+69,14): error C2660: 'juce::T
+abbedComponent::addTab': la 
+funci??n no acepta 3 
+argumentos [D:\desarrollos\AB
+DNeural\build_neuronik\NEURON
+iK.vcxproj]
+        C:\JUCE\modules\juce_
+gui_basics\layout\juce_Tabbed
+Component.h(118,10):
+        vea la declaraci??n 
+de 'juce::TabbedComponent::ad
+dTab'
+> D:\desarrollos\ABDNeural\So
+urce\Main\NEURONiKEditor.cpp(
+70,14): error C2660: 'juce::T
+abbedComponent::addTab': la 
+funci??n no acepta 3 
+argumentos [D:\desarrollos\AB
+DNeural\build_neuronik\NEURON
+iK.vcxproj]
+        C:\JUCE\modules\juce_
+gui_basics\layout\juce_Tabbed
+Component.h(118,10):
+        vea la declaraci??n 
+de 'juce::TabbedComponent::ad
+dTab'
+> D:\desarrollos\ABDNeural\So
+urce\Main\NEURONiKEditor.cpp(
+71,14): error C2660: 'juce::T
+abbedComponent::addTab': la 
+funci??n no acepta 3 
+argumentos [D:\desarrollos\AB
+DNeural\build_neuronik\NEURON
+iK.vcxproj]
+        C:\JUCE\modules\juce_
+gui_basics\layout\juce_Tabbed
+Component.h(118,10):
+        vea la declaraci??n 
+de 'juce::TabbedComponent::ad
+dTab'
+> D:\desarrollos\ABDNeural\So
+urce\Main\NEURONiKEditor.cpp(
+72,14): error C2660: 'juce::T
+abbedComponent::addTab': la 
+funci??n no acepta 3 
+argumentos [D:\desarrollos\AB
+DNeural\build_neuronik\NEURON
+iK.vcxproj]
+        C:\JUCE\modules\juce_
+gui_basics\layout\juce_Tabbed
+Component.h(118,10):
+        vea la declaraci??n 
+de 'juce::TabbedComponent::ad
+dTab'
+> D:\desarrollos\ABDNeural\So
+urce\Main\NEURONiKEditor.cpp(
+73,14): error C2660: 'juce::T
+abbedComponent::addTab': la 
+funci??n no acepta 3 
+argumentos [D:\desarrollos\AB
+DNeural\build_neuronik\NEURON
+iK.vcxproj]
+        C:\JUCE\modules\juce_
+gui_basics\layout\juce_Tabbed
+Component.h(118,10):
+        vea la declaraci??n 
+de 'juce::TabbedComponent::ad
+dTab'
+> D:\desarrollos\ABDNeural\So
+urce\Main\NEURONiKEditor.cpp(
+74,14): error C2660: 'juce::T
+abbedComponent::addTab': la 
+funci??n no acepta 3 
+argumentos [D:\desarrollos\AB
+DNeural\build_neuronik\NEURON
+iK.vcxproj]
+        C:\JUCE\modules\juce_
+gui_basics\layout\juce_Tabbed
+Component.h(118,10):
+        vea la declaraci??n 
+de 'juce::TabbedComponent::ad
+dTab'
+> D:\desarrollos\ABDNeural\So
+urce\Main\NEURONiKEditor.cpp(
+310,25): error C2653: 
+'ThemeManager': no es un 
+nombre de clase o espacio de 
+nombres [D:\desarrollos\ABDNe
+ural\build_neuronik\NEURONiK.
+vcxproj]
+> D:\desarrollos\ABDNeural\So
+urce\Main\NEURONiKEditor.cpp(
+310,39): error C3861: 
+'getCurrentTheme': no se 
+encontr?? el identificador [D
+:\desarrollos\ABDNeural\build
+_neuronik\NEURONiK.vcxproj]
+> D:\desarrollos\ABDNeural\So
+urce\Main\NEURONiKEditor.cpp(
+322,30): error C2661: 'juce::
+ColourGradient::ColourGradien
+t': ninguna funci??n 
+sobrecargada acepta 6 
+argumentos [D:\desarrollos\AB
+DNeural\build_neuronik\NEURON
+iK.vcxproj]
+        D:\desarrollos\ABDNeu
+ral\Source\Main\NEURONiKEdito
+r.cpp(322,30):
+        al hacer coincidir 
+la lista de argumentos 
+'(int, int, const 
+juce::Colour, int, int, 
+bool)'
+
+

@@ -9,6 +9,7 @@
 */
 
 #include "FilterBank.h"
+#include "../DSPUtils.h"
 #include <cmath>
 
 namespace NEURONiK::DSP::Core {
@@ -29,15 +30,18 @@ void FilterBank::setSampleRate(double newSampleRate) noexcept
 
 void FilterBank::setCutoff(float frequencyHz) noexcept
 {
-    cutoffHz_.store(juce::jlimit(20.0f, 20000.0f, frequencyHz), std::memory_order_release);
+    float validatedHz = validateAudioParam(frequencyHz, 20.0f, 20000.0f, 1000.0f, "FilterBank cutoffHz");
+    cutoffHz_.store(validatedHz, std::memory_order_release);
     coefficientsDirty_.store(true, std::memory_order_release);
 }
 
 void FilterBank::setResonance(float q) noexcept
 {
+    float validatedQ = validateAudioParam(q, 0.0f, 1.0f, 0.5f, "FilterBank resonance (q input)");
+    
     // Mapping 0.0 - 1.0 to a musical Q range (0.5 to 15.0)
     // Quadratic curve for better resolution at low resonance
-    float mappedQ = 0.5f + (q * q * 14.5f); 
+    float mappedQ = 0.5f + (validatedQ * validatedQ * 14.5f); 
     resonance_.store(mappedQ, std::memory_order_release);
     coefficientsDirty_.store(true, std::memory_order_release);
 }

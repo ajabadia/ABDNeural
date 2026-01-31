@@ -14,6 +14,37 @@ namespace NEURONiK::Serialization {
 
 const juce::String PresetManager::presetExtension = ".neuronikpreset";
 
+Common::SpectralModel PresetManager::loadModelFromFile(const juce::File& file)
+{
+    Common::SpectralModel model;
+    model.amplitudes.fill(0.0f);
+    model.frequencyOffsets.fill(0.0f);
+
+    if (!file.existsAsFile()) return model;
+
+    auto xml = juce::parseXML(file);
+    if (xml != nullptr && xml->hasTagName("NEURONIK_MODEL"))
+    {
+        juce::String amps = xml->getStringAttribute("amplitudes");
+        juce::String freqs = xml->getStringAttribute("offsets");
+
+        juce::StringArray ampList;
+        ampList.addTokens(amps, ",", "");
+        
+        juce::StringArray freqList;
+        freqList.addTokens(freqs, ",", "");
+
+        for (int i = 0; i < 64; ++i)
+        {
+            if (i < ampList.size()) model.amplitudes[i] = ampList[i].getFloatValue();
+            if (i < freqList.size()) model.frequencyOffsets[i] = freqList[i].getFloatValue();
+        }
+        model.isValid = true;
+    }
+    // Fallback: If not XML, maybe it's binary? (Skip for now, just return model)
+    return model;
+}
+
 PresetManager::PresetManager(juce::AudioProcessorValueTreeState& apvts)
     : valueTreeState(apvts), currentPresetName("Init Preset")
 {

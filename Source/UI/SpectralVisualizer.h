@@ -40,7 +40,7 @@ private:
     std::array<float, 64> harmonicProfile_;
     
     // Aesthetic elements
-    juce::Colour accentColour_ = juce::Colours::cyan;
+    juce::Colour accentColour_;
     
     void updateProfile();
 

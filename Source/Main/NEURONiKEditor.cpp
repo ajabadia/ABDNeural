@@ -1,6 +1,7 @@
 #include "NEURONiKEditor.h"
-#include "../Core/BuildVersion.h"
-#include "../State/ParameterDefinitions.h"
+#include "UI/ThemeManager.h"
+#include "Core/BuildVersion.h"
+#include "State/ParameterDefinitions.h"
 
 #if JucePlugin_Build_Standalone
  #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
@@ -47,6 +48,9 @@ NEURONiKEditor::NEURONiKEditor(NEURONiKProcessor& p)
         updateLcdDefault();
     };
 
+    if (auto* engineParam = p.getAPVTS().getRawParameterValue(IDs::engineType))
+        menuManager.setupMenu(static_cast<int>(engineParam->load()));
+
     updateLcdDefault();
     
     // Listen to ALL parameters
@@ -60,16 +64,20 @@ NEURONiKEditor::NEURONiKEditor(NEURONiKProcessor& p)
     addAndMakeVisible(mainTabs);
     addAndMakeVisible(visualizer);
 
-    mainTabs.addTab("GENERAL",    juce::Colours::darkgrey, &generalPanel, false);
-    mainTabs.addTab("RESONATOR",  juce::Colours::darkgrey, &oscPanel, false);
-    mainTabs.addTab("FILTER/ENV", juce::Colours::darkgrey, &filterEnvPanel, false);
-    mainTabs.addTab("FX",         juce::Colours::darkgrey, &fxPanel, false);
-    mainTabs.addTab("LFO/MOD",    juce::Colours::darkgrey, &modulationPanel, false);
-    mainTabs.addTab("BROWSER",    juce::Colours::black,    &presetBrowser,   false);
+    const auto& theme = NEURONiK::UI::ThemeManager::getCurrentTheme();
+
+    mainTabs.addTab("GENERAL",    theme.surface, &generalPanel, false);
+    mainTabs.addTab("RESONATOR",  theme.surface, &oscPanel, false);
+    mainTabs.addTab("FILTER/ENV", theme.surface, &filterEnvPanel, false);
+    mainTabs.addTab("FX",         theme.surface, &fxPanel, false);
+    mainTabs.addTab("LFO/MOD",    theme.surface, &modulationPanel, false);
+    mainTabs.addTab("BROWSER",    theme.background, &presetBrowser, false);
 
     keyboardComponent.setAvailableRange(24, 96);
 
     setWantsKeyboardFocus(true);
+    setResizable(true, true);
+    setResizeLimits(400, 300, 4000, 3000);
     setSize(800, 600);
 }
 
@@ -92,7 +100,12 @@ void NEURONiKEditor::parameterChanged(const juce::String& parameterID, float new
     juce::String valStr = param->getCurrentValueAsText();
     
     // Move to UI thread
-    juce::MessageManager::callAsync([this, name, valStr] {
+    juce::MessageManager::callAsync([this, parameterID, name, valStr, newValue] {
+        if (parameterID == IDs::engineType)
+        {
+            menuManager.setupMenu(static_cast<int>(newValue));
+            updateLcdDefault();
+        }
         lcdDisplay.showParameterPreview(name, valStr);
     });
 
@@ -294,23 +307,23 @@ void NEURONiKEditor::handleButtonAction(juce::Button* b, bool isRepeat)
 
 void NEURONiKEditor::paint(juce::Graphics& g)
 {
-    auto backgroundColor = juce::Colour(0xFF1A1A1A);
-    g.fillAll(backgroundColor);
-
+    const auto& theme = NEURONiK::UI::ThemeManager::getCurrentTheme();
+    g.setColour(juce::Colours::black.withAlpha(0.8f));
     auto area = getLocalBounds();
-
     auto headerArea = area.removeFromTop(105);
-    juce::Colour headerColor = juce::Colour(0xFF252525);
-    g.setColour(headerColor);
     g.fillRect(headerArea);
 
-    g.setColour(juce::Colours::cyan.withAlpha(0.3f));
+    // Gradient border
+    juce::ColourGradient gradient(
+        theme.accent.withAlpha(0.6f), 0.0f, static_cast<float>(headerArea.getY()),
+        theme.accent.withAlpha(0.0f), 0.0f, static_cast<float>(headerArea.getBottom()),
+        false
+    );
+    g.setGradientFill(gradient);
+    g.fillRect(headerArea);
+
+    g.setColour(theme.accent.withAlpha(0.3f));
     g.fillRect(headerArea.withY(headerArea.getBottom() - 1).withHeight(1));
-
-    juce::ColourGradient grad(juce::Colours::cyan.withAlpha(0.1f), 0, 25,
-                             juce::Colours::transparentBlack, 0, 105, false);
-    g.setGradientFill(grad);
-    g.fillRect(headerArea);
 }
 
 void NEURONiKEditor::resized()
@@ -386,6 +399,10 @@ juce::PopupMenu NEURONiKEditor::getMenuForIndex(int, const juce::String& menuNam
     if (menuName == "File")
     {
         menu.addItem(10, "New Session"); // Placeholder for future
+#if JucePlugin_Build_Standalone
+        menu.addSeparator();
+        menu.addItem(999, "Exit");
+#endif
     }
     else if (menuName == "Edit")
     {
@@ -420,10 +437,12 @@ juce::PopupMenu NEURONiKEditor::getMenuForIndex(int, const juce::String& menuNam
         menu.addSeparator();
 
         juce::PopupMenu zoomMenu;
-        zoomMenu.addItem(300, "1x (Normal)", true, zoomScale == 1.0f);
-        zoomMenu.addItem(301, "2x", true, zoomScale == 2.0f);
-        zoomMenu.addItem(302, "3x", true, zoomScale == 3.0f);
-        zoomMenu.addItem(303, "4x", true, zoomScale == 4.0f);
+        zoomMenu.addItem(300, "0.5x", true, zoomScale == 0.5f);
+        zoomMenu.addItem(301, "1x (Normal)", true, zoomScale == 1.0f);
+        zoomMenu.addItem(302, "1.25x", true, zoomScale == 1.25f);
+        zoomMenu.addItem(303, "1.5x", true, zoomScale == 1.5f);
+        zoomMenu.addItem(304, "2x", true, zoomScale == 2.0f);
+        zoomMenu.addItem(305, "3x", true, zoomScale == 3.0f);
         menu.addSubMenu("Zoom", zoomMenu);
 
         menu.addSeparator();
@@ -431,8 +450,10 @@ juce::PopupMenu NEURONiKEditor::getMenuForIndex(int, const juce::String& menuNam
     }
     else if (menuName == "Help")
     {
-        menu.addItem(101, "About...");
+        menu.addItem(103, "Random Parameters...");
         menu.addItem(102, "MIDI Specifications...");
+        menu.addSeparator();
+        menu.addItem(101, "About...");
     }
 
     return menu;
@@ -508,17 +529,19 @@ void NEURONiKEditor::menuItemSelected(int menuItemID, int)
 #endif
 
         juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,
-            "NEURONiK Options",
+            "AXIONiK Options",
             "Audio/MIDI settings are managed by your DAW/Host when running as a plugin.",
             "OK");
     }
     else if (menuItemID == 101)
     {
         juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,
-            "About NEURONiK",
-            "NEURONiK Synthesizer\n"
-            "Enhanced Hybrid Resynthesis Engine\n\n"
-            "Inspired by Neural models.\n"
+            "About AXIONiK",
+            "AXIONiK Synthesizer\n"
+            "Hybrid Spectral Morphing Synthesizer\n\n"
+            "Dual Engine Architecture:\n"
+            "• NEURONiK: Advanced Additive Engine\n"
+            "• Neurotik: Physical Modeling Resonator\n\n"
             "Developed by ABD.",
             "OK");
     }
@@ -526,9 +549,61 @@ void NEURONiKEditor::menuItemSelected(int menuItemID, int)
     {
         showMidiSpecifications();
     }
-    else if (menuItemID >= 300 && menuItemID <= 303)
+    else if (menuItemID == 103)
     {
-        setZoom(static_cast<float>(menuItemID - 299));
+        juce::String info = "RANDOM BUTTON - FREEZE CONTROLS\n"
+                            "================================\n\n"
+                            "The RANDOM button randomizes parameters within musical ranges.\n"
+                            "Use FREEZE buttons to protect specific sections:\n\n"
+                            
+                            "FREEZE RESONATOR:\n"
+                            "  • Morph X/Y\n"
+                            "  • Inharmonicity\n"
+                            "  • Roughness\n"
+                            "  • Odd/Even Balance (Parity)\n"
+                            "  • Spectral Shift\n"
+                            "  • Harmonic Roll-off\n"
+                            "  • Spectral Detune/Spread\n"
+                            "  • Neurotik: Excite Noise, Color, Impulse Mix, Resonance\n\n"
+                            
+                            "FREEZE FILTER/FX:\n"
+                            "  • Filter Cutoff\n"
+                            "  • Filter Resonance\n"
+                            "  • Filter Envelope Amount\n"
+                            "  • Saturation\n"
+                            "  • Delay Time/Feedback\n"
+                            "  • Chorus Mix\n"
+                            "  • Reverb Mix\n\n"
+                            
+                            "FREEZE ENVELOPES:\n"
+                            "  • Amp ADSR (Attack, Decay, Sustain, Release)\n"
+                            "  • Filter ADSR\n\n"
+                            
+                            "TIP: Combine freeze buttons to create controlled variations!";
+        
+        juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,
+            "Random Parameters Help",
+            info,
+            "OK");
+    }
+    else if (menuItemID >= 300 && menuItemID <= 305)
+    {
+        float scale = 1.0f;
+        switch(menuItemID) {
+            case 300: scale = 0.5f; break;
+            case 301: scale = 1.0f; break;
+            case 302: scale = 1.25f; break;
+            case 303: scale = 1.5f; break;
+            case 304: scale = 2.0f; break;
+            case 305: scale = 3.0f; break;
+        }
+        setZoom(scale);
+    }
+    else if (menuItemID == 999)
+    {
+#if JucePlugin_Build_Standalone
+        juce::JUCEApplication::quit();
+#endif
     }
 }
 void NEURONiKEditor::showMidiSpecifications()
@@ -553,6 +628,12 @@ void NEURONiKEditor::showMidiSpecifications()
     specs << "93: Chorus Mix\n";
     specs << "94: Delay Time\n";
     specs << "95: Reverb Mix\n\n";
+
+    specs << "NEUROTIK SPECIFIC:\n";
+    specs << "20: Excite Noise\n";
+    specs << "21: Noise Color\n";
+    specs << "22: Impulse Mix\n";
+    specs << "23: Resonator Resonance\n\n";
     
     specs << "OTHER CONTROLS:\n";
     specs << "Pitch Bend: Global Pitch\n";

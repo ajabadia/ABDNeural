@@ -1,0 +1,20 @@
+      D:\desarrollos\ABDNeural\Source\DSP\CoreModules\NeuronikEngine.cpp(170,23):
+      vea la definici??n anterior de ???NEURONiK::DSP::NeuronikEngine::getLfoValue???
+  
+  NeurotikEngine.cpp
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\ResonatorBank.h(68,33): warning C4324: 'NEURONiK::DSP::Core::ResonatorBank': se rellen?? la estructura debido al especificador de alineaci??n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/NeurotikEngine.cpp")
+  
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\NeurotikEngine.cpp(282,22): error C2084: la funci??n 'void NEURONiK::DSP::NeurotikEngine::getSpectralData(float *) const' ya tiene un cuerpo [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+      D:\desarrollos\ABDNeural\Source\DSP\CoreModules\NeurotikEngine.cpp(161,22):
+      vea la definici??n anterior de ???NEURONiK::DSP::NeurotikEngine::getSpectralData???
+  
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\NeurotikEngine.cpp(290,22): error C2084: la funci??n 'void NEURONiK::DSP::NeurotikEngine::getEnvelopeLevels(float &,float &) const' ya tiene un cuerpo [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+      D:\desarrollos\ABDNeural\Source\DSP\CoreModules\NeurotikEngine.cpp(176,22):
+      vea la definici??n anterior de ???NEURONiK::DSP::NeurotikEngine::getEnvelopeLevels???
+  
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\NeurotikEngine.cpp(299,25): error C2039: "getFilterEnvelopeLevel": no es un miembro de "NEURONiK::DSP::Synthesis::NeurotikVoice" [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+      D:\desarrollos\ABDNeural\Source\DSP\Synthesis\NeurotikVoice.h(20,7):
+      vea la declaraci??n de 'NEURONiK::DSP::Synthesis::NeurotikVoice'
+  
+  Generando c??digo...

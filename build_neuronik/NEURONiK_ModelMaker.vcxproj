@@ -367,6 +367,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="D:\desarrollos\ABDNeural\Source\ModelMaker\Analysis\SpectralAnalyzer.cpp" />
     <ClCompile Include="D:\desarrollos\ABDNeural\Source\DSP\CoreModules\Oscillator.cpp" />
     <ClCompile Include="D:\desarrollos\ABDNeural\Source\DSP\CoreModules\Resonator.cpp" />
+    <ResourceCompile Include="D:\desarrollos\ABDNeural\Resources\ModelMaker.rc" />
     <ClCompile Include="C:\JUCE\modules\juce_audio_basics\juce_audio_basics.cpp" />
     <ClCompile Include="C:\JUCE\modules\juce_core\juce_core.cpp" />
     <ClCompile Include="C:\JUCE\modules\juce_core\juce_core_CompilationTime.cpp" />

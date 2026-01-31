@@ -167,27 +167,41 @@ void ResonatorVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer,
         }
     }
 
+    // --- Optimized: Update DSP modules once per block if no smoothing transition is happening, ---
+    // --- or periodically if it is. For now, once per block is a huge 60x internal speedup. ---
+    
+    float startMorphX = morphXSmoother.getNextValue();
+    float startMorphY = morphYSmoother.getNextValue();
+    float startInharmonicity = inharmonicitySmoother.getNextValue();
+    float startRoughness = roughnessSmoother.getNextValue();
+    float startParity = paritySmoother.getNextValue();
+    float startShift = shiftSmoother.getNextValue();
+    float startRollOff = rollOffSmoother.getNextValue();
+
+    resonator.setStretching(startInharmonicity);
+    resonator.setEntropy(startRoughness * 0.5f);
+    resonator.setParity(startParity);
+    resonator.setShift(startShift);
+    resonator.setRollOff(startRollOff);
+    resonator.updateHarmonicsFromModels(startMorphX, startMorphY);
+
+    // Skip the first values in smoothers if we used them above
+    for (int i = 1; i < numSamples; ++i) {
+        morphXSmoother.getNextValue();
+        morphYSmoother.getNextValue();
+        inharmonicitySmoother.getNextValue();
+        roughnessSmoother.getNextValue();
+        paritySmoother.getNextValue();
+        shiftSmoother.getNextValue();
+        rollOffSmoother.getNextValue();
+    }
+
     // Processing loop
     for (int i = 0; i < numSamples; ++i)
     {
-        // Smooth parameter updates
+        // Still need per-sample smoothing for filter to avoid zippering
         float currentCutoff = cutoffSmoother.getNextValue();
         float currentRes = resSmoother.getNextValue();
-        float currentMorphX = morphXSmoother.getNextValue();
-        float currentMorphY = morphYSmoother.getNextValue();
-        float currentInharmonicity = inharmonicitySmoother.getNextValue();
-        float currentRoughness = roughnessSmoother.getNextValue();
-        float currentParity = paritySmoother.getNextValue();
-        float currentShift = shiftSmoother.getNextValue();
-        float currentRollOff = rollOffSmoother.getNextValue();
-
-        // Update DSP modules per sample
-        resonator.setStretching(currentInharmonicity);
-        resonator.setEntropy(currentRoughness * 0.5f);
-        resonator.setParity(currentParity);
-        resonator.setShift(currentShift);
-        resonator.setRollOff(currentRollOff);
-        resonator.updateHarmonicsFromModels(currentMorphX, currentMorphY);
 
         // 1. Generate Resonator Output
         float rawSample = resonator.processSample();

@@ -1,0 +1,100 @@
+      vea la declaraci??n de 'juce::TabbedComponent::addTab'
+      D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(70,14):
+      al hacer coincidir la lista de argumentos '(const char [10], NEURONiK::UI::OscillatorPanel *, bool)'
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(71,14): error C2660: 'juce::TabbedComponent::addTab': la funci??n no acepta 3 argumentos [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK.vcxproj]
+      C:\JUCE\modules\juce_gui_basics\layout\juce_TabbedComponent.h(118,10):
+      vea la declaraci??n de 'juce::TabbedComponent::addTab'
+      D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(71,14):
+      al hacer coincidir la lista de argumentos '(const char [11], NEURONiK::UI::FilterEnvPanel *, bool)'
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(72,14): error C2660: 'juce::TabbedComponent::addTab': la funci??n no acepta 3 argumentos [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK.vcxproj]
+      C:\JUCE\modules\juce_gui_basics\layout\juce_TabbedComponent.h(118,10):
+      vea la declaraci??n de 'juce::TabbedComponent::addTab'
+      D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(72,14):
+      al hacer coincidir la lista de argumentos '(const char [3], NEURONiK::UI::FXPanel *, bool)'
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(73,14): error C2660: 'juce::TabbedComponent::addTab': la funci??n no acepta 3 argumentos [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK.vcxproj]
+      C:\JUCE\modules\juce_gui_basics\layout\juce_TabbedComponent.h(118,10):
+      vea la declaraci??n de 'juce::TabbedComponent::addTab'
+      D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(73,14):
+      al hacer coincidir la lista de argumentos '(const char [8], NEURONiK::UI::ModulationPanel *, bool)'
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(74,14): error C2660: 'juce::TabbedComponent::addTab': la funci??n no acepta 3 argumentos [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK.vcxproj]
+      C:\JUCE\modules\juce_gui_basics\layout\juce_TabbedComponent.h(118,10):
+      vea la declaraci??n de 'juce::TabbedComponent::addTab'
+      D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(74,14):
+      al hacer coincidir la lista de argumentos '(const char [8], NEURONiK::UI::Browser::PresetBrowser *, bool)'
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(310,25): error C2653: 'ThemeManager': no es un nombre de clase o espacio de nombres [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK.vcxproj]
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(310,39): error C3861: 'getCurrentTheme': no se encontr?? el identificador [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK.vcxproj]
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(322,30): error C2661: 'juce::ColourGradient::ColourGradient': ninguna funci??n sobrecargada acepta 6 argumentos [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK.vcxproj]
+      D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(322,30):
+      al hacer coincidir la lista de argumentos '(int, int, const juce::Colour, int, int, bool)'
+  
+  MidiMappingManager.cpp
+  ParameterPanel.cpp
+  SpectralVisualizer.cpp
+  XYPad.cpp
+  CustomUIComponents.cpp
+  ThemeManager.cpp
+  MidiLearner.cpp
+  OscillatorPanel.cpp
+  FilterEnvPanel.cpp
+  FXPanel.cpp
+  ModulationPanel.cpp
+  PresetPanel.cpp
+  LcdDisplay.cpp
+  PresetBrowser.cpp
+  PresetManager.cpp
+  LFO.cpp
+  Oscillator.cpp
+  Resonator.cpp
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\Resonator.h(87,42): warning C4324: 'NEURONiK::DSP::Core::Resonator': se rellen?? la estructura debido al especificador de alineaci??n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/Resonator.cpp")
+  
+  Generando c??digo...
+  Compilando...
+  Envelope.cpp
+  FilterBank.cpp
+  ResonatorBank.cpp
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\ResonatorBank.h(76,33): warning C4324: 'NEURONiK::DSP::Core::ResonatorBank': se rellen?? la estructura debido al especificador de alineaci??n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/ResonatorBank.cpp")
+  
+  NeuronikEngine.cpp
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\Resonator.h(87,42): warning C4324: 'NEURONiK::DSP::Core::Resonator': se rellen?? la estructura debido al especificador de alineaci??n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/NeuronikEngine.cpp")
+  
+  NeurotikEngine.cpp
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\ResonatorBank.h(76,33): warning C4324: 'NEURONiK::DSP::Core::ResonatorBank': se rellen?? la estructura debido al especificador de alineaci??n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/NeurotikEngine.cpp")
+  
+  BaseEngine.cpp
+  AdditiveVoice.cpp
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\Resonator.h(87,42): warning C4324: 'NEURONiK::DSP::Core::Resonator': se rellen?? la estructura debido al especificador de alineaci??n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK.vcxproj]
+  (compilando archivo de origen "../Source/DSP/Synthesis/AdditiveVoice.cpp")
+  
+  NeurotikVoice.cpp
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\ResonatorBank.h(76,33): warning C4324: 'NEURONiK::DSP::Core::ResonatorBank': se rellen?? la estructura debido al especificador de alineaci??n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK.vcxproj]
+  (compilando archivo de origen "../Source/DSP/Synthesis/NeurotikVoice.cpp")
+  
+  juce_audio_processors.cpp
+  juce_gui_extra.cpp
+  juce_gui_basics.cpp
+  juce_graphics.cpp
+  juce_graphics_Harfbuzz.cpp
+  juce_events.cpp
+  juce_core.cpp
+  juce_core_CompilationTime.cpp
+  juce_data_structures.cpp
+  juce_audio_processors_headless.cpp
+  juce_audio_processors_headless_ara.cpp
+  juce_audio_processors_headless_lv2_libs.cpp
+  Generando c??digo...
+  Compilando...
+  juce_audio_basics.cpp
+  juce_audio_devices.cpp
+  juce_audio_formats.cpp
+  juce_audio_utils.cpp
+  juce_dsp.cpp
+  Generando c??digo...

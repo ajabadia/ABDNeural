@@ -42,6 +42,11 @@ public:
         mixSmoother.setTargetValue(mix);
     }
 
+    void setMix(float mix) noexcept
+    {
+        mixSmoother.setTargetValue(mix);
+    }
+
     void processBlock(juce::AudioBuffer<float>& buffer)
     {
         const int numChannels = buffer.getNumChannels();

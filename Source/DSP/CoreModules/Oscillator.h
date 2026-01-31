@@ -62,12 +62,16 @@ public:
     // --- Processing (Realtime Safe) ---
     /**
      * Renders the next sample.
-     * @param phaseModRadians Phase modulation input (0 to 2PI) or normalized (0 to 1) depending on implementation. 
-     *                        Here we use normalized 0.0 -> 1.0 added to internal phase.
+     * @param phaseMod Normalized phase modulation (0 to 1) added to internal phase.
      */
     float processSample(float phaseMod = 0.0f) noexcept;
 
 private:
+    static constexpr int WAVETABLE_SIZE = 2048;
+    static float sineTable[WAVETABLE_SIZE + 1];
+    static bool tableInitialized;
+    static void initializeTable() noexcept;
+
     // --- State ---
     std::atomic<float> frequencyHz_{ 440.0f };
     std::atomic<Waveform> currentWaveform_{ Waveform::Sine };

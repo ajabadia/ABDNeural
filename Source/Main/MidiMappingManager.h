@@ -33,8 +33,8 @@ public:
     /** Returns the paramID for a given CC, or empty string if none. */
     juce::String getParamForCC(int ccNumber) const;
 
-    /** Returns all mappings. */
-    const std::map<int, juce::String>& getMappings() const { return ccToParam; }
+    /** Returns all mappings. (Note: This is now a more expensive view for the UI) */
+    std::map<int, juce::String> getMappings() const;
 
     /** Reset to a safe set of defaults. */
     void resetToDefaults();
@@ -43,13 +43,19 @@ public:
     void saveToValueTree(juce::ValueTree& v);
     void loadFromValueTree(const juce::ValueTree& v);
 
-    /** Checks if a CC is in conflict (assigned to multiple, though setMapping prevents this). */
+    /** Checks if a CC is in conflict. */
     bool hasConflict(int ccNumber) const;
+
+    /** RT-safe access to the list of learnable parameters. */
+    static const juce::StringArray& getLearnableParams();
+    static int getParamIndex(const juce::String& paramID);
 
 private:
     juce::AudioProcessorValueTreeState& apvts;
-    std::map<int, juce::String> ccToParam;
-    std::map<juce::String, int> paramToCC;
+    
+    // Real-time safe storage: store the index of the parameter in the modulatable list
+    // -1 means no mapping for that CC.
+    std::array<std::atomic<int>, 128> ccToIndex;
 
     void updateInternalMaps();
 };

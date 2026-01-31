@@ -1,0 +1,398 @@
+﻿Versi├│n de MSBuild 18.3.0-preview-25570-20+708535641 para .NET Framework
+
+  Checking File Globs
+  NEURONiK_rc_lib.vcxproj -> D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_rc_lib.dir\Debug\NEURONiK_rc_lib.lib
+  NEURONiK_Common.vcxproj -> D:\desarrollos\ABDNeural\build_neuronik\Debug\NEURONiK_Common.lib
+  NEURONiK.vcxproj -> D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_artefacts\Debug\NEURONiK_SharedCode.lib
+  NEURONiKProcessor.cpp
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(103,44): error C2061: error de sintaxis: identificador 'ModulationTarget' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/Main/NEURONiKProcessor.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(108,50): error C2061: error de sintaxis: identificador 'ModulationTarget' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/Main/NEURONiKProcessor.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,56): error C2653: 'ModulationTarget': no es un nombre de clase o espacio de nombres [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/Main/NEURONiKProcessor.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,74): error C2065: 'Count': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/Main/NEURONiKProcessor.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,74): error C2975: "_Size": argumento de plantilla no v├ílido para "std::array"; se esperaba una expresi├│n constante en tiempo de compilaci├│n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/Main/NEURONiKProcessor.cpp")
+      C:\Program Files\Microsoft Visual Studio\18\Insiders\VC\Tools\MSVC\14.50.35717\include\array(401,41):
+      vea la declaraci├│n de '_Size'
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(105,53): error C2065: 'target': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/Main/NEURONiKProcessor.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(110,53): error C2065: 'target': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/Main/NEURONiKProcessor.cpp")
+  
+D:\desarrollos\ABDNeural\Source\UI\CustomUIComponents.h(40,33): error C2661: 'NEURONiKProcessor::getModulationValue': ninguna funci├│n sobrecargada acepta 1 argumentos [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/Main/NEURONiKProcessor.cpp")
+      D:\desarrollos\ABDNeural\Source\UI\CustomUIComponents.h(40,33):
+      al hacer coincidir la lista de argumentos '(const NEURONiK::ModulationTarget)'
+  
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\ResonatorBank.h(68,33): warning C4324: 'NEURONiK::DSP::Core::ResonatorBank': se rellen├│ la estructura debido al especificador de alineaci├│n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/Main/NEURONiKProcessor.cpp")
+  
+  NEURONiKEditor.cpp
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(103,44): error C2061: error de sintaxis: identificador 'ModulationTarget' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/Main/NEURONiKEditor.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(108,50): error C2061: error de sintaxis: identificador 'ModulationTarget' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/Main/NEURONiKEditor.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,56): error C2653: 'ModulationTarget': no es un nombre de clase o espacio de nombres [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/Main/NEURONiKEditor.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,74): error C2065: 'Count': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/Main/NEURONiKEditor.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,74): error C2975: "_Size": argumento de plantilla no v├ílido para "std::array"; se esperaba una expresi├│n constante en tiempo de compilaci├│n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/Main/NEURONiKEditor.cpp")
+      C:\Program Files\Microsoft Visual Studio\18\Insiders\VC\Tools\MSVC\14.50.35717\include\array(401,41):
+      vea la declaraci├│n de '_Size'
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(105,53): error C2065: 'target': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/Main/NEURONiKEditor.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(110,53): error C2065: 'target': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/Main/NEURONiKEditor.cpp")
+  
+D:\desarrollos\ABDNeural\Source\UI\CustomUIComponents.h(40,33): error C2661: 'NEURONiKProcessor::getModulationValue': ninguna funci├│n sobrecargada acepta 1 argumentos [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/Main/NEURONiKEditor.cpp")
+      D:\desarrollos\ABDNeural\Source\UI\CustomUIComponents.h(40,33):
+      al hacer coincidir la lista de argumentos '(const NEURONiK::ModulationTarget)'
+  
+  ParameterPanel.cpp
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(103,44): error C2061: error de sintaxis: identificador 'ModulationTarget' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/ParameterPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(108,50): error C2061: error de sintaxis: identificador 'ModulationTarget' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/ParameterPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,56): error C2653: 'ModulationTarget': no es un nombre de clase o espacio de nombres [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/ParameterPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,74): error C2065: 'Count': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/ParameterPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,74): error C2975: "_Size": argumento de plantilla no v├ílido para "std::array"; se esperaba una expresi├│n constante en tiempo de compilaci├│n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/ParameterPanel.cpp")
+      C:\Program Files\Microsoft Visual Studio\18\Insiders\VC\Tools\MSVC\14.50.35717\include\array(401,41):
+      vea la declaraci├│n de '_Size'
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(105,53): error C2065: 'target': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/ParameterPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(110,53): error C2065: 'target': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/ParameterPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\UI\CustomUIComponents.h(40,33): error C2661: 'NEURONiKProcessor::getModulationValue': ninguna funci├│n sobrecargada acepta 1 argumentos [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/ParameterPanel.cpp")
+      D:\desarrollos\ABDNeural\Source\UI\CustomUIComponents.h(40,33):
+      al hacer coincidir la lista de argumentos '(const NEURONiK::ModulationTarget)'
+  
+  XYPad.cpp
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(103,44): error C2061: error de sintaxis: identificador 'ModulationTarget' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/XYPad.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(108,50): error C2061: error de sintaxis: identificador 'ModulationTarget' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/XYPad.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,56): error C2653: 'ModulationTarget': no es un nombre de clase o espacio de nombres [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/XYPad.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,74): error C2065: 'Count': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/XYPad.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,74): error C2975: "_Size": argumento de plantilla no v├ílido para "std::array"; se esperaba una expresi├│n constante en tiempo de compilaci├│n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/XYPad.cpp")
+      C:\Program Files\Microsoft Visual Studio\18\Insiders\VC\Tools\MSVC\14.50.35717\include\array(401,41):
+      vea la declaraci├│n de '_Size'
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(105,53): error C2065: 'target': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/XYPad.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(110,53): error C2065: 'target': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/XYPad.cpp")
+  
+  OscillatorPanel.cpp
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(103,44): error C2061: error de sintaxis: identificador 'ModulationTarget' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/OscillatorPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(108,50): error C2061: error de sintaxis: identificador 'ModulationTarget' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/OscillatorPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,56): error C2653: 'ModulationTarget': no es un nombre de clase o espacio de nombres [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/OscillatorPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,74): error C2065: 'Count': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/OscillatorPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,74): error C2975: "_Size": argumento de plantilla no v├ílido para "std::array"; se esperaba una expresi├│n constante en tiempo de compilaci├│n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/OscillatorPanel.cpp")
+      C:\Program Files\Microsoft Visual Studio\18\Insiders\VC\Tools\MSVC\14.50.35717\include\array(401,41):
+      vea la declaraci├│n de '_Size'
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(105,53): error C2065: 'target': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/OscillatorPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(110,53): error C2065: 'target': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/OscillatorPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\UI\CustomUIComponents.h(40,33): error C2661: 'NEURONiKProcessor::getModulationValue': ninguna funci├│n sobrecargada acepta 1 argumentos [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/OscillatorPanel.cpp")
+      D:\desarrollos\ABDNeural\Source\UI\CustomUIComponents.h(40,33):
+      al hacer coincidir la lista de argumentos '(const NEURONiK::ModulationTarget)'
+  
+  FilterEnvPanel.cpp
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(103,44): error C2061: error de sintaxis: identificador 'ModulationTarget' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/FilterEnvPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(108,50): error C2061: error de sintaxis: identificador 'ModulationTarget' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/FilterEnvPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,56): error C2653: 'ModulationTarget': no es un nombre de clase o espacio de nombres [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/FilterEnvPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,74): error C2065: 'Count': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/FilterEnvPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,74): error C2975: "_Size": argumento de plantilla no v├ílido para "std::array"; se esperaba una expresi├│n constante en tiempo de compilaci├│n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/FilterEnvPanel.cpp")
+      C:\Program Files\Microsoft Visual Studio\18\Insiders\VC\Tools\MSVC\14.50.35717\include\array(401,41):
+      vea la declaraci├│n de '_Size'
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(105,53): error C2065: 'target': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/FilterEnvPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(110,53): error C2065: 'target': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/FilterEnvPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\UI\CustomUIComponents.h(40,33): error C2661: 'NEURONiKProcessor::getModulationValue': ninguna funci├│n sobrecargada acepta 1 argumentos [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/FilterEnvPanel.cpp")
+      D:\desarrollos\ABDNeural\Source\UI\CustomUIComponents.h(40,33):
+      al hacer coincidir la lista de argumentos '(const NEURONiK::ModulationTarget)'
+  
+  FXPanel.cpp
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(103,44): error C2061: error de sintaxis: identificador 'ModulationTarget' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/FXPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(108,50): error C2061: error de sintaxis: identificador 'ModulationTarget' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/FXPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,56): error C2653: 'ModulationTarget': no es un nombre de clase o espacio de nombres [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/FXPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,74): error C2065: 'Count': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/FXPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,74): error C2975: "_Size": argumento de plantilla no v├ílido para "std::array"; se esperaba una expresi├│n constante en tiempo de compilaci├│n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/FXPanel.cpp")
+      C:\Program Files\Microsoft Visual Studio\18\Insiders\VC\Tools\MSVC\14.50.35717\include\array(401,41):
+      vea la declaraci├│n de '_Size'
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(105,53): error C2065: 'target': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/FXPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(110,53): error C2065: 'target': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/FXPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\UI\CustomUIComponents.h(40,33): error C2661: 'NEURONiKProcessor::getModulationValue': ninguna funci├│n sobrecargada acepta 1 argumentos [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/FXPanel.cpp")
+      D:\desarrollos\ABDNeural\Source\UI\CustomUIComponents.h(40,33):
+      al hacer coincidir la lista de argumentos '(const NEURONiK::ModulationTarget)'
+  
+  ModulationPanel.cpp
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(103,44): error C2061: error de sintaxis: identificador 'ModulationTarget' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/ModulationPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(108,50): error C2061: error de sintaxis: identificador 'ModulationTarget' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/ModulationPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,56): error C2653: 'ModulationTarget': no es un nombre de clase o espacio de nombres [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/ModulationPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,74): error C2065: 'Count': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/ModulationPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,74): error C2975: "_Size": argumento de plantilla no v├ílido para "std::array"; se esperaba una expresi├│n constante en tiempo de compilaci├│n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/ModulationPanel.cpp")
+      C:\Program Files\Microsoft Visual Studio\18\Insiders\VC\Tools\MSVC\14.50.35717\include\array(401,41):
+      vea la declaraci├│n de '_Size'
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(105,53): error C2065: 'target': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/ModulationPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(110,53): error C2065: 'target': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/ModulationPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\UI\CustomUIComponents.h(40,33): error C2661: 'NEURONiKProcessor::getModulationValue': ninguna funci├│n sobrecargada acepta 1 argumentos [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/ModulationPanel.cpp")
+      D:\desarrollos\ABDNeural\Source\UI\CustomUIComponents.h(40,33):
+      al hacer coincidir la lista de argumentos '(const NEURONiK::ModulationTarget)'
+  
+  PresetPanel.cpp
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(103,44): error C2061: error de sintaxis: identificador 'ModulationTarget' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/PresetPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(108,50): error C2061: error de sintaxis: identificador 'ModulationTarget' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/PresetPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,56): error C2653: 'ModulationTarget': no es un nombre de clase o espacio de nombres [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/PresetPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,74): error C2065: 'Count': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/PresetPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,74): error C2975: "_Size": argumento de plantilla no v├ílido para "std::array"; se esperaba una expresi├│n constante en tiempo de compilaci├│n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/PresetPanel.cpp")
+      C:\Program Files\Microsoft Visual Studio\18\Insiders\VC\Tools\MSVC\14.50.35717\include\array(401,41):
+      vea la declaraci├│n de '_Size'
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(105,53): error C2065: 'target': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/PresetPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(110,53): error C2065: 'target': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/PresetPanel.cpp")
+  
+D:\desarrollos\ABDNeural\Source\UI\CustomUIComponents.h(40,33): error C2661: 'NEURONiKProcessor::getModulationValue': ninguna funci├│n sobrecargada acepta 1 argumentos [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Panels/PresetPanel.cpp")
+      D:\desarrollos\ABDNeural\Source\UI\CustomUIComponents.h(40,33):
+      al hacer coincidir la lista de argumentos '(const NEURONiK::ModulationTarget)'
+  
+  PresetBrowser.cpp
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(103,44): error C2061: error de sintaxis: identificador 'ModulationTarget' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Browser/PresetBrowser.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(108,50): error C2061: error de sintaxis: identificador 'ModulationTarget' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Browser/PresetBrowser.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,56): error C2653: 'ModulationTarget': no es un nombre de clase o espacio de nombres [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Browser/PresetBrowser.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,74): error C2065: 'Count': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Browser/PresetBrowser.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(124,74): error C2975: "_Size": argumento de plantilla no v├ílido para "std::array"; se esperaba una expresi├│n constante en tiempo de compilaci├│n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Browser/PresetBrowser.cpp")
+      C:\Program Files\Microsoft Visual Studio\18\Insiders\VC\Tools\MSVC\14.50.35717\include\array(401,41):
+      vea la declaraci├│n de '_Size'
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(105,53): error C2065: 'target': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Browser/PresetBrowser.cpp")
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKProcessor.h(110,53): error C2065: 'target': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/UI/Browser/PresetBrowser.cpp")
+  
+  LFO.cpp
+D:\desarrollos\ABDNeural\Source\DSP\DSPUtils.h(47,39): error C2039: "AudioBuffer": no es un miembro de "juce" [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/LFO.cpp")
+      C:\JUCE\modules\juce_core\juce_core.h(399,11):
+      vea la declaraci├│n de 'juce'
+  
+D:\desarrollos\ABDNeural\Source\DSP\DSPUtils.h(47,39): error C2065: 'AudioBuffer': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/LFO.cpp")
+  
+D:\desarrollos\ABDNeural\Source\DSP\DSPUtils.h(47,51): error C2062: tipo 'float' inesperado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/LFO.cpp")
+  
+D:\desarrollos\ABDNeural\Source\DSP\DSPUtils.h(48,1): error C2143: error de sintaxis: falta ';' delante de '{' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/LFO.cpp")
+  
+D:\desarrollos\ABDNeural\Source\DSP\DSPUtils.h(48,1): error C2447: '{': falta el encabezado de funci├│n (┬┐lista formal de estilo anterior?) [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/LFO.cpp")
+  
+  Resonator.cpp
+D:\desarrollos\ABDNeural\Source\DSP\DSPUtils.h(47,39): error C2039: "AudioBuffer": no es un miembro de "juce" [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/Resonator.cpp")
+      C:\JUCE\modules\juce_core\juce_core.h(399,11):
+      vea la declaraci├│n de 'juce'
+  
+D:\desarrollos\ABDNeural\Source\DSP\DSPUtils.h(47,39): error C2065: 'AudioBuffer': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/Resonator.cpp")
+  
+D:\desarrollos\ABDNeural\Source\DSP\DSPUtils.h(47,51): error C2062: tipo 'float' inesperado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/Resonator.cpp")
+  
+D:\desarrollos\ABDNeural\Source\DSP\DSPUtils.h(48,1): error C2143: error de sintaxis: falta ';' delante de '{' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/Resonator.cpp")
+  
+D:\desarrollos\ABDNeural\Source\DSP\DSPUtils.h(48,1): error C2447: '{': falta el encabezado de funci├│n (┬┐lista formal de estilo anterior?) [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/Resonator.cpp")
+  
+  FilterBank.cpp
+D:\desarrollos\ABDNeural\Source\DSP\DSPUtils.h(47,39): error C2039: "AudioBuffer": no es un miembro de "juce" [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/FilterBank.cpp")
+      C:\JUCE\modules\juce_core\juce_core.h(399,11):
+      vea la declaraci├│n de 'juce'
+  
+D:\desarrollos\ABDNeural\Source\DSP\DSPUtils.h(47,39): error C2065: 'AudioBuffer': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/FilterBank.cpp")
+  
+D:\desarrollos\ABDNeural\Source\DSP\DSPUtils.h(47,51): error C2062: tipo 'float' inesperado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/FilterBank.cpp")
+  
+D:\desarrollos\ABDNeural\Source\DSP\DSPUtils.h(48,1): error C2143: error de sintaxis: falta ';' delante de '{' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/FilterBank.cpp")
+  
+D:\desarrollos\ABDNeural\Source\DSP\DSPUtils.h(48,1): error C2447: '{': falta el encabezado de funci├│n (┬┐lista formal de estilo anterior?) [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/FilterBank.cpp")
+  
+  ResonatorBank.cpp
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\ResonatorBank.h(68,33): warning C4324: 'NEURONiK::DSP::Core::ResonatorBank': se rellen├│ la estructura debido al especificador de alineaci├│n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/ResonatorBank.cpp")
+  
+D:\desarrollos\ABDNeural\Source\DSP\DSPUtils.h(47,39): error C2039: "AudioBuffer": no es un miembro de "juce" [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/ResonatorBank.cpp")
+      C:\JUCE\modules\juce_core\juce_core.h(399,11):
+      vea la declaraci├│n de 'juce'
+  
+D:\desarrollos\ABDNeural\Source\DSP\DSPUtils.h(47,39): error C2065: 'AudioBuffer': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/ResonatorBank.cpp")
+  
+D:\desarrollos\ABDNeural\Source\DSP\DSPUtils.h(47,51): error C2062: tipo 'float' inesperado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/ResonatorBank.cpp")
+  
+D:\desarrollos\ABDNeural\Source\DSP\DSPUtils.h(48,1): error C2143: error de sintaxis: falta ';' delante de '{' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/ResonatorBank.cpp")
+  
+D:\desarrollos\ABDNeural\Source\DSP\DSPUtils.h(48,1): error C2447: '{': falta el encabezado de funci├│n (┬┐lista formal de estilo anterior?) [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/ResonatorBank.cpp")
+  
+  NeuronikEngine.cpp
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\NeuronikEngine.cpp(291,22): error C2084: la funci├│n 'void NEURONiK::DSP::NeuronikEngine::getSpectralData(float *) const' ya tiene un cuerpo [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+      D:\desarrollos\ABDNeural\Source\DSP\CoreModules\NeuronikEngine.cpp(175,22):
+      vea la definici├│n anterior de ÔÇ£NEURONiK::DSP::NeuronikEngine::getSpectralDataÔÇØ
+  
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\NeuronikEngine.cpp(302,17): error C2039: "getNormalizedModelData": no es un miembro de "NEURONiK::DSP::Core::Resonator" [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+      D:\desarrollos\ABDNeural\Source\DSP\CoreModules\Resonator.h(25,7):
+      vea la declaraci├│n de 'NEURONiK::DSP::Core::Resonator'
+  
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\NeuronikEngine.cpp(309,22): error C2084: la funci├│n 'void NEURONiK::DSP::NeuronikEngine::getEnvelopeLevels(float &,float &) const' ya tiene un cuerpo [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+      D:\desarrollos\ABDNeural\Source\DSP\CoreModules\NeuronikEngine.cpp(195,22):
+      vea la definici├│n anterior de ÔÇ£NEURONiK::DSP::NeuronikEngine::getEnvelopeLevelsÔÇØ
+  
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\NeuronikEngine.cpp(343,23): error C2084: la funci├│n 'float NEURONiK::DSP::NeuronikEngine::getLfoValue(int) const' ya tiene un cuerpo [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+      D:\desarrollos\ABDNeural\Source\DSP\CoreModules\NeuronikEngine.cpp(170,23):
+      vea la definici├│n anterior de ÔÇ£NEURONiK::DSP::NeuronikEngine::getLfoValueÔÇØ
+  
+  NeurotikEngine.cpp
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\ResonatorBank.h(68,33): warning C4324: 'NEURONiK::DSP::Core::ResonatorBank': se rellen├│ la estructura debido al especificador de alineaci├│n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/NeurotikEngine.cpp")
+  
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\NeurotikEngine.cpp(282,22): error C2084: la funci├│n 'void NEURONiK::DSP::NeurotikEngine::getSpectralData(float *) const' ya tiene un cuerpo [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+      D:\desarrollos\ABDNeural\Source\DSP\CoreModules\NeurotikEngine.cpp(161,22):
+      vea la definici├│n anterior de ÔÇ£NEURONiK::DSP::NeurotikEngine::getSpectralDataÔÇØ
+  
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\NeurotikEngine.cpp(290,22): error C2084: la funci├│n 'void NEURONiK::DSP::NeurotikEngine::getEnvelopeLevels(float &,float &) const' ya tiene un cuerpo [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+      D:\desarrollos\ABDNeural\Source\DSP\CoreModules\NeurotikEngine.cpp(176,22):
+      vea la definici├│n anterior de ÔÇ£NEURONiK::DSP::NeurotikEngine::getEnvelopeLevelsÔÇØ
+  
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\NeurotikEngine.cpp(299,25): error C2039: "getFilterEnvelopeLevel": no es un miembro de "NEURONiK::DSP::Synthesis::NeurotikVoice" [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+      D:\desarrollos\ABDNeural\Source\DSP\Synthesis\NeurotikVoice.h(20,7):
+      vea la declaraci├│n de 'NEURONiK::DSP::Synthesis::NeurotikVoice'
+  
+  Generando c├│digo...

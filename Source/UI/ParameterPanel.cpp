@@ -1,7 +1,10 @@
 #include "ParameterPanel.h"
+#include "ThemeManager.h"
 #include "../State/ParameterDefinitions.h"
 
 namespace NEURONiK::UI {
+
+using ::NEURONiK::ModulationTarget;
 
 using namespace NEURONiK::State;
 
@@ -11,32 +14,39 @@ ParameterPanel::ParameterPanel(NEURONiKProcessor& p)
     using namespace NEURONiK::State;
 
     addAndMakeVisible(ampEnvBox);
+    addAndMakeVisible(unisonBox);
+    addAndMakeVisible(globalSettingsBox);
     addAndMakeVisible(globalBox);
+
+    unisonBox.addAndMakeVisible(unisonEnabled);
+    unisonEnabledAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(vts, IDs::unisonEnabled, unisonEnabled);
 
     globalBox.addAndMakeVisible(titleLabel);
     globalBox.addAndMakeVisible(versionLabel);
 
+    const auto& theme = ThemeManager::getCurrentTheme();
     titleLabel.setFont(juce::Font(juce::FontOptions(32.0f).withStyle("Bold")));
-    titleLabel.setColour(juce::Label::textColourId, juce::Colours::cyan);
+    titleLabel.setColour(juce::Label::textColourId, theme.accent);
     titleLabel.setJustificationType(juce::Justification::centred);
 
-    versionLabel.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+    versionLabel.setColour(juce::Label::textColourId, theme.text.withAlpha(0.6f));
     versionLabel.setJustificationType(juce::Justification::centred);
 
-    setupControl(attack,    IDs::envAttack,   "ATTACK",  &processor.uiAttack);
-    setupControl(decay,     IDs::envDecay,    "DECAY",   &processor.uiDecay);
-    setupControl(sustain,   IDs::envSustain,  "SUSTAIN", &processor.uiSustain);
-    setupControl(release,   IDs::envRelease,  "RELEASE", &processor.uiRelease);
+    setupControl(attack,    IDs::envAttack,   "ATTACK",  ModulationTarget::AmpAttack);
+    setupControl(decay,     IDs::envDecay,    "DECAY",   ModulationTarget::AmpDecay);
+    setupControl(sustain,   IDs::envSustain,  "SUSTAIN", ModulationTarget::AmpSustain);
+    setupControl(release,   IDs::envRelease,  "RELEASE", ModulationTarget::AmpRelease);
     
-    setupControl(randomStrength, IDs::randomStrength, "STRENGTH");
-    setupControl(masterBPM, IDs::masterBPM, "BPM");
+    setupControl(unisonDetune, IDs::unisonDetune, "DETUNE", ModulationTarget::UnisonDetune);
+    setupControl(unisonSpread, IDs::unisonSpread, "SPREAD", ModulationTarget::Count);
+    setupControl(masterLevel, IDs::masterLevel, "VOLUME", ModulationTarget::MasterLevel);
+    setupControl(randomStrength, IDs::randomStrength, "STRENGTH", ModulationTarget::Count);
 
     adsrVisualizer = std::make_unique<EnvelopeVisualizer>(
         processor.uiAttack, processor.uiDecay, processor.uiSustain, processor.uiRelease, 
         processor.uiEnvelope
     );
-    ampEnvBox.addAndMakeVisible(adsrVisualizer.get());
-
+    // Visualizer removed from General per user request (no space)
     globalBox.addAndMakeVisible(freezeResBtn);
     globalBox.addAndMakeVisible(freezeFltBtn);
     globalBox.addAndMakeVisible(freezeEnvBtn);
@@ -49,6 +59,11 @@ ParameterPanel::ParameterPanel(NEURONiKProcessor& p)
     freezeResMidi = std::make_unique<MidiLearner>(processor, freezeResBtn, IDs::freezeResonator);
     freezeFltMidi = std::make_unique<MidiLearner>(processor, freezeFltBtn, IDs::freezeFilter);
     freezeEnvMidi = std::make_unique<MidiLearner>(processor, freezeEnvBtn, IDs::freezeEnvelopes);
+    engineMidi    = std::make_unique<MidiLearner>(processor, engineSelector,IDs::engineType);
+    globalBox.addAndMakeVisible(engineSelector);
+    engineSelector.addItem("Engine: NEURONiK", 1);
+    engineSelector.addItem("Engine: Neurotik", 2);
+    engineAttach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(vts, IDs::engineType, engineSelector);
 
     randomizeButton.onClick = [this] { randomizeParameters(); };
     
@@ -60,11 +75,20 @@ ParameterPanel::~ParameterPanel()
     stopTimer();
 }
 
-void ParameterPanel::setupControl(RotaryControl& ctrl, const juce::String& paramID, const juce::String& labelText, std::atomic<float>* modValue)
+void ParameterPanel::setupControl(RotaryControl& ctrl, const juce::String& paramID, const juce::String& labelText, ::NEURONiK::ModulationTarget modTarget)
 {
     bool isEnv = paramID.startsWith("env");
-    juce::Component& parent = isEnv ? ampEnvBox : globalBox;
-    UIUtils::setupRotaryControl(parent, ctrl, paramID, labelText, vts, processor, sharedLNF, modValue);
+    bool isUnison = paramID.contains("unison");
+    bool isSettings = paramID == IDs::masterLevel || paramID == IDs::randomStrength;
+    
+    juce::Component& parent = isEnv ? ampEnvBox : (isUnison ? unisonBox : (isSettings ? globalSettingsBox : globalBox));
+    UIUtils::setupRotaryControl(parent, ctrl, paramID, labelText, vts, processor, sharedLNF, modTarget);
+}
+
+void ParameterPanel::setupControl(VerticalSliderControl& ctrl, const juce::String& paramID, const juce::String& labelText, ::NEURONiK::ModulationTarget modTarget)
+{
+    // Add directly to the panel as it has its own dedicated area
+    UIUtils::setupVerticalSlider(*this, ctrl, paramID, labelText, vts, processor, verticalLNF, modTarget);
 }
 
 
@@ -78,7 +102,9 @@ void ParameterPanel::randomizeParameters()
             // Check freeze flags based on parameter ID
             bool isFrozen = false;
             if (id == IDs::morphX || id == IDs::morphY || id == IDs::oscInharmonicity || id == IDs::oscRoughness ||
-                id == IDs::resonatorParity || id == IDs::resonatorShift || id == IDs::resonatorRolloff)
+                id == IDs::resonatorParity || id == IDs::resonatorShift || id == IDs::resonatorRolloff ||
+                id == IDs::oscExciteNoise || id == IDs::excitationColor || id == IDs::impulseMix || id == IDs::resonatorRes ||
+                id == IDs::unisonDetune || id == IDs::unisonSpread)
             {
                 isFrozen = vts.getRawParameterValue(IDs::freezeResonator)->load() > 0.5f;
             }
@@ -135,6 +161,16 @@ void ParameterPanel::randomizeParameters()
     randomizeParam(IDs::fxSaturation, 0.0f, 0.4f);
     randomizeParam(IDs::fxChorusMix, 0.0f, 0.5f);
     randomizeParam(IDs::fxReverbMix, 0.0f, 0.4f);
+
+    // Neurotik Specific (Phase 30.5)
+    randomizeParam(IDs::oscExciteNoise,  0.0f, 0.8f);
+    randomizeParam(IDs::excitationColor, 0.2f, 0.7f);
+    randomizeParam(IDs::impulseMix,       0.0f, 1.0f);
+    randomizeParam(IDs::resonatorRes,    0.3f, 0.95f);
+
+    // Mild Unison Randomization
+    randomizeParam(IDs::unisonDetune, 0.0f, 0.05f);
+    randomizeParam(IDs::unisonSpread, 0.2f, 0.8f);
 }
 
 void ParameterPanel::paint(juce::Graphics& g)
@@ -146,51 +182,81 @@ void ParameterPanel::resized()
 {
     auto area = getLocalBounds().reduced(5);
     
-    auto leftArea = area.removeFromLeft(static_cast<int>(area.getWidth() * 0.7f)).reduced(3);
-    auto rightArea = area.reduced(3);
+    // Dashboard/Global on the LEFT (25%), Controls in CENTER (65%), Volume on RIGHT (10%)
+    auto leftArea = area.removeFromLeft(static_cast<int>(area.getWidth() * 0.28f)).reduced(3);
+    auto volumeArea = area.removeFromRight(60).reduced(3); // Vertical slider
+    auto centerArea = area.reduced(3);
 
-    ampEnvBox.setBounds(leftArea);
-    globalBox.setBounds(rightArea);
+    globalBox.setBounds(leftArea);
 
-    // Layout Amp Env
+    // Center: 2 rows + 1 column for strength
+    auto strengthCol = centerArea.removeFromRight(static_cast<int>(centerArea.getWidth() * 0.25f)).reduced(0, 3);
+    auto rowsArea = centerArea;
+    
+    auto rowH = rowsArea.getHeight() / 2;
+    ampEnvBox.setBounds(rowsArea.removeFromTop(rowH).reduced(0, 3));
+    unisonBox.setBounds(rowsArea.reduced(0, 3));
+    globalSettingsBox.setBounds(strengthCol);
+
+    auto layoutRotary = [&](RotaryControl& ctrl, juce::Rectangle<int> bounds) {
+        ctrl.label.setBounds(bounds.removeFromTop(15));
+        ctrl.slider.setBounds(bounds);
+    };
+
+    // Layout Amp Env (Row 1) - 4 knobs in 3 columns
     {
         auto c = ampEnvBox.getContentArea();
-        auto vizH = c.getHeight() * 0.5f;
-        adsrVisualizer->setBounds(c.removeFromTop(static_cast<int>(vizH)).reduced(10));
-        
-        auto knobArea = c;
-        auto knobW = knobArea.getWidth() / 4;
-        auto layoutRotary = [&](RotaryControl& ctrl, juce::Rectangle<int> bounds) {
-            ctrl.label.setBounds(bounds.removeFromTop(15));
-            ctrl.slider.setBounds(bounds);
-        };
+        auto knobW = c.getWidth() / 4;
 
-
-        layoutRotary(attack, knobArea.removeFromLeft(static_cast<int>(knobW)).reduced(5));
-        layoutRotary(decay, knobArea.removeFromLeft(static_cast<int>(knobW)).reduced(5));
-        layoutRotary(sustain, knobArea.removeFromLeft(static_cast<int>(knobW)).reduced(5));
-        layoutRotary(release, knobArea.reduced(5));
+        layoutRotary(attack, c.removeFromLeft(static_cast<int>(knobW)).reduced(5));
+        layoutRotary(decay, c.removeFromLeft(static_cast<int>(knobW)).reduced(5));
+        layoutRotary(sustain, c.removeFromLeft(static_cast<int>(knobW)).reduced(5));
+        layoutRotary(release, c.reduced(5));
     }
 
-    // Layout Global
+    // Layout Unison (Row 2) - 2 knobs + toggle in 3 columns
+    {
+        auto c = unisonBox.getContentArea();
+        
+        auto toggleArea = c.removeFromLeft(static_cast<int>(c.getWidth() * 0.25f)).reduced(5);
+        unisonEnabled.setBounds(toggleArea);
+
+        auto knobArea = c;
+        auto knobW = knobArea.getWidth() / 2;
+        
+        layoutRotary(unisonDetune, knobArea.removeFromLeft(knobW).reduced(5));
+        layoutRotary(unisonSpread, knobArea.reduced(5));
+    }
+
+    // Layout Random Strength (Column 4)
+    {
+        auto c = globalSettingsBox.getContentArea();
+        layoutRotary(randomStrength, c.reduced(5));
+    }
+
+    // Layout Master Volume (Right side - vertical slider)
+    // TODO: Implement vertical slider component
+    // For now, use rotary control
+    {
+        masterLevel.label.setBounds(volumeArea.removeFromTop(20));
+        masterLevel.slider.setBounds(volumeArea);
+    }
+
+    // Layout Dashboard/Global (Left Column)
     {
         auto c = globalBox.getContentArea();
-        auto knobH = c.getHeight() / 6; // Reduced to fit title
         
-        auto layoutRotary = [&](RotaryControl& ctrl, juce::Rectangle<int> bounds) {
-            ctrl.label.setBounds(bounds.removeFromTop(15));
-            ctrl.slider.setBounds(bounds);
-        };
-
         titleLabel.setBounds(c.removeFromTop(45));
         versionLabel.setBounds(c.removeFromTop(15));
 
-        layoutRotary(masterBPM, c.removeFromTop(knobH).reduced(15, 2));
-        layoutRotary(randomStrength, c.removeFromTop(knobH).reduced(15, 2));
+        c.removeFromTop(10); // padding
+
+        auto btnH = 26;
+        engineSelector.setBounds(c.removeFromTop(btnH + 5).reduced(10, 2));
+        randomizeButton.setBounds(c.removeFromTop(btnH + 5).reduced(10, 2));
         
-        auto btnH = 24;
-        randomizeButton.setBounds(c.removeFromTop(btnH + 10).reduced(10, 5));
-        
+        c.removeFromTop(10); // padding
+
         auto toggleH = c.getHeight() / 3;
         freezeResBtn.setBounds(c.removeFromTop(toggleH).reduced(5));
         freezeFltBtn.setBounds(c.removeFromTop(toggleH).reduced(5));
@@ -204,8 +270,10 @@ void ParameterPanel::timerCallback()
     decay.slider.repaint();
     sustain.slider.repaint();
     release.slider.repaint();
-    masterBPM.slider.repaint();
+    masterLevel.slider.repaint();
     randomStrength.slider.repaint();
+    unisonDetune.slider.repaint();
+    unisonSpread.slider.repaint();
 }
 
 } // namespace NEURONiK::UI

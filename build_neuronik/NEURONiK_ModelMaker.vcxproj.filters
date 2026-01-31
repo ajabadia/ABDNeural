@@ -83,6 +83,11 @@
     <CustomBuild Include="D:\desarrollos\ABDNeural\CMakeLists.txt" />
   </ItemGroup>
   <ItemGroup>
+    <ResourceCompile Include="D:\desarrollos\ABDNeural\Resources\ModelMaker.rc">
+      <Filter>Source Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
     <Filter Include="Header Files">
       <UniqueIdentifier>{6FA68D49-AF4F-338B-859B-507EA5BC916D}</UniqueIdentifier>
     </Filter>

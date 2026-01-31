@@ -432,12 +432,178 @@ BANK SELECT
 - [x] **Solución**: Usar `find_package(JUCE CONFIG REQUIRED)` y permitir `JUCE_PATH` vía entorno/CLI.
 - [x] **Acción**: Eliminadas las rutas absolutas de `CMakeLists.txt` y `manage.ps1`. Implementada detección dinámica vía `env:JUCE_PATH`.
 
-### 📐 Tarea 26.4: UI Dinámica y Responsiva
-- [ ] **Problema**: Layouts de tamaño fijo dificultan el redimensionado y portabilidad de la UI.
-- [ ] **Solución**: Migrar a `juce::FlexBox`, `juce::Grid` o división proporcional con `Rectangle`.
-- [ ] **Acción**: Refactorizar métodos `resized()` para eliminar coordenadas "mágicas".
+### 📐 Tarea 26.4: UI Dinámica y Responsiva [COMPLETADO]
+- [x] **Problema**: Layouts de tamaño fijo dificultan el redimensionado y portabilidad de la UI.
+- [x] **Solución**: Implementada funcionalidad Zoom (0.5x - 3x) y soporte para Maximize en todas las ventanas.
+- [x] **Acción**: Refactorizada la gestión de escalas y habilitado el botón de maximizar en Synth y Model Maker.
 
 ### 🐧 Tarea 26.5: Scripts Multiplataforma
 - [ ] **Problema**: Flujo de compilación limitado a Windows por `manage.ps1`.
 - [ ] **Solución**: Crear `manage.sh` (Bash) equivalente para macOS/Linux.
 - [ ] **Acción**: Asegurar paridad de funcionalidades en los scripts de automatización.
+
+---
+
+## 🟢 FASE 27: OPTIMIZACIÓN CRÍTICA (AUDITORÍA P0) [COMPLETADO]
+*Objetivo: Solucionar problemas graves de threading y rendimiento identificados en la auditoría técnica.*
+
+- [x] **Tarea 27.1: Threading Libres de Bloqueos**:
+    - [x] Eliminado `ScopedLock` del hilo de audio (`processBlock`).
+    - [x] Implementado pool de 32 voces pre-reservadas con límite atómico (`NEURONiKSynthesiser`).
+- [x] **Tarea 27.2: Optimización del Resonador (DSP)**:
+    - [x] Movido el cálculo masivo de armónicos fuera del bucle de samples (ahora se calcula una vez por bloque).
+    - [x] Reducción masiva de carga de CPU en alta polifonía.
+- [x] **Tarea 27.3: Mapeo MIDI de Alto Rendimiento**:
+    - [x] Sustitución de `std::map` por un array atómico de 128 posiciones para acceso O(1) sin bloqueos.
+- [x] **Tarea 27.4: Branding y Estética Final**:
+    - [x] Actualización de subtítulos: "Enhanced Spectral Morphing Synthesizer".
+    - [x] Integración de iconos nativos (.ico) en los ejecutables de Windows.
+    - [x] Refactorización de `ModulatedSlider` para seguridad de memoria en la UI.
+- [x] **Tarea 27.5: Aproximaciones Trigonométricas**:
+    - [x] Reemplazo de `std::sin` en LFO por aproximación parabólica (Bhaskara I), ahorrando ciclos de reloj.
+
+---
+
+## 🟢 FASE 28: ARQUITECTURA HEXAGONAL Y MOTOR NEURONIK [COMPLETADO]
+*Objetivo: Modernizar el núcleo del sintetizador hacia una arquitectura extensible y solucionar errores de linkado críticos.*
+
+- [x] **Tarea 28.1: Abstracción del Motor de Síntesis (Arquitectura Hexagonal)**:
+    - [x] Implementación de interfaces `IVoice` e `ISynthesisEngine` para desacoplar el DSP del framework JUCE.
+    - [x] Creación de `NeuronikEngine` como orquestador central de voces y efectos.
+    - [x] Implementación de `AdditiveVoice` cumpliendo el contrato de `IVoice`.
+- [x] **Tarea 28.2: Sincronización de Parámetros de Alto Rendimiento**:
+    - [x] Centralización de la actualización de parámetros vía `synchronizeEngineParameters()` en cada bloque de audio.
+    - [x] Gestión atómica de polifonía y estados del motor.
+- [x] **Tarea 28.3: Resolución de Errores de Build (Linker P0)**:
+    - [x] Corrección de dependencias circulares y errores de linkado (`juce_CreateApplication`).
+    - [x] Limpieza integral de código legacy (`NEURONiKSynthesiser`, `ResonatorVoice` antiguo).
+    - [x] Implementación de carga de modelos espectrales compatible con la nueva arquitectura en `PresetManager`.
+- [x] **Tarea 28.4: Estabilización del Audio Thread**:
+    - [x] Asegurado "Zero Allocations" en el hilo de audio mediante pre-reserva de recursos.
+    - [x] Implementación de métodos `reset()` en todos los módulos DSP para evitar transitorios indeseados.
+
+---
+
+## 🟢 FASE 29: MOTOR NEUROTIK (RESONATOR BANK) [COMPLETADO]
+*Objetivo: Implementar un segundo motor de síntesis basado en un banco de resonadores (Filtros BP) excitados por una fuente de ruido o impulsos.*
+
+- [x] **Tarea 29.1: Arquitectura de NeurotikEngine**:
+    - [x] Creación de `NeurotikEngine` implementando `ISynthesisEngine`.
+    - [x] Creación de `NeurotikVoice` implementando `IVoice`.
+- [x] **Tarea 29.2: Banco de Resonadores DSP**:
+    - [x] Implementación de un banco de 64 filtros de banda estrecha (Q alta) en `ResonatorBank`.
+    - [x] Lógica de excitación mediante fuente de ruido corregida en `NeurotikVoice`.
+- [x] **Tarea 29.3: Conmutación de Motores**:
+    - [x] Añadido parámetro global `Engine Type` (NEURONiK / Neurotik) en `ParameterDefinitions`.
+    - [x] Implementada lógica de intercambio de motores en `NEURONiKProcessor`.
+    - [x] Añadido selector visual en el `ParameterPanel` (DASHBOARD).
+- [x] **Tarea 29.4: Parámetros Específicos de Neurotik**:
+    - [x] Implementados parámetros de Excitación de Ruido y Resonancia del banco.
+    - [x] Sincronización completa con la UI existente.
+
+---
+
+## 🟡 FASE 30: EXPRESIÓN Y OPTIMIZACIÓN DEL MOTOR [EN PROGRESO]
+*Objetivo: Refinar el rendimiento y la expresividad del sintetizador para uso profesional.*
+
+- [x] **Tarea 30.1: SIMD Acceleration**: Optimización masiva de `ResonatorBank` y `Resonator` core usando instrucciones vectoriales SSE (intrinsics).
+    - [x] Vectorización de 64 biquads en Neurotik.
+    - [x] Vectorización de 64 osciladores con aproximación parabólica en Additive.
+- [x] **Tarea 30.2: Excitación Avanzada para Neurotik**:
+    - [x] Implementada coloración de ruido (One-pole filter).
+    - [x] Implementada excitación por impulsos (Pluck/Transients).
+    - [x] Añadidos controles UI dedicados en el panel Oscillator.
+- [x] **Tarea 30.3: Soporte MPE (MIDI Polyphonic Expression)**:
+    - [x] Implementada arquitectura de voces con seguimiento de canal MIDI.
+    - [x] Soporte per-note para Pitch Bend (±48 semitones), Pressure y Timbre (CC74).
+    - [x] Forwarding inteligente de mensajes MPE en los motores centrales.
+- [x] **Tarea 30.4: Spectral Unison**: Implementado modo de unísono que duplica y desafina las parciales para sonidos más densos (128 parciales/filtros). Añadido como destino en la matriz de modulación.
+
+---
+
+## 🟢 FASE 31: REBRANDING A AXIONiK Y REFINAMIENTO UI [COMPLETADO]
+*Objetivo: Evolucionar la identidad del sintetizador y pulir detalles críticos de la interfaz.*
+
+- [x] **Tarea 31.1: Rebranding a AXIONiK**:
+    - [x] Actualizada la cabecera de la UI y los diálogos de "About" y "Options".
+    - [x] Mantenida la arquitectura dual: Motores NEURONiK y Neurotik bajo la marca AXIONiK.
+- [x] **Tarea 31.2: Correcciones Visuales P0**:
+    - [x] **ADSR Filter Envelope**: Corregido bug donde el visualizador no se animaba por falta de actualización de atomics en el procesador.
+    - [x] **XY Pad (Neural Pad)**: Corregida la visualización del thumb y el feedback en tiempo real.
+    - [x] **Menú Standalone**: Añadida opción "Exit" funcional en el menú File (solo standalone).
+- [x] **Tarea 31.3: Tuning de Neurotik**: Ajustados parámetros por defecto (menos ruido, más impulsos) para garantizar que el motor sea musical desde el primer disparo ("Out of the Box").
+
+---
+
+## 🟢 FASE 32: AUDITORÍA TÉCNICA E IMPLEMENTACIÓN P0 [COMPLETADO]
+*Objetivo: Resolver debilidades críticas en el hilo de audio y el sistema de modulación identificadas en la auditoría técnica.*
+
+- [x] **Tarea 32.1: MIDI Lock-Free (Double Buffering)**:
+    - [x] Eliminado `juce::ScopedLock` (CriticalSection) de `processBlock` para evitar inversiones de prioridad y glitches.
+    - [x] Implementado sistema de intercambio de buffers con atomics (`midiBufferReady` flagging).
+- [x] **Tarea 32.2: Corrección de LFO (Block Processing)**:
+    - [x] Corregido error grave donde el LFO avanzaba solo 1 muestra por cada bloque de audio (desfase 512x).
+    - [x] Migración a `processBlock(numSamples)` para un avance de fase coherente y eliminación de "petardeos".
+- [x] **Tarea 32.3: Sincronización de Modulación**:
+    - [x] Reordenado el render loop para procesar LFOs **antes** de aplicar la modulación, eliminando la latencia de 1 bloque.
+- [x] **Tarea 32.4: Auditoría Técnica Exhaustiva**:
+    - [x] Identificados **24 hallazgos** críticos divididos en: Seguridad (P0), Estabilidad (P0), Eficiencia DSP (P1) y Arquitectura (P2).
+
+---
+
+## 🟢 FASE 33: MITIGACIÓN DE AUDITORÍA Y PRE-FORK NEUROTiK [COMPLETADO]
+*Objetivo: Abordar los bloqueadores comerciales restantes antes de iniciar el nuevo desarrollo.*
+
+- [x] **Tarea 33.1: Seguridad de Atómicos en UI**:
+    - [x] Eliminar `reinterpret_cast` peligrosos en `Properties`.
+    - [x] Migrar a sistema de direccionamiento por índices en array de modulación del Processor.
+- [x] **Tarea 33.2: Validación de NaN/Infinity (Audio Armor)**:
+    - [x] Implementar macro `VALIDATE_AUDIO_PARAM` en Resonator, Filter y LFO.
+    - [x] Sanitización forzada de los buffers de salida de las voces para evitar mutes en el DAW.
+- [ ] **Tarea 33.3: Portabilidad ARM64 (Apple Silicon)**:
+    - [ ] Crear `PlatformDetect.h` para paths condicionales SSE vs NEON vs Scalar.
+- [x] **Tarea 33.4: Preparación de IDs para Fork**:
+    - [x] Actualización de codes de fabricante y producto en `CMakeLists.txt` para el nuevo fork.
+- [x] **Tarea 33.5: Robustez de Parámetros**:
+    - [x] Añadir validaciones `nullptr` y `jassert` en el acceso a parámetros APVTS desde la UI.
+
+---
+
+## 🟢 FASE 34: OVERHAUL ARQUITECTÓNICO Y SEGURIDAD TOTAL [COMPLETADO]
+*Objetivo: Migrar a una arquitectura desacoplada y eliminar todos los riesgos de concurrencia en el hilo de audio.*
+
+- [x] **Tarea 34.1: Arquitectura Hexagonal Profunda**:
+    - [x] Desacoplamiento total del DSP mediante interfaces `IVoice` e `ISynthesisEngine`.
+    - [x] Refactorización de `AdditiveVoice` y `NeurotikVoice` para cumplimiento estricto de contrato.
+- [x] **Tarea 34.2: MIDI Lock-Free FIFO**:
+    - [x] Eliminada la `juce::CriticalSection` de la inyección de notas.
+    - [x] Implementado buffer SPSC circular con `juce::AbstractFifo` para latencia cero y estabilidad real-time.
+- [x] **Tarea 34.3: Sistema de Comandos Asíncronos (SPSC)**:
+    - [x] Cola de comandos para tareas pesadas (Carga de modelos espectrales).
+    - [x] Eliminación de race conditions durante el cambio de presets/patches.
+
+---
+
+---
+
+## 🟢 FASE 35: ESTRATEGIA DE LA TRÍADA AXIONiK [EN PROGRESO]
+*Objetivo: Consolidar AXIONiK como el motor principal ("El Maestro") antes de derivar sus variantes especializadas.*
+
+### 🛠️ Sub-fase 35.1: Pulido Final de AXIONiK (95% Done)
+- [x] **Robustez Total**: Integración de "Audio Armor" y manejo de atómicos en el motor y la UI (Completado en Fases 33-36).
+- [ ] **Refinamiento del Motor Neurotik**: Ajuste fino de las envolventes de excitación y respuesta de resonadores (Falta balance final).
+- [x] **Sistema de Temas Dinámicos**: Implementada arquitectura de `ThemeManager` con paletas intercambiables para AXIONiK, NEURONiK y NEUROTiK.
+
+### 📐 Visión de Producto: Los Tres Hermanos
+1.  **AXIONiK**: El buque insignia. Incluye ambos motores (Aditivo + Resonadores), matriz de modulación completa y efectos.
+2.  **NEURONiK**: Especializado en síntesis aditiva pura. Interfaz simplificada y optimizada para resíntesis.
+3.  **NEUROTiK**: Especializado en modelado físico y resonadores. Enfoque en texturas orgánicas y percusivas.
+
+---
+
+## 🟢 FASE 36: IMPLEMENTACIÓN DEL SISTEMA DE TEMAS Y UI RECONFIGURABLE [COMPLETADO]
+*Objetivo: Preparar la interfaz para el branching de productos mediante skins y layouts condicionales.*
+
+- [x] **ThemeEngine**: Clase central `ThemeManager` para la gestión de paletas (Cian para AXIONiK, Rojo para NEURONiK, Ambar para NEUROTiK).
+- [x] **UI Refactoring**: Adaptación de todos los componentes (`Knobs`, `Buttons`, `Panels`, `Visualizers`) para usar el sistema de temas dinámico.
+- [ ] **Conditional UI**: Capacidad de ocultar/mostrar paneles según el `ProductType` para las versiones especializadas (Próximo paso).

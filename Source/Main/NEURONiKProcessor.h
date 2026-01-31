@@ -5,22 +5,13 @@
 #include <array>
 #include <atomic>
 #include <map>
-#include "../DSP/Synthesis/ResonatorVoice.h"
-#include "../DSP/Effects/Saturation.h"
-#include "../DSP/Effects/Delay.h"
-#include "../DSP/Effects/Chorus.h"
-#include "../DSP/Effects/Reverb.h"
-#include "../DSP/CoreModules/LFO.h"
-#include "../DSP/CoreModules/Resonator.h" // Include for SpectralModel
 #include "../Serialization/PresetManager.h"
 #include "MidiMappingManager.h"
+#include "../DSP/ISynthesisEngine.h"
+#include "../Common/SpectralModel.h"
+#include "ModulationTargets.h"
 
-namespace NEURONiK::DSP::Effects {
-    class Saturation;
-    class Delay;
-    class Chorus;
-    class Reverb;
-}
+namespace NEURONiK::DSP { class NeuronikEngine; }
 
 class NEURONiKProcessor : public juce::AudioProcessor,
                      public juce::AudioProcessorValueTreeState::Listener,
@@ -75,39 +66,47 @@ public:
     juce::MidiKeyboardState& getKeyboardState() { return keyboardState; }
     const std::array<juce::String, 4>& getModelNames() const { return modelNames; }
     NEURONiK::Serialization::PresetManager& getPresetManager() { return *presetManager; }
+    NEURONiK::Serialization::PresetManager& getPresetManager() const { return *presetManager; }
     NEURONiK::Main::MidiMappingManager& getMidiMappingManager() { return *midiMappingManager; }
 
-    // --- Real-time spectral data for UI ---
+    // --- Real-time Visualization Data ---
     std::array<std::atomic<float>, 64> spectralDataForUI;
     
-    // Phase 23: Visualization Data
-    std::atomic<float> uiMorphX { 0.5f };
-    std::atomic<float> uiMorphY { 0.5f };
-    std::atomic<float> uiEnvelope { 0.0f };
-    std::atomic<float> uiCutoff { 0.5f };
-    std::atomic<float> uiResonance { 0.0f };
-    std::atomic<float> uiInharmonicity { 0.0f };
-    std::atomic<float> uiRoughness { 0.0f };
-    std::atomic<float> uiParity { 0.5f };
-    std::atomic<float> uiShift { 1.0f };
-    std::atomic<float> uiRollOff { 1.0f };
-    std::atomic<float> uiAttack { 0.0f };
-    std::atomic<float> uiDecay { 0.0f };
-    std::atomic<float> uiSustain { 0.0f };
-    std::atomic<float> uiRelease { 0.0f };
+    // Envelope Visualization Atomics
+    std::atomic<float> uiEnvelope { 0.0f };     // Amp Env Level
+    std::atomic<float> uiFEnvelope { 0.0f };    // Filter Env Level
     
-    // FX Animation
-    std::atomic<float> uiSaturation { 0.0f };
-    std::atomic<float> uiDelayTime { 0.3f };
-    std::atomic<float> uiDelayFB { 0.4f };
+    // Parameters for ADSR Visualizers (snapshot from APVTS)
+    std::atomic<float> uiAttack { 0.0f }, uiDecay { 0.0f }, uiSustain { 0.0f }, uiRelease { 0.0f };
+    std::atomic<float> uiFAttack { 0.0f }, uiFDecay { 0.0f }, uiFSustain { 0.0f }, uiFRelease { 0.0f };
     
-    // Filter Env Animation
-    std::atomic<float> uiFEnvelope { 0.0f };
-    std::atomic<float> uiFAttack { 0.0f };
-    std::atomic<float> uiFDecay { 0.0f };
-    std::atomic<float> uiFSustain { 0.0f };
-    std::atomic<float> uiFRelease { 0.0f };
-    std::atomic<float> uiFEnvAmount { 0.0f };
+    // Macro visualization
+    std::atomic<float> uiMorphX { 0.0f };
+    std::atomic<float> uiMorphY { 0.0f };
+
+    std::atomic<float> lfo1ValueForUI { 0.0f };
+    std::atomic<float> lfo2ValueForUI { 0.0f };
+
+    // --- Polyphony Management ---
+    struct EditorSettings {
+        std::unique_ptr<juce::FileChooser> chooser;
+    };
+
+    void setPolyphony(int numVoices);
+    int getPolyphony() const;
+    EditorSettings& getEditorSettings();
+
+public:
+    // --- Modulation Access (Safe Atomic Indexing) ---
+    std::atomic<float>& getModulationValue(::NEURONiK::ModulationTarget target) noexcept
+    {
+        return modulationValues[static_cast<size_t>(target)];
+    }
+
+    const std::atomic<float>& getModulationValue(::NEURONiK::ModulationTarget target) const noexcept
+    {
+        return modulationValues[static_cast<size_t>(target)];
+    }
 
 protected:
     // --- MidiKeyboardState::Listener overrides ---
@@ -118,25 +117,39 @@ protected:
     void valueTreePropertyChanged(juce::ValueTree& tree, const juce::Identifier& property) override;
     void valueTreeRedirected(juce::ValueTree& tree) override;
 
+
 private:
+    std::array<std::atomic<float>, ::NEURONiK::ModulationTargetCount> modulationValues;
+
     juce::AudioProcessorValueTreeState apvts;
     std::unique_ptr<NEURONiK::Serialization::PresetManager> presetManager;
     juce::MidiKeyboardState keyboardState;
-    juce::Synthesiser synth;
+    std::unique_ptr<NEURONiK::DSP::ISynthesisEngine> engine;
 
-    // --- UI MIDI Message Injection ---
-    juce::MidiBuffer uiMidiBuffer;
-    juce::CriticalSection midiBufferLock;
+    // --- UI MIDI Message Injection (Safe FIFO) ---
+    juce::AbstractFifo midiFifo;
+    struct QueuedMidiMessage {
+        juce::MidiMessage message;
+        int sampleOffset;
+    };
+    std::array<QueuedMidiMessage, 1024> midiQueue;
 
-    // --- Voice/Modulation Parameters ---
-    NEURONiK::DSP::Synthesis::ResonatorVoice::VoiceParams voiceParams;
-    std::atomic<bool> parametersNeedUpdating { true };
-    std::atomic<bool> modulationNeedsUpdating { true };
+    void synchronizeEngineParameters();
+
+    // --- Lock-Free Command Queue (Model Loading) ---
+    struct EngineCommand {
+        enum Type { LoadModel, Reset, Unknown };
+        Type type = Unknown;
+        int slot = 0;
+        NEURONiK::Common::SpectralModel modelData;
+    };
+    
+    juce::AbstractFifo commandFifo;
+    std::array<EngineCommand, 32> commandQueue;
+    
+    void processCommands();
 
     std::array<juce::String, 4> modelNames;
-
-    // --- LFOs ---
-    NEURONiK::DSP::Core::LFO lfo1, lfo2;
 
     // --- MIDI Real-time values for Modulation ---
     std::atomic<float> pitchBendValue { 0.5f };
@@ -148,41 +161,8 @@ private:
     juce::String parameterToLearn;
     std::unique_ptr<NEURONiK::Main::MidiMappingManager> midiMappingManager;
 
-    // --- Modulation Matrix ---
-    struct ModulationRoute { int source=0, destination=0; float amount=0.0f; };
-    std::array<ModulationRoute, 4> modulationMatrix;
-    std::vector<juce::String> modulatableParameters;
+    std::atomic<int> currentPolyphony { 8 };
+    EditorSettings editorSettings;
 
-    int getParameterIndex(const juce::String& paramID) const;
-
-    // --- Setup Methods ---
-    void setupSynth();
-    void setupModulatableParameters();
-    void updateVoiceParameters(int numSamples);
-    void updateModulation();
-
-public:
-    void setPolyphony(int numVoices);
-    int getPolyphony() const { return currentPolyphony; }
-
-private:
-    juce::CriticalSection processLock;
-    int currentPolyphony = 8;
-
-    // --- Global FX ---
-    NEURONiK::DSP::Effects::Saturation saturationProcessor;
-    NEURONiK::DSP::Effects::Delay delayProcessor;
-    NEURONiK::DSP::Effects::Chorus chorusProcessor;
-    NEURONiK::DSP::Effects::Reverb reverbProcessor;
-    juce::LinearSmoothedValue<float> masterLevelSmoother;
-
-    struct EditorSettings {
-        std::unique_ptr<juce::FileChooser> chooser;
-    } editorSettings;
-
-public:
-    EditorSettings& getEditorSettings() { return editorSettings; }
-
-private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NEURONiKProcessor)
 };

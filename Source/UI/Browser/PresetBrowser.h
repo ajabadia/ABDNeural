@@ -47,6 +47,8 @@ private:
     juce::ListBox bankList;
     juce::ListBox presetList;
     juce::TextButton addBankButton { "+" };
+    juce::Label bankLabel { "bl", "CATEGORY / BANK" };
+    juce::Label patchesLabel { "pl", "PATCHES" };
     
     // Search
     juce::TextEditor searchBox;

@@ -1,4 +1,5 @@
 #include "PresetBrowser.h"
+#include "ThemeManager.h"
 #include "PresetListModels.h"
 
 namespace NEURONiK::UI::Browser
@@ -23,6 +24,13 @@ PresetBrowser::PresetBrowser(NEURONiKProcessor& p)
     addAndMakeVisible(bankList);
 
     addAndMakeVisible(addBankButton);
+    addAndMakeVisible(bankLabel);
+    addAndMakeVisible(patchesLabel);
+
+    bankLabel.setFont(juce::Font(juce::FontOptions(12.0f).withStyle("Bold")));
+    bankLabel.setColour(juce::Label::textColourId, juce::Colours::cyan.withAlpha(0.7f));
+    patchesLabel.setFont(juce::Font(juce::FontOptions(12.0f).withStyle("Bold")));
+    patchesLabel.setColour(juce::Label::textColourId, juce::Colours::cyan.withAlpha(0.7f));
     addBankButton.onClick = [this] {
         auto* alert = new juce::AlertWindow("New Bank", "Enter name for new folder:", juce::AlertWindow::NoIcon, this);
         alert->addTextEditor("bankName", "");
@@ -343,17 +351,21 @@ void PresetBrowser::paint(juce::Graphics& g)
     int colWidth = area.getWidth() / 3;
     
     // Column backgrounds with subtle neural glow
-    g.setColour(juce::Colours::black.withAlpha(0.25f));
+    const auto& theme = ThemeManager::getCurrentTheme();
+    g.setColour(theme.background.withAlpha(0.25f));
     g.fillRect(area.removeFromLeft(colWidth)); 
     
-    // Separators updated to cyan with glow
-    juce::Colour separatorColor = juce::Colours::cyan.withAlpha(0.2f);
+    // Separators updated to theme accent with glow
+    juce::Colour separatorColor = theme.accent.withAlpha(0.2f);
     g.setColour(separatorColor);
     g.drawVerticalLine(colWidth, 0.0f, (float)getHeight());
     g.drawVerticalLine(colWidth * 2, 0.0f, (float)getHeight());
+    
+    // Row separator updated to theme accent
+    g.drawHorizontalLine(40, 0.0f, (float)getWidth());
 
     // Decorative glow at the top
-    juce::ColourGradient topGlow(juce::Colours::cyan.withAlpha(0.05f), 0, 0,
+    juce::ColourGradient topGlow(theme.accent.withAlpha(0.05f), 0, 0,
                                juce::Colours::transparentBlack, 0, 40, false);
     g.setGradientFill(topGlow);
     g.fillRect(getLocalBounds().removeFromTop(40));
@@ -369,12 +381,7 @@ void PresetBrowser::resized()
     {
         auto labelArea = bankArea.removeFromTop(20);
         addBankButton.setBounds(labelArea.removeFromRight(25).reduced(2));
-        
-        juce::Label* lbl = new juce::Label("l1", "CATEGORY / BANK");
-        lbl->setFont(juce::Font(juce::FontOptions(12.0f).withStyle("Bold")));
-        lbl->setColour(juce::Label::textColourId, juce::Colours::cyan.withAlpha(0.7f));
-        addAndMakeVisible(lbl);
-        lbl->setBounds(bankArea.removeFromTop(20));
+        bankLabel.setBounds(bankArea.removeFromTop(20));
         bankList.setBounds(bankArea.reduced(2));
     }
     
@@ -384,12 +391,7 @@ void PresetBrowser::resized()
     auto presetArea = area.removeFromLeft(colWidth);
     {
         searchBox.setBounds(presetArea.removeFromBottom(25).reduced(2));
-        
-        juce::Label* lbl = new juce::Label("l2", "PATCHES");
-        lbl->setFont(juce::Font(juce::FontOptions(12.0f).withStyle("Bold")));
-        lbl->setColour(juce::Label::textColourId, juce::Colours::cyan.withAlpha(0.7f));
-        addAndMakeVisible(lbl);
-        lbl->setBounds(presetArea.removeFromTop(20));
+        patchesLabel.setBounds(presetArea.removeFromTop(20));
         presetList.setBounds(presetArea.reduced(2));
     }
     

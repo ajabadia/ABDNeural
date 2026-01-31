@@ -1,10 +1,12 @@
 #include "FilterEnvPanel.h"
+#include "../ThemeManager.h"
 #include "../../Main/NEURONiKProcessor.h"
 #include "../../State/ParameterDefinitions.h"
 
 namespace NEURONiK::UI {
 
 using namespace NEURONiK::State;
+using ::NEURONiK::ModulationTarget;
 
 FilterEnvPanel::FilterEnvPanel(NEURONiKProcessor& p)
     : processor(p), vts(p.getAPVTS())
@@ -13,14 +15,14 @@ FilterEnvPanel::FilterEnvPanel(NEURONiKProcessor& p)
     addAndMakeVisible(filterBox);
     addAndMakeVisible(fEnvBox);
 
-    setupControl(cutoff,    IDs::filterCutoff,    "CUTOFF",    &processor.uiCutoff);
-    setupControl(resonance, IDs::filterRes,       "RESONANCE", &processor.uiResonance);
-    setupControl(envAmount, IDs::filterEnvAmount, "ENV AMT",   &processor.uiFEnvAmount);
+    setupControl(cutoff,    IDs::filterCutoff,    "CUTOFF",    ModulationTarget::FilterCutoff);
+    setupControl(resonance, IDs::filterRes,       "RESONANCE", ModulationTarget::FilterRes);
+    setupControl(envAmount, IDs::filterEnvAmount, "ENV AMT",   ModulationTarget::FilterEnvAmount);
     
-    setupControl(fAttack,   IDs::filterAttack,    "ATTACK",    &processor.uiFAttack);
-    setupControl(fDecay,    IDs::filterDecay,     "DECAY",     &processor.uiFDecay);
-    setupControl(fSustain,  IDs::filterSustain,   "SUSTAIN",   &processor.uiFSustain);
-    setupControl(fRelease,  IDs::filterRelease,   "RELEASE",   &processor.uiFRelease);
+    setupControl(fAttack,   IDs::filterAttack,    "ATTACK",    ModulationTarget::FilterAttack);
+    setupControl(fDecay,    IDs::filterDecay,     "DECAY",     ModulationTarget::FilterDecay);
+    setupControl(fSustain,  IDs::filterSustain,   "SUSTAIN",   ModulationTarget::FilterSustain);
+    setupControl(fRelease,  IDs::filterRelease,   "RELEASE",   ModulationTarget::FilterRelease);
     
     // Create Visualizer passing the atoms it needs for shape and active level
     fEnvVisualizer = std::make_unique<EnvelopeVisualizer>(
@@ -32,15 +34,15 @@ FilterEnvPanel::FilterEnvPanel(NEURONiKProcessor& p)
     startTimerHz(30);
 }
 
-void FilterEnvPanel::setupControl(RotaryControl& ctrl, const juce::String& paramID, const juce::String& labelText, std::atomic<float>* modValue)
+void FilterEnvPanel::setupControl(RotaryControl& ctrl, const juce::String& paramID, const juce::String& labelText, ::NEURONiK::ModulationTarget modTarget)
 {
     if (paramID == IDs::filterCutoff || paramID == IDs::filterRes || paramID == IDs::filterEnvAmount)
     {
-        UIUtils::setupRotaryControl(filterBox, ctrl, paramID, labelText, vts, processor, sharedLNF, modValue);
+        UIUtils::setupRotaryControl(filterBox, ctrl, paramID, labelText, vts, processor, sharedLNF, modTarget);
     }
     else
     {
-        UIUtils::setupRotaryControl(fEnvBox, ctrl, paramID, labelText, vts, processor, sharedLNF, modValue);
+        UIUtils::setupRotaryControl(fEnvBox, ctrl, paramID, labelText, vts, processor, sharedLNF, modTarget);
     }
 }
 
@@ -53,6 +55,9 @@ void FilterEnvPanel::timerCallback()
     fDecay.slider.repaint();
     fSustain.slider.repaint();
     fRelease.slider.repaint();
+    
+    if (fEnvVisualizer)
+        fEnvVisualizer->repaint();
 }
 
 void FilterEnvPanel::paint(juce::Graphics& g)

@@ -1,5 +1,6 @@
 #include "SpectralVisualizer.h"
-#include "../Main/NEURONiKProcessor.h" // Corrected include path
+#include "ThemeManager.h"
+#include "../Main/NEURONiKProcessor.h"
 #include <cmath>
 
 namespace NEURONiK::UI {
@@ -22,15 +23,16 @@ void SpectralVisualizer::paint(juce::Graphics& g)
     auto area = getLocalBounds().toFloat().reduced(2.0f);
 
     // Glass Background
-    g.setColour(juce::Colours::black.withAlpha(0.3f));
+    const auto& theme = ThemeManager::getCurrentTheme();
+    g.setColour(theme.background.withAlpha(0.3f));
     g.fillRoundedRectangle(area, 6.0f);
 
     // Inner Glow/Border
-    g.setColour(juce::Colours::cyan.withAlpha(0.1f));
+    g.setColour(theme.accent.withAlpha(0.1f));
     g.drawRoundedRectangle(area, 6.0f, 1.0f);
 
     // Grid Lines (Subtle)
-    g.setColour(juce::Colours::white.withAlpha(0.03f));
+    g.setColour(theme.text.withAlpha(0.03f));
     for (int i = 1; i < 4; ++i)
     {
         float y = area.getY() + area.getHeight() * (i / 4.0f);
@@ -61,8 +63,8 @@ void SpectralVisualizer::paint(juce::Graphics& g)
             barHeight
         );
 
-        // Gradient from Cyan to Magenta for a neural/vibrant look
-        juce::Colour topColor = juce::Colours::cyan.interpolatedWith(juce::Colours::magenta, static_cast<float>(i) / 64.0f);
+        // Gradient from Accent to Magenta for a vibrant look
+        juce::Colour topColor = theme.accent.interpolatedWith(juce::Colours::magenta, static_cast<float>(i) / 64.0f);
 
         juce::ColourGradient grad(topColor, barArea.getTopLeft(),
                                  topColor.withAlpha(0.1f), barArea.getBottomLeft(), false);

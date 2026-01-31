@@ -59,10 +59,12 @@ public:
             setContentOwned(content, true);
             
             setResizable(true, true);
+            setResizeLimits(400, 300, 4000, 3000);
             
             // Set default size similar to a utility app
             centreWithSize(800, 600);
             setVisible(true);
+            toFront(true);
         }
 
         void closeButtonPressed() override

@@ -1,8 +1,12 @@
 #include "OscillatorPanel.h"
+#include "../ThemeManager.h"
 #include "../../Main/NEURONiKProcessor.h"
 #include "../../State/ParameterDefinitions.h"
 
 namespace NEURONiK::UI {
+ 
+using namespace NEURONiK::State;
+using ::NEURONiK::ModulationTarget;
 
 OscillatorPanel::OscillatorPanel(NEURONiKProcessor& p)
     : processor(p),
@@ -10,17 +14,23 @@ OscillatorPanel::OscillatorPanel(NEURONiKProcessor& p)
       loadA("A"), loadB("B"), loadC("C"), loadD("D"),
       modelBox("MODEL"), engineBox("ENGINE")
 {
-    using namespace NEURONiK::State;
     addAndMakeVisible(modelBox);
     addAndMakeVisible(engineBox);
 
     modelBox.addAndMakeVisible(xyPad);
 
-    setupControl(inharmonicity, IDs::oscInharmonicity, "INHARMONICITY", &processor.uiInharmonicity);
-    setupControl(roughness,    IDs::oscRoughness,     "ROUGHNESS",     &processor.uiRoughness);
-    setupControl(parity,       IDs::resonatorParity,  "PARITY",        &processor.uiParity); 
-    setupControl(shift,        IDs::resonatorShift,   "SHIFT",         &processor.uiShift);
-    setupControl(rollOff,      IDs::resonatorRolloff, "ROLL-OFF",      &processor.uiRollOff);
+    setupControl(inharmonicity, IDs::oscInharmonicity, "INHARMONICITY", ModulationTarget::Inharmonicity);
+    setupControl(roughness,    IDs::oscRoughness,     "ROUGHNESS",     ModulationTarget::Roughness);
+    setupControl(parity,       IDs::resonatorParity,  "PARITY",        ModulationTarget::Parity); 
+    setupControl(shift,        IDs::resonatorShift,   "SHIFT",         ModulationTarget::Shift);
+    setupControl(rollOff,      IDs::resonatorRolloff, "ROLL-OFF",      ModulationTarget::ResonatorRolloff);
+
+    // Neurotik
+    setupControl(exciteNoise,  IDs::oscExciteNoise,   "EXCITE NOISE", ModulationTarget::ExciteNoise);
+    setupControl(exciteColor,  IDs::excitationColor,  "EXCITE COLOR", ModulationTarget::ExciteColor);
+    setupControl(impulseMix,   IDs::impulseMix,       "IMPULSE MIX",  ModulationTarget::ImpulseMix);
+    setupControl(resonatorRes, IDs::resonatorRes,     " RESONANCE",   ModulationTarget::ResonatorResonance);
+
 
     modelBox.addAndMakeVisible(loadA);
     loadA.addListener(this);
@@ -34,7 +44,7 @@ OscillatorPanel::OscillatorPanel(NEURONiKProcessor& p)
     for (auto& loadBtn : { &loadA, &loadB, &loadC, &loadD })
     {
         loadBtn->setAlpha(0.7f);
-        loadBtn->setColour(juce::TextButton::buttonColourId, juce::Colours::darkgrey.withAlpha(0.3f));
+        loadBtn->setColour(juce::TextButton::buttonColourId, ThemeManager::getCurrentTheme().surface.withAlpha(0.3f));
     }
 
     modelNames = processor.getModelNames();
@@ -43,9 +53,9 @@ OscillatorPanel::OscillatorPanel(NEURONiKProcessor& p)
     startTimerHz(10);
 }
 
-void OscillatorPanel::setupControl(RotaryControl& ctrl, const juce::String& paramID, const juce::String& labelText, std::atomic<float>* modValue)
+void OscillatorPanel::setupControl(RotaryControl& ctrl, const juce::String& paramID, const juce::String& labelText, ::NEURONiK::ModulationTarget modTarget)
 {
-    UIUtils::setupRotaryControl(engineBox, ctrl, paramID, labelText, processor.getAPVTS(), processor, sharedLNF, modValue);
+    UIUtils::setupRotaryControl(engineBox, ctrl, paramID, labelText, processor.getAPVTS(), processor, sharedLNF, modTarget);
 }
 
 void OscillatorPanel::setModelName(int slot, const juce::String& name)
@@ -69,7 +79,6 @@ void OscillatorPanel::resized()
     
     auto leftArea = area.removeFromLeft(static_cast<int>(area.getWidth() * 0.45f)).reduced(3);
     auto rightArea = area.reduced(3);
-
     modelBox.setBounds(leftArea);
     engineBox.setBounds(rightArea);
 
@@ -88,27 +97,36 @@ void OscillatorPanel::resized()
         loadD.setBounds(padArea.getRight() - buttonSize - buttonOffset, padArea.getBottom() - buttonSize - buttonOffset, buttonSize, buttonSize);
     }
 
-    // Layout Engine Box
+    // Layout Engine Box (3x3 grid)
     {
         auto c = engineBox.getContentArea();
         auto rowH = c.getHeight() / 3;
-        auto colW = c.getWidth() / 2;
+        auto colW = c.getWidth() / 3;
 
         auto layoutRotary = [&](RotaryControl& ctrl, juce::Rectangle<int> bounds) {
             ctrl.label.setBounds(bounds.removeFromTop(15));
             ctrl.slider.setBounds(bounds);
         };
 
+        // Row 1
         auto r1 = c.removeFromTop(rowH);
-        layoutRotary(inharmonicity, r1.removeFromLeft(colW).reduced(10, 5));
-        layoutRotary(roughness, r1.reduced(10, 5));
+        layoutRotary(inharmonicity, r1.removeFromLeft(colW).reduced(5));
+        layoutRotary(roughness, r1.removeFromLeft(colW).reduced(5));
+        layoutRotary(rollOff, r1.reduced(5));
 
+        // Row 2
         auto r2 = c.removeFromTop(rowH);
-        layoutRotary(parity, r2.removeFromLeft(colW).reduced(10, 5));
-        layoutRotary(shift, r2.reduced(10, 5));
+        layoutRotary(parity, r2.removeFromLeft(colW).reduced(5));
+        layoutRotary(shift, r2.removeFromLeft(colW).reduced(5));
+        layoutRotary(resonatorRes, r2.reduced(5));
 
-        layoutRotary(rollOff, c.withSizeKeepingCentre(colW, rowH).reduced(10, 5));
+        // Row 3
+        auto r3 = c;
+        layoutRotary(exciteNoise, r3.removeFromLeft(colW).reduced(5));
+        layoutRotary(exciteColor, r3.removeFromLeft(colW).reduced(5));
+        layoutRotary(impulseMix, r3.reduced(5));
     }
+
 }
 
 void OscillatorPanel::buttonClicked(juce::Button* button)
@@ -157,12 +175,42 @@ void OscillatorPanel::timerCallback()
         repaint();
     }
     
-    // Trigger repaint of sliders to show animation
-    inharmonicity.slider.repaint();
-    roughness.slider.repaint();
-    parity.slider.repaint();
-    shift.slider.repaint();
-    rollOff.slider.repaint();
+    // Trigger repaint of sliders for modulation animation
+    for (auto* ctrl : { &inharmonicity, &roughness, &parity, &shift, &rollOff, 
+                        &exciteNoise, &exciteColor, &impulseMix, &resonatorRes })
+    {
+        ctrl->slider.repaint();
+    }
+
+    // Visibility logic
+    auto* engineParam = processor.getAPVTS().getRawParameterValue(IDs::engineType);
+    if (engineParam != nullptr)
+    {
+        int engineType = static_cast<int>(engineParam->load());
+        bool isNeuronik = (engineType == 0);
+        
+        inharmonicity.slider.setEnabled(isNeuronik);
+        roughness.slider.setEnabled(isNeuronik);
+        parity.slider.setEnabled(isNeuronik);
+        shift.slider.setEnabled(isNeuronik);
+        rollOff.slider.setEnabled(isNeuronik);
+        
+        exciteNoise.slider.setEnabled(!isNeuronik);
+        exciteColor.slider.setEnabled(!isNeuronik);
+        impulseMix.slider.setEnabled(!isNeuronik);
+        resonatorRes.slider.setEnabled(!isNeuronik);
+
+        inharmonicity.label.setEnabled(isNeuronik);
+        roughness.label.setEnabled(isNeuronik);
+        parity.label.setEnabled(isNeuronik);
+        shift.label.setEnabled(isNeuronik);
+        rollOff.label.setEnabled(isNeuronik);
+        
+        exciteNoise.label.setEnabled(!isNeuronik);
+        exciteColor.label.setEnabled(!isNeuronik);
+        impulseMix.label.setEnabled(!isNeuronik);
+        resonatorRes.label.setEnabled(!isNeuronik);
+    }
 }
 
 } // namespace NEURONiK::UI

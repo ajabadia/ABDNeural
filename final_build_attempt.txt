@@ -1,0 +1,233 @@
+﻿-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+-- Including JUCE from local path: C:\JUCE
+-- Configuring juceaide
+-- Building juceaide
+-- Exporting juceaide
+-- Testing juceaide
+-- Finished setting up juceaide
+-- NEURONIK_SOURCES: Source/Main/NEURONiKProcessor.h;Source/Main/NEURONiKProcessor.cpp;Source/Main/NEURONiKEditor.h;Source/Main/NEURONiKEditor.cpp;Source/Main/MidiMappingManager.h;Source/Main/MidiMappingManager.cpp;Source/UI/ParameterPanel.h;Source/UI/ParameterPanel.cpp;Source/UI/SpectralVisualizer.h;Source/UI/SpectralVisualizer.cpp;Source/UI/XYPad.h;Source/UI/XYPad.cpp;Source/UI/EnvelopeVisualizer.h;Source/UI/CustomUIComponents.h;Source/UI/CustomUIComponents.cpp;Source/UI/ThemeManager.h;Source/UI/ThemeManager.cpp;Source/UI/MidiLearner.h;Source/UI/MidiLearner.cpp;Source/UI/Panels/OscillatorPanel.h;Source/UI/Panels/OscillatorPanel.cpp;Source/UI/Panels/FilterEnvPanel.h;Source/UI/Panels/FilterEnvPanel.cpp;Source/UI/Panels/FXPanel.h;Source/UI/Panels/FXPanel.cpp;Source/UI/Panels/ModulationPanel.h;Source/UI/Panels/ModulationPanel.cpp;Source/UI/Panels/PresetPanel.h;Source/UI/Panels/PresetPanel.cpp;Source/UI/LcdDisplay.h;Source/UI/LcdDisplay.cpp;Source/UI/Browser/PresetBrowser.h;Source/UI/Browser/PresetBrowser.cpp;Source/State/ParameterDefinitions.h;Source/Serialization/PresetManager.h;Source/Serialization/PresetManager.cpp;Source/DSP/CoreModules/LFO.cpp;Source/DSP/CoreModules/Oscillator.h;Source/DSP/CoreModules/Oscillator.cpp;Source/DSP/CoreModules/Resonator.h;Source/DSP/CoreModules/Resonator.cpp;Source/DSP/CoreModules/Envelope.h;Source/DSP/CoreModules/Envelope.cpp;Source/DSP/CoreModules/FilterBank.h;Source/DSP/CoreModules/FilterBank.cpp;Source/DSP/CoreModules/ResonatorBank.h;Source/DSP/CoreModules/ResonatorBank.cpp;Source/DSP/CoreModules/NeuronikEngine.h;Source/DSP/CoreModules/NeuronikEngine.cpp;Source/DSP/CoreModules/NeurotikEngine.h;Source/DSP/CoreModules/NeurotikEngine.cpp;Source/DSP/BaseEngine.h;Source/DSP/BaseEngine.cpp;Source/DSP/IVoice.h;Source/DSP/ISynthesisEngine.h;Source/DSP/Synthesis/AdditiveVoice.h;Source/DSP/Synthesis/AdditiveVoice.cpp;Source/DSP/Synthesis/NeurotikVoice.h;Source/DSP/Synthesis/NeurotikVoice.cpp;Resources/NEURONiK.rc
+-- Configuring done (2.9s)
+-- Generating done (0.2s)
+-- Build files have been written to: D:/desarrollos/ABDNeural/build_neuronik
+Versi├│n de MSBuild 18.3.0-preview-25570-20+708535641 para .NET Framework
+
+  Checking File Globs
+  NEURONiK_rc_lib.vcxproj -> D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_rc_lib.dir\Debug\NEURONiK_rc_lib.lib
+  NEURONiK_Common.vcxproj -> D:\desarrollos\ABDNeural\build_neuronik\Debug\NEURONiK_Common.lib
+  NEURONiKEditor.cpp
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(69,14): error C2664: 'void juce::TabbedComponent::addTab(const juce::String &,juce::Colour,juce::Component *,bool,int)': el argumento 2 no puede convertirse de 'NEURONiK::UI::ParameterPanel *' a 'juce::Colour' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK.vcxproj]
+      D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(69,35):
+      'juce::Colour::Colour':ninguna funci├│n sobrecargada pudo convertir todos los tipos de argumento
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(54,5):
+          puede ser 'juce::Colour::Colour(const juce::Colour &)'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(69,35):
+              'juce::Colour::Colour(const juce::Colour &)': el argumento 1 no puede convertirse de 'NEURONiK::UI::ParameterPanel *' a 'const juce::Colour &'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(69,35):
+                  Raz├│n: no se puede realizar la conversi├│n de 'NEURONiK::UI::ParameterPanel *' a 'const juce::Colour'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(69,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(178,5):
+          o       'juce::Colour::Colour(juce::PixelRGB) noexcept'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(69,35):
+              'juce::Colour::Colour(juce::PixelRGB) noexcept': el argumento 1 no puede convertirse de 'NEURONiK::UI::ParameterPanel *' a 'juce::PixelRGB'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(69,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(174,5):
+          o       'juce::Colour::Colour(juce::PixelARGB) noexcept'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(69,35):
+              'juce::Colour::Colour(juce::PixelARGB) noexcept': el argumento 1 no puede convertirse de 'NEURONiK::UI::ParameterPanel *' a 'juce::PixelARGB'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(69,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(182,5):
+          o       'juce::Colour::Colour(juce::PixelAlpha) noexcept'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(69,35):
+              'juce::Colour::Colour(juce::PixelAlpha) noexcept': el argumento 1 no puede convertirse de 'NEURONiK::UI::ParameterPanel *' a 'juce::PixelAlpha'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(69,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(69,35):
+          al hacer coincidir la lista de argumentos '(NEURONiK::UI::ParameterPanel *)'
+      C:\JUCE\modules\juce_gui_basics\layout\juce_TabbedComponent.h(118,10):
+      vea la declaraci├│n de 'juce::TabbedComponent::addTab'
+      D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(69,14):
+      al hacer coincidir la lista de argumentos '(const char [8], NEURONiK::UI::ParameterPanel *, const juce::Colour, bool)'
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(70,14): error C2664: 'void juce::TabbedComponent::addTab(const juce::String &,juce::Colour,juce::Component *,bool,int)': el argumento 2 no puede convertirse de 'NEURONiK::UI::OscillatorPanel *' a 'juce::Colour' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK.vcxproj]
+      D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(70,35):
+      'juce::Colour::Colour':ninguna funci├│n sobrecargada pudo convertir todos los tipos de argumento
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(54,5):
+          puede ser 'juce::Colour::Colour(const juce::Colour &)'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(70,35):
+              'juce::Colour::Colour(const juce::Colour &)': el argumento 1 no puede convertirse de 'NEURONiK::UI::OscillatorPanel *' a 'const juce::Colour &'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(70,35):
+                  Raz├│n: no se puede realizar la conversi├│n de 'NEURONiK::UI::OscillatorPanel *' a 'const juce::Colour'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(70,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(178,5):
+          o       'juce::Colour::Colour(juce::PixelRGB) noexcept'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(70,35):
+              'juce::Colour::Colour(juce::PixelRGB) noexcept': el argumento 1 no puede convertirse de 'NEURONiK::UI::OscillatorPanel *' a 'juce::PixelRGB'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(70,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(174,5):
+          o       'juce::Colour::Colour(juce::PixelARGB) noexcept'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(70,35):
+              'juce::Colour::Colour(juce::PixelARGB) noexcept': el argumento 1 no puede convertirse de 'NEURONiK::UI::OscillatorPanel *' a 'juce::PixelARGB'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(70,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(182,5):
+          o       'juce::Colour::Colour(juce::PixelAlpha) noexcept'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(70,35):
+              'juce::Colour::Colour(juce::PixelAlpha) noexcept': el argumento 1 no puede convertirse de 'NEURONiK::UI::OscillatorPanel *' a 'juce::PixelAlpha'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(70,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(70,35):
+          al hacer coincidir la lista de argumentos '(NEURONiK::UI::OscillatorPanel *)'
+      C:\JUCE\modules\juce_gui_basics\layout\juce_TabbedComponent.h(118,10):
+      vea la declaraci├│n de 'juce::TabbedComponent::addTab'
+      D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(70,14):
+      al hacer coincidir la lista de argumentos '(const char [10], NEURONiK::UI::OscillatorPanel *, const juce::Colour, bool)'
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(71,14): error C2664: 'void juce::TabbedComponent::addTab(const juce::String &,juce::Colour,juce::Component *,bool,int)': el argumento 2 no puede convertirse de 'NEURONiK::UI::FilterEnvPanel *' a 'juce::Colour' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK.vcxproj]
+      D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(71,35):
+      'juce::Colour::Colour':ninguna funci├│n sobrecargada pudo convertir todos los tipos de argumento
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(54,5):
+          puede ser 'juce::Colour::Colour(const juce::Colour &)'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(71,35):
+              'juce::Colour::Colour(const juce::Colour &)': el argumento 1 no puede convertirse de 'NEURONiK::UI::FilterEnvPanel *' a 'const juce::Colour &'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(71,35):
+                  Raz├│n: no se puede realizar la conversi├│n de 'NEURONiK::UI::FilterEnvPanel *' a 'const juce::Colour'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(71,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(178,5):
+          o       'juce::Colour::Colour(juce::PixelRGB) noexcept'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(71,35):
+              'juce::Colour::Colour(juce::PixelRGB) noexcept': el argumento 1 no puede convertirse de 'NEURONiK::UI::FilterEnvPanel *' a 'juce::PixelRGB'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(71,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(174,5):
+          o       'juce::Colour::Colour(juce::PixelARGB) noexcept'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(71,35):
+              'juce::Colour::Colour(juce::PixelARGB) noexcept': el argumento 1 no puede convertirse de 'NEURONiK::UI::FilterEnvPanel *' a 'juce::PixelARGB'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(71,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(182,5):
+          o       'juce::Colour::Colour(juce::PixelAlpha) noexcept'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(71,35):
+              'juce::Colour::Colour(juce::PixelAlpha) noexcept': el argumento 1 no puede convertirse de 'NEURONiK::UI::FilterEnvPanel *' a 'juce::PixelAlpha'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(71,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(71,35):
+          al hacer coincidir la lista de argumentos '(NEURONiK::UI::FilterEnvPanel *)'
+      C:\JUCE\modules\juce_gui_basics\layout\juce_TabbedComponent.h(118,10):
+      vea la declaraci├│n de 'juce::TabbedComponent::addTab'
+      D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(71,14):
+      al hacer coincidir la lista de argumentos '(const char [11], NEURONiK::UI::FilterEnvPanel *, const juce::Colour, bool)'
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(72,14): error C2664: 'void juce::TabbedComponent::addTab(const juce::String &,juce::Colour,juce::Component *,bool,int)': el argumento 2 no puede convertirse de 'NEURONiK::UI::FXPanel *' a 'juce::Colour' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK.vcxproj]
+      D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(72,35):
+      'juce::Colour::Colour':ninguna funci├│n sobrecargada pudo convertir todos los tipos de argumento
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(54,5):
+          puede ser 'juce::Colour::Colour(const juce::Colour &)'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(72,35):
+              'juce::Colour::Colour(const juce::Colour &)': el argumento 1 no puede convertirse de 'NEURONiK::UI::FXPanel *' a 'const juce::Colour &'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(72,35):
+                  Raz├│n: no se puede realizar la conversi├│n de 'NEURONiK::UI::FXPanel *' a 'const juce::Colour'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(72,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(178,5):
+          o       'juce::Colour::Colour(juce::PixelRGB) noexcept'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(72,35):
+              'juce::Colour::Colour(juce::PixelRGB) noexcept': el argumento 1 no puede convertirse de 'NEURONiK::UI::FXPanel *' a 'juce::PixelRGB'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(72,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(174,5):
+          o       'juce::Colour::Colour(juce::PixelARGB) noexcept'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(72,35):
+              'juce::Colour::Colour(juce::PixelARGB) noexcept': el argumento 1 no puede convertirse de 'NEURONiK::UI::FXPanel *' a 'juce::PixelARGB'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(72,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(182,5):
+          o       'juce::Colour::Colour(juce::PixelAlpha) noexcept'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(72,35):
+              'juce::Colour::Colour(juce::PixelAlpha) noexcept': el argumento 1 no puede convertirse de 'NEURONiK::UI::FXPanel *' a 'juce::PixelAlpha'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(72,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(72,35):
+          al hacer coincidir la lista de argumentos '(NEURONiK::UI::FXPanel *)'
+      C:\JUCE\modules\juce_gui_basics\layout\juce_TabbedComponent.h(118,10):
+      vea la declaraci├│n de 'juce::TabbedComponent::addTab'
+      D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(72,14):
+      al hacer coincidir la lista de argumentos '(const char [3], NEURONiK::UI::FXPanel *, const juce::Colour, bool)'
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(73,14): error C2664: 'void juce::TabbedComponent::addTab(const juce::String &,juce::Colour,juce::Component *,bool,int)': el argumento 2 no puede convertirse de 'NEURONiK::UI::ModulationPanel *' a 'juce::Colour' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK.vcxproj]
+      D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(73,35):
+      'juce::Colour::Colour':ninguna funci├│n sobrecargada pudo convertir todos los tipos de argumento
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(54,5):
+          puede ser 'juce::Colour::Colour(const juce::Colour &)'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(73,35):
+              'juce::Colour::Colour(const juce::Colour &)': el argumento 1 no puede convertirse de 'NEURONiK::UI::ModulationPanel *' a 'const juce::Colour &'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(73,35):
+                  Raz├│n: no se puede realizar la conversi├│n de 'NEURONiK::UI::ModulationPanel *' a 'const juce::Colour'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(73,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(178,5):
+          o       'juce::Colour::Colour(juce::PixelRGB) noexcept'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(73,35):
+              'juce::Colour::Colour(juce::PixelRGB) noexcept': el argumento 1 no puede convertirse de 'NEURONiK::UI::ModulationPanel *' a 'juce::PixelRGB'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(73,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(174,5):
+          o       'juce::Colour::Colour(juce::PixelARGB) noexcept'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(73,35):
+              'juce::Colour::Colour(juce::PixelARGB) noexcept': el argumento 1 no puede convertirse de 'NEURONiK::UI::ModulationPanel *' a 'juce::PixelARGB'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(73,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(182,5):
+          o       'juce::Colour::Colour(juce::PixelAlpha) noexcept'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(73,35):
+              'juce::Colour::Colour(juce::PixelAlpha) noexcept': el argumento 1 no puede convertirse de 'NEURONiK::UI::ModulationPanel *' a 'juce::PixelAlpha'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(73,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(73,35):
+          al hacer coincidir la lista de argumentos '(NEURONiK::UI::ModulationPanel *)'
+      C:\JUCE\modules\juce_gui_basics\layout\juce_TabbedComponent.h(118,10):
+      vea la declaraci├│n de 'juce::TabbedComponent::addTab'
+      D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(73,14):
+      al hacer coincidir la lista de argumentos '(const char [8], NEURONiK::UI::ModulationPanel *, const juce::Colour, bool)'
+  
+D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(74,14): error C2664: 'void juce::TabbedComponent::addTab(const juce::String &,juce::Colour,juce::Component *,bool,int)': el argumento 2 no puede convertirse de 'NEURONiK::UI::Browser::PresetBrowser *' a 'juce::Colour' [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK.vcxproj]
+      D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(74,35):
+      'juce::Colour::Colour':ninguna funci├│n sobrecargada pudo convertir todos los tipos de argumento
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(54,5):
+          puede ser 'juce::Colour::Colour(const juce::Colour &)'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(74,35):
+              'juce::Colour::Colour(const juce::Colour &)': el argumento 1 no puede convertirse de 'NEURONiK::UI::Browser::PresetBrowser *' a 'const juce::Colour &'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(74,35):
+                  Raz├│n: no se puede realizar la conversi├│n de 'NEURONiK::UI::Browser::PresetBrowser *' a 'const juce::Colour'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(74,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(178,5):
+          o       'juce::Colour::Colour(juce::PixelRGB) noexcept'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(74,35):
+              'juce::Colour::Colour(juce::PixelRGB) noexcept': el argumento 1 no puede convertirse de 'NEURONiK::UI::Browser::PresetBrowser *' a 'juce::PixelRGB'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(74,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(174,5):
+          o       'juce::Colour::Colour(juce::PixelARGB) noexcept'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(74,35):
+              'juce::Colour::Colour(juce::PixelARGB) noexcept': el argumento 1 no puede convertirse de 'NEURONiK::UI::Browser::PresetBrowser *' a 'juce::PixelARGB'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(74,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          C:\JUCE\modules\juce_graphics\colour\juce_Colour.h(182,5):
+          o       'juce::Colour::Colour(juce::PixelAlpha) noexcept'
+              D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(74,35):
+              'juce::Colour::Colour(juce::PixelAlpha) noexcept': el argumento 1 no puede convertirse de 'NEURONiK::UI::Browser::PresetBrowser *' a 'juce::PixelAlpha'
+                  D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(74,35):
+                  La conversi├│n requiere un segundo operador de conversi├│n definido por el usuario o constructor
+          D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(74,35):
+          al hacer coincidir la lista de argumentos '(NEURONiK::UI::Browser::PresetBrowser *)'
+      C:\JUCE\modules\juce_gui_basics\layout\juce_TabbedComponent.h(118,10):
+      vea la declaraci├│n de 'juce::TabbedComponent::addTab'
+      D:\desarrollos\ABDNeural\Source\Main\NEURONiKEditor.cpp(74,14):
+      al hacer coincidir la lista de argumentos '(const char [8], NEURONiK::UI::Browser::PresetBrowser *, const juce::Colour, bool)'
+  

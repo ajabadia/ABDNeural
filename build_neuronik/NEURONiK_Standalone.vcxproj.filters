@@ -19,6 +19,12 @@
     <ClCompile Include="D:\desarrollos\ABDNeural\Source\UI\XYPad.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="D:\desarrollos\ABDNeural\Source\UI\CustomUIComponents.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\desarrollos\ABDNeural\Source\UI\ThemeManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="D:\desarrollos\ABDNeural\Source\UI\MidiLearner.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -61,7 +67,22 @@
     <ClCompile Include="D:\desarrollos\ABDNeural\Source\DSP\CoreModules\FilterBank.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="D:\desarrollos\ABDNeural\Source\DSP\Synthesis\ResonatorVoice.cpp">
+    <ClCompile Include="D:\desarrollos\ABDNeural\Source\DSP\CoreModules\ResonatorBank.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\desarrollos\ABDNeural\Source\DSP\CoreModules\NeuronikEngine.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\desarrollos\ABDNeural\Source\DSP\CoreModules\NeurotikEngine.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\desarrollos\ABDNeural\Source\DSP\BaseEngine.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\desarrollos\ABDNeural\Source\DSP\Synthesis\AdditiveVoice.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\desarrollos\ABDNeural\Source\DSP\Synthesis\NeurotikVoice.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\JUCE\modules\juce_audio_plugin_client\juce_audio_plugin_client_AAX.cpp">
@@ -86,6 +107,60 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\JUCE\modules\juce_audio_plugin_client\juce_audio_plugin_client_VST3.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\JUCE\modules\juce_audio_basics\juce_audio_basics.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\JUCE\modules\juce_core\juce_core.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\JUCE\modules\juce_core\juce_core_CompilationTime.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\JUCE\modules\juce_audio_devices\juce_audio_devices.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\JUCE\modules\juce_events\juce_events.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\JUCE\modules\juce_audio_formats\juce_audio_formats.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\JUCE\modules\juce_audio_processors\juce_audio_processors.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\JUCE\modules\juce_gui_extra\juce_gui_extra.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\JUCE\modules\juce_gui_basics\juce_gui_basics.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\JUCE\modules\juce_graphics\juce_graphics.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\JUCE\modules\juce_graphics\juce_graphics_Harfbuzz.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\JUCE\modules\juce_graphics\juce_graphics_Sheenbidi.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\JUCE\modules\juce_data_structures\juce_data_structures.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\JUCE\modules\juce_audio_processors_headless\juce_audio_processors_headless.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\JUCE\modules\juce_audio_processors_headless\juce_audio_processors_headless_ara.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\JUCE\modules\juce_audio_processors_headless\juce_audio_processors_headless_lv2_libs.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\JUCE\modules\juce_audio_utils\juce_audio_utils.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\JUCE\modules\juce_dsp\juce_dsp.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -114,6 +189,12 @@
     <ClInclude Include="D:\desarrollos\ABDNeural\Source\UI\CustomUIComponents.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\UI\ThemeManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\UI\MidiLearner.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="D:\desarrollos\ABDNeural\Source\UI\Panels\OscillatorPanel.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -123,7 +204,13 @@
     <ClInclude Include="D:\desarrollos\ABDNeural\Source\UI\Panels\FXPanel.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\UI\Panels\ModulationPanel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="D:\desarrollos\ABDNeural\Source\UI\Panels\PresetPanel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\UI\LcdDisplay.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="D:\desarrollos\ABDNeural\Source\UI\Browser\PresetBrowser.h">
@@ -147,10 +234,28 @@
     <ClInclude Include="D:\desarrollos\ABDNeural\Source\DSP\CoreModules\FilterBank.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="D:\desarrollos\ABDNeural\Source\DSP\Synthesis\ResonatorSound.h">
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\DSP\CoreModules\ResonatorBank.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="D:\desarrollos\ABDNeural\Source\DSP\Synthesis\ResonatorVoice.h">
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\DSP\CoreModules\NeuronikEngine.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\DSP\CoreModules\NeurotikEngine.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\DSP\BaseEngine.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\DSP\IVoice.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\DSP\ISynthesisEngine.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\DSP\Synthesis\AdditiveVoice.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\desarrollos\ABDNeural\Source\DSP\Synthesis\NeurotikVoice.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -161,6 +266,11 @@
     <Object Include="D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_rc_lib.dir\$(Configuration)\NEURONiK_resources.res">
       <Filter>Object Libraries</Filter>
     </Object>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="D:\desarrollos\ABDNeural\Resources\NEURONiK.rc">
+      <Filter>Source Files</Filter>
+    </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Header Files">

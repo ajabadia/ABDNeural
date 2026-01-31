@@ -1,0 +1,47 @@
+﻿Versi├│n de MSBuild 18.3.0-preview-25570-20+708535641 para .NET Framework
+
+  Checking File Globs
+  NEURONiK_rc_lib.vcxproj -> D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_rc_lib.dir\Debug\NEURONiK_rc_lib.lib
+  NEURONiK_Common.vcxproj -> D:\desarrollos\ABDNeural\build_neuronik\Debug\NEURONiK_Common.lib
+  NEURONiK.vcxproj -> D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_artefacts\Debug\NEURONiK_SharedCode.lib
+  NEURONiKProcessor.cpp
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\ResonatorBank.h(68,33): warning C4324: 'NEURONiK::DSP::Core::ResonatorBank': se rellen├│ la estructura debido al especificador de alineaci├│n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/Main/NEURONiKProcessor.cpp")
+  
+D:\desarrollos\ABDNeural\Source\DSP\Synthesis\NeurotikVoice.h(60,51): error C2065: 'filterEnvelope': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/Main/NEURONiKProcessor.cpp")
+  
+  NEURONiKEditor.cpp
+  ParameterPanel.cpp
+  XYPad.cpp
+  OscillatorPanel.cpp
+  FilterEnvPanel.cpp
+  FXPanel.cpp
+  ModulationPanel.cpp
+  PresetPanel.cpp
+  PresetBrowser.cpp
+  LFO.cpp
+  Resonator.cpp
+  FilterBank.cpp
+  ResonatorBank.cpp
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\ResonatorBank.h(68,33): warning C4324: 'NEURONiK::DSP::Core::ResonatorBank': se rellen├│ la estructura debido al especificador de alineaci├│n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/ResonatorBank.cpp")
+  
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\ResonatorBank.cpp(56,11): warning C4189: 'detuneVal': la variable local se ha inicializado pero no se hace referencia a ella [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  NeuronikEngine.cpp
+  NeurotikEngine.cpp
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\ResonatorBank.h(68,33): warning C4324: 'NEURONiK::DSP::Core::ResonatorBank': se rellen├│ la estructura debido al especificador de alineaci├│n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/NeurotikEngine.cpp")
+  
+D:\desarrollos\ABDNeural\Source\DSP\Synthesis\NeurotikVoice.h(60,51): error C2065: 'filterEnvelope': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/CoreModules/NeurotikEngine.cpp")
+  
+  AdditiveVoice.cpp
+  NeurotikVoice.cpp
+D:\desarrollos\ABDNeural\Source\DSP\CoreModules\ResonatorBank.h(68,33): warning C4324: 'NEURONiK::DSP::Core::ResonatorBank': se rellen├│ la estructura debido al especificador de alineaci├│n [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/Synthesis/NeurotikVoice.cpp")
+  
+D:\desarrollos\ABDNeural\Source\DSP\Synthesis\NeurotikVoice.h(60,51): error C2065: 'filterEnvelope': identificador no declarado [D:\desarrollos\ABDNeural\build_neuronik\NEURONiK_Standalone.vcxproj]
+  (compilando archivo de origen "../Source/DSP/Synthesis/NeurotikVoice.cpp")
+  
+  Generando c├│digo...

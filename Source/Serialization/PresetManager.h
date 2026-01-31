@@ -12,6 +12,7 @@
 
 #include <juce_core/juce_core.h>
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "../Common/SpectralModel.h"
 
 namespace NEURONiK::Serialization {
 
@@ -19,6 +20,8 @@ class PresetManager
 {
 public:
     static const juce::String presetExtension;
+
+    static Common::SpectralModel loadModelFromFile(const juce::File& file);
 
     explicit PresetManager(juce::AudioProcessorValueTreeState& apvts);
 

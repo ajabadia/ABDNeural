@@ -1,0 +1,168 @@
+
+    
+NEURONiK_Common.vcxproj 
+-> D:\desarrollos\ABDNeura
+l\build_neuronik\Debug\NEU
+RONiK_Common.lib
+    NEURONiK.vcxproj -> D:
+\desarrollos\ABDNeural\bui
+ld_neuronik\NEURONiK_artef
+acts\Debug\NEURONiK_Shared
+Code.lib
+    NEURONiKProcessor.cpp
+> D:\desarrollos\ABDNeural
+\Source\Main\NEURONiKProce
+ssor.h(103,44): error 
+C2061: error de sintaxis: 
+identificador 
+'ModulationTarget' [D:\des
+arrollos\ABDNeural\build_n
+euronik\NEURONiK_Standalon
+e.vcxproj]
+    (compilando archivo 
+de origen "../Source/Main/
+NEURONiKProcessor.cpp")
+    
+> D:\desarrollos\ABDNeural
+\Source\Main\NEURONiKProce
+ssor.h(108,50): error 
+C2061: error de sintaxis: 
+identificador 
+'ModulationTarget' [D:\des
+arrollos\ABDNeural\build_n
+euronik\NEURONiK_Standalon
+e.vcxproj]
+    (compilando archivo 
+de origen "../Source/Main/
+NEURONiKProcessor.cpp")
+    
+> D:\desarrollos\ABDNeural
+\Source\Main\NEURONiKProce
+ssor.h(124,56): error 
+C2653: 
+'ModulationTarget': no es 
+un nombre de clase o 
+espacio de nombres [D:\des
+arrollos\ABDNeural\build_n
+euronik\NEURONiK_Standalon
+e.vcxproj]
+    (compilando archivo 
+de origen "../Source/Main/
+NEURONiKProcessor.cpp")
+    
+> D:\desarrollos\ABDNeural
+\Source\Main\NEURONiKProce
+ssor.h(124,74): error 
+C2065: 'Count': 
+identificador no 
+declarado [D:\desarrollos\
+ABDNeural\build_neuronik\N
+EURONiK_Standalone.vcxproj
+]
+    (compilando archivo 
+de origen "../Source/Main/
+NEURONiKProcessor.cpp")
+    
+> D:\desarrollos\ABDNeural
+\Source\Main\NEURONiKProce
+ssor.h(124,74): error 
+C2975: "_Size": argumento 
+de plantilla no v??lido 
+para "std::array"; se 
+esperaba una expresi??n 
+constante en tiempo de 
+compilaci??n [D:\desarroll
+os\ABDNeural\build_neuroni
+k\NEURONiK_Standalone.vcxp
+roj]
+    (compilando archivo 
+de origen "../Source/Main/
+NEURONiKProcessor.cpp")
+        C:\Program 
+Files\Microsoft Visual Stu
+dio\18\Insiders\VC\Tools\M
+SVC\14.50.35717\include\ar
+ray(401,41):
+        vea la 
+declaraci??n de '_Size'
+    
+> D:\desarrollos\ABDNeural
+\Source\Main\NEURONiKProce
+ssor.h(105,53): error 
+C2065: 'target': 
+identificador no 
+declarado [D:\desarrollos\
+ABDNeural\build_neuronik\N
+EURONiK_Standalone.vcxproj
+]
+    (compilando archivo 
+de origen "../Source/Main/
+NEURONiKProcessor.cpp")
+    
+> D:\desarrollos\ABDNeural
+\Source\Main\NEURONiKProce
+ssor.h(110,53): error 
+C2065: 'target': 
+identificador no 
+declarado [D:\desarrollos\
+ABDNeural\build_neuronik\N
+EURONiK_Standalone.vcxproj
+]
+    (compilando archivo 
+de origen "../Source/Main/
+NEURONiKProcessor.cpp")
+    
+> D:\desarrollos\ABDNeural
+\Source\UI\CustomUICompone
+nts.h(40,33): error 
+C2661: 'NEURONiKProcessor:
+:getModulationValue': 
+ninguna funci??n 
+sobrecargada acepta 1 
+argumentos [D:\desarrollos
+\ABDNeural\build_neuronik\
+NEURONiK_Standalone.vcxpro
+j]
+    (compilando archivo 
+de origen "../Source/Main/
+NEURONiKProcessor.cpp")
+        D:\desarrollos\ABD
+Neural\Source\UI\CustomUIC
+omponents.h(40,33):
+        al hacer 
+coincidir la lista de 
+argumentos '(const NEURONi
+K::ModulationTarget)'
+    (compilando archivo 
+de origen "../Source/Main/
+NEURONiKProcessor.cpp")
+    
+    NEURONiKEditor.cpp
+> D:\desarrollos\ABDNeural
+\Source\Main\NEURONiKProce
+ssor.h(103,44): error 
+C2061: error de sintaxis: 
+identificador 
+'ModulationTarget' [D:\des
+arrollos\ABDNeural\build_n
+euronik\NEURONiK_Standalon
+e.vcxproj]
+    (compilando archivo 
+de origen "../Source/Main/
+NEURONiKEditor.cpp")
+    
+> D:\desarrollos\ABDNeural
+\Source\Main\NEURONiKProce
+ssor.h(108,50): error 
+C2061: error de sintaxis: 
+identificador 
+'ModulationTarget' [D:\des
+arrollos\ABDNeural\build_n
+euronik\NEURONiK_Standalon
+e.vcxproj]
+    (compilando archivo 
+de origen "../Source/Main/
+NEURONiKEditor.cpp")
+    
+
+

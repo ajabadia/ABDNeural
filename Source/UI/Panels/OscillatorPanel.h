@@ -2,8 +2,10 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <array>
 #include "../XYPad.h"
 #include "../CustomUIComponents.h"
+#include "../../Main/ModulationTargets.h"
 
 // Forward declaration to avoid including NEURONiKProcessor.h in a header
 class NEURONiKProcessor;
@@ -24,7 +26,7 @@ public:
     void timerCallback() override;
 
 private:
-    void setupControl(RotaryControl& ctrl, const juce::String& paramID, const juce::String& labelText, std::atomic<float>* modValue = nullptr);
+    void setupControl(RotaryControl& ctrl, const juce::String& paramID, const juce::String& labelText, ::NEURONiK::ModulationTarget modTarget = ::NEURONiK::ModulationTarget::Count);
 
     NEURONiKProcessor& processor;
 
@@ -34,6 +36,13 @@ private:
     RotaryControl parity;
     RotaryControl shift;
     RotaryControl rollOff;
+    
+    // Neurotik Controls
+    RotaryControl exciteNoise;
+    RotaryControl exciteColor;
+    RotaryControl impulseMix;
+    RotaryControl resonatorRes;
+    
 
     juce::TextButton loadA, loadB, loadC, loadD;
     std::array<juce::String, 4> modelNames;
