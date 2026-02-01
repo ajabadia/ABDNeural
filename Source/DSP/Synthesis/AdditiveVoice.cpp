@@ -40,6 +40,19 @@ void AdditiveVoice::prepare(double sampleRate, int samplesPerBlock)
     rollOffSmoother.reset(sampleRate, 0.02);
     unisonDetuneSmoother.reset(sampleRate, 0.02);
     unisonSpreadSmoother.reset(sampleRate, 0.02);
+
+    // Initialize to avoid zero-start
+    cutoffSmoother.setCurrentAndTargetValue(pendingParams.filterCutoff);
+    resSmoother.setCurrentAndTargetValue(pendingParams.filterRes);
+    morphXSmoother.setCurrentAndTargetValue(pendingParams.morphX);
+    morphYSmoother.setCurrentAndTargetValue(pendingParams.morphY);
+    inharmonicitySmoother.setCurrentAndTargetValue(pendingParams.inharmonicity);
+    roughnessSmoother.setCurrentAndTargetValue(pendingParams.roughness);
+    paritySmoother.setCurrentAndTargetValue(pendingParams.resonatorParity);
+    shiftSmoother.setCurrentAndTargetValue(pendingParams.resonatorShift);
+    rollOffSmoother.setCurrentAndTargetValue(pendingParams.resonatorRollOff);
+    unisonDetuneSmoother.setCurrentAndTargetValue(pendingParams.unisonDetune);
+    unisonSpreadSmoother.setCurrentAndTargetValue(pendingParams.unisonSpread);
 }
 
 void AdditiveVoice::noteOn(int midiNoteNumber, float velocity)
@@ -58,7 +71,21 @@ void AdditiveVoice::noteOn(int midiNoteNumber, float velocity)
     resonator.setBaseFrequency(originalFrequency);
     
     // Immediate parameter update for start
-    updateParameters();
+    updateParameters(); // Sets targets
+
+    // SNAP smoothers to targets immediately for NoteOn (prevent 0-start ramp)
+    // This effectively bypasses smoothing for the initial attack of the note
+    cutoffSmoother.setCurrentAndTargetValue(pendingParams.filterCutoff);
+    resSmoother.setCurrentAndTargetValue(pendingParams.filterRes);
+    morphXSmoother.setCurrentAndTargetValue(pendingParams.morphX);
+    morphYSmoother.setCurrentAndTargetValue(pendingParams.morphY);
+    inharmonicitySmoother.setCurrentAndTargetValue(pendingParams.inharmonicity);
+    roughnessSmoother.setCurrentAndTargetValue(pendingParams.roughness);
+    paritySmoother.setCurrentAndTargetValue(pendingParams.resonatorParity);
+    shiftSmoother.setCurrentAndTargetValue(pendingParams.resonatorShift);
+    rollOffSmoother.setCurrentAndTargetValue(pendingParams.resonatorRollOff);
+    unisonDetuneSmoother.setCurrentAndTargetValue(pendingParams.unisonDetune);
+    unisonSpreadSmoother.setCurrentAndTargetValue(pendingParams.unisonSpread);
     
     ampEnvelope.noteOn();
     filterEnvelope.noteOn();
@@ -140,36 +167,61 @@ bool AdditiveVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int 
         unisonDetuneSmoother.getNextValue(); unisonSpreadSmoother.getNextValue();
     }
 
-    for (int i = 0; i < numSamples; ++i)
-    {
-        float currentCutoff = cutoffSmoother.getNextValue();
-        float currentRes = resSmoother.getNextValue();
+    // 2. Render Audio Logic (Inner Loop)
+    juce::ScopedNoDenormals noDenormals; // Local safety for feedback loops
+    
+    // Process in sub-blocks for control rate smoothing and buffer safety
+    static constexpr int kSubBlockSize = 32;
 
-        float rawSample = resonator.processSample(i);
-        float fEnv = filterEnvelope.processSample();
+    for (int start = 0; start < numSamples; start += kSubBlockSize)
+    {
+        int thisBlockSamples = std::min(kSubBlockSize, numSamples - start);
+        float tempBuffer[kSubBlockSize];
+
+        for (int i = 0; i < thisBlockSamples; ++i)
+        {
+            float currentCutoff = cutoffSmoother.getNextValue();
+            float currentRes = resSmoother.getNextValue();
+
+            float rawSample = resonator.processSample(i + start);
+            float fEnv = filterEnvelope.processSample();
+            
+            float targetCutoff = currentCutoff + modCutoff + (fEnv * currentParams.fEnvAmount * 18000.0f);
+            filter.setCutoff(juce::jlimit(20.0f, 20000.0f, targetCutoff));
+            filter.setResonance(currentRes);
+            
+            float filteredSample = filter.processSample(rawSample);
+            float envValue = ampEnvelope.processSample();
+            float levelMod = juce::jlimit(0.0f, 2.0f, currentParams.oscLevel + modLevel);
+            
+            tempBuffer[i] = filteredSample * envValue * currentVelocity * levelMod;
+        }
         
-        float targetCutoff = currentCutoff + modCutoff + (fEnv * currentParams.fEnvAmount * 18000.0f);
-        filter.setCutoff(juce::jlimit(20.0f, 20000.0f, targetCutoff));
-        filter.setResonance(currentRes);
-        
-        float filteredSample = filter.processSample(rawSample);
-        float envValue = ampEnvelope.processSample();
-        float levelMod = juce::jlimit(0.0f, 2.0f, currentParams.oscLevel + modLevel);
-        float finalSample = filteredSample * envValue * currentVelocity * levelMod;
-        
+        // Sanitize
+        bool badBlock = false;
+        for (int i = 0; i < thisBlockSamples; ++i)
+        {
+            if (!std::isfinite(tempBuffer[i]))
+            {
+                badBlock = true;
+                break;
+            }
+        }
+
+        if (badBlock)
+        {
+            #if JUCE_DEBUG
+            DBG("WARNING: NaN/Inf detected in AdditiveVoice output - voice reset");
+            #endif
+            reset(); 
+            return false;
+        }
+
+        // Safe Mix
         for (int channel = 0; channel < outputBuffer.getNumChannels(); ++channel)
         {
-            outputBuffer.addSample(channel, startSample + i, finalSample);
+            outputBuffer.addFrom(channel, startSample + start, tempBuffer, thisBlockSamples);
         }
-    }
-    
-    // Sanitize output to prevent NaN propagation
-    if (NEURONiK::DSP::sanitizeAudioBuffer(outputBuffer, startSample, numSamples))
-    {
-        #if JUCE_DEBUG
-        DBG("WARNING: NaN/Inf detected in AdditiveVoice output - voice reset");
-        #endif
-        reset(); // Emergency reset
     }
     
     return ampEnvelope.getCurrentState() != NEURONiK::DSP::Core::Envelope::State::Idle;
@@ -190,6 +242,19 @@ void AdditiveVoice::reset()
     mpePitchBend = 0.0f;
     mpePressure = 0.0f;
     mpeTimbre = 0.0f;
+
+    // Reset smoothers to current pending values to avoid 0-start ramps
+    cutoffSmoother.setCurrentAndTargetValue(pendingParams.filterCutoff);
+    resSmoother.setCurrentAndTargetValue(pendingParams.filterRes);
+    morphXSmoother.setCurrentAndTargetValue(pendingParams.morphX);
+    morphYSmoother.setCurrentAndTargetValue(pendingParams.morphY);
+    inharmonicitySmoother.setCurrentAndTargetValue(pendingParams.inharmonicity);
+    roughnessSmoother.setCurrentAndTargetValue(pendingParams.roughness);
+    paritySmoother.setCurrentAndTargetValue(pendingParams.resonatorParity);
+    shiftSmoother.setCurrentAndTargetValue(pendingParams.resonatorShift);
+    rollOffSmoother.setCurrentAndTargetValue(pendingParams.resonatorRollOff);
+    unisonDetuneSmoother.setCurrentAndTargetValue(pendingParams.unisonDetune);
+    unisonSpreadSmoother.setCurrentAndTargetValue(pendingParams.unisonSpread);
 }
 
 void AdditiveVoice::notePitchBend(float bendSemitones)

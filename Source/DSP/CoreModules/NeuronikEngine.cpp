@@ -109,15 +109,15 @@ void NeuronikEngine::applyModulation()
 
 void NeuronikEngine::updateParameters()
 {
-    BaseEngine::updateParameters();
-    applyModulation();
-
     // Propagate parameters to all voices
     for (auto& v : voices)
     {
-        if (auto* av = dynamic_cast<::NEURONiK::DSP::Synthesis::AdditiveVoice*>(v.get()))
-            av->setParams(pendingVoiceParams);
+        if (v->getType() == VoiceType::Additive)
+            static_cast<Synthesis::AdditiveVoice*>(v.get())->setParams(pendingVoiceParams);
     }
+
+    BaseEngine::updateParameters();
+    applyModulation();
 }
 
 
@@ -126,15 +126,13 @@ void NeuronikEngine::getSpectralData(float* destination64) const
     bool found = false;
     for (const auto& v : voices)
     {
-        if (v->isActive())
+        if (v->isActive() && v->getType() == VoiceType::Additive)
         {
-            if (auto* av = dynamic_cast<Synthesis::AdditiveVoice*>(v.get()))
-            {
-                auto& partials = av->getResonator().getPartialAmplitudes();
-                for (int i = 0; i < 64; ++i) destination64[i] = partials[i];
-                found = true;
-                break;
-            }
+            auto* av = static_cast<Synthesis::AdditiveVoice*>(v.get());
+            auto& partials = av->getResonator().getPartialAmplitudes();
+            for (int i = 0; i < 64; ++i) destination64[i] = partials[i];
+            found = true;
+            break;
         }
     }
     
@@ -148,14 +146,12 @@ void NeuronikEngine::getEnvelopeLevels(float& amp, float& filter) const
 {
     for (const auto& v : voices)
     {
-        if (v->isActive())
+        if (v->isActive() && v->getType() == VoiceType::Additive)
         {
-            if (auto* av = dynamic_cast<Synthesis::AdditiveVoice*>(v.get()))
-            {
-                amp = av->getAmpEnvelopeLevel();
-                filter = av->getFilterEnvelopeLevel();
-                return;
-            }
+            auto* av = static_cast<Synthesis::AdditiveVoice*>(v.get());
+            amp = av->getAmpEnvelopeLevel();
+            filter = av->getFilterEnvelopeLevel();
+            return;
         }
     }
     amp = 0.0f;
@@ -179,8 +175,8 @@ void NeuronikEngine::loadModel(const Common::SpectralModel& model, int slot)
 {
     for (auto& v : voices)
     {
-        if (auto* av = dynamic_cast<::NEURONiK::DSP::Synthesis::AdditiveVoice*>(v.get()))
-            av->loadModel(model, slot);
+        if (v->getType() == VoiceType::Additive)
+            static_cast<Synthesis::AdditiveVoice*>(v.get())->loadModel(model, slot);
     }
 }
 

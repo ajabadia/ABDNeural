@@ -42,7 +42,19 @@ PresetPanel::PresetPanel(NEURONiKProcessor& p)
         }
     };
 
+    processor.getPresetManager().addChangeListener(this);
     startTimer(500); // Check for preset changes every 500ms
+}
+
+PresetPanel::~PresetPanel()
+{
+    processor.getPresetManager().removeChangeListener(this);
+}
+
+void PresetPanel::changeListenerCallback(juce::ChangeBroadcaster* source)
+{
+    if (source == &processor.getPresetManager())
+        updatePresetList();
 }
 
 void PresetPanel::timerCallback()

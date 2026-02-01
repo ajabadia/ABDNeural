@@ -51,14 +51,15 @@ void NeurotikEngine::renderNextBlock(juce::AudioBuffer<float>& buffer, juce::Mid
 
 void NeurotikEngine::updateParameters()
 {
-    BaseEngine::updateParameters();
-    applyModulation();
-
+    // Propagate parameters to all voices
     for (auto& v : voices)
     {
-        if (auto* nv = dynamic_cast<::NEURONiK::DSP::Synthesis::NeurotikVoice*>(v.get()))
-            nv->setParams(pendingVoiceParams);
+        if (v->getType() == VoiceType::Neurotik)
+            static_cast<Synthesis::NeurotikVoice*>(v.get())->setParams(pendingVoiceParams);
     }
+
+    BaseEngine::updateParameters();
+    applyModulation();
 }
 
 void NeurotikEngine::applyModulation()
@@ -121,14 +122,12 @@ void NeurotikEngine::getEnvelopeLevels(float& amp, float& filter) const
 {
     for (const auto& v : voices)
     {
-        if (v->isActive())
+        if (v->isActive() && v->getType() == VoiceType::Neurotik)
         {
-            if (auto* nv = dynamic_cast<Synthesis::NeurotikVoice*>(v.get()))
-            {
-                amp = nv->getAmpEnvelopeLevel();
-                filter = 0.0f;
-                return;
-            }
+            auto* nv = static_cast<Synthesis::NeurotikVoice*>(v.get());
+            amp = nv->getAmpEnvelopeLevel();
+            filter = 0.0f;
+            return;
         }
     }
     amp = 0.0f;
@@ -153,15 +152,13 @@ void NeurotikEngine::getSpectralData(float* destination64) const
     bool found = false;
     for (const auto& v : voices)
     {
-        if (v->isActive())
+        if (v->isActive() && v->getType() == VoiceType::Neurotik)
         {
-            if (auto* nv = dynamic_cast<Synthesis::NeurotikVoice*>(v.get()))
-            {
-                const auto& partials = nv->getPartialAmplitudes();
-                for (int i = 0; i < 64; ++i) destination64[i] = partials[i];
-                found = true;
-                break;
-            }
+            auto* nv = static_cast<Synthesis::NeurotikVoice*>(v.get());
+            const auto& partials = nv->getPartialAmplitudes();
+            for (int i = 0; i < 64; ++i) destination64[i] = partials[i];
+            found = true;
+            break;
         }
     }
     
@@ -175,8 +172,8 @@ void NeurotikEngine::loadModel(const NEURONiK::Common::SpectralModel& model, int
 {
     for (auto& v : voices)
     {
-        if (auto* nv = dynamic_cast<::NEURONiK::DSP::Synthesis::NeurotikVoice*>(v.get()))
-            nv->loadModel(model, slot);
+        if (v->getType() == VoiceType::Neurotik)
+            static_cast<Synthesis::NeurotikVoice*>(v.get())->loadModel(model, slot);
     }
 }
 

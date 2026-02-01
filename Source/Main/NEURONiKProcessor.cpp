@@ -21,7 +21,6 @@ NEURONiKProcessor::NEURONiKProcessor()
     else
         engine = std::make_unique<NEURONiK::DSP::NeurotikEngine>();
 
-    keyboardState.addListener(this);
 
     for (auto& val : spectralDataForUI)
         val.store(0.0f, std::memory_order_relaxed);
@@ -88,12 +87,14 @@ NEURONiKProcessor::NEURONiKProcessor()
     #undef LOAD_PARAM
 
     apvts.state.addListener(this);
+
+    // Ensure engine is fully synchronized at startup
+    synchronizeEngineParameters();
 }
 
 NEURONiKProcessor::~NEURONiKProcessor()
 {
     apvts.state.removeListener(this);
-    keyboardState.removeListener(this);
     for (auto& param : getParameters())
     {
         if (auto* p = dynamic_cast<juce::AudioProcessorParameterWithID*>(param))
@@ -104,7 +105,7 @@ NEURONiKProcessor::~NEURONiKProcessor()
 void NEURONiKProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     if (engine) engine->prepare(sampleRate, samplesPerBlock);
-    keyboardState.reset();
+    synchronizeEngineParameters();
 }
 
 void NEURONiKProcessor::setPolyphony(int numVoices)
@@ -115,10 +116,9 @@ void NEURONiKProcessor::setPolyphony(int numVoices)
 }
 
 int NEURONiKProcessor::getPolyphony() const { return currentPolyphony.load(); }
-NEURONiKProcessor::EditorSettings& NEURONiKProcessor::getEditorSettings() { return editorSettings; }
 void NEURONiKProcessor::releaseResources() {}
 
-void NEURONiKProcessor::handleNoteOn(juce::MidiKeyboardState*, int midiChannel, int midiNoteNumber, float velocity)
+void NEURONiKProcessor::injectNoteOn(int midiChannel, int midiNoteNumber, float velocity)
 {
     int start1, block1, start2, block2;
     midiFifo.prepareToWrite(1, start1, block1, start2, block2);
@@ -130,7 +130,7 @@ void NEURONiKProcessor::handleNoteOn(juce::MidiKeyboardState*, int midiChannel, 
     midiFifo.finishedWrite(block1 + block2);
 }
 
-void NEURONiKProcessor::handleNoteOff(juce::MidiKeyboardState*, int midiChannel, int midiNoteNumber, float velocity)
+void NEURONiKProcessor::injectNoteOff(int midiChannel, int midiNoteNumber, float velocity)
 {
     int start1, block1, start2, block2;
     midiFifo.prepareToWrite(1, start1, block1, start2, block2);
@@ -183,8 +183,9 @@ void NEURONiKProcessor::synchronizeEngineParameters()
 {
     if (!engine) return;
 
-    if (auto* nEngine = dynamic_cast<NEURONiK::DSP::NeuronikEngine*>(engine.get()))
+    if (engine->getType() == NEURONiK::DSP::ISynthesisEngine::Type::Neuronik)
     {
+        auto* nEngine = static_cast<NEURONiK::DSP::NeuronikEngine*>(engine.get());
         ::NEURONiK::DSP::Synthesis::AdditiveVoice::Params vParams;
         vParams.oscLevel = apvts.getRawParameterValue(IDs::oscLevel)->load();
         vParams.attack = apvts.getRawParameterValue(IDs::envAttack)->load() * 1000.0f;
@@ -233,8 +234,9 @@ void NEURONiKProcessor::synchronizeEngineParameters()
         }
         nEngine->setGlobalParams(gParams);
     }
-    else if (auto* ntEngine = dynamic_cast<NEURONiK::DSP::NeurotikEngine*>(engine.get()))
+    else if (engine->getType() == NEURONiK::DSP::ISynthesisEngine::Type::Neurotik)
     {
+        auto* ntEngine = static_cast<NEURONiK::DSP::NeurotikEngine*>(engine.get());
         ::NEURONiK::DSP::Synthesis::NeurotikVoice::Params ntParams;
         ntParams.level = apvts.getRawParameterValue(IDs::oscLevel)->load();
         ntParams.attack = apvts.getRawParameterValue(IDs::envAttack)->load() * 1000.0f;
@@ -339,7 +341,12 @@ void NEURONiKProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
             modulationValues[i].store(mods[i], std::memory_order_relaxed);
         }
         
-        // Update filter envelope parameters for visualization
+        // Update envelope parameters for visualization
+        uiAttack.store(apvts.getRawParameterValue(IDs::envAttack)->load(), std::memory_order_relaxed);
+        uiDecay.store(apvts.getRawParameterValue(IDs::envDecay)->load(), std::memory_order_relaxed);
+        uiSustain.store(apvts.getRawParameterValue(IDs::envSustain)->load(), std::memory_order_relaxed);
+        uiRelease.store(apvts.getRawParameterValue(IDs::envRelease)->load(), std::memory_order_relaxed);
+
         uiFAttack.store(apvts.getRawParameterValue(IDs::filterAttack)->load(), std::memory_order_relaxed);
         uiFDecay.store(apvts.getRawParameterValue(IDs::filterDecay)->load(), std::memory_order_relaxed);
         uiFSustain.store(apvts.getRawParameterValue(IDs::filterSustain)->load(), std::memory_order_relaxed);
@@ -385,6 +392,7 @@ void NEURONiKProcessor::setStateInformation(const void* data, int sizeInBytes)
         apvts.replaceState(tree);
         midiMappingManager->loadFromValueTree(tree);
         reloadModels();
+        synchronizeEngineParameters();
     }
 }
 
@@ -418,8 +426,7 @@ void NEURONiKProcessor::loadModel(const juce::File& file, int slot)
         modelNames[slot] = file.getFileNameWithoutExtension();
         if (apvts.state.isValid())
             apvts.state.setProperty("modelPath" + juce::String(slot), file.getFullPathName(), nullptr);
-        if (auto* editor = dynamic_cast<NEURONiKEditor*>(getActiveEditor()))
-            editor->updateModelNames();
+        // Note: Editor should listen to property changes instead of being called directly
     }
 }
 
@@ -461,18 +468,36 @@ void NEURONiKProcessor::reloadModels()
 void NEURONiKProcessor::valueTreePropertyChanged(juce::ValueTree&, const juce::Identifier&) {}
 void NEURONiKProcessor::valueTreeRedirected(juce::ValueTree& tree) { tree.addListener(this); reloadModels(); }
 
-void NEURONiKProcessor::copyPatchToClipboard()
+void NEURONiKProcessor::getSpectralDataForUI(float* destination64) const noexcept
 {
-    auto xml = apvts.copyState().createXml();
-    if (xml != nullptr) juce::SystemClipboard::copyTextToClipboard(xml->toString());
+    for (int i = 0; i < 64; ++i)
+        destination64[i] = spectralDataForUI[i].load(std::memory_order_relaxed);
 }
 
-void NEURONiKProcessor::pastePatchFromClipboard()
+void NEURONiKProcessor::getEnvelopeLevelsForUI(float& amp, float& filter) const noexcept
 {
-    auto xmlString = juce::SystemClipboard::getTextFromClipboard();
-    auto xml = juce::parseXML(xmlString);
-    if (xml != nullptr && xml->hasTagName(apvts.state.getType()))
-        apvts.replaceState(juce::ValueTree::fromXml(*xml));
+    amp = uiEnvelope.load(std::memory_order_relaxed);
+    filter = uiFEnvelope.load(std::memory_order_relaxed);
+}
+
+float NEURONiKProcessor::getLfoValueForUI(int lfoIndex) const noexcept
+{
+    if (lfoIndex == 0) return lfo1ValueForUI.load(std::memory_order_relaxed);
+    if (lfoIndex == 1) return lfo2ValueForUI.load(std::memory_order_relaxed);
+    return 0.0f;
+}
+
+float NEURONiKProcessor::getModulationValueForUI(int targetIndex) const noexcept
+{
+    if (targetIndex >= 0 && targetIndex < static_cast<int>(NEURONiK::ModulationTarget::Count))
+        return modulationValues[targetIndex].load(std::memory_order_relaxed);
+    return 0.0f;
+}
+
+void NEURONiKProcessor::getMorphCoordinatesForUI(float& x, float& y) const noexcept
+{
+    x = uiMorphX.load(std::memory_order_relaxed);
+    y = uiMorphY.load(std::memory_order_relaxed);
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new NEURONiKProcessor(); }

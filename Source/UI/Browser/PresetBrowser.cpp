@@ -1,5 +1,6 @@
 #include "PresetBrowser.h"
-#include "ThemeManager.h"
+#include "../ThemeManager.h"
+#include "../../Main/NEURONiKProcessor.h"
 #include "PresetListModels.h"
 
 namespace NEURONiK::UI::Browser
@@ -12,6 +13,7 @@ namespace NEURONiK::UI::Browser
 PresetBrowser::PresetBrowser(NEURONiKProcessor& p)
     : processor(p)
 {
+    processor.getPresetManager().addChangeListener(this);
     rootDirectory = processor.getPresetManager().getPresetsDirectory();
     
     // --- Bank List Setup ---
@@ -195,6 +197,7 @@ PresetBrowser::PresetBrowser(NEURONiKProcessor& p)
         }
     };
 
+    processor.getPresetManager().addChangeListener(this);
     refresh();
 }
 
@@ -206,8 +209,15 @@ void PresetBrowser::filterPresets(const juce::String& filterText)
 
 PresetBrowser::~PresetBrowser()
 {
+    processor.getPresetManager().removeChangeListener(this);
     bankList.setModel(nullptr);
     presetList.setModel(nullptr);
+}
+
+void PresetBrowser::changeListenerCallback(juce::ChangeBroadcaster* source)
+{
+    if (source == &processor.getPresetManager())
+        refresh();
 }
 
 void PresetBrowser::scanBanks()
@@ -351,7 +361,7 @@ void PresetBrowser::paint(juce::Graphics& g)
     int colWidth = area.getWidth() / 3;
     
     // Column backgrounds with subtle neural glow
-    const auto& theme = ThemeManager::getCurrentTheme();
+    const auto& theme = NEURONiK::UI::ThemeManager::getCurrentTheme();
     g.setColour(theme.background.withAlpha(0.25f));
     g.fillRect(area.removeFromLeft(colWidth)); 
     
@@ -365,8 +375,8 @@ void PresetBrowser::paint(juce::Graphics& g)
     g.drawHorizontalLine(40, 0.0f, (float)getWidth());
 
     // Decorative glow at the top
-    juce::ColourGradient topGlow(theme.accent.withAlpha(0.05f), 0, 0,
-                               juce::Colours::transparentBlack, 0, 40, false);
+    juce::ColourGradient topGlow(theme.accent.withAlpha(0.05f), 0.0f, 0.0f,
+                               juce::Colours::transparentBlack, 0.0f, 40.0f, false);
     g.setGradientFill(topGlow);
     g.fillRect(getLocalBounds().removeFromTop(40));
 }

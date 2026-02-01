@@ -10,6 +10,7 @@
 
 #include "XYPad.h"
 #include "ThemeManager.h"
+#include "../DSP/IVisualizationSource.h"
 #include "../State/ParameterDefinitions.h"
 
 namespace NEURONiK::UI
@@ -17,11 +18,11 @@ namespace NEURONiK::UI
 
 using namespace NEURONiK::State; // Include the parameter IDs namespace
 
-XYPad::XYPad(NEURONiKProcessor& p, juce::AudioProcessorValueTreeState& vtsIn)
-    : vts(vtsIn), processor(p)
+XYPad::XYPad(NEURONiK::DSP::IVisualizationSource& s, juce::AudioProcessorValueTreeState& v)
+    : vts(v), source(s)
 {
     for (auto& n : modelNames) n = "EMPTY";
-    updateThumbPosition();
+    updateThumbPosition(); // This will be removed or changed later, but for now it's still called.
     startTimerHz(30);
 }
 
@@ -90,52 +91,54 @@ void XYPad::mouseDown(const juce::MouseEvent& event)
 
 void XYPad::mouseDrag(const juce::MouseEvent& event)
 {
-    auto bounds = getLocalBounds();
-    auto x = (float)event.getPosition().x / bounds.getWidth();
-    auto y = 1.0f - ((float)event.getPosition().y / bounds.getHeight());
+    auto area = getLocalBounds().toFloat();
+    float x = juce::jlimit(0.0f, 1.0f, (float)event.x / area.getWidth());
+    float y = juce::jlimit(0.0f, 1.0f, 1.0f - ((float)event.y / area.getHeight()));
 
     if (auto* xParam = vts.getParameter(IDs::morphX))
-        xParam->setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, x));
+        xParam->setValueNotifyingHost(x);
 
     if (auto* yParam = vts.getParameter(IDs::morphY))
-        yParam->setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, y));
+        yParam->setValueNotifyingHost(y);
+
+    // Update thumb position immediately for smooth feedback
+    thumbPosition.setXY(x * area.getWidth(), (1.0f - y) * area.getHeight());
+    repaint();
 }
 
 void XYPad::mouseUp(const juce::MouseEvent& event)
 {
-    juce::ignoreUnused(event); // FIX: Silence the 'unused parameter' warning
+    juce::ignoreUnused(event);
     if (auto* xParam = vts.getParameter(IDs::morphX)) xParam->endChangeGesture();
     if (auto* yParam = vts.getParameter(IDs::morphY)) yParam->endChangeGesture();
 }
 
 void XYPad::timerCallback()
 {
-    updateThumbPosition();
+    float mx = 0.5f, my = 0.5f;
+    source.getMorphCoordinatesForUI(mx, my);
+    
+    // Only update from source if we're not currently dragging to avoid jitter
+    if (!juce::ModifierKeys::currentModifiers.isAnyMouseButtonDown())
+    {
+        auto area = getLocalBounds().toFloat();
+        float newX = mx * area.getWidth();
+        float newY = (1.0f - my) * area.getHeight();
+
+        if (std::hypot(newX - thumbPosition.x, newY - thumbPosition.y) > 0.5f)
+        {
+            thumbPosition.setXY(newX, newY);
+            repaint();
+        }
+    }
 }
 
 void XYPad::updateThumbPosition()
 {
-    auto bounds = getLocalBounds();
-    
-    // Use the realtime modulated values from the processor for visualization
-    float baseX = vts.getRawParameterValue(IDs::morphX)->load();
-    float modX  = processor.getModulationValue(::NEURONiK::ModulationTarget::MorphX).load();
-    float finalX = juce::jlimit(0.0f, 1.0f, baseX + modX);
-
-    float baseY = vts.getRawParameterValue(IDs::morphY)->load();
-    float modY  = processor.getModulationValue(::NEURONiK::ModulationTarget::MorphY).load();
-    float finalY = juce::jlimit(0.0f, 1.0f, baseY + modY);
-    
-    auto newX = finalX * bounds.getWidth();
-    auto newY = (1.0f - finalY) * bounds.getHeight();
-
-    juce::Point<float> newThumbPosition(newX, newY);
-
-    if (thumbPosition.getDistanceFrom(newThumbPosition) > 0.5f)
-    {
-        thumbPosition = newThumbPosition;
-        repaint();
-    }
+    float mx = 0.5f, my = 0.5f;
+    source.getMorphCoordinatesForUI(mx, my);
+    auto area = getLocalBounds().toFloat();
+    thumbPosition.setXY(mx * area.getWidth(), (1.0f - my) * area.getHeight());
 }
 
 void XYPad::setModelNames(const std::array<juce::String, 4>& names)
