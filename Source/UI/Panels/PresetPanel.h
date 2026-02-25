@@ -9,16 +9,18 @@ namespace NEURONiK::UI
 {
 
 class PresetPanel : public juce::Component,
-                  public juce::Timer
+                  public juce::Timer,
+                  public juce::ChangeListener
 {
 public:
     PresetPanel(NEURONiKProcessor& p);
-    ~PresetPanel() override = default;
+    ~PresetPanel() override;
 
     void paint(juce::Graphics& g) override;
     void resized() override;
     
     void timerCallback() override;
+    void changeListenerCallback(juce::ChangeBroadcaster* source) override;
 
 private:
     void updatePresetList();

@@ -1,5 +1,6 @@
 #include "ParameterPanel.h"
 #include "ThemeManager.h"
+#include "../Main/NEURONiKProcessor.h"
 #include "../State/ParameterDefinitions.h"
 
 namespace NEURONiK::UI {

@@ -9,10 +9,13 @@
 
 #include "ResonatorBank.h"
 #include "../DSPUtils.h"
+#include "../Utils/SIMDWrapper.h"
 #include <cmath>
 #include <numeric>
 
 namespace NEURONiK::DSP::Core {
+
+using namespace NEURONiK::DSP::Utils;
 
 // Helper for linear interpolation
 template<typename T>
@@ -51,155 +54,131 @@ void ResonatorBank::loadModel(const NEURONiK::Common::SpectralModel& model, int 
     }
 }
 
+void ResonatorBank::updateFilterCoefficients(int i, float partialFreq, float q, float amp, float detuneVal) noexcept
+{
+    // Layer 1 (Main)
+    if (partialFreq < static_cast<float>(sampleRate * 0.48) && partialFreq > 10.0f)
+    {
+        float omega = juce::MathConstants<float>::twoPi * partialFreq / static_cast<float>(sampleRate);
+        float cosW = std::cos(omega);
+        float alpha = std::sin(omega) / (2.0f * q);
+        float a0 = 1.0f + alpha;
+        float invA0 = 1.0f / a0;
+
+        b0_v[i] = alpha * invA0;
+        b1_v[i] = 0.0f;
+        b2_v[i] = -alpha * invA0;
+        a1_v[i] = (-2.0f * cosW) * invA0;
+        a2_v[i] = (1.0f - alpha) * invA0;
+        partialAmplitudes_v[i] = amp;
+        
+        // Unison Layer (detune)
+        if (std::abs(detuneVal) > 0.0001f)
+        {
+            float freqUnison = partialFreq * (1.0f + detuneVal);
+            if (freqUnison < static_cast<float>(sampleRate * 0.48))
+            {
+                float omegaU = juce::MathConstants<float>::twoPi * freqUnison / static_cast<float>(sampleRate);
+                float cosWU = std::cos(omegaU);
+                float alphaU = std::sin(omegaU) / (2.0f * q);
+                float a0U = 1.0f + alphaU;
+                float invA0U = 1.0f / a0U;
+                
+                b0_v[i + 64] = alphaU * invA0U;
+                b1_v[i + 64] = 0.0f;
+                b2_v[i + 64] = -alphaU * invA0U;
+                a1_v[i + 64] = (-2.0f * cosWU) * invA0U;
+                a2_v[i + 64] = (1.0f - alphaU) * invA0U;
+                partialAmplitudes_v[i + 64] = (amp * 0.707f); 
+            }
+            else { b0_v[i+64]=0; b1_v[i+64]=0; b2_v[i+64]=0; partialAmplitudes_v[i+64]=0; }
+        }
+        else { b0_v[i+64]=0; b1_v[i+64]=0; b2_v[i+64]=0; partialAmplitudes_v[i+64]=0; }
+    }
+    else
+    {
+        b0_v[i] = 0; b1_v[i] = 0; b2_v[i] = 0; a1_v[i] = 0; a2_v[i] = 0;
+        b0_v[i+64] = 0; b1_v[i+64] = 0; b2_v[i+64] = 0; a1_v[i+64] = 0; a2_v[i+64] = 0;
+        partialAmplitudes_v[i] = 0; partialAmplitudes_v[i+64] = 0;
+    }
+}
+
 void ResonatorBank::updateParameters(float morphX, float morphY, float resonance, float detune) noexcept
 {
-    morphX = juce::jlimit(0.0f, 1.0f, morphX);
-    morphY = juce::jlimit(0.0f, 1.0f, morphY);
-    float resVal = juce::jlimit(0.0f, 1.0f, resonance);
-    float detuneVal = juce::jlimit(-1.0f, 1.0f, detune);
-    
-    // Optimization: check if anything meaningful changed
+    float mx = juce::jlimit(0.0f, 1.0f, morphX);
+    float my = juce::jlimit(0.0f, 1.0f, morphY);
+    float res = juce::jlimit(0.0f, 1.0f, resonance);
+    float det = juce::jlimit(-1.0f, 1.0f, detune);
+
     bool anythingChanged = modelChanged || 
-                          (morphX != lastMorphX) || (morphY != lastMorphY) ||
-                          (resVal != lastRes) || (detuneVal != lastDetune) ||
+                          (mx != lastMorphX) || (my != lastMorphY) ||
+                          (res != lastRes) || (det != lastDetune) ||
                           (baseFrequency != lastBaseFreq);
 
     if (!anythingChanged) return;
 
-    // Update latches
-    lastMorphX = morphX; lastMorphY = morphY;
-    lastRes = resVal; lastDetune = detuneVal;
+    lastMorphX = mx; lastMorphY = my; lastRes = res; lastDetune = det;
     lastBaseFreq = baseFrequency;
     modelChanged = false;
 
-    float q = 1.0f + (resVal * resVal * 199.0f);
-
-    const NEURONiK::Common::SpectralModel* mA = &models[0];
-    const NEURONiK::Common::SpectralModel* mB = &models[1];
-    const NEURONiK::Common::SpectralModel* mC = &models[2];
-    const NEURONiK::Common::SpectralModel* mD = &models[3];
-
+    float q = 1.0f + (res * res * 199.0f);
     float totalAmplitude = 0.0f;
     float tempAmps[64];
 
     for (int i = 0; i < 64; ++i)
     {
         float harmonicNumber = static_cast<float>(i + 1);
-
-        // 1. Morph Amplitude
-        float ampTop = lerp(mA->amplitudes[i], mB->amplitudes[i], morphX);
-        float ampBottom = lerp(mC->amplitudes[i], mD->amplitudes[i], morphX);
-        tempAmps[i] = lerp(ampTop, ampBottom, morphY);
+        float ampTop = lerp(models[0].amplitudes[i], models[1].amplitudes[i], mx);
+        float ampBottom = lerp(models[2].amplitudes[i], models[3].amplitudes[i], mx);
+        tempAmps[i] = lerp(ampTop, ampBottom, my);
         totalAmplitude += tempAmps[i];
 
-        // 2. Morph Frequency Offset
-        float freqOffsetTop = lerp(mA->frequencyOffsets[i], mB->frequencyOffsets[i], morphX);
-        float freqOffsetBottom = lerp(mC->frequencyOffsets[i], mD->frequencyOffsets[i], morphX);
-        float freqOffset = lerp(freqOffsetTop, freqOffsetBottom, morphY);
-
+        float freqOffsetTop = lerp(models[0].frequencyOffsets[i], models[1].frequencyOffsets[i], mx);
+        float freqOffsetBottom = lerp(models[2].frequencyOffsets[i], models[3].frequencyOffsets[i], mx);
+        float freqOffset = lerp(freqOffsetTop, freqOffsetBottom, my);
         float partialFreq = (baseFrequency * harmonicNumber) + freqOffset;
 
-        // 3. Update SIMD coefficients
-        if (partialFreq < static_cast<float>(sampleRate * 0.48) && partialFreq > 10.0f)
-        {
-            float omega = juce::MathConstants<float>::twoPi * partialFreq / static_cast<float>(sampleRate);
-            float cosW = std::cos(omega);
-            float alpha = std::sin(omega) / (2.0f * q);
-            float a0 = 1.0f + alpha;
-            float invA0 = 1.0f / a0;
-
-            b0_v[i] = alpha * invA0;
-            b1_v[i] = 0.0f;
-            b2_v[i] = -alpha * invA0;
-            a1_v[i] = (-2.0f * cosW) * invA0;
-            a2_v[i] = (1.0f - alpha) * invA0;
-            
-            // Unison Layer (detune)
-            if (std::abs(detuneVal) > 0.0001f)
-            {
-                float freqUnison = partialFreq * (1.0f + detuneVal);
-                if (freqUnison < static_cast<float>(sampleRate * 0.48))
-                {
-                    float omegaU = juce::MathConstants<float>::twoPi * freqUnison / static_cast<float>(sampleRate);
-                    float cosWU = std::cos(omegaU);
-                    float alphaU = std::sin(omegaU) / (2.0f * q);
-                    float a0U = 1.0f + alphaU;
-                    float invA0U = 1.0f / a0U;
-                    
-                    b0_v[i + 64] = alphaU * invA0U;
-                    b1_v[i + 64] = 0.0f;
-                    b2_v[i + 64] = -alphaU * invA0U;
-                    a1_v[i + 64] = (-2.0f * cosWU) * invA0U;
-                    a2_v[i + 64] = (1.0f - alphaU) * invA0U;
-                    
-                    partialAmplitudes_v[i + 64] = (tempAmps[i] * 0.707f); // Lower gain for unison
-                }
-                else
-                {
-                    b0_v[i + 64] = 0; b1_v[i + 64] = 0; b2_v[i + 64] = 0;
-                    a1_v[i + 64] = 0; a2_v[i + 64] = 0;
-                    partialAmplitudes_v[i + 64] = 0;
-                }
-            }
-            else
-            {
-                b0_v[i + 64] = 0; b1_v[i + 64] = 0; b2_v[i + 64] = 0;
-                a1_v[i + 64] = 0; a2_v[i + 64] = 0;
-                partialAmplitudes_v[i + 64] = 0;
-            }
-        }
-        else
-        {
-            b0_v[i] = 0; b1_v[i] = 0; b2_v[i] = 0;
-            a1_v[i] = 0; a2_v[i] = 0;
-            tempAmps[i] = 0;
-            
-            b0_v[i + 64] = 0; b1_v[i + 64] = 0; b2_v[i + 64] = 0;
-            a1_v[i + 64] = 0; a2_v[i + 64] = 0;
-            partialAmplitudes_v[i + 64] = 0;
-        }
+        updateFilterCoefficients(i, partialFreq, q, tempAmps[i], det);
     }
 
-    // Normalize partial amplitudes (main layer) and store in SIMD buffer
     float invNorm = (totalAmplitude > 0.001f) ? (1.0f / totalAmplitude) : 0.0f;
-    for (int i = 0; i < 64; ++i)
-        partialAmplitudes_v[i] = tempAmps[i] * invNorm;
+    for (int i = 0; i < 128; ++i)
+        partialAmplitudes_v[i] *= invNorm;
+        
+    // Copy main layer to partialAmplitudes for UI visualization
+    for (int i = 0; i < 64; i++) {
+        partialAmplitudes[i] = partialAmplitudes_v[i];
+    }
 }
 
 float ResonatorBank::processSample(float excitation) noexcept
 {
-    __m128 inputV = _mm_set1_ps(excitation);
-    __m128 totalSumV = _mm_setzero_ps();
+    juce::ScopedNoDenormals noDenormals;
+    SIMDFloat inputV = setAll(excitation);
+    SIMDFloat totalSumV = setZero();
 
+    // 128 filters: 64 main + 64 unison
     for (int i = 0; i < 128; i += 4)
     {
-        __m128 b0V = _mm_loadu_ps(&b0_v[i]);
-        __m128 b2V = _mm_loadu_ps(&b2_v[i]);
-        __m128 a1V = _mm_loadu_ps(&a1_v[i]);
-        __m128 a2V = _mm_loadu_ps(&a2_v[i]);
-        
-        __m128 z1V = _mm_loadu_ps(&z1_v[i]);
-        __m128 z2V = _mm_loadu_ps(&z2_v[i]);
-        __m128 ampV = _mm_loadu_ps(&partialAmplitudes_v[i]);
+        SIMDFloat b0V = loadUnaligned(&b0_v[i]);
+        SIMDFloat b2V = loadUnaligned(&b2_v[i]);
+        SIMDFloat a1V = loadUnaligned(&a1_v[i]);
+        SIMDFloat a2V = loadUnaligned(&a2_v[i]);
+        SIMDFloat z1V = loadUnaligned(&z1_v[i]);
+        SIMDFloat z2V = loadUnaligned(&z2_v[i]);
+        SIMDFloat ampV = loadUnaligned(&partialAmplitudes_v[i]);
 
-        // out = b0 * in + z1
-        __m128 outV = _mm_add_ps(_mm_mul_ps(b0V, inputV), z1V);
-        
-        // z1 = -a1 * out + z2 (since b1 is 0)
-        __m128 nextZ1 = _mm_sub_ps(z2V, _mm_mul_ps(a1V, outV));
-        
-        // z2 = b2 * in - a2 * out
-        __m128 nextZ2 = _mm_sub_ps(_mm_mul_ps(b2V, inputV), _mm_mul_ps(a2V, outV));
+        SIMDFloat outV = (b0V * inputV) + z1V;
+        SIMDFloat nextZ1 = z2V - (a1V * outV);
+        SIMDFloat nextZ2 = (b2V * inputV) - (a2V * outV);
 
-        _mm_storeu_ps(&z1_v[i], nextZ1);
-        _mm_storeu_ps(&z2_v[i], nextZ2);
+        storeUnaligned(&z1_v[i], nextZ1);
+        storeUnaligned(&z2_v[i], nextZ2);
 
-        totalSumV = _mm_add_ps(totalSumV, _mm_mul_ps(outV, ampV));
+        totalSumV += (outV * ampV);
     }
 
-    alignas(16) float res[4];
-    _mm_storeu_ps(res, totalSumV);
-    return res[0] + res[1] + res[2] + res[3];
+    return sumRegister(totalSumV);
 }
 
 void ResonatorBank::reset() noexcept

@@ -13,8 +13,8 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <array>
 
-// Forward declaration to avoid including NEURONiKProcessor.h in a header
-class NEURONiKProcessor;
+// Forward declarations
+namespace NEURONiK::DSP { class IVisualizationSource; }
 
 namespace NEURONiK::UI {
 
@@ -25,8 +25,8 @@ namespace NEURONiK::UI {
 class SpectralVisualizer : public juce::Component, public juce::Timer
 {
 public:
-    // The constructor now takes the main processor reference
-    explicit SpectralVisualizer(NEURONiKProcessor& p);
+    // The constructor now takes the visualization source interface
+    explicit SpectralVisualizer(NEURONiK::DSP::IVisualizationSource& source);
     ~SpectralVisualizer() override;
 
     void paint(juce::Graphics& g) override;
@@ -34,8 +34,8 @@ public:
     void timerCallback() override;
 
 private:
-    // A reference to the processor to access real-time spectral data
-    NEURONiKProcessor& processor;
+    // A reference to the visualization source (e.g. the Processor)
+    NEURONiK::DSP::IVisualizationSource& source;
 
     std::array<float, 64> harmonicProfile_;
     

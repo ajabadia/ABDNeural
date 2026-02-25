@@ -48,6 +48,7 @@ public:
 
     void processBlock(juce::AudioBuffer<float>& buffer)
     {
+        juce::ScopedNoDenormals noDenormals;
         const int numChannels = buffer.getNumChannels();
         const int numSamples = buffer.getNumSamples();
         const int bufferSize = delayBuffer.getNumSamples();

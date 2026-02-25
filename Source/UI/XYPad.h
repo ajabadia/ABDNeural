@@ -13,7 +13,8 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <array>
-#include "../Main/NEURONiKProcessor.h"
+
+namespace NEURONiK::DSP { class IVisualizationSource; }
 
 namespace NEURONiK::UI
 {
@@ -21,7 +22,7 @@ namespace NEURONiK::UI
 class XYPad : public juce::Component, private juce::Timer
 {
 public:
-    XYPad(NEURONiKProcessor& p, juce::AudioProcessorValueTreeState& vts);
+    XYPad(NEURONiK::DSP::IVisualizationSource& source, juce::AudioProcessorValueTreeState& vts);
     ~XYPad() override;
 
     void paint(juce::Graphics& g) override;
@@ -38,7 +39,7 @@ private:
     void updateThumbPosition();
 
     juce::AudioProcessorValueTreeState& vts;
-    NEURONiKProcessor& processor;
+    NEURONiK::DSP::IVisualizationSource& source;
     std::array<juce::String, 4> modelNames;
 
     juce::Point<float> thumbPosition;

@@ -1,13 +1,13 @@
 #include "SpectralVisualizer.h"
 #include "ThemeManager.h"
-#include "../Main/NEURONiKProcessor.h"
+#include "../DSP/IVisualizationSource.h"
 #include <cmath>
 
 namespace NEURONiK::UI {
 
-// Constructor now takes the main processor reference
-SpectralVisualizer::SpectralVisualizer(NEURONiKProcessor& p)
-    : processor(p)
+// Constructor takes the visualization source interface
+SpectralVisualizer::SpectralVisualizer(NEURONiK::DSP::IVisualizationSource& s)
+    : source(s)
 {
     harmonicProfile_.fill(0.0f);
     startTimerHz(30); // Refresh rate for the visualizer
@@ -90,20 +90,8 @@ void SpectralVisualizer::timerCallback()
 
 void SpectralVisualizer::updateProfile()
 {
-    // Read the real-time spectral data from the audio thread
-    for (int i = 0; i < 64; ++i)
-    {
-        // Atomically load the value from the processor's data bridge
-        harmonicProfile_[i] = processor.spectralDataForUI[i].load(std::memory_order_relaxed);
-    }
-    
-    // The data is already normalized in the DSP engine, so we don't need to do it here.
-    // However, a small final scaling can be applied for aesthetic reasons if needed.
-    float visualScale = 1.0f;
-    for(auto& amp : harmonicProfile_)
-    {
-        amp *= visualScale;
-    }
+    // Read the real-time spectral data from the source (e.g. Processor)
+    source.getSpectralDataForUI(harmonicProfile_.data());
 }
 
 } // namespace NEURONiK::UI

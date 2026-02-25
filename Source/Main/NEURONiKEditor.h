@@ -18,6 +18,7 @@
 class NEURONiKEditor : public juce::AudioProcessorEditor,
                      public juce::MenuBarModel,
                      public juce::AudioProcessorValueTreeState::Listener,
+                     public juce::MidiKeyboardState::Listener,
                      private juce::Timer
 {
 public:
@@ -29,6 +30,9 @@ public:
     
     // --- APVTS Listener ---
     void parameterChanged(const juce::String& parameterID, float newValue) override;
+    // --- MidiKeyboardState::Listener ---
+    void handleNoteOn(juce::MidiKeyboardState*, int midiChannel, int midiNoteNumber, float velocity) override;
+    void handleNoteOff(juce::MidiKeyboardState*, int midiChannel, int midiNoteNumber, float velocity) override;
 
     void updateModelNames();
     void updateLcdDefault();
@@ -54,7 +58,9 @@ private:
     float zoomScale = 1.0f;
 
     juce::MenuBarComponent menuBar;
+    juce::MidiKeyboardState keyboardState;
     juce::MidiKeyboardComponent keyboardComponent;
+    std::unique_ptr<juce::FileChooser> chooser;
 
     // UI Structure
     juce::TabbedComponent mainTabs { juce::TabbedButtonBar::TabsAtTop };

@@ -43,6 +43,7 @@ public:
     };
 
     // --- IVoice Implementation ---
+    VoiceType getType() const noexcept override { return VoiceType::Additive; }
     void prepare(double sampleRate, int samplesPerBlock) override;
     void noteOn(int midiNoteNumber, float velocity) override;
     void noteOff(float velocity, bool allowTail) override;

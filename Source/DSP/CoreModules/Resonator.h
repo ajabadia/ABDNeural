@@ -13,14 +13,17 @@
 
 #include <juce_core/juce_core.h>
 #include <array>
-#include <immintrin.h>
 #include "Oscillator.h"
-
 #include "SpectralModel.h"
 
 namespace NEURONiK::DSP::Core {
 
 using NEURONiK::Common::SpectralModel;
+
+#if defined(_MSC_VER)
+    #pragma warning(push)
+    #pragma warning(disable: 4324) // structure was padded due to alignment specifier
+#endif
 
 class Resonator {
 public:
@@ -94,5 +97,9 @@ private:
     std::vector<float> ampJitterBuffer;
     std::vector<float> phaseJitterBuffer;
 };
+
+#if defined(_MSC_VER)
+    #pragma warning(pop)
+#endif
 
 } // namespace NEURONiK::DSP::Core

@@ -19,9 +19,14 @@ namespace NEURONiK::DSP {
  * Allows the engine to manage different types of voices (Additive, Subtractive, etc.)
  * without being tied to a specific framework's voice management.
  */
+enum class VoiceType { Additive, Neurotik };
+
 class IVoice {
 public:
     virtual ~IVoice() = default;
+
+    /** Returns the type of the voice (Additive or Neurotik). */
+    virtual VoiceType getType() const noexcept = 0;
 
     /** Prepares the voice for playback. */
     virtual void prepare(double sampleRate, int samplesPerBlock) = 0;

@@ -16,7 +16,7 @@
 
 namespace NEURONiK::Serialization {
 
-class PresetManager
+class PresetManager : public juce::ChangeBroadcaster
 {
 public:
     static const juce::String presetExtension;

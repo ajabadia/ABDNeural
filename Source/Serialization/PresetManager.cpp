@@ -48,10 +48,19 @@ Common::SpectralModel PresetManager::loadModelFromFile(const juce::File& file)
 PresetManager::PresetManager(juce::AudioProcessorValueTreeState& apvts)
     : valueTreeState(apvts), currentPresetName("Init Preset")
 {
-    // Ensure presets directory exists
+    // Ensure presets directory exists (recursive creation)
     const auto presetsDir = getPresetsDirectory();
     if (!presetsDir.exists())
-        presetsDir.createDirectory();
+    {
+        auto result = presetsDir.createDirectory();
+        if (result.failed())
+        {
+            // Log error or fallback?
+            #if JUCE_DEBUG
+            DBG("PresetManager: Failed to create presets directory: " + result.getErrorMessage());
+            #endif
+        }
+    }
 }
 
 void PresetManager::savePreset(const juce::String& presetName)
@@ -84,8 +93,15 @@ void PresetManager::savePresetToFile(const juce::File& file)
         metadata->setAttribute("tags", tags.joinIntoString(","));
     }
     
-    xml->writeTo(file);
+    auto result = xml->writeTo(file);
+    if (!result)
+    {
+        #if JUCE_DEBUG
+        DBG("PresetManager: Failed to write XML to file: " + file.getFullPathName());
+        #endif
+    }
     currentPresetName = file.getFileNameWithoutExtension();
+    sendChangeMessage();
 }
 
 void PresetManager::deletePreset(const juce::String& presetName)
@@ -93,8 +109,10 @@ void PresetManager::deletePreset(const juce::String& presetName)
     const auto presetsDir = getPresetsDirectory();
     // Search recursively for the file to delete
     auto files = presetsDir.findChildFiles(juce::File::findFiles, true, presetName + presetExtension);
-    if (files.size() > 0)
+    if (files.size() > 0) {
         files[0].deleteFile();
+        sendChangeMessage();
+    }
 }
 
 void PresetManager::loadPreset(const juce::String& presetName)
@@ -117,6 +135,7 @@ void PresetManager::loadPresetFromFile(const juce::File& file)
         {
             valueTreeState.replaceState(juce::ValueTree::fromXml(*xml));
             currentPresetName = file.getFileNameWithoutExtension();
+            sendChangeMessage();
         }
     }
 }
@@ -212,6 +231,7 @@ void PresetManager::loadBank(const juce::File& bankFile)
     {
         zip.uncompressEntry(i, targetDir);
     }
+    sendChangeMessage();
 }
 
 void PresetManager::setTagsForPreset(const juce::File& file, const juce::StringArray& tags)

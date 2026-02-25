@@ -607,3 +607,52 @@ BANK SELECT
 - [x] **ThemeEngine**: Clase central `ThemeManager` para la gestión de paletas (Cian para AXIONiK, Rojo para NEURONiK, Ambar para NEUROTiK).
 - [x] **UI Refactoring**: Adaptación de todos los componentes (`Knobs`, `Buttons`, `Panels`, `Visualizers`) para usar el sistema de temas dinámico.
 - [ ] **Conditional UI**: Capacidad de ocultar/mostrar paneles según el `ProductType` para las versiones especializadas (Próximo paso).
+
+---
+
+## 🟡 FASE 37: AUDITORÍA TÉCNICA ESTRUCTURAL Y DEUDA TÉCNICA (P0-P3) [PENDIENTE]
+*Objetivo: Resolver hallazgos críticos de estabilidad, portabilidad y arquitectura identificados en la auditoría técnica.*
+
+### 🛠️ Tarea 37.1 (P0): Estabilidad Crítica y Portabilidad
+- [ ] **Abstracción SIMD (ARM/x64)**:
+    - [ ] Implementar wrapper `SIMDRegister` para abstraer SSE/NEON en `Resonator` y `ResonatorBank`.
+    - [ ] Validar compilación cruzada para Raspberry Pi.
+- [ ] **Eliminación de RTTI en Audio Thread**:
+    - [ ] Reemplazar `dynamic_cast` por `static_cast` con validación de tipo (`VoiceType` enum) en `renderNextBlock`.
+    - [ ] Garantizar *Zero Allocations* y *Lock-Free* en el procesamiento de voz.
+
+### 🏗️ Tarea 37.2 (P1): Arquitectura Headless y Thread Safety
+- [ ] **Desacoplamiento UI-DSP**:
+    - [ ] Extraer dependencias de `juce_gui_basics` del Processor.
+    - [ ] Implementar patrón Observer/Listener para visualización espectral.
+- [ ] **Sincronización de Parámetros**:
+    - [ ] Implementar *Double Buffering* para `GlobalParams` evitando *data races* entre UI y Audio.
+
+### 🏭 Tarea 37.3 (P2): Escalabilidad y Product Lines
+- [ ] **Factory de Motores**:
+    - [ ] Implementar registro dinámico de motores (`EngineFactory`) para desacoplar NEURONiK/Neurotik en tiempo de compilación.
+- [ ] **Optimización de Memoria**:
+    - [ ] Refactorizar almacenamiento de voces para evitar *pointer chasing* (cache misses).
+
+### 🧹 Tarea 37.4 (P3): Calidad de Código
+- [ ] **Limpieza de Namespaces**: Mover `using namespace` a ámbitos locales.
+- [ ] **Constantes**: Reemplazar números mágicos por `constexpr`.
+
+### 🧮 Tarea 37.5 (P3): Precisión Numérica y DSP
+- [ ] **Estabilidad de Fase**:
+    - [ ] Migrar acumuladores de fase a `double` para evitar *pitch drift* en notas largas.
+- [ ] **Suavizado de Coeficientes**:
+    - [ ] Implementar `SmoothedValue` en los filtros del ResonatorBank para eliminar *zipper noise*.
+
+### 🧠 Tarea 37.6 (P4): Gestión de Memoria y Rendimiento
+- [ ] **Zero Allocations en Audio Thread**:
+    - [ ] Pre-reservar buffers en `prepareToPlay` para evitar `resize()` dinámico.
+    - [ ] Eliminar uso de `juce::String` en rutas críticas (MIDI hooks).
+
+### 🎹 Tarea 37.7 (P5): Compatibilidad MPE y JUCE
+- [ ] **MPE Zone Detection**: Implementar lógica automática de zonas (Lower/Upper) y CC configurable.
+- [ ] **Optimización UI**: Unificar Timers en un loop de actualización consolidado.
+
+### 🛡️ Tarea 37.8 (P6): Robustez y Seguridad
+- [ ] **Audio Armor**: Validación de padding en buffers SIMD y parsing seguro de XML.
+

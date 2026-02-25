@@ -11,9 +11,9 @@
 
 #pragma once
 
+#include <juce_audio_basics/juce_audio_basics.h>
 #include <juce_core/juce_core.h>
 #include <array>
-#include <immintrin.h>
 #include "../../Common/SpectralModel.h"
 
 namespace NEURONiK::DSP::Core {
@@ -36,6 +36,11 @@ struct ResonatorBiquad {
     void reset() noexcept { z1 = 0.0f; z2 = 0.0f; }
 };
 
+#if defined(_MSC_VER)
+    #pragma warning(push)
+    #pragma warning(disable: 4324) // structure was padded due to alignment specifier
+#endif
+
 class ResonatorBank {
 public:
     ResonatorBank() noexcept;
@@ -46,10 +51,6 @@ public:
     void loadModel(const NEURONiK::Common::SpectralModel& model, int slot) noexcept;
 
     // --- Real-time safe processing ---
-    /** 
-     * Updates all 64 filters' coefficients. 
-     * Resonance is normalized 0.0 to 1.0 (mapped inside).
-     */
     void updateParameters(float morphX, float morphY, float resonance, float detune) noexcept;
     
     float processSample(float excitation) noexcept;
@@ -58,18 +59,21 @@ public:
     const std::array<float, 64>& getPartialAmplitudes() const noexcept { return partialAmplitudes; }
 
 private:
+    void updateFilterCoefficients(int index, float partialFreq, float q, float amp, float detuneVal) noexcept;
+
     std::array<ResonatorBiquad, 128> resonators;
     std::array<float, 64> partialAmplitudes;
     std::array<NEURONiK::Common::SpectralModel, 4> models;
 
     float baseFrequency = 440.0f;
     double sampleRate = 48000.0;
-    float currentResonance = 0.99f;
     
     // State for optimization
-    float lastMorphX = -1.0f, lastMorphY = -1.0f;
-    float lastRes = -1.0f, lastDetune = -1.0f;
-    float lastBaseFreq = -1.0f;
+    float lastMorphX = -5.0f;
+    float lastMorphY = -5.0f;
+    float lastRes = -5.0f;
+    float lastDetune = -5.0f;
+    float lastBaseFreq = -5.0f;
     bool modelChanged = true;
 
     // SIMD Buffers (Aligned for SSE 128-bit)
@@ -78,5 +82,9 @@ private:
     alignas(16) float z1_v[128] = {0}, z2_v[128] = {0};
     alignas(16) float partialAmplitudes_v[128] = {0};
 };
+
+#if defined(_MSC_VER)
+    #pragma warning(pop)
+#endif
 
 } // namespace NEURONiK::DSP::Core

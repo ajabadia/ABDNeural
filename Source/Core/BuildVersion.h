@@ -1,5 +1,5 @@
 ﻿/* Auto-generated build version file */
 #pragma once
 
-#define NEURONIK_BUILD_VERSION "109"
-#define NEURONIK_BUILD_TIMESTAMP "2026-01-31 09:05:39"
+#define NEURONIK_BUILD_VERSION "140"
+#define NEURONIK_BUILD_TIMESTAMP "2026-02-01 18:38:22"

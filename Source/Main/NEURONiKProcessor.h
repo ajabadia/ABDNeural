@@ -1,22 +1,23 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_audio_basics/juce_audio_basics.h>
-#include <juce_audio_utils/juce_audio_utils.h>
 #include <array>
 #include <atomic>
 #include <map>
 #include "../Serialization/PresetManager.h"
 #include "MidiMappingManager.h"
 #include "../DSP/ISynthesisEngine.h"
+#include "../DSP/IVisualizationSource.h"
 #include "../Common/SpectralModel.h"
 #include "ModulationTargets.h"
 
-namespace NEURONiK::DSP { class NeuronikEngine; }
+namespace NEURONiK::Serialization { class PresetManager; }
+namespace NEURONiK::Main { class MidiMappingManager; }
 
 class NEURONiKProcessor : public juce::AudioProcessor,
-                     public juce::AudioProcessorValueTreeState::Listener,
-                     public juce::MidiKeyboardState::Listener,
-                     public juce::ValueTree::Listener
+                         public juce::AudioProcessorValueTreeState::Listener,
+                         public juce::ValueTree::Listener,
+                         public NEURONiK::DSP::IVisualizationSource
 {
 public:
     NEURONiKProcessor();
@@ -27,142 +28,130 @@ public:
     void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBlock(juce::AudioBuffer<double>&, juce::MidiBuffer&) override;
 
-    void parameterChanged(const juce::String& parameterID, float newValue) override;
+    // --- Parameter Access ---
+    juce::AudioProcessorValueTreeState& getAPVTS() { return apvts; }
+    NEURONiK::Serialization::PresetManager& getPresetManager() { return *presetManager; }
+    NEURONiK::Main::MidiMappingManager& getMidiMappingManager() { return *midiMappingManager; }
 
-    // --- MIDI Learn ---
-    void enterMidiLearnMode(const juce::String& paramID);
-    void clearMidiLearnForParameter(const juce::String& paramID);
-
-    // --- Model Loading ---
     void loadModel(const juce::File& file, int slot);
     void reloadModels();
 
-    // --- Patch Copy/Paste ---
-    void copyPatchToClipboard();
-    void pastePatchFromClipboard();
+    // --- Patch Copy/Paste (State Access Only) ---
+    juce::ValueTree getFullState() { return apvts.copyState(); }
+    void setFullState(const juce::ValueTree& newState) { apvts.replaceState(newState); }
 
     // --- Editor Creation ---
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override;
 
-    // --- JUCE Boilerplate ---
+    // --- Persistence ---
+    void getStateInformation(juce::MemoryBlock& destData) override;
+    void setStateInformation(const void* data, int sizeInBytes) override;
+
     const juce::String getName() const override;
     bool acceptsMidi() const override { return true; }
-    bool producesMidi() const override { return false; }
+    bool producesMidi() const override { return true; }
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 0.0; }
+
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
     void setCurrentProgram(int) override {}
-    const juce::String getProgramName(int) override { return "Default"; }
+    const juce::String getProgramName(int) override { return {}; }
     void changeProgramName(int, const juce::String&) override {}
 
-    // --- State Management ---
-    void getStateInformation(juce::MemoryBlock&) override;
-    void setStateInformation(const void*, int) override;
+    // --- APVTS Listener ---
+    void parameterChanged(const juce::String& parameterID, float newValue) override;
 
-    // --- Getters ---
-    juce::AudioProcessorValueTreeState& getAPVTS() { return apvts; }
-    juce::MidiKeyboardState& getKeyboardState() { return keyboardState; }
+    // --- MIDI Learn ---
+    void enterMidiLearnMode(const juce::String& paramID);
+    void clearMidiLearnForParameter(const juce::String& paramID);
+    bool isMidiLearnActive() const { return midiLearnActive.load(); }
+    juce::String getParameterToLearn() const { return parameterToLearn; }
+
     const std::array<juce::String, 4>& getModelNames() const { return modelNames; }
-    NEURONiK::Serialization::PresetManager& getPresetManager() { return *presetManager; }
-    NEURONiK::Serialization::PresetManager& getPresetManager() const { return *presetManager; }
-    NEURONiK::Main::MidiMappingManager& getMidiMappingManager() { return *midiMappingManager; }
 
-    // --- Real-time Visualization Data ---
+    // --- Thread-Safe Bridge for UI ---
     std::array<std::atomic<float>, 64> spectralDataForUI;
+    std::atomic<float> uiEnvelope { 0.0f };
+    std::atomic<float> uiFEnvelope { 0.0f };
     
-    // Envelope Visualization Atomics
-    std::atomic<float> uiEnvelope { 0.0f };     // Amp Env Level
-    std::atomic<float> uiFEnvelope { 0.0f };    // Filter Env Level
-    
-    // Parameters for ADSR Visualizers (snapshot from APVTS)
-    std::atomic<float> uiAttack { 0.0f }, uiDecay { 0.0f }, uiSustain { 0.0f }, uiRelease { 0.0f };
-    std::atomic<float> uiFAttack { 0.0f }, uiFDecay { 0.0f }, uiFSustain { 0.0f }, uiFRelease { 0.0f };
-    
-    // Macro visualization
+    // Modulation visualization data
+    std::array<std::atomic<float>, static_cast<size_t>(NEURONiK::ModulationTarget::Count)> modulationValues;
+
+    // Visualization data Cache
+    std::atomic<float> uiAttack { 0.0f };
+    std::atomic<float> uiDecay { 0.0f };
+    std::atomic<float> uiSustain { 0.0f };
+    std::atomic<float> uiRelease { 0.0f };
+    std::atomic<float> uiFAttack { 0.0f };
+    std::atomic<float> uiFDecay { 0.0f };
+    std::atomic<float> uiFSustain { 0.0f };
+    std::atomic<float> uiFRelease { 0.0f };
     std::atomic<float> uiMorphX { 0.0f };
     std::atomic<float> uiMorphY { 0.0f };
-
     std::atomic<float> lfo1ValueForUI { 0.0f };
     std::atomic<float> lfo2ValueForUI { 0.0f };
 
-    // --- Polyphony Management ---
-    struct EditorSettings {
-        std::unique_ptr<juce::FileChooser> chooser;
-    };
-
     void setPolyphony(int numVoices);
     int getPolyphony() const;
-    EditorSettings& getEditorSettings();
+    
+    // --- IVisualizationSource Implementation ---
+    void getSpectralDataForUI(float* destination64) const noexcept override;
+    void getEnvelopeLevelsForUI(float& amp, float& filter) const noexcept override;
+    float getLfoValueForUI(int lfoIndex) const noexcept override;
+    float getModulationValueForUI(int targetIndex) const noexcept override;
+    void getMorphCoordinatesForUI(float& x, float& y) const noexcept override;
 
 public:
     // --- Modulation Access (Safe Atomic Indexing) ---
-    std::atomic<float>& getModulationValue(::NEURONiK::ModulationTarget target) noexcept
+    std::atomic<float>& getModulationValue(NEURONiK::ModulationTarget target)
     {
         return modulationValues[static_cast<size_t>(target)];
     }
 
-    const std::atomic<float>& getModulationValue(::NEURONiK::ModulationTarget target) const noexcept
-    {
-        return modulationValues[static_cast<size_t>(target)];
-    }
+    // --- MIDI Injection (Used by Editor/Keyboard) ---
+    void injectNoteOn(int midiChannel, int midiNoteNumber, float velocity);
+    void injectNoteOff(int midiChannel, int midiNoteNumber, float velocity);
 
 protected:
-    // --- MidiKeyboardState::Listener overrides ---
-    void handleNoteOn(juce::MidiKeyboardState*, int midiChannel, int midiNoteNumber, float velocity) override;
-    void handleNoteOff(juce::MidiKeyboardState*, int midiChannel, int midiNoteNumber, float velocity) override;
-
     // ValueTree::Listener
     void valueTreePropertyChanged(juce::ValueTree& tree, const juce::Identifier& property) override;
     void valueTreeRedirected(juce::ValueTree& tree) override;
-
+    void valueTreeParentChanged(juce::ValueTree&) override {}
+    void valueTreeChildAdded(juce::ValueTree&, juce::ValueTree&) override {}
+    void valueTreeChildRemoved(juce::ValueTree&, juce::ValueTree&, int) override {}
+    void valueTreeChildOrderChanged(juce::ValueTree&, int, int) override {}
 
 private:
-    std::array<std::atomic<float>, ::NEURONiK::ModulationTargetCount> modulationValues;
-
-    juce::AudioProcessorValueTreeState apvts;
-    std::unique_ptr<NEURONiK::Serialization::PresetManager> presetManager;
-    juce::MidiKeyboardState keyboardState;
-    std::unique_ptr<NEURONiK::DSP::ISynthesisEngine> engine;
-
-    // --- UI MIDI Message Injection (Safe FIFO) ---
-    juce::AbstractFifo midiFifo;
-    struct QueuedMidiMessage {
-        juce::MidiMessage message;
-        int sampleOffset;
-    };
-    std::array<QueuedMidiMessage, 1024> midiQueue;
-
     void synchronizeEngineParameters();
-
-    // --- Lock-Free Command Queue (Model Loading) ---
-    struct EngineCommand {
-        enum Type { LoadModel, Reset, Unknown };
-        Type type = Unknown;
-        int slot = 0;
-        NEURONiK::Common::SpectralModel modelData;
-    };
-    
-    juce::AbstractFifo commandFifo;
-    std::array<EngineCommand, 32> commandQueue;
-    
     void processCommands();
 
-    std::array<juce::String, 4> modelNames;
-
-    // --- MIDI Real-time values for Modulation ---
-    std::atomic<float> pitchBendValue { 0.5f };
-    std::atomic<float> modWheelValue { 0.0f };
-    std::atomic<float> aftertouchValue { 0.0f };
-
-    // --- MIDI Learn ---
-    std::atomic<bool> midiLearnActive { false };
-    juce::String parameterToLearn;
+    juce::AudioProcessorValueTreeState apvts;
+    std::unique_ptr<NEURONiK::DSP::ISynthesisEngine> engine;
+    std::unique_ptr<NEURONiK::Serialization::PresetManager> presetManager;
     std::unique_ptr<NEURONiK::Main::MidiMappingManager> midiMappingManager;
 
     std::atomic<int> currentPolyphony { 8 };
-    EditorSettings editorSettings;
+    std::atomic<bool> midiLearnActive { false };
+    juce::String parameterToLearn;
+
+    // MIDI Queue for Lock-Free injection
+    struct QueuedMidi { juce::MidiMessage message; int sampleOffset; };
+    std::array<QueuedMidi, 1024> midiQueue;
+    juce::AbstractFifo midiFifo;
+
+    // Command Queue for Engine (e.g. Model swaps)
+    enum class EngineCommand { LoadModel };
+    struct Command {
+        EngineCommand type;
+        int slot;
+        NEURONiK::Common::SpectralModel modelData;
+    };
+    std::array<Command, 32> commandQueue;
+    juce::AbstractFifo commandFifo;
+
+    std::array<juce::String, 4> modelNames;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NEURONiKProcessor)
 };

@@ -11,7 +11,8 @@
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>
-#include "../../Main/NEURONiKProcessor.h"
+
+class NEURONiKProcessor;
 
 namespace NEURONiK::UI::Browser
 {
@@ -20,7 +21,8 @@ namespace NEURONiK::UI::Browser
 class BankListModel;
 class PresetListModel;
 
-class PresetBrowser : public juce::Component
+class PresetBrowser : public juce::Component,
+                      public juce::ChangeListener
 {
 public:
     explicit PresetBrowser(NEURONiKProcessor& p);
@@ -30,6 +32,8 @@ public:
     void resized() override;
     
     void refresh();
+    
+    void changeListenerCallback(juce::ChangeBroadcaster* source) override;
 
 private:
     NEURONiKProcessor& processor;

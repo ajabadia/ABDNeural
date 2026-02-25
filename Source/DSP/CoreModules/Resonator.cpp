@@ -10,10 +10,13 @@
 
 #include "Resonator.h"
 #include "../DSPUtils.h"
+#include "../Utils/SIMDWrapper.h"
 #include <cmath>
 #include <numeric>
 
 namespace NEURONiK::DSP::Core {
+
+using namespace NEURONiK::DSP::Utils;
 
 // Helper function for linear interpolation
 template<typename T>
@@ -277,37 +280,31 @@ float Resonator::processSample(int sampleIdx) noexcept
     }
 
     // SIMD Optimized Path (Standard)
-    __m128 totalSumV = _mm_setzero_ps();
-    const __m128 oneV = _mm_set1_ps(1.0f);
-    const __m128 twoV = _mm_set1_ps(2.0f);
-    const __m128 fourV = _mm_set1_ps(4.0f);
-    const __m128 absMaskV = _mm_castsi128_ps(_mm_set1_epi32(0x7fffffff));
+    SIMDFloat totalSumV = setZero();
 
     for (int i = 0; i < 128; i += 4)
     {
-        __m128 phaseV = _mm_loadu_ps(&currentPhases[i]);
-        __m128 incV = _mm_loadu_ps(&phaseIncrements[i]);
-        __m128 ampV = _mm_loadu_ps(&amplitudes_v[i]);
+        SIMDFloat phaseV = loadUnaligned(&currentPhases[i]);
+        SIMDFloat incV = loadUnaligned(&phaseIncrements[i]);
+        SIMDFloat ampV = loadUnaligned(&amplitudes_v[i]);
 
         // Phase accumulation
-        phaseV = _mm_add_ps(phaseV, incV);
+        phaseV += incV;
         
-        // Wrap phase [0, 1] using mask and subtraction
-        __m128 wrapMask = _mm_cmpge_ps(phaseV, oneV);
-        phaseV = _mm_sub_ps(phaseV, _mm_and_ps(wrapMask, oneV));
-        _mm_storeu_ps(&currentPhases[i], phaseV);
+        // Wrap phase [0, 1]
+        auto wrapMask = juce::dsp::SIMDRegister<float>::greaterThanOrEqual(phaseV, setAll(1.0f));
+        phaseV -= simdSelect(wrapMask, setAll(1.0f), setAll(0.0f));
+        storeUnaligned(&currentPhases[i], phaseV);
 
         // Parabolic Sine: 4 * x * (1 - abs(x))
-        __m128 xV = _mm_sub_ps(_mm_mul_ps(phaseV, twoV), oneV);
-        __m128 absXV = _mm_and_ps(xV, absMaskV);
-        __m128 sV = _mm_mul_ps(fourV, _mm_mul_ps(xV, _mm_sub_ps(oneV, absXV)));
+        SIMDFloat xV = (phaseV * setAll(2.0f)) - setAll(1.0f);
+        SIMDFloat absXV = absRegister(xV);
+        SIMDFloat sV = setAll(4.0f) * xV * (setAll(1.0f) - absXV);
 
-        totalSumV = _mm_add_ps(totalSumV, _mm_mul_ps(sV, ampV));
+        totalSumV += (sV * ampV);
     }
 
-    alignas(16) float res[4];
-    _mm_storeu_ps(res, totalSumV);
-    return res[0] + res[1] + res[2] + res[3];
+    return sumRegister(totalSumV);
 }
 
 void Resonator::reset() noexcept

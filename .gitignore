@@ -1,6 +1,8 @@
 # Build artifacts
 build/
+build_neuronik/
 *.o
+*.obj
 *.a
 *.so
 *.dylib
@@ -14,6 +16,13 @@ build/
 *.pdb
 *.exp
 *.ilk
+
+# Build logs / temp files in root
+build_output*.txt
+compile_common.txt
+final_build_log*.txt
+agent_build_log.txt
+build_no.txt
 
 # IDE / Editor
 .vscode/

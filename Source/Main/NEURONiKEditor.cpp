@@ -1,5 +1,6 @@
 #include "NEURONiKEditor.h"
-#include "UI/ThemeManager.h"
+#include "../UI/ThemeManager.h"
+#include "NEURONiKProcessor.h"
 #include "Core/BuildVersion.h"
 #include "State/ParameterDefinitions.h"
 
@@ -13,7 +14,7 @@ NEURONiKEditor::NEURONiKEditor(NEURONiKProcessor& p)
     : AudioProcessorEditor(p),
       processor(p),
       menuBar(this),
-      keyboardComponent(p.getKeyboardState(), juce::MidiKeyboardComponent::horizontalKeyboard),
+      keyboardComponent(keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard),
       visualizer(p),
       generalPanel(p),
       oscPanel(p),
@@ -22,6 +23,7 @@ NEURONiKEditor::NEURONiKEditor(NEURONiKProcessor& p)
       modulationPanel(p),
       presetBrowser(p)
 {
+    keyboardState.addListener(this);
     // --- Header ---
     addAndMakeVisible(lcdDisplay);
     addAndMakeVisible(menuBtn);
@@ -66,12 +68,15 @@ NEURONiKEditor::NEURONiKEditor(NEURONiKProcessor& p)
 
     const auto& theme = NEURONiK::UI::ThemeManager::getCurrentTheme();
 
-    mainTabs.addTab("GENERAL",    theme.surface, &generalPanel, false);
-    mainTabs.addTab("RESONATOR",  theme.surface, &oscPanel, false);
-    mainTabs.addTab("FILTER/ENV", theme.surface, &filterEnvPanel, false);
-    mainTabs.addTab("FX",         theme.surface, &fxPanel, false);
-    mainTabs.addTab("LFO/MOD",    theme.surface, &modulationPanel, false);
-    mainTabs.addTab("BROWSER",    theme.background, &presetBrowser, false);
+    mainTabs.addTab("GENERAL",    juce::Colours::transparentBlack, &generalPanel, false);
+    mainTabs.addTab("RESONATOR",  juce::Colours::transparentBlack, &oscPanel, false);
+    mainTabs.addTab("FILTER/ENV", juce::Colours::transparentBlack, &filterEnvPanel, false);
+    mainTabs.addTab("FX",         juce::Colours::transparentBlack, &fxPanel, false);
+    mainTabs.addTab("LFO/MOD",    juce::Colours::transparentBlack, &modulationPanel, false);
+    mainTabs.addTab("BROWSER",    juce::Colours::transparentBlack, &presetBrowser, false);
+    
+    for (int i = 0; i < mainTabs.getNumTabs(); ++i)
+        mainTabs.setTabBackgroundColour(i, theme.surface);
 
     keyboardComponent.setAvailableRange(24, 96);
 
@@ -83,6 +88,7 @@ NEURONiKEditor::NEURONiKEditor(NEURONiKProcessor& p)
 
 NEURONiKEditor::~NEURONiKEditor()
 {
+    keyboardState.removeListener(this);
     // Unregister listeners
     for (auto* param : processor.getAPVTS().processor.getParameters())
     {
@@ -110,6 +116,16 @@ void NEURONiKEditor::parameterChanged(const juce::String& parameterID, float new
     });
 
     juce::ignoreUnused(newValue);
+}
+
+void NEURONiKEditor::handleNoteOn(juce::MidiKeyboardState*, int midiChannel, int midiNoteNumber, float velocity)
+{
+    processor.injectNoteOn(midiChannel, midiNoteNumber, velocity);
+}
+
+void NEURONiKEditor::handleNoteOff(juce::MidiKeyboardState*, int midiChannel, int midiNoteNumber, float velocity)
+{
+    processor.injectNoteOff(midiChannel, midiNoteNumber, velocity);
 }
 
 void NEURONiKEditor::updateLcdDefault()
@@ -465,11 +481,11 @@ void NEURONiKEditor::menuItemSelected(int menuItemID, int)
     {
         auto fileChooserFlags = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles;
         
-        processor.getEditorSettings().chooser = std::make_unique<juce::FileChooser>("Select a preset to load...",
+        chooser = std::make_unique<juce::FileChooser>("Select a preset to load...",
             processor.getPresetManager().getPresetsDirectory(),
             "*.neuronikpreset");
 
-        processor.getEditorSettings().chooser->launchAsync(fileChooserFlags, [this](const juce::FileChooser& fc)
+        chooser->launchAsync(fileChooserFlags, [this](const juce::FileChooser& fc)
         {
             auto file = fc.getResult();
             if (file.existsAsFile())
@@ -480,11 +496,11 @@ void NEURONiKEditor::menuItemSelected(int menuItemID, int)
     {
         auto fileChooserFlags = juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles;
 
-        processor.getEditorSettings().chooser = std::make_unique<juce::FileChooser>("Save current preset...",
+        chooser = std::make_unique<juce::FileChooser>("Save current preset...",
             processor.getPresetManager().getPresetsDirectory(),
             "*.neuronikpreset");
 
-        processor.getEditorSettings().chooser->launchAsync(fileChooserFlags, [this](const juce::FileChooser& fc)
+        chooser->launchAsync(fileChooserFlags, [this](const juce::FileChooser& fc)
         {
             auto file = fc.getResult();
             if (file != juce::File())
@@ -512,11 +528,15 @@ void NEURONiKEditor::menuItemSelected(int menuItemID, int)
     }
     else if (menuItemID == 60)
     {
-        processor.copyPatchToClipboard();
+        auto xml = processor.getFullState().createXml();
+        if (xml != nullptr) juce::SystemClipboard::copyTextToClipboard(xml->toString());
     }
     else if (menuItemID == 61)
     {
-        processor.pastePatchFromClipboard();
+        auto xmlString = juce::SystemClipboard::getTextFromClipboard();
+        auto xml = juce::parseXML(xmlString);
+        if (xml != nullptr)
+            processor.setFullState(juce::ValueTree::fromXml(*xml));
     }
     else if (menuItemID == 14)
     {

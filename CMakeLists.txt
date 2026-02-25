@@ -164,6 +164,8 @@ juce_add_plugin(NEURONiK
 # Explicitly add sources to all plugin targets
 target_sources(NEURONiK PRIVATE ${NEURONIK_SOURCES})
 
+target_compile_definitions(NEURONiK PUBLIC JUCE_VST3_CAN_REPLACE_VST2=0)
+
 if(TARGET NEURONiK_Standalone)
     target_sources(NEURONiK_Standalone PRIVATE ${NEURONIK_SOURCES})
     

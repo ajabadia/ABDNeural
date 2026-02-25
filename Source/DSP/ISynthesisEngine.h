@@ -50,6 +50,9 @@ class ISynthesisEngine {
 public:
     virtual ~ISynthesisEngine() = default;
 
+    enum class Type { Neuronik, Neurotik };
+    virtual Type getType() const = 0;
+
     /** Prepares the engine for playback. */
     virtual void prepare(double sampleRate, int samplesPerBlock) = 0;
 
