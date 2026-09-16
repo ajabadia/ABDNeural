@@ -217,7 +217,7 @@ void NeuronikEngine::handleMidiEvent(const juce::MidiMessage& m)
         float bendSemitones = ((float)m.getPitchWheelValue() - 8192.0f) / 8192.0f * 48.0f; // Scale to 48 semitones
         for (auto& v : voices)
         {
-            if (v->isActive() && (v->getChannel() == channel || channel == 1))
+            if (v->isActive() && (v->getChannel() == channel))
                 v->notePitchBend(bendSemitones);
         }
     }
@@ -228,7 +228,7 @@ void NeuronikEngine::handleMidiEvent(const juce::MidiMessage& m)
         
         for (auto& v : voices)
         {
-            if (v->isActive() && (v->getChannel() == channel || channel == 1))
+            if (v->isActive() && (v->getChannel() == channel))
                 v->notePressure(pressure);
         }
     }
@@ -237,7 +237,7 @@ void NeuronikEngine::handleMidiEvent(const juce::MidiMessage& m)
         float timbre = (float)m.getControllerValue() / 127.0f;
         for (auto& v : voices)
         {
-            if (v->isActive() && (v->getChannel() == channel || channel == 1))
+            if (v->isActive() && (v->getChannel() == channel))
                 v->noteTimbre(timbre);
         }
     }

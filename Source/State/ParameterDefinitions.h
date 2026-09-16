@@ -23,7 +23,9 @@ namespace IDs {
     static constexpr const char* oscPitchCoarse   = "oscPitchCoarse";
     static constexpr const char* oscInharmonicity = "oscInharmonicity";
     static constexpr const char* oscRoughness     = "oscRoughness";
-    static constexpr const char* harmMix          = "harmMix";
+    // harmMix was retired on 2026-09-16: it was never read by any engine, so it only
+    // existed as a promise. Old presets that still contain it load normally, and the
+    // child is dropped the next time they are saved (see PresetManager migration).
     static constexpr const char* morphX           = "morphX";
     static constexpr const char* morphY           = "morphY";
     static constexpr const char* oscExciteNoise   = "oscExciteNoise";
@@ -125,7 +127,6 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::oscLevel, "Osc Level", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::oscInharmonicity, "Inharmonicity", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::oscRoughness, "Roughness", juce::NormalisableRange<float>(0.0f, 0.5f), 0.0f)); // Range reduced
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::harmMix, "Harmonic Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::morphX, "Morph X", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::morphY, "Morph Y", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::oscExciteNoise, "Excite Noise", juce::NormalisableRange<float>(0.0f, 1.0f), 0.1f));

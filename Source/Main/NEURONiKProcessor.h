@@ -6,6 +6,8 @@
 #include <map>
 #include "../Serialization/PresetManager.h"
 #include "MidiMappingManager.h"
+#include "MidiChannelFilter.h"
+#include "VelocityCurve.h"
 #include "../DSP/ISynthesisEngine.h"
 #include "../DSP/IVisualizationSource.h"
 #include "../Common/SpectralModel.h"
@@ -127,6 +129,9 @@ private:
     void synchronizeEngineParameters();
     void processCommands();
 
+    /** @brief Fills the global (non voice specific) engine parameters from the APVTS. */
+    void fillGlobalParams(NEURONiK::DSP::GlobalParams& gParams);
+
     juce::AudioProcessorValueTreeState apvts;
     std::unique_ptr<NEURONiK::DSP::ISynthesisEngine> engine;
     std::unique_ptr<NEURONiK::Serialization::PresetManager> presetManager;
@@ -140,6 +145,13 @@ private:
     struct QueuedMidi { juce::MidiMessage message; int sampleOffset; };
     std::array<QueuedMidi, 1024> midiQueue;
     juce::AbstractFifo midiFifo;
+
+    // Reused while filtering incoming MIDI by channel and while shaping note-on
+    // velocities (audio thread, no allocation after the first blocks)
+    juce::MidiBuffer channelFilteredMidi;
+
+    // Set from parameterChanged (message thread), consumed in processBlock
+    std::atomic<bool> allNotesOffRequested { false };
 
     // Command Queue for Engine (e.g. Model swaps)
     enum class EngineCommand { LoadModel };

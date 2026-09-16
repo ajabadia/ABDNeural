@@ -9,6 +9,7 @@
 */
 
 #include "PresetManager.h"
+#include "PresetMigration.h"
 
 namespace NEURONiK::Serialization {
 
@@ -133,7 +134,14 @@ void PresetManager::loadPresetFromFile(const juce::File& file)
         auto xml = juce::parseXML(file);
         if (xml != nullptr)
         {
-            valueTreeState.replaceState(juce::ValueTree::fromXml(*xml));
+            auto state = juce::ValueTree::fromXml(*xml);
+
+            // Presets saved by older builds may carry parameters that no longer
+            // exist (e.g. harmMix). Dropping them here keeps the state honest and
+            // stops a re-save from writing the dead ids back to the file.
+            migratePresetState(state, valueTreeState.processor);
+
+            valueTreeState.replaceState(state);
             currentPresetName = file.getFileNameWithoutExtension();
             sendChangeMessage();
         }

@@ -19,9 +19,6 @@ ParameterPanel::ParameterPanel(NEURONiKProcessor& p)
     addAndMakeVisible(globalSettingsBox);
     addAndMakeVisible(globalBox);
 
-    unisonBox.addAndMakeVisible(unisonEnabled);
-    unisonEnabledAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(vts, IDs::unisonEnabled, unisonEnabled);
-
     globalBox.addAndMakeVisible(titleLabel);
     globalBox.addAndMakeVisible(versionLabel);
 
@@ -215,18 +212,15 @@ void ParameterPanel::resized()
         layoutRotary(release, c.reduced(5));
     }
 
-    // Layout Unison (Row 2) - 2 knobs + toggle in 3 columns
+    // Layout Unison (Row 2) - detune and spread only. The ENABLE UNISON toggle
+    // was removed: nothing in the engine ever read it, so it promised a sound
+    // change it did not make. Detune at 0 is what switches the unison off.
     {
         auto c = unisonBox.getContentArea();
+        auto knobW = c.getWidth() / 2;
         
-        auto toggleArea = c.removeFromLeft(static_cast<int>(c.getWidth() * 0.25f)).reduced(5);
-        unisonEnabled.setBounds(toggleArea);
-
-        auto knobArea = c;
-        auto knobW = knobArea.getWidth() / 2;
-        
-        layoutRotary(unisonDetune, knobArea.removeFromLeft(knobW).reduced(5));
-        layoutRotary(unisonSpread, knobArea.reduced(5));
+        layoutRotary(unisonDetune, c.removeFromLeft(knobW).reduced(5));
+        layoutRotary(unisonSpread, c.reduced(5));
     }
 
     // Layout Random Strength (Column 4)

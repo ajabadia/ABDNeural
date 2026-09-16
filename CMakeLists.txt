@@ -44,6 +44,21 @@ endif()
 # ADD SOURCE FILES (DSP CORE)
 # ============================================================================
 
+set(NEURONIK_DSP_SOURCES
+    Source/DSP/Runtime/DspEngineFacade.cpp
+    Source/DSP/CoreModules/LFO.cpp
+    Source/DSP/CoreModules/Oscillator.cpp
+    Source/DSP/CoreModules/Resonator.cpp
+    Source/DSP/CoreModules/Envelope.cpp
+    Source/DSP/CoreModules/FilterBank.cpp
+    Source/DSP/CoreModules/ResonatorBank.cpp
+    Source/DSP/CoreModules/NeuronikEngine.cpp
+    Source/DSP/CoreModules/NeurotikEngine.cpp
+    Source/DSP/BaseEngine.cpp
+    Source/DSP/Synthesis/AdditiveVoice.cpp
+    Source/DSP/Synthesis/NeurotikVoice.cpp
+)
+
 set(NEURONIK_SOURCES
     # Main
     Source/Main/NEURONiKProcessor.h
@@ -86,8 +101,16 @@ set(NEURONIK_SOURCES
 
     # State
     Source/State/ParameterDefinitions.h
+
+    # MIDI
+    Source/Main/MidiChannelFilter.h
+    Source/Main/MidiChannelFilter.cpp
+    Source/Main/VelocityCurve.h
+    Source/Main/VelocityCurve.cpp
     Source/Serialization/PresetManager.h
     Source/Serialization/PresetManager.cpp
+    Source/Serialization/PresetMigration.h
+    Source/Serialization/PresetMigration.cpp
     
     # DSP - CoreModules
     Source/DSP/CoreModules/LFO.cpp
@@ -108,6 +131,9 @@ set(NEURONIK_SOURCES
     Source/DSP/BaseEngine.h
     Source/DSP/BaseEngine.cpp
     
+    # DSP - Musical time
+    Source/DSP/CoreModules/RhythmicDivision.h
+
     # DSP - Synthesis
     Source/DSP/IVoice.h
     Source/DSP/ISynthesisEngine.h
@@ -151,7 +177,9 @@ juce_add_plugin(NEURONiK
     FORMATS VST3 AU Standalone
     IS_SYNTH TRUE
     NEEDS_MIDI_INPUT TRUE
-    NEEDS_MIDI_OUTPUT FALSE
+    # midiThru turns the engine's MIDI output on and off, so the capability has
+    # to be declared even though the default is off.
+    NEEDS_MIDI_OUTPUT TRUE
     IS_MIDI_EFFECT FALSE
     SOURCES ${NEURONIK_SOURCES}
 )
@@ -225,6 +253,181 @@ target_include_directories(NEURONiK PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
     "${CMAKE_CURRENT_SOURCE_DIR}/Source/State"
     "${CMAKE_CURRENT_SOURCE_DIR}/Source/Serialization"
+)
+
+# ============================================================================
+# DSP REFERENCE TESTS
+# ============================================================================
+
+enable_testing()
+
+add_executable(NEURONiK_DSPReferenceTest
+    Tests/DSPReferenceTest.cpp
+    ${NEURONIK_DSP_SOURCES}
+)
+
+target_include_directories(NEURONiK_DSPReferenceTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+)
+
+target_link_libraries(NEURONiK_DSPReferenceTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_audio_formats
+    juce::juce_core
+    juce::juce_data_structures
+    juce::juce_dsp
+    NEURONiK_Common
+)
+
+add_test(NAME NEURONiK_DSPReferenceTest COMMAND NEURONiK_DSPReferenceTest)
+
+# ============================================================================
+# PARAMETER DESCRIPTOR CONTRACT
+# ============================================================================
+
+# Single source of truth: descriptors are read back from createParameterLayout()
+# so the WebUI can never disagree with the plugin about an ID, range or default.
+add_library(NEURONiK_ParameterContract STATIC
+    Source/State/ParameterDescriptors.cpp
+    Source/State/ParameterDescriptorExport.cpp
+)
+
+target_include_directories(NEURONiK_ParameterContract PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/State"
+)
+
+target_link_libraries(NEURONiK_ParameterContract PUBLIC
+    juce::juce_core
+    juce::juce_data_structures
+    juce::juce_audio_processors
+)
+
+# Regenerates WebPilot/generated/{parameters.generated.json,.js,.d.ts}
+add_executable(NEURONiK_ParameterExport Tests/ParameterExportTool.cpp)
+target_link_libraries(NEURONiK_ParameterExport PRIVATE NEURONiK_ParameterContract)
+
+# MIDI channel filter: pure MIDI logic, no plugin dependencies needed.
+add_executable(NEURONiK_MidiChannelFilterTest
+    Tests/MidiChannelFilterTest.cpp
+    Source/Main/MidiChannelFilter.cpp
+)
+
+target_include_directories(NEURONiK_MidiChannelFilterTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Main"
+)
+
+target_link_libraries(NEURONiK_MidiChannelFilterTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_core
+    juce::juce_events
+)
+
+add_test(NAME NEURONiK_MidiChannelFilterTest COMMAND NEURONiK_MidiChannelFilterTest)
+
+# Velocity curve: pure MIDI shaping, no plugin dependencies needed.
+add_executable(NEURONiK_VelocityCurveTest
+    Tests/VelocityCurveTest.cpp
+    Source/Main/VelocityCurve.cpp
+)
+
+target_include_directories(NEURONiK_VelocityCurveTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Main"
+)
+
+target_link_libraries(NEURONiK_VelocityCurveTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_core
+    juce::juce_events
+)
+
+add_test(NAME NEURONiK_VelocityCurveTest COMMAND NEURONiK_VelocityCurveTest)
+
+# Tempo sync: the LFO and the shared rhythmic division table.
+add_executable(NEURONiK_LfoSyncTest
+    Tests/LfoSyncTest.cpp
+    Source/DSP/CoreModules/LFO.cpp
+)
+
+target_include_directories(NEURONiK_LfoSyncTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+)
+
+target_link_libraries(NEURONiK_LfoSyncTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_core
+    juce::juce_dsp
+)
+
+add_test(NAME NEURONiK_LfoSyncTest COMMAND NEURONiK_LfoSyncTest)
+
+add_executable(NEURONiK_ParameterDescriptorTest Tests/ParameterDescriptorTest.cpp)
+target_link_libraries(NEURONiK_ParameterDescriptorTest PRIVATE NEURONiK_ParameterContract)
+target_compile_definitions(NEURONiK_ParameterDescriptorTest PRIVATE
+    NEURONIK_PARAMETER_ARTIFACTS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/WebPilot/generated"
+)
+
+add_test(NAME NEURONiK_ParameterDescriptorTest COMMAND NEURONiK_ParameterDescriptorTest)
+
+# Preset round trip: reuses the contract library, which already materialises the
+# real layout in an APVTS without building the whole processor.
+add_executable(NEURONiK_PresetRoundTripTest
+    Tests/PresetRoundTripTest.cpp
+    Source/Serialization/PresetManager.cpp
+    Source/Serialization/PresetMigration.cpp
+)
+
+target_include_directories(NEURONiK_PresetRoundTripTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/State"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Serialization"
+)
+
+target_link_libraries(NEURONiK_PresetRoundTripTest PRIVATE
+    NEURONiK_ParameterContract
+)
+
+add_test(NAME NEURONiK_PresetRoundTripTest COMMAND NEURONiK_PresetRoundTripTest)
+
+
+# ============================================================================
+# NEXT.JS WEBVIEW2 PILOT HOST
+# ============================================================================
+
+# Fail fast: the host serves the Next.js static export straight from disk.
+set(NEURONIK_WEBPILOT_OUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/WebPilot/out")
+if(NOT EXISTS "${NEURONIK_WEBPILOT_OUT_DIR}/index.html")
+    message(FATAL_ERROR
+        "WebPilot static export missing. Run 'pnpm install --ignore-workspace && pnpm build' "
+        "inside ${CMAKE_CURRENT_SOURCE_DIR}/WebPilot before configuring this host.")
+endif()
+
+juce_add_gui_app(NEURONiK_WebPilotHost
+    PRODUCT_NAME "NEURONiK Web Pilot"
+    VERSION "0.1.0"
+    NEEDS_WEB_BROWSER TRUE
+    NEEDS_WEBVIEW2 TRUE
+    SOURCES Source/WebPilotHost.cpp
+)
+
+target_sources(NEURONiK_WebPilotHost PRIVATE Source/WebPilotHost.cpp)
+
+target_compile_definitions(NEURONiK_WebPilotHost PRIVATE
+    JUCE_USE_WIN_WEBVIEW2=1
+    JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1
+    NEURONiK_WEBPILOT_OUT_DIR="${NEURONIK_WEBPILOT_OUT_DIR}"
+)
+
+target_link_libraries(NEURONiK_WebPilotHost PRIVATE
+    juce::juce_core
+    juce::juce_events
+    juce::juce_graphics
+    juce::juce_gui_basics
+    juce::juce_gui_extra
 )
 
 # ============================================================================

@@ -57,7 +57,8 @@ void LFO::setSyncMode(SyncMode newSyncMode) noexcept
 
 void LFO::setTempoBPM(double newTempoBPM) noexcept
 {
-    double validatedBPM = validateAudioParam(static_cast<float>(newTempoBPM), 10.0f, 300.0f, 120.0f, "LFO tempoBPM");
+    // Upper bound matches masterBPM's 20-400 range, so a fast tempo is not silently trimmed.
+    double validatedBPM = validateAudioParam(static_cast<float>(newTempoBPM), 10.0f, 400.0f, 120.0f, "LFO tempoBPM");
     tempoBPM_.store(validatedBPM, std::memory_order_relaxed);
     if (currentSyncMode_.load(std::memory_order_relaxed) == SyncMode::TempoSync)
         updatePhaseIncrement();
@@ -177,7 +178,15 @@ float LFO::getSyncedRateHz() const noexcept
     // A quarter note (1 beat) duration in seconds = 60.0 / BPM
     // Frequency of a quarter note = BPM / 60.0
     const double quarterNoteFreq = bpm / 60.0;
-    return static_cast<float>(quarterNoteFreq * rhythmicDivision_.load(std::memory_order_relaxed));
+
+    // rhythmicDivision_ is a note LENGTH in quarter notes (1.0 = 1/4, 0.5 = 1/8,
+    // 4.0 = whole), as documented in the header. The cycle rate is therefore the
+    // beat rate divided by that length: multiplying here used to make "1/8" run a
+    // cycle every two beats. Shared table: Core/RhythmicDivision.h.
+    const double divisionInQuarterNotes = static_cast<double> (rhythmicDivision_.load(std::memory_order_relaxed));
+    const double safeDivision = divisionInQuarterNotes > 0.0 ? divisionInQuarterNotes : 1.0;
+
+    return static_cast<float>(quarterNoteFreq / safeDivision);
 }
 
 float LFO::generateSine() const noexcept

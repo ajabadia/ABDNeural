@@ -1,4 +1,6 @@
 #include "NEURONiKProcessor.h"
+
+#include "../DSP/CoreModules/RhythmicDivision.h"
 #include "NEURONiKEditor.h"
 #include "../State/ParameterDefinitions.h"
 #include "../DSP/CoreModules/NeuronikEngine.h"
@@ -144,6 +146,11 @@ void NEURONiKProcessor::injectNoteOff(int midiChannel, int midiNoteNumber, float
 
 void NEURONiKProcessor::parameterChanged(const juce::String& parameterID, float newValue)
 {
+    // Switching the input channel would leave notes from the previous channel
+    // hanging, since their note-offs arrive on a channel we now ignore.
+    if (parameterID == IDs::midiChannel)
+        allNotesOffRequested.store(true, std::memory_order_relaxed);
+
     if (parameterID == IDs::engineType)
     {
         int type = static_cast<int>(newValue);
@@ -212,26 +219,7 @@ void NEURONiKProcessor::synchronizeEngineParameters()
         nEngine->setVoiceParams(vParams);
 
         ::NEURONiK::DSP::GlobalParams gParams;
-        gParams.masterLevel = apvts.getRawParameterValue(IDs::masterLevel)->load();
-        gParams.saturationAmt = apvts.getRawParameterValue(IDs::fxSaturation)->load();
-        gParams.delayTime = apvts.getRawParameterValue(IDs::fxDelayTime)->load();
-        gParams.delayFB = apvts.getRawParameterValue(IDs::fxDelayFeedback)->load();
-        gParams.chorusMix = apvts.getRawParameterValue(IDs::fxChorusMix)->load();
-        gParams.reverbMix = apvts.getRawParameterValue(IDs::fxReverbMix)->load();
-        gParams.lfo1.waveform = (int)apvts.getRawParameterValue(IDs::lfo1Waveform)->load();
-        gParams.lfo1.rateHz = apvts.getRawParameterValue(IDs::lfo1RateHz)->load();
-        gParams.lfo1.depth = apvts.getRawParameterValue(IDs::lfo1Depth)->load();
-        gParams.lfo2.waveform = (int)apvts.getRawParameterValue(IDs::lfo2Waveform)->load();
-        gParams.lfo2.rateHz = apvts.getRawParameterValue(IDs::lfo2RateHz)->load();
-        gParams.lfo2.depth = apvts.getRawParameterValue(IDs::lfo2Depth)->load();
-
-        for (int i = 0; i < 4; ++i)
-        {
-            juce::String prefix = "mod" + juce::String(i+1);
-            gParams.modMatrix[i].source = (int)apvts.getRawParameterValue(prefix + "Source")->load();
-            gParams.modMatrix[i].destination = (int)apvts.getRawParameterValue(prefix + "Destination")->load();
-            gParams.modMatrix[i].amount = apvts.getRawParameterValue(prefix + "Amount")->load();
-        }
+        fillGlobalParams(gParams);
         nEngine->setGlobalParams(gParams);
     }
     else if (engine->getType() == NEURONiK::DSP::ISynthesisEngine::Type::Neurotik)
@@ -254,29 +242,55 @@ void NEURONiKProcessor::synchronizeEngineParameters()
         
         ntEngine->setVoiceParams(ntParams);
 
-        // Global Params for Neurotik (Unified)
         ::NEURONiK::DSP::GlobalParams gParams;
-        gParams.masterLevel = apvts.getRawParameterValue(IDs::masterLevel)->load();
-        gParams.saturationAmt = apvts.getRawParameterValue(IDs::fxSaturation)->load();
-        gParams.delayTime = apvts.getRawParameterValue(IDs::fxDelayTime)->load();
-        gParams.delayFB = apvts.getRawParameterValue(IDs::fxDelayFeedback)->load();
-        gParams.chorusMix = apvts.getRawParameterValue(IDs::fxChorusMix)->load();
-        gParams.reverbMix = apvts.getRawParameterValue(IDs::fxReverbMix)->load();
-        gParams.lfo1.waveform = (int)apvts.getRawParameterValue(IDs::lfo1Waveform)->load();
-        gParams.lfo1.rateHz = apvts.getRawParameterValue(IDs::lfo1RateHz)->load();
-        gParams.lfo1.depth = apvts.getRawParameterValue(IDs::lfo1Depth)->load();
-        gParams.lfo2.waveform = (int)apvts.getRawParameterValue(IDs::lfo2Waveform)->load();
-        gParams.lfo2.rateHz = apvts.getRawParameterValue(IDs::lfo2RateHz)->load();
-        gParams.lfo2.depth = apvts.getRawParameterValue(IDs::lfo2Depth)->load();
-
-        for (int i = 0; i < 4; ++i)
-        {
-            juce::String prefix = "mod" + juce::String(i+1);
-            gParams.modMatrix[i].source = (int)apvts.getRawParameterValue(prefix + "Source")->load();
-            gParams.modMatrix[i].destination = (int)apvts.getRawParameterValue(prefix + "Destination")->load();
-            gParams.modMatrix[i].amount = apvts.getRawParameterValue(prefix + "Amount")->load();
-        }
+        fillGlobalParams(gParams);
         ntEngine->setGlobalParams(gParams);
+    }
+}
+
+void NEURONiKProcessor::fillGlobalParams(NEURONiK::DSP::GlobalParams& gParams)
+{
+    gParams.masterLevel = apvts.getRawParameterValue(IDs::masterLevel)->load();
+    gParams.saturationAmt = apvts.getRawParameterValue(IDs::fxSaturation)->load();
+    gParams.bpm = apvts.getRawParameterValue(IDs::masterBPM)->load();
+
+    // Effects: the full parameter set is forwarded, not just the mixes, so the
+    // rate/depth and size/damping/width controls actually reach the DSP.
+    gParams.chorusRate = apvts.getRawParameterValue(IDs::fxChorusRate)->load();
+    gParams.chorusDepth = apvts.getRawParameterValue(IDs::fxChorusDepth)->load();
+    gParams.chorusMix = apvts.getRawParameterValue(IDs::fxChorusMix)->load();
+
+    gParams.reverbSize = apvts.getRawParameterValue(IDs::fxReverbSize)->load();
+    gParams.reverbDamping = apvts.getRawParameterValue(IDs::fxReverbDamping)->load();
+    gParams.reverbWidth = apvts.getRawParameterValue(IDs::fxReverbWidth)->load();
+    gParams.reverbMix = apvts.getRawParameterValue(IDs::fxReverbMix)->load();
+
+    // Delay time: seconds in Free mode, note length in Tempo Sync.
+    const int delayDivision = juce::roundToInt(apvts.getRawParameterValue(IDs::fxDelayDivision)->load());
+    const bool delaySynced = juce::roundToInt(apvts.getRawParameterValue(IDs::fxDelaySync)->load()) == 1;
+    gParams.delayTime = delaySynced
+        ? static_cast<float>(NEURONiK::DSP::Core::secondsForDivision(delayDivision, gParams.bpm))
+        : apvts.getRawParameterValue(IDs::fxDelayTime)->load();
+    gParams.delayFB = apvts.getRawParameterValue(IDs::fxDelayFeedback)->load();
+
+    gParams.lfo1.waveform = (int)apvts.getRawParameterValue(IDs::lfo1Waveform)->load();
+    gParams.lfo1.rateHz = apvts.getRawParameterValue(IDs::lfo1RateHz)->load();
+    gParams.lfo1.depth = apvts.getRawParameterValue(IDs::lfo1Depth)->load();
+    gParams.lfo1.syncMode = juce::roundToInt(apvts.getRawParameterValue(IDs::lfo1SyncMode)->load());
+    gParams.lfo1.rhythmicDivision = juce::roundToInt(apvts.getRawParameterValue(IDs::lfo1RhythmicDivision)->load());
+
+    gParams.lfo2.waveform = (int)apvts.getRawParameterValue(IDs::lfo2Waveform)->load();
+    gParams.lfo2.rateHz = apvts.getRawParameterValue(IDs::lfo2RateHz)->load();
+    gParams.lfo2.depth = apvts.getRawParameterValue(IDs::lfo2Depth)->load();
+    gParams.lfo2.syncMode = juce::roundToInt(apvts.getRawParameterValue(IDs::lfo2SyncMode)->load());
+    gParams.lfo2.rhythmicDivision = juce::roundToInt(apvts.getRawParameterValue(IDs::lfo2RhythmicDivision)->load());
+
+    for (int i = 0; i < 4; ++i)
+    {
+        juce::String prefix = "mod" + juce::String(i + 1);
+        gParams.modMatrix[i].source = (int)apvts.getRawParameterValue(prefix + "Source")->load();
+        gParams.modMatrix[i].destination = (int)apvts.getRawParameterValue(prefix + "Destination")->load();
+        gParams.modMatrix[i].amount = apvts.getRawParameterValue(prefix + "Amount")->load();
     }
 }
 
@@ -299,6 +313,15 @@ void NEURONiKProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     // Run pending commands (e.g. Model Loading)
     processCommands();
 
+    // Filter host MIDI by channel before anything else.
+    // The on-screen keyboard is injected further down on purpose: it should always
+    // sound, whatever channel this instance is listening to.
+    NEURONiK::Midi::filterMidiBuffer (
+        midiMessages,
+        NEURONiK::Midi::channelFromChoiceIndex (
+            juce::roundToInt (apvts.getRawParameterValue(IDs::midiChannel)->load())),
+        channelFilteredMidi);
+
     // Safe MIDI injection from UI thread (Lock-Free)
     int blockSize1, blockSize2, startIndex1, startIndex2;
     midiFifo.prepareToRead(1024, startIndex1, blockSize1, startIndex2, blockSize2);
@@ -316,8 +339,21 @@ void NEURONiKProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     }
 
     midiFifo.finishedRead(blockSize1 + blockSize2);
+
+    // Shape note-on velocities after the on-screen keyboard injection on purpose:
+    // the curve is part of the instrument's response, not of one input port.
+    // Linear reports no change and touches nothing, so nothing is added to the
+    // audio thread when the parameter is at its default.
+    NEURONiK::Midi::shapeMidiVelocities (
+        midiMessages,
+        juce::roundToInt (apvts.getRawParameterValue(IDs::velocityCurve)->load()),
+        channelFilteredMidi);
     
     synchronizeEngineParameters();
+
+    if (allNotesOffRequested.exchange(false, std::memory_order_relaxed) && engine != nullptr)
+        engine->allNotesOff();
+
     if (engine != nullptr)
     {
         engine->renderNextBlock(buffer, midiMessages);
@@ -356,6 +392,12 @@ void NEURONiKProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
         uiMorphX.store(apvts.getRawParameterValue(IDs::morphX)->load(), std::memory_order_relaxed);
         uiMorphY.store(apvts.getRawParameterValue(IDs::morphY)->load(), std::memory_order_relaxed);
     }
+
+    // MIDI Thru. The engine always receives the input; the toggle only decides
+    // whether it is echoed back to the host. Before, the buffer was passed through
+    // unconditionally, so the (default off) switch did nothing.
+    if (apvts.getRawParameterValue(IDs::midiThru)->load() < 0.5f)
+        midiMessages.clear();
 }
 
 void NEURONiKProcessor::processBlock(juce::AudioBuffer<double>& buffer, juce::MidiBuffer& midi)

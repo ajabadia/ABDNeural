@@ -36,11 +36,11 @@ private:
 
     std::unique_ptr<EnvelopeVisualizer> adsrVisualizer;
 
-    // Unison Controls
+    // Unison Controls. There is no enable toggle: the parameter exists in the
+    // APVTS for preset compatibility but the engine ignores it, so exposing it
+    // would be a control that does nothing.
     RotaryControl unisonDetune;
     RotaryControl unisonSpread;
-    juce::ToggleButton unisonEnabled { "ENABLE UNISON" };
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> unisonEnabledAttach;
 
     juce::TextButton randomizeButton{ "RANDOM" };
     

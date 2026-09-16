@@ -1,6 +1,7 @@
 # Build artifacts
 build/
 build_neuronik/
+build-reference/
 *.o
 *.obj
 *.a

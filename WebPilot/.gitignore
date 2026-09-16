@@ -1,0 +1,23 @@
+node_modules/
+.next/
+out/
+*.log
+
+# ---------------------------------------------------------------------------
+# generated/ NO se ignora a proposito.
+#
+# Contiene el contrato de parametros que consume el panel
+# (parameters.generated.json / .js / .d.ts, ~70 KB en total) y se versiona por
+# tres motivos:
+#
+#   1. NEURONiK_ParameterDescriptorTest lo compara contra una exportacion nueva,
+#      asi que versionarlo convierte cualquier divergencia en un diff revisable.
+#      Si se ignorara, en un clone limpio el test fallaria hasta ejecutar la
+#      exportacion, y la garantia anti-drift no valdria nada fuera de esta maquina.
+#   2. Lo importan lib/parameters.js y el build de Next: el repositorio queda
+#      autocontenido (salvo node_modules).
+#   3. Es texto pequeno y determinista (sin fechas), asi que no genera ruido.
+#
+# Se regenera con build.bat (paso 2/7) o con NEURONiK_ParameterExport.
+# No anadir aqui ninguna regla que ignore generated/.
+# ---------------------------------------------------------------------------

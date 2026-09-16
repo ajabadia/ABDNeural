@@ -9,6 +9,8 @@
 
 #include "BaseEngine.h"
 
+#include "CoreModules/RhythmicDivision.h"
+
 namespace NEURONiK::DSP {
 
 BaseEngine::BaseEngine()
@@ -42,18 +44,33 @@ void BaseEngine::updateParameters()
     
     saturation.setDrive(currentGlobalParams.saturationAmt);
     delay.setParameters(currentGlobalParams.delayTime, currentGlobalParams.delayFB);
-    chorus.setMix(currentGlobalParams.chorusMix);
-    reverb.setMix(currentGlobalParams.reverbMix);
+    chorus.setParameters(currentGlobalParams.chorusRate,
+                         currentGlobalParams.chorusDepth,
+                         currentGlobalParams.chorusMix);
+    reverb.setParameters(currentGlobalParams.reverbSize,
+                         currentGlobalParams.reverbDamping,
+                         currentGlobalParams.reverbWidth,
+                         currentGlobalParams.reverbMix);
     
     masterLevelSmoother.setTargetValue(currentGlobalParams.masterLevel);
-    
-    lfo1.setWaveform(static_cast<Core::LFO::Waveform>(currentGlobalParams.lfo1.waveform));
-    lfo1.setRate(currentGlobalParams.lfo1.rateHz);
-    lfo1.setDepth(currentGlobalParams.lfo1.depth);
 
-    lfo2.setWaveform(static_cast<Core::LFO::Waveform>(currentGlobalParams.lfo2.waveform));
-    lfo2.setRate(currentGlobalParams.lfo2.rateHz);
-    lfo2.setDepth(currentGlobalParams.lfo2.depth);
+    // Tempo sync: the fields existed in GlobalParams but were never applied, so the
+    // LFOs always ran free and the SYNC controls did nothing.
+    const double bpm = currentGlobalParams.bpm;
+
+    auto applyLfo = [bpm] (Core::LFO& lfo, const GlobalParams::LFOParams& p)
+    {
+        lfo.setWaveform (static_cast<Core::LFO::Waveform> (juce::jlimit (0, 5, p.waveform)));
+        lfo.setRate (p.rateHz);
+        lfo.setDepth (p.depth);
+        lfo.setSyncMode (p.syncMode == 0 ? Core::LFO::SyncMode::Free
+                                         : Core::LFO::SyncMode::TempoSync);
+        lfo.setTempoBPM (bpm);
+        lfo.setRhythmicDivision (Core::quarterNotesForDivision (p.rhythmicDivision));
+    };
+
+    applyLfo (lfo1, currentGlobalParams.lfo1);
+    applyLfo (lfo2, currentGlobalParams.lfo2);
     
     for (auto& voice : voices)
     {
@@ -106,6 +123,14 @@ int BaseEngine::getNumActiveVoices() const
 void BaseEngine::setPolyphony(int numVoices)
 {
     activeVoiceLimit.store(juce::jlimit(1, 32, numVoices));
+}
+
+void BaseEngine::allNotesOff()
+{
+    // Release rather than reset: keeps the envelope tail, so no click.
+    for (auto& voice : voices)
+        if (voice != nullptr && voice->isActive())
+            voice->noteOff (0.0f, true);
 }
 
 void BaseEngine::processMidiBuffer(juce::MidiBuffer& midiMessages)

@@ -23,15 +23,21 @@ namespace NEURONiK::DSP {
 struct GlobalParams {
     float masterLevel = 0.8f;
     float saturationAmt = 0.0f;
+
+    /** Tempo used by every tempo-synced modulation. */
+    double bpm = 120.0;
+
+    /** Already resolved to seconds by the host (free time or note length). */
     float delayTime = 0.3f, delayFB = 0.4f;
-    float chorusMix = 0.0f;
-    float reverbMix = 0.0f;
-    
+
+    float chorusRate = 1.0f, chorusDepth = 0.2f, chorusMix = 0.0f;
+    float reverbSize = 0.5f, reverbDamping = 0.5f, reverbWidth = 1.0f, reverbMix = 0.0f;
+
     struct LFOParams {
         int waveform = 0;
         float rateHz = 1.0f;
-        int syncMode = 0;
-        int rhythmicDivision = 0;
+        int syncMode = 0;            //!< 0 = Free, 1 = TempoSync
+        int rhythmicDivision = 0;    //!< Index into Core::rhythmicDivisionInQuarterNotes
         float depth = 1.0f;
     } lfo1, lfo2;
 
@@ -82,6 +88,14 @@ public:
 
     /** Set the maximum number of active voices. */
     virtual void setPolyphony(int numVoices) = 0;
+
+    /**
+     * @brief Releases every sounding voice.
+     * @details Called when the input channel changes, so notes received on the
+     *          previous channel cannot hang forever, and useful as a panic.
+     *          Real-time safe: it only triggers the release stage of each voice.
+     */
+    virtual void allNotesOff() = 0;
 
     /** Set global parameters. */
     virtual void setGlobalParams(const GlobalParams& p) = 0;

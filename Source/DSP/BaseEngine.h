@@ -43,6 +43,7 @@ public:
     // Voices management
     int getNumActiveVoices() const override;
     void setPolyphony(int numVoices) override;
+    void allNotesOff() override;
 
 protected:
     /** Subclasses must call this at the end of their renderNextBlock. */
