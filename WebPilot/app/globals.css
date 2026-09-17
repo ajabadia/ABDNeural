@@ -135,3 +135,74 @@ code { max-width: 100%; overflow-wrap: anywhere; color: var(--accent); }
 }
 .adsr__fill { fill: color-mix(in srgb, var(--accent) 18%, transparent); }
 .adsr__line { fill: none; stroke: var(--accent); stroke-width: 2; }
+
+/* ══════════════════════════════════════════════════════════════
+   KEYS tab (shared keyboard @abdsynths/midi-keyb)
+   The package styles ITS OWN innards (keybed, wheels, buttons, LEDs);
+   this side only owns the LAYOUT of the containers it mounts into:
+   a row (pitch wheel | keybed | mod wheel) with a DEFINED height — the
+   keybed stretches to 100% of it, so an undefined height collapses it.
+   ══════════════════════════════════════════════════════════════ */
+.keys-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.keys-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.keys-panic {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  border-radius: 6px;
+  padding: 6px 16px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.keys-panic:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.keys-status {
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.keys-status--local {
+  color: var(--accent);
+}
+
+.keys-strip {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 16px;
+  height: 210px;
+  min-height: 210px;
+}
+
+/* The wheels keep their natural filmstrip size; center them vertically. */
+.keys-strip #pitch-wheel-container,
+.keys-strip #mod-wheel-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 56px;
+}
+
+.keys-note {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0;
+}
