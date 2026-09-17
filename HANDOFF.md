@@ -688,6 +688,64 @@ caliente desde disco. Ahora el build recuerda `HOST_BUILD_FAILED` y, si el host 
 **omite el selftest y sale con error**. Si un día quieres compilar solo el plugin, usa
 `set WITH_SELFTEST=0` o compila los targets a mano.
 
+## Teclado MIDI compartido en la página (2026-09-17, Fase 4)
+
+La tab **KEYS** monta el teclado compartido `@abdsynths/midi-keyb` (el MISMO paquete que
+consume ABDMS2000, evolucionado a v0.2.0 — nada de forks locales) + las ruedas de pitch/mod.
+Puntos de diseño:
+
+- **Wire (aditivo a v1):** JS->nativo `midiNoteOn{note,velocity}`, `midiNoteOff{note}`,
+  `midiPitchBend{value -1..+1}`, `midiModWheel{value 0..1}`, `midiPanic` (sin campos);
+  nativo->JS `midiNoteState{held[], pitchBend, modWheel}` (~6 Hz desde el timer del host).
+  Campos fuera de rango → `stats.midiRejected`, jamás llegan al motor. Sin backend MIDI los
+  actions se aceptan y se descartan en silencio.
+- **`MidiController` (interfaz en ParameterBridge.h, patrón PresetController):** el bridge
+  posee el wire; el host inyecta `MidiInjectionAdapter` sobre los `injectNoteOn/Off/`
+  `injectPitchBend/injectController/requestAllNotesOff` del procesador — el MISMO camino
+  lock-free (FIFO) que usa el teclado del editor nativo.
+- **¡El piloto SUENA!:** `juce::AudioProcessorPlayer` + `AudioDeviceManager` con el dispositivo
+  por defecto. Sin esto `processBlock` nunca corría en el host: las notas morían en el FIFO sin
+  oírse y la telemetría del motor quedaba congelada. Orden de miembros: processor ANTES de
+  deviceManager/player; el callback se desmonta en el destructor antes de que muera el
+  procesador.
+- **Notas mantenidas reales:** máscara de 128 bits (4×`atomic<uint32>`) plegada en
+  `processBlock` desde el MIDI ya filtrado por canal (hardware + inyectado, ambas fuentes).
+  Acumulativa entre bloques (el FIFO se vacía cada bloque; sin la máscara `held` parpadearía).
+  `allNotesOff` del motor la pone a cero (el pánico no deja resaltes fantasma). Lectura por
+  `getHeldNotes()` con bucle de desplazamiento (sin `<bit>`: el host compila C++17).
+- **Feedback sin eco (API v0.2 del paquete):** `setPitchBend/setModWheel` mueven la rueda con
+  `Wheel.setValue(n, false)` tras un gate `suppressWheelCallbacks` — visual sin re-disparar
+  `onPitchBend/onModWheel` como si fuera input del usuario. `notesOffVisual` existe pero NO se
+  usa en el loop de telemetría a propósito: el teclado mantiene su propio estado de pulsación y
+  un repaint desde telemetría pelearía con el dedo del usuario. Nota fina: el slider del wheel
+  es `min=-8192 max=8191` (¡centro 0, no 8192!) — el mapeo del feedback es
+  `v>0 ? v*8191 : v*8192`.
+- **Página (`KeysTab` en page.jsx):** contenedores por id (`#piano-keyboard`, ruedas) escritos
+  con `innerHTML` y teclado creado UNA vez por mount de la tab (callbacks via `refs` para no
+  recrearlo). PANIC de la página llama a `keyboard.panic()` (client-side, suelta sus teclas) +
+  `sendMidiPanic()` (nativo, para hardware/DAW). `window.__pilotSendMidi` expone el camino de
+  envío al host para el selftest.
+- **Selftest 4ª dirección (MIDI):** la página envía noteOn/noteOff de la 60 por SU propio
+  camino (`__pilotSendMidi`) y el host verifica la máscara de notas; en paralelo empuja
+  CC1=64 nativo y lee el slider del wheel (`#mod-wheel-container .kbd-wheel-slider`, escala
+  0..127 → normalizada) tras cambiar a la tab KEYS. 100% asíncrono (evaluateJavascript +
+  Timers; el valor del wheel viaja en un `atomic<float>` miembro — las lambdas hermanas no
+  pueden capturarse entre sí). Veredicto: las CUATRO direcciones.
+- **Empaquetado pnpm (lección):** `pnpm install` desde WebPilot se colaba en el workspace raíz
+  de la suite (`pnpm-workspace.yaml` de ABDSynths NO lista ABDNeural/WebPilot). Solución:
+  WebPilot es ahora workspace anidado propio que incluye `ABDSharedAssets` y
+  `ABDSharedCode/MidiKeyboard` como miembros (el `@abdsynths/shared@workspace:*` interno del
+  paquete de teclado obliga a ello). Turbopack necesita `turbopack.root = raíz de la suite` en
+  `next.config.mjs` (los symlinks resuelven fuera de WebPilot) y vitest necesita
+  `server.fs.allow` para el setup compartido. El sprite `assets/bender.png` de la rueda se
+  copió a `WebPilot/public/assets/` (el snapshot embebido lo sirve).
+- **Tests:** sección 9 de `ParameterBridgeTest` (routing/rangos/panic/sin-backend), literales
+  MIDI en el contrato anti-drift C++ y mjs, vitest del bridge (formas exactas + midiNoteState)
+  y del hook (`__pilotSendMidi` + `midiState`, limpieza en unmount). 46/46 en verde.
+- **Pendiente de oído/vista:** tocar la ventana abierta (teclas/QWERTY/ruedas/PANIC) y oír el
+  motor por el dispositivo de audio por defecto; hardware MIDI conectado al plugin debería
+  reflejarse en las teclas/ruedas de la página.
+
 **Qué validar cuando compile** (en orden):
 
 1. Que el host enlaza (primera vez con el plugin entero dentro; si falta un símbolo, añadir la

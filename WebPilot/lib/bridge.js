@@ -32,6 +32,19 @@
  *   from the host; a successful save answers with a presetList. Names are
  *   sanitised natively — a rejected name answers presetError, never a file write.
  *
+ *   MIDI (additive to protocol v1; see bridge-protocol.json)
+ *
+ *   JS -> native  { action: "midiNoteOn", note: 0..127, velocity: 0..1 }
+ *                 { action: "midiNoteOff", note: 0..127 }
+ *                 { action: "midiPitchBend", value: -1..+1 }
+ *                 { action: "midiModWheel", value: 0..1 }
+ *                 { action: "midiPanic" }
+ *
+ *   native -> JS  { action: "midiNoteState", held: [note...], pitchBend, modWheel }
+ *
+ *   The state message feeds the shared keyboard's host-driven feedback API, so
+ *   hardware/DAW MIDI reaching the plugin is mirrored on the page wheels/keys.
+ *
  * `value` is ALWAYS the normalised 0..1 value; `real` and `text` are display only.
  *
  * When `window.__JUCE__` is absent (a plain browser, `next dev` on its own) the
@@ -59,7 +72,9 @@ function backend() {
  *   the host's preset list and which preset is current
  * @param {({ operation: string, detail: string }) => void} [handlers.onPresetError]
  *   a preset operation the host rejected or failed
- * @returns {{ available: boolean, sendParameterChange: Function, sendRequestState: Function, announcePageLoaded: Function, sendListPresets: Function, sendLoadPreset: Function, sendSavePreset: Function, dispose: Function }}
+ * @param {({ held: number[], pitchBend: number, modWheel: number }) => void} [handlers.onMidiState]
+ *   the plugin's external MIDI view (held notes + wheel positions), ~6x per second
+ * @returns {{ available: boolean, sendParameterChange: Function, sendRequestState: Function, announcePageLoaded: Function, sendListPresets: Function, sendLoadPreset: Function, sendSavePreset: Function, sendMidiNoteOn: Function, sendMidiNoteOff: Function, sendMidiPitchBend: Function, sendMidiModWheel: Function, sendMidiPanic: Function, dispose: Function }}
  */
 export function createBridgeTransport(handlers) {
   const carrier = backend();
@@ -74,6 +89,11 @@ export function createBridgeTransport(handlers) {
       sendListPresets: () => {},
       sendLoadPreset: () => {},
       sendSavePreset: () => {},
+      sendMidiNoteOn: () => {},
+      sendMidiNoteOff: () => {},
+      sendMidiPitchBend: () => {},
+      sendMidiModWheel: () => {},
+      sendMidiPanic: () => {},
       dispose: () => {},
     };
   }
@@ -120,6 +140,20 @@ export function createBridgeTransport(handlers) {
       handlers.onPresetError?.({ operation: message.operation, detail: message.detail });
   });
 
+  const removeMidiState = carrier.addEventListener(NATIVE_TO_JS_EVENT_ID, (message) => {
+    if (
+      message?.action === 'midiNoteState'
+      && Array.isArray(message.held)
+      && typeof message.pitchBend === 'number'
+      && typeof message.modWheel === 'number'
+    )
+      handlers.onMidiState?.({
+        held: message.held,
+        pitchBend: message.pitchBend,
+        modWheel: message.modWheel,
+      });
+  });
+
   return {
     available: true,
 
@@ -160,11 +194,37 @@ export function createBridgeTransport(handlers) {
       emit({ action: 'savePreset', name });
     },
 
+    /** Page keyboard: one key down (velocity 0..1). */
+    sendMidiNoteOn(note, velocity) {
+      emit({ action: 'midiNoteOn', note, velocity });
+    },
+
+    /** Page keyboard: one key up. */
+    sendMidiNoteOff(note) {
+      emit({ action: 'midiNoteOff', note });
+    },
+
+    /** Page pitch wheel: -1..+1, 0 = centre. */
+    sendMidiPitchBend(value) {
+      emit({ action: 'midiPitchBend', value });
+    },
+
+    /** Page mod wheel: 0..1 (CC1). */
+    sendMidiModWheel(value) {
+      emit({ action: 'midiModWheel', value });
+    },
+
+    /** Page PANIC: every sounding note in the plugin stops. */
+    sendMidiPanic() {
+      emit({ action: 'midiPanic' });
+    },
+
     dispose() {
       carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removeSnapshot]);
       carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removeChange]);
       carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removePresetList]);
       carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removePresetError]);
+      carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removeMidiState]);
     },
   };
 }

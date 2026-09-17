@@ -181,7 +181,11 @@ quería despejar era exactamente el modo de fallo silencioso del canal.)
       (snapshot completo). `PresetController` como interfaz para testear sin directorio real;
       adaptador a `PresetManager` en el host. Barra de presets en la página (select + guardar).
       Tests: sección 8 de `ParameterBridgeTest`, literales en el contrato C++/mjs, vitest del hook.
-- [ ] Validar MIDI y persistencia (teclado + mensajes MIDI en el bridge, protocolo v2 aditivo).
+- [x] Validar MIDI (HECHO 2026-09-17: teclado compartido `@abdsynths/midi-keyb` v0.2 en la
+      página (tab KEYS), protocolo aditivo `midiNoteOn/Off/pitchBend/modWheel/panic` +
+      `midiNoteState` nativo→JS con feedback sin eco; host con `AudioProcessorPlayer` (el piloto
+      SUENA) y selftest de 4 direcciones en verde). La PERSISTENCIA de ajustes sigue pendiente.
+- [ ] Validar persistencia de estado (guardar/recuperar con la sesión del DAW).
 - [x] Embebido de recursos y rutas relativas (VALIDADO 2026-09-17: snapshot sin rutas de
       error, `[embedded fallback: 8]` con el E2E del bridge en verde sobre la WebUI embebida).
 - [ ] Rebuild del EXE en cada cambio del bundle.
@@ -247,8 +251,10 @@ cada synthe elige su skin. NEURONiK es el primer consumidor del paquete comparti
       NOTA: masterLevel conserva su input[type=range] nativo (el selftest lo conduce) y la
       validación del footer usa ahora el validador NORMALIZADO del hook (el de unidades reales
       daba errores falsos con envAttack, min 0.001).
-- [ ] Teclado (`createKeyboard` de `ABDSharedCode/MidiKeyboard`) + mensajes MIDI en el
-      bridge (protocolo v2 aditivo: `midiNoteOn/midiNoteOff/...`).
+- [x] Teclado (`createKeyboard` de `ABDSharedCode/MidiKeyboard` v0.2, feedback API:
+      `setPitchBend`/`setModWheel`/`notesOffVisual` sin eco) + mensajes MIDI en el
+      bridge (aditivo a v1: `midiNoteOn/midiNoteOff/midiPitchBend/midiModWheel/midiPanic`
+      + `midiNoteState`). HECHO 2026-09-17; ver Fase 4.
 - [ ] Adoptar la familia en ABDMS2000 y ABDJUNiO601 cuando migren su WebUI (sin tocar
       nada hoy: sus controles actuales siguen funcionando).
 

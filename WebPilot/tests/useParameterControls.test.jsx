@@ -233,4 +233,52 @@ describe('useParameterControls', () => {
 
     expect(result.current.parameters.morphY).toBe(0.2);
   });
+
+  it('midi: __pilotSendMidi drives the wire path and midiNoteState updates midiState', () => {
+    const backend = makeBackend();
+    window.__JUCE__ = { backend };
+    const { result } = renderHook(() => useParameterControls());
+
+    expect(typeof window.__pilotSendMidi).toBe('function');
+
+    act(() => {
+      window.__pilotSendMidi({ action: 'midiNoteOn', note: 60, velocity: 0.9 });
+      window.__pilotSendMidi({ action: 'midiPitchBend', value: -0.5 });
+      window.__pilotSendMidi({ action: 'midiModWheel', value: 0.5 });
+      window.__pilotSendMidi({ action: 'midiPanic' });
+      window.__pilotSendMidi({ action: 'garbage' }); // unknown: ignored
+    });
+
+    const actions = backend.emitted.map((entry) => entry.message.action);
+    expect(actions).toContain('midiNoteOn');
+    expect(actions).toContain('midiPitchBend');
+    expect(actions).toContain('midiModWheel');
+    expect(actions).toContain('midiPanic');
+    expect(actions).not.toContain('garbage');
+    expect(backend.emitted.find((e) => e.message.action === 'midiNoteOn').message)
+      .toEqual({ action: 'midiNoteOn', note: 60, velocity: 0.9 });
+
+    act(() => {
+      window.__pilotSendMidi({ action: 'midiNoteOff', note: 60 });
+    });
+    expect(backend.emitted.at(-1).message).toEqual({ action: 'midiNoteOff', note: 60 });
+
+    act(() => {
+      backend.dispatchFromNative(NATIVE_TO_JS_EVENT_ID, {
+        action: 'midiNoteState', held: [60], pitchBend: -0.5, modWheel: 0.5,
+      });
+    });
+    expect(result.current.midiState).toEqual({ held: [60], pitchBend: -0.5, modWheel: 0.5 });
+  });
+
+  it('midi handle is removed on unmount', () => {
+    const backend = makeBackend();
+    window.__JUCE__ = { backend };
+
+    const { unmount } = renderHook(() => useParameterControls());
+    expect(window.__pilotSendMidi).toBeDefined();
+
+    unmount();
+    expect(window.__pilotSendMidi).toBeUndefined();
+  });
 });

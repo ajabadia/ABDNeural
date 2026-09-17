@@ -78,6 +78,12 @@ void ParameterBridge::setPresetController (PresetController* newController) noex
     presets = newController;
 }
 
+void ParameterBridge::setMidiController (MidiController* newController) noexcept
+{
+    jassert (juce::MessageManager::existsAndIsCurrentThread());
+    midi = newController;
+}
+
 int ParameterBridge::getParameterCount() const noexcept
 {
     return static_cast<int> (entries.size());
@@ -320,6 +326,117 @@ void ParameterBridge::handleSavePreset (const juce::DynamicObject& message)
 }
 
 //==============================================================================
+// MIDI (additive wire messages; see the header doc).
+
+void ParameterBridge::sendMidiNoteState (const std::vector<int>& heldNotes,
+                                         float pitchBendNormalized, float modWheelNormalized)
+{
+    juce::Array<juce::var> held;
+
+    for (const auto note : heldNotes)
+        held.add (juce::jlimit (0, 127, note));
+
+    juce::DynamicObject::Ptr message = new juce::DynamicObject();
+    message->setProperty ("action", BridgeActions::midiNoteState);
+    message->setProperty ("held", juce::var (held));
+    message->setProperty ("pitchBend", static_cast<double> (juce::jlimit (-1.0f, 1.0f, pitchBendNormalized)));
+    message->setProperty ("modWheel", static_cast<double> (juce::jlimit (0.0f, 1.0f, modWheelNormalized)));
+
+    send (juce::var (message.get()), false);
+}
+
+void ParameterBridge::handleMidiAction (const juce::String& action, const juce::DynamicObject& message)
+{
+    const auto numeric = [&message] (const char* field, bool& ok) -> double
+    {
+        const auto property = message.getProperty (field);
+        ok = property.isDouble() || property.isInt() || property.isInt64();
+        return ok ? static_cast<double> (property) : 0.0;
+    };
+
+    auto ok = false;
+
+    if (action == BridgeActions::midiNoteOn)
+    {
+        const auto note = numeric ("note", ok);
+        const auto velocity = numeric ("velocity", ok);
+        const auto noteInt = static_cast<int> (note);
+
+        if (! ok || static_cast<double> (noteInt) != note || noteInt < 0 || noteInt > 127
+            || velocity < 0.0 || velocity > 1.0)
+        {
+            ++stats.midiRejected;
+            return;
+        }
+
+        ++stats.midiForwarded;
+        if (midi != nullptr)
+            midi->noteOn (noteInt, static_cast<float> (velocity));
+        return;
+    }
+
+    if (action == BridgeActions::midiNoteOff)
+    {
+        const auto note = numeric ("note", ok);
+        const auto noteInt = static_cast<int> (note);
+
+        if (! ok || static_cast<double> (noteInt) != note || noteInt < 0 || noteInt > 127)
+        {
+            ++stats.midiRejected;
+            return;
+        }
+
+        ++stats.midiForwarded;
+        if (midi != nullptr)
+            midi->noteOff (noteInt);
+        return;
+    }
+
+    if (action == BridgeActions::midiPitchBend)
+    {
+        const auto value = numeric ("value", ok);
+
+        if (! ok || value < -1.0 || value > 1.0)
+        {
+            ++stats.midiRejected;
+            return;
+        }
+
+        ++stats.midiForwarded;
+        if (midi != nullptr)
+            midi->pitchBend (static_cast<float> (value));
+        return;
+    }
+
+    if (action == BridgeActions::midiModWheel)
+    {
+        const auto value = numeric ("value", ok);
+
+        if (! ok || value < 0.0 || value > 1.0)
+        {
+            ++stats.midiRejected;
+            return;
+        }
+
+        ++stats.midiForwarded;
+        if (midi != nullptr)
+            midi->modWheel (static_cast<float> (value));
+        return;
+    }
+
+    if (action == BridgeActions::midiPanic)
+    {
+        ++stats.midiForwarded;
+        if (midi != nullptr)
+            midi->allNotesOff();
+        return;
+    }
+
+    // Unreachable through handleJsEvent; kept defensive for direct callers.
+    ++stats.midiRejected;
+}
+
+//==============================================================================
 
 void ParameterBridge::handleJsEvent (const juce::var& message)
 {
@@ -362,6 +479,16 @@ void ParameterBridge::handleJsEvent (const juce::var& message)
     if (action == BridgeActions::savePreset)
     {
         handleSavePreset (*object);
+        return;
+    }
+
+    if (action == BridgeActions::midiNoteOn
+     || action == BridgeActions::midiNoteOff
+     || action == BridgeActions::midiPitchBend
+     || action == BridgeActions::midiModWheel
+     || action == BridgeActions::midiPanic)
+    {
+        handleMidiAction (action, *object);
         return;
     }
 

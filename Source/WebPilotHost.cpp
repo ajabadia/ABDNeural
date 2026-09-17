@@ -26,6 +26,8 @@
 #include <juce_gui_extra/juce_gui_extra.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_audio_devices/juce_audio_devices.h>
+#include <juce_audio_utils/juce_audio_utils.h>   // AudioProcessorPlayer
 #include <juce_core/juce_core.h>
 
 #include "Main/NEURONiKProcessor.h"
@@ -108,6 +110,51 @@ namespace
 
     private:
         NEURONiK::Serialization::PresetManager& presetManager;
+    };
+
+    /**
+     * @brief Adapts the plugin's public MIDI injection API to the bridge's
+     *        MidiController interface. inject*() push into the processor's own
+     *        lock-free FIFO — the SAME path the native editor keyboard uses —
+     *        and processBlock drains that FIFO while the pilot's
+     *        AudioProcessorPlayer renders audio through the default device.
+     */
+    class MidiInjectionAdapter final : public NEURONiK::WebUI::MidiController
+    {
+    public:
+        explicit MidiInjectionAdapter (NEURONiKProcessor& processorToWrap)
+            : processor (processorToWrap) {}
+
+        void noteOn (int note, float velocity) override
+        {
+            processor.injectNoteOn (midiChannel, note, velocity);
+        }
+
+        void noteOff (int note) override
+        {
+            processor.injectNoteOff (midiChannel, note, 0.0f);
+        }
+
+        void pitchBend (float normalized) override
+        {
+            processor.injectPitchBend (midiChannel,
+                                       juce::jlimit (0, 16383,
+                                                     (int) std::lround ((normalized + 1.0f) * 8192.0f)));
+        }
+
+        void modWheel (float normalized) override
+        {
+            processor.injectController (midiChannel, 1 /* CC1 */, (int) std::lround (normalized * 127.0f));
+        }
+
+        void allNotesOff() override
+        {
+            processor.requestAllNotesOff();
+        }
+
+    private:
+        static constexpr int midiChannel = 1;   // page keyboard plays on channel 1
+        NEURONiKProcessor& processor;
     };
 
     /** @brief Process exit code decided by the selftest (-1 = no verdict yet).
@@ -445,11 +492,24 @@ namespace
                         NEURONiK::WebUI::BridgeEventIds::nativeToJs, message);
             });
 
+            // Render the plugin through the default audio device. Without this the
+            // processor's processBlock NEVER runs in the pilot: page keyboard notes
+            // would pile up in the MIDI FIFO unheard, and engine telemetry would
+            // stay frozen. This also makes the pilot audible for the first time.
+            audioDeviceManager.initialiseWithDefaultDevices (0, 2);
+            audioPlayer.setProcessor (&processor);
+            audioDeviceManager.addAudioCallback (&audioPlayer);
+
             // Preset management for the page: the bridge owns the wire, this
             // adapter owns the plugin behaviour. The processor (and with it the
             // preset manager) outlives the bridge, so a bare pointer is safe.
             presetAdapter = std::make_unique<PresetManagerAdapter> (processor);
             bridge->setPresetController (presetAdapter.get());
+
+            // Page keyboard/wheels -> processor FIFO. The processor outlives the
+            // bridge, so a bare pointer is safe (same rules as the preset adapter).
+            midiAdapter = std::make_unique<MidiInjectionAdapter> (processor);
+            bridge->setMidiController (midiAdapter.get());
 
             addAndMakeVisible (browser);
             nativePanel = std::make_unique<NEURONiK::UI::ParameterPanel> (processor);
@@ -472,6 +532,8 @@ namespace
         ~PilotComponent() override
         {
             stopTimer();
+            audioDeviceManager.removeAudioCallback (&audioPlayer);
+            audioPlayer.setProcessor (nullptr);
             bridge->setSender ({});   // the browser dies before the bridge does
         }
 
@@ -500,7 +562,7 @@ namespace
         // The script prints SELFTEST: OK / SELFTEST: FAIL and the process exits 0/1.
         // ============================================================================
 
-        enum class SelftestStage { idle, waitReady, nativePushed, jsPushed, generalCheck };
+        enum class SelftestStage { idle, waitReady, nativePushed, jsPushed, generalCheck, midiCheck };
 
         void startSelftest()
         {
@@ -664,12 +726,113 @@ namespace
                       << (ok ? "OK" : "FAIL") << "\n";
             selftestGeneralOk = ok;
 
-            selftestFinish();
+            selftestStartMidiCheck();
         }
+
+        // --- MIDI E2E (Phase 4) -----------------------------------------------------
+        // Page keyboard -> processor: the page sends noteOn/noteOff through its OWN
+        // MIDI send path (window.__pilotSendMidi, the same helper the React keyboard
+        // uses) and we read the processor's held-note FIFO.
+        // Wheels native -> page: push a mod-wheel level through the processor's
+        // injection API, switch to the KEYS tab and read the shared wheel's slider.
+        // Fully async: every hop is an evaluateJavascript callback or a Timer, so the
+        // message thread never blocks.
+        void selftestStartMidiCheck()
+        {
+            selftestStage = SelftestStage::midiCheck;
+
+            // mod wheel to 0.5 the way the native side would receive external MIDI
+            processor.injectController (1, 1, 64);
+
+            juce::Timer::callAfterDelay (600, [this]
+            {
+                // Switch to KEYS (the shared wheels live there) and press page C4.
+                browser.evaluateJavascript (
+                    "(() => { try {"
+                    "  document.querySelector('[data-tab=\"keys\"]')?.click();"
+                    "  if (!window.__pilotSendMidi) return 'NO_MIDI_HELPER';"
+                    "  window.__pilotSendMidi({ action: 'midiNoteOn', note: 60, velocity: 0.9 });"
+                    "  return 'ON_SENT';"
+                    " } catch (e) { return 'MIDI_FAIL: ' + e.message; } })()",
+                    [this] (juce::WebBrowserComponent::EvaluationResult result)
+                    {
+                        const auto raw = result.getResult() != nullptr
+                                           ? result.getResult()->toString()
+                                           : juce::String ("NO_RESULT");
+
+                        // A poll later the FIFO has drained; read held notes natively
+                        // and the mod wheel slider on the (now mounted) KEYS tab.
+                        juce::Timer::callAfterDelay (400, [this, raw]
+                        {
+                            const auto held = processor.getHeldNotes();
+                            const auto noteOnArrived = raw == "ON_SENT"
+                                && std::find (held.begin(), held.end(), 60) != held.end();
+
+                            browser.evaluateJavascript (
+                                // The shared Wheel renders the mod wheel as a 0..127
+                                // range input inside #mod-wheel-container: normalise.
+                                "(() => { const el = document.querySelector('#mod-wheel-container .kbd-wheel-slider');"
+                                " return el ? String(Number(el.value) / 127) : 'NO_MOD'; })()",
+                                [this, noteOnArrived] (juce::WebBrowserComponent::EvaluationResult modResult)
+                                {
+                                    const auto modRaw = modResult.getResult() != nullptr
+                                                          ? modResult.getResult()->toString()
+                                                          : juce::String ("NO_RESULT");
+                                    // Stash for the later lambda hops (no capture needed).
+                                    setModPageValue (modRaw.isNotEmpty() && modRaw != "NO_MOD"
+                                                                        && modRaw != "NO_RESULT"
+                                                           ? modRaw.getFloatValue() : -1.0f);
+
+                                    browser.evaluateJavascript (
+                                        "(() => { try {"
+                                        "  window.__pilotSendMidi({ action: 'midiNoteOff', note: 60 });"
+                                        "  return 'OFF_SENT';"
+                                        " } catch (e) { return 'MIDI_FAIL: ' + e.message; } })()",
+                                        [this, noteOnArrived] (juce::WebBrowserComponent::EvaluationResult offResult)
+                                        {
+                                            const auto offRaw = offResult.getResult() != nullptr
+                                                                  ? offResult.getResult()->toString()
+                                                                  : juce::String ("NO_RESULT");
+
+                                            juce::Timer::callAfterDelay (400, [this, noteOnArrived, offRaw]
+                                            {
+                                                const auto held2 = processor.getHeldNotes();
+                                                const auto noteOffArrived = offRaw == "OFF_SENT"
+                                                    && std::find (held2.begin(), held2.end(), 60) == held2.end();
+
+                                                const auto ok = noteOnArrived && noteOffArrived
+                                                                    && getModPageValue() >= 0.0f
+                                                                    && std::abs (getModPageValue() - 0.5f) < 0.1f;
+
+                                                std::cout << "[selftest] MIDI: page note 60 on/off native = "
+                                                          << (noteOnArrived ? "on" : "STUCK")
+                                                          << "/" << (noteOffArrived ? "off" : "STUCK")
+                                                          << ", mod wheel page = "
+                                                          << juce::String (getModPageValue(), 2)
+                                                          << " (native 0.5) -> " << (ok ? "OK" : "FAIL") << "\n";
+                                                selftestMidiOk = ok;
+
+                                                selftestFinish();
+                                            });
+                                        });
+                                });
+                        });
+                    });
+            });
+        }
+
+        /** @brief Mod-wheel slider stash for the async MIDI-check hops (the
+         *  evaluateJavascript callback and the Timer lambda are siblings, so the
+         *  value rides a member instead of a capture). */
+        void setModPageValue (float value) { modPageValue.store (value, std::memory_order_relaxed); }
+        float getModPageValue() const { return modPageValue.load (std::memory_order_relaxed); }
+
+        std::atomic<float> modPageValue { -1.0f };
 
         void selftestFinish()
         {
-            const auto allOk = selftestNativeToJsOk && selftestJsToNativeOk && selftestGeneralOk;
+            const auto allOk = selftestNativeToJsOk && selftestJsToNativeOk
+                                   && selftestGeneralOk && selftestMidiOk;
 
             std::cout << "[selftest] RESULT: " << (allOk ? "OK" : "FAIL") << "\n";
             selftestPassed = allOk;
@@ -722,6 +885,17 @@ namespace
             processor.refreshUiTelemetryFromApvts();
 
             bridge->publishPendingChanges();
+
+            // Mirror the plugin's external MIDI view on the page keyboard every
+            // ~180 ms (each 6th tick of the 30 ms timer): held notes come from the
+            // same FIFO the processor drains, wheels from the atomics.
+            if (++midiStateTick >= 6)
+            {
+                midiStateTick = 0;
+                bridge->sendMidiNoteState (processor.getHeldNotes(),
+                                           processor.externalPitchBend.load(),
+                                           processor.externalModWheel.load());
+            }
 
             if (finished)
                 return;
@@ -824,7 +998,16 @@ namespace
         // AFTER processor (it references its PresetManager) and destroyed with
         // the component, before the processor's own members go away.
         std::unique_ptr<PresetManagerAdapter> presetAdapter;
+        std::unique_ptr<MidiInjectionAdapter> midiAdapter;
         std::unique_ptr<NEURONiK::WebUI::ParameterBridge> bridge;
+
+        // Audio plumbing for the pilot: default device + the standard JUCE player
+        // that pulls the processor's processBlock. The processor is declared BEFORE
+        // these (they reference it), and destroyed AFTER them (the callback must be
+        // gone before the processor dies) — member order handles both.
+        juce::AudioDeviceManager audioDeviceManager;
+        juce::AudioProcessorPlayer audioPlayer;
+        int midiStateTick = 0;
         std::unique_ptr<NEURONiK::UI::ParameterPanel> nativePanel;
         // Declared after processor/bridge so it is destroyed BEFORE them (it reads
         // the APVTS and the IVisualizationSource in its 30 Hz timer).
@@ -835,6 +1018,7 @@ namespace
         bool selftestNativeToJsOk = false;
         bool selftestJsToNativeOk = false;
         bool selftestGeneralOk = false;   // 11 GENERAL ids present + native->page propagation
+        bool selftestMidiOk = false;      // page note on/off reaches the engine + mod wheel mirrors back
         bool selftestPassed = false;
         bool probeInFlight = false;
         bool finished = false;

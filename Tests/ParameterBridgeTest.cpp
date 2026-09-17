@@ -26,8 +26,10 @@
 #include "../Source/State/ParameterDescriptors.h"
 #include "../Source/WebUI/ParameterBridge.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <vector>
 
 namespace
 {
@@ -192,6 +194,44 @@ namespace
         juce::DynamicObject::Ptr message = new juce::DynamicObject();
         message->setProperty ("action", action);
         message->setProperty ("name", presetName);
+        return juce::var (message.get());
+    }
+
+    /** @brief MIDI backend stub for the MIDI-message section. */
+    struct FakeMidiController final : public MidiController
+    {
+        std::vector<int> held;
+        float lastPitch = -99.0f;
+        float lastMod = -99.0f;
+        int panics = 0;
+        int noteOns = 0;
+        int noteOffs = 0;
+
+        void noteOn (int note, float /*velocity*/) override { ++noteOns; held.push_back (note); }
+        void noteOff (int note) override
+        {
+            ++noteOffs;
+            held.erase (std::remove (held.begin(), held.end(), note), held.end());
+        }
+        void pitchBend (float normalized) override { lastPitch = normalized; }
+        void modWheel (float normalized) override { lastMod = normalized; }
+        void allNotesOff() override { ++panics; held.clear(); }
+    };
+
+    /** @brief `{ action: <name>, ...fields }`, the shape MIDI messages use. */
+    juce::var jsMidiAction (const juce::String& action, int note = -1,
+                            double first = -999.0, double second = -999.0)
+    {
+        juce::DynamicObject::Ptr message = new juce::DynamicObject();
+        message->setProperty ("action", action);
+
+        if (note >= 0)
+            message->setProperty ("note", note);
+
+        if (first > -999.0)
+            message->setProperty (note >= 0 ? "velocity" : "value", first);
+
+        juce::ignoreUnused (second);
         return juce::var (message.get());
     }
 }
@@ -517,6 +557,53 @@ int main()
                    && noBackend[0].getDynamicObject()->getProperty ("detail").toString()
                           .contains ("no preset backend"),
                "without a backend every preset action answers presetError");
+    }
+
+    // ============================================================================
+    // Section 9 — MIDI messages (additive to v1): routing, ranges, panic.
+    // ============================================================================
+    {
+        std::cout << "\n--- section 9: midi messages\n";
+        bridge.resetStats();
+        recorder.messages.clear();
+        bridge.setSender (recorder.sender());   // section 8 detached it
+
+        FakeMidiController midi;
+        bridge.setMidiController (&midi);
+
+        bridge.handleJsEvent (jsMidiAction (BridgeActions::midiNoteOn, 60, 0.9));
+        bridge.handleJsEvent (jsMidiAction (BridgeActions::midiNoteOn, 64, 0.5));
+        check (midi.held == std::vector<int> ({ 60, 64 }) && midi.noteOns == 2,
+               "midiNoteOn forwards note+velocity to the controller");
+
+        bridge.handleJsEvent (jsMidiAction (BridgeActions::midiNoteOff, 60));
+        check (midi.held == std::vector<int> ({ 64 }), "midiNoteOff removes the note");
+
+        bridge.handleJsEvent (jsMidiAction (BridgeActions::midiPitchBend, -1, 0.5));
+        bridge.handleJsEvent (jsMidiAction (BridgeActions::midiModWheel, -1, 0.25));
+        check (std::abs (midi.lastPitch - 0.5f) < 1.0e-6f
+                   && std::abs (midi.lastMod - 0.25f) < 1.0e-6f,
+               "wheels forward their normalised values");
+
+        bridge.handleJsEvent (jsMidiAction (BridgeActions::midiPanic));
+        check (midi.panics == 1 && midi.held.empty(), "midiPanic calls allNotesOff");
+
+        // Out-of-range fields are rejected BEFORE reaching the controller.
+        const auto statsBefore = bridge.getStats();
+        bridge.handleJsEvent (jsMidiAction (BridgeActions::midiNoteOn, 200, 0.5));   // note > 127
+        bridge.handleJsEvent (jsMidiAction (BridgeActions::midiNoteOn, 60, 1.5));    // velocity > 1
+        bridge.handleJsEvent (jsMidiAction (BridgeActions::midiPitchBend, -1, 2.0)); // pitch > 1
+        bridge.handleJsEvent (jsMidiAction (BridgeActions::midiModWheel, -1, -0.1)); // mod < 0
+        check (bridge.getStats().midiRejected == 4 && midi.noteOns == 2,
+               "out-of-range MIDI fields are counted and never forwarded");
+
+        // Without a backend the actions are accepted (forwarded) and silently
+        // dropped: 2 noteOn + noteOff + pitch + mod + panic + this one = 7 total.
+        bridge.handleJsEvent (jsMidiAction (BridgeActions::midiNoteOn, 72, 1.0));
+        check (bridge.getStats().midiForwarded == 7,
+               "without a backend MIDI actions are accepted and dropped");
+
+        bridge.setMidiController (nullptr);
     }
 
     std::cout << '\n' << (failures == 0 ? "All checks passed." : "Checks failed.") << '\n';

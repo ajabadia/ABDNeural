@@ -41,6 +41,26 @@
                      Preset names are sanitised by the native side: no path
                      separators, no ".." — a rejected name answers presetError.
 
+                   MIDI MESSAGES (additive to v1; let the page play the synth and
+                   mirror external MIDI state on the shared keyboard)
+
+                     JS -> native (page keyboard / wheels / panic)
+                       { action: "midiNoteOn", note: 0..127, velocity: 0..1 }
+                       { action: "midiNoteOff", note: 0..127 }
+                       { action: "midiPitchBend", value: -1..+1 }
+                       { action: "midiModWheel", value: 0..1 }
+                       { action: "midiPanic" }   // all notes off in the plugin
+
+                     native -> JS (host poll of the plugin's external MIDI view)
+                       { action: "midiNoteState", held: [note...], pitchBend: -1..+1,
+                         modWheel: 0..1 }
+
+                     Notes outside 0..127 and values outside their range are
+                     rejected with stats.midiRejected (never thrown). The state
+                     message drives keyboard.setPitchBend/setModWheel/
+                     notesOffVisual, which apply host-driven moves WITHOUT
+                     echoing them back as user input.
+
                    `value` is ALWAYS the normalised 0..1 value the APVTS uses, the
                    same convention as JUCE's own WebSliderRelay. `real` (denormalised)
                    and `text` are informational and only travel native -> JS, so the
@@ -110,6 +130,14 @@ namespace BridgeActions
     inline constexpr const char* savePreset = "savePreset";
     inline constexpr const char* presetList = "presetList";
     inline constexpr const char* presetError = "presetError";
+
+    // MIDI (additive to protocol v1; see the header doc above).
+    inline constexpr const char* midiNoteOn = "midiNoteOn";
+    inline constexpr const char* midiNoteOff = "midiNoteOff";
+    inline constexpr const char* midiPitchBend = "midiPitchBend";
+    inline constexpr const char* midiModWheel = "midiModWheel";
+    inline constexpr const char* midiPanic = "midiPanic";
+    inline constexpr const char* midiNoteState = "midiNoteState";
 }
 
 /**
@@ -131,6 +159,29 @@ public:
     /** @returns false when the preset file could not be written. */
     virtual bool savePreset (const juce::String& name) = 0;
     [[nodiscard]] virtual juce::String getCurrentPreset() const = 0;
+};
+
+/**
+ * @class MidiController
+ * @brief What the bridge needs from a MIDI backend, and nothing more.
+ *
+ * The bridge owns the WIRE side of the MIDI messages; the host injects an
+ * adapter around the plugin's injection FIFO (the same path the native editor
+ * uses), so bridge tests exercise the protocol without an audio device.
+ */
+class MidiController
+{
+public:
+    virtual ~MidiController() = default;
+
+    virtual void noteOn (int note, float velocity) = 0;
+    virtual void noteOff (int note) = 0;
+    /** @param normalized -1..+1 (0 = centre), same scale as the wire. */
+    virtual void pitchBend (float normalized) = 0;
+    /** @param normalized 0..1 (CC1). */
+    virtual void modWheel (float normalized) = 0;
+    /** @brief Stop every sounding note (page panic / safety). */
+    virtual void allNotesOff() = 0;
 };
 
 /** @brief Gesture phases a JS change can declare. */
@@ -172,6 +223,8 @@ public:
         int presetsLoaded = 0;      //!< successful loadPreset operations
         int presetsSaved = 0;       //!< successful savePreset operations
         int presetErrors = 0;       //!< failed/rejected preset operations
+        int midiForwarded = 0;      //!< MIDI actions accepted and forwarded
+        int midiRejected = 0;       //!< MIDI actions with out-of-range fields
     };
 
     /** @brief Bridge `stateToBridge`, mirroring every parameter it contains. */
@@ -186,6 +239,21 @@ public:
      *        Must be called on the message thread, before the page loads.
      */
     void setPresetController (PresetController* newController) noexcept;
+
+    /**
+     * @brief Install the MIDI backend. Passing nullptr makes the page's MIDI
+     *        actions no-ops that still count as forwarded (silent mode).
+     *        Must be called on the message thread, before the page loads.
+     */
+    void setMidiController (MidiController* newController) noexcept;
+
+    /**
+     * @brief Send one midiNoteState message (held notes + wheel positions)
+     *        from the given external MIDI view. Called by the host poll so the
+     *        page keyboard mirrors hardware/DAW MIDI. No-op without a sender.
+     */
+    void sendMidiNoteState (const std::vector<int>& heldNotes,
+                            float pitchBendNormalized, float modWheelNormalized);
 
     /**
      * @brief Handle one message from the WebUI.
@@ -260,6 +328,9 @@ private:
     void handleLoadPreset (const juce::DynamicObject& message);
     void handleSavePreset (const juce::DynamicObject& message);
 
+    /** @brief MIDI actions: validate ranges, forward to the controller. */
+    void handleMidiAction (const juce::String& action, const juce::DynamicObject& message);
+
     /** @brief Deliver a message if a transport is installed, counting the kind. */
     void send (const juce::var& message, bool isSnapshot);
 
@@ -267,6 +338,7 @@ private:
     std::vector<Entry> entries;
     Sender sender;
     PresetController* presets = nullptr;   //!< not owned; the host outlives it
+    MidiController* midi = nullptr;        //!< not owned; the host outlives it
     int snapshotVersion = 0;
     Stats stats;
 

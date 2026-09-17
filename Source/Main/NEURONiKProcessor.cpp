@@ -144,6 +144,62 @@ void NEURONiKProcessor::injectNoteOff(int midiChannel, int midiNoteNumber, float
     midiFifo.finishedWrite(block1 + block2);
 }
 
+void NEURONiKProcessor::injectPitchBend(int midiChannel, int position14bit)
+{
+    int start1, block1, start2, block2;
+    midiFifo.prepareToWrite(1, start1, block1, start2, block2);
+    if (block1 > 0)
+        midiQueue[start1] = { juce::MidiMessage::pitchWheel(midiChannel,
+                                  juce::jlimit(0, 16383, position14bit)), 0 };
+    else if (block2 > 0)
+        midiQueue[start2] = { juce::MidiMessage::pitchWheel(midiChannel,
+                                  juce::jlimit(0, 16383, position14bit)), 0 };
+
+    midiFifo.finishedWrite(block1 + block2);
+}
+
+void NEURONiKProcessor::injectController(int midiChannel, int controllerNumber, int value)
+{
+    // Track mod-wheel level for UI feedback loops (atomic, audio-thread safe).
+    if (controllerNumber == 1)
+        externalModWheel.store(juce::jlimit(0, 127, value) / 127.0f, std::memory_order_relaxed);
+
+    int start1, block1, start2, block2;
+    midiFifo.prepareToWrite(1, start1, block1, start2, block2);
+    if (block1 > 0)
+        midiQueue[start1] = { juce::MidiMessage::controllerEvent(midiChannel,
+                                  controllerNumber, juce::jlimit(0, 127, value)), 0 };
+    else if (block2 > 0)
+        midiQueue[start2] = { juce::MidiMessage::controllerEvent(midiChannel,
+                                  controllerNumber, juce::jlimit(0, 127, value)), 0 };
+
+    midiFifo.finishedWrite(block1 + block2);
+}
+
+void NEURONiKProcessor::requestAllNotesOff()
+{
+    allNotesOffRequested.store(true, std::memory_order_relaxed);
+}
+
+std::vector<int> NEURONiKProcessor::getHeldNotes() const
+{
+    std::vector<int> notes;
+    notes.reserve (16);
+
+    for (int word = 0; word < 4; ++word)
+    {
+        auto bits = heldNotesMask[static_cast<size_t> (word)].load (std::memory_order_relaxed);
+
+        // Plain shift scan: no C++20 <bit> (the pilot builds as C++17) and no
+        // compiler intrinsics — 128 iterations worst case is nothing for a poll.
+        for (int bit = 0; bits != 0u; ++bit, bits >>= 1)
+            if ((bits & 1u) != 0u)
+                notes.push_back ((word << 5) + bit);
+    }
+
+    return notes;
+}
+
 void NEURONiKProcessor::parameterChanged(const juce::String& parameterID, float newValue)
 {
     // Switching the input channel would leave notes from the previous channel
@@ -352,11 +408,38 @@ void NEURONiKProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     synchronizeEngineParameters();
 
     if (allNotesOffRequested.exchange(false, std::memory_order_relaxed) && engine != nullptr)
+    {
         engine->allNotesOff();
+
+        // The UI mirrors this mask on the page keyboard: a panic must not leave
+        // stale highlights behind.
+        for (auto& word : heldNotesMask)
+            word.store (0u, std::memory_order_relaxed);
+    }
 
     if (engine != nullptr)
     {
         engine->renderNextBlock(buffer, midiMessages);
+
+        // External MIDI view for UI feedback (WebPilot keyboard): fold this
+        // block's note on/off into the 128-bit held mask. Relax order: the mask
+        // is advisory (page key highlights), never synchronisation.
+        for (const auto metadata : midiMessages)
+        {
+            const auto& message = metadata.getMessage();
+            if (! message.isNoteOnOrOff())
+                continue;
+
+            const auto note = juce::jlimit (0, 127, message.getNoteNumber());
+            const auto word = static_cast<size_t> (note >> 5);
+            const auto bit = 1u << (note & 31);
+
+            if (message.isNoteOn())
+                heldNotesMask[word].fetch_or (bit, std::memory_order_relaxed);
+            else
+                heldNotesMask[word].fetch_and (~bit, std::memory_order_relaxed);
+        }
+
         float partials[64];
         engine->getSpectralData(partials);
         for (int i = 0; i < 64; ++i)

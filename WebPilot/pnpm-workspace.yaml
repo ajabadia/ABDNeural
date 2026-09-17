@@ -1,0 +1,13 @@
+# Workspace pnpm anidado: WebPilot + sus dos paquetes compartidos.
+#
+# Sin este fichero, `pnpm install` desde WebPilot camina hacia arriba y se cuela
+# en el workspace raíz de la suite (D:/desarrollos/ABDSynths/pnpm-workspace.yaml,
+# que NO lista ABDNeural/WebPilot) — las dependencias se resuelven en el lock
+# raíz y node_modules/WebPilot queda sin enlaces. Con él, WebPilot es su propio
+# workspace (igual que ABDNeural es su propio repo git) y los dos paquetes
+# compartidos son miembros, de modo que el `@abdsynths/shared@workspace:*`
+# interno de midi-keyb resuelve aquí dentro, zero-copy.
+packages:
+  - '.'
+  - '../../ABDSharedAssets'
+  - '../../ABDSharedCode/MidiKeyboard'

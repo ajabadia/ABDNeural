@@ -9,7 +9,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@abdsynths/shared": "file:../../ABDSharedAssets",
+    "@abdsynths/midi-keyb": "workspace:*",
+    "@abdsynths/shared": "workspace:*",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest"

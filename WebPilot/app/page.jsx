@@ -1,6 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+
+// Shared keyboard (ABDSharedCode/MidiKeyboard, single source — no local fork).
+// The CSS imports are side-effectful on purpose (Next.js injects them globally).
+import { createKeyboard } from '@abdsynths/midi-keyb';
+import '@abdsynths/midi-keyb/keyboard.css';
 
 import { ParamChoice, ParamKnob, ParamSlider, ParamToggle } from '../lib/controls.jsx';
 import { displayText, realFromNormalized } from '../lib/paramValue.js';
@@ -51,6 +56,7 @@ const SCREEN_PARAMETER_IDS = [...PILOT_PARAMETER_IDS, ...GENERAL_PARAMETER_IDS];
 const TABS = [
   { id: 'bridge', label: 'BRIDGE' },
   { id: 'general', label: 'GENERAL' },
+  { id: 'keys', label: 'KEYS', 'data-tab': 'keys' },
 ];
 
 function displayValue(control, realValue) {
@@ -91,6 +97,90 @@ function AdsrGraph({ attack, decay, sustain, release }) {
       <polygon className="adsr__fill" points={fill} />
       <path className="adsr__line" d={line} vectorEffect="non-scaling-stroke" />
     </svg>
+  );
+}
+
+/**
+ * KEYS tab: the SHARED virtual keyboard (@abdsynths/midi-keyb, the same
+ * component ABDMS2000 mounts) + the plugin's pitch/mod wheels. Key/wheel
+ * input goes out through the bridge MIDI messages; midiNoteState coming back
+ * is applied by the host-driven feedback API (no user-input echo).
+ */
+function KeysTab({ midiState, bridgeAvailable, onNoteOn, onNoteOff, onPitchBend, onModWheel, onPanic }) {
+  const keyboardRef = useRef(null);
+  const callbacksRef = useRef({});
+  const [hasKeybed, setHasKeybed] = useState(false);
+
+  // Latest callbacks without re-creating the keyboard.
+  callbacksRef.current = { onNoteOn, onNoteOff, onPitchBend, onModWheel, onPanic };
+
+  useEffect(() => {
+    const root = document.getElementById('keys-root');
+    if (!root) return undefined;
+
+    root.innerHTML =
+      '<div class="keys-strip">'
+      + '<div id="pitch-wheel-container"></div>'
+      + '<div id="piano-keyboard"></div>'
+      + '<div id="mod-wheel-container"></div>'
+      + '</div>'
+      + '<div class="keys-note">QWERTY plays (A W S E D…), Z/X shifts octave, Space = panic.'
+      + (bridgeAvailable ? '' : ' — LOCAL MODE: notes stay on this page.')
+      + '</div>';
+
+    const callbacks = callbacksRef.current;
+    const keyboard = createKeyboard({
+      containerId: 'piano-keyboard',
+      wheelPitchId: 'pitch-wheel-container',
+      wheelModId: 'mod-wheel-container',
+      panicBtnId: null,
+      onNoteOn: (note, velocity) => callbacksRef.current.onNoteOn?.(note, velocity),
+      onNoteOff: (note) => callbacksRef.current.onNoteOff?.(note),
+      onPitchBend: (value) => callbacksRef.current.onPitchBend?.(value),
+      onModWheel: (value) => callbacksRef.current.onModWheel?.(value),
+      onPanic: () => callbacksRef.current.onPanic?.(),
+    });
+    keyboardRef.current = keyboard;
+    setHasKeybed(document.querySelector('#piano-keyboard .kbd-white-key') !== null);
+
+    return () => {
+      keyboard.destroy();
+      keyboardRef.current = null;
+      root.innerHTML = '';
+    };
+    // The keyboard is created ONCE per mount of the tab: callbacks ride refs,
+    // and bridgeAvailable only matters at mount time (local vs live label).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Host-driven feedback: the plugin's external MIDI view mirrors on the
+  // wheels. Wheel setters are the SILENT API (v0.2): they move the filmstrip
+  // and the readout without echoing back as user input. Held notes are not
+  // re-highlighted on purpose (the shared keyboard keeps its own press state;
+  // a repaint from telemetry would fight the user's finger).
+  useEffect(() => {
+    if (!hasKeybed) return;
+
+    keyboardRef.current?.setPitchBend?.(midiState.pitchBend ?? 0);
+    keyboardRef.current?.setModWheel?.(midiState.modWheel ?? 0);
+  }, [midiState, hasKeybed]);
+
+  // Full release path for the page's own panic button below.
+  function handlePanicClick() {
+    keyboardRef.current?.panic?.();
+    onPanic?.();
+  }
+
+  return (
+    <div className="tab-group keys-group">
+      <div className="keys-toolbar">
+        <button type="button" className="keys-panic" onClick={handlePanicClick}>PANIC</button>
+        <span className={`keys-status${bridgeAvailable ? '' : ' keys-status--local'}`}>
+          {bridgeAvailable ? 'MIDI → PLUGIN LIVE' : 'LOCAL MODE'}
+        </span>
+      </div>
+      <div id="keys-root" />
+    </div>
   );
 }
 
@@ -169,11 +259,17 @@ export default function HomePage() {
     summary: hookSummary,
     presetState,
     presetError,
+    midiState,
     pushParameter,
     handleChange,
     handleGesture,
     loadPreset,
     savePreset,
+    sendMidiNoteOn,
+    sendMidiNoteOff,
+    sendMidiPitchBend,
+    sendMidiModWheel,
+    sendMidiPanic,
   } = useParameterControls(SCREEN_PARAMETER_IDS);
 
   const bridgeControls = useMemo(
@@ -349,6 +445,7 @@ export default function HomePage() {
               type="button"
               role="tab"
               aria-selected={activeTab === tab.id}
+              data-tab={tab['data-tab'] ?? tab.id}
               className={`tab${activeTab === tab.id ? ' tab--active' : ''}`}
               onClick={() => setActiveTab(tab.id)}
             >
@@ -425,6 +522,22 @@ export default function HomePage() {
             ) : null}
           </>
         )}
+
+        {activeTab === 'keys' ? (
+          <KeysTab
+            midiState={midiState}
+            bridgeAvailable={bridgeAvailable}
+            onNoteOn={sendMidiNoteOn}
+            onNoteOff={sendMidiNoteOff}
+            onPitchBend={sendMidiPitchBend}
+            onModWheel={sendMidiModWheel}
+            onPanic={() => {
+              // Native side of the page panic: stop EVERY sounding note in the
+              // plugin (page, hardware and DAW alike) — midiPanic action.
+              sendMidiPanic();
+            }}
+          />
+        ) : null}
 
         <footer className="panel-footer">
           <span>

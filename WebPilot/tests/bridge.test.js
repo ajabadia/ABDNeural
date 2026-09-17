@@ -173,7 +173,7 @@ describe('bridge transport', () => {
       window.__JUCE__ = { backend };
 
       const transport = createBridgeTransport({ onSnapshot, onParameterChanged });
-      expect(backend.listenerCount(NATIVE_TO_JS_EVENT_ID)).toBe(4);
+      expect(backend.listenerCount(NATIVE_TO_JS_EVENT_ID)).toBe(5);
 
       transport.dispose();
       expect(backend.listenerCount(NATIVE_TO_JS_EVENT_ID)).toBe(0);
@@ -193,6 +193,46 @@ describe('bridge transport', () => {
 
       expect(() => transport.sendParameterChange('masterLevel', 0.5, 'change')).not.toThrow();
       expect(() => transport.announcePageLoaded()).not.toThrow();
+    });
+  });
+
+  describe('midi messages (additive to protocol v1)', () => {
+    it('senders emit the exact wire actions', () => {
+      const backend = makeBackend();
+      window.__JUCE__ = { backend };
+      const transport = createBridgeTransport({});
+
+      transport.sendMidiNoteOn(60, 0.9);
+      transport.sendMidiNoteOff(60);
+      transport.sendMidiPitchBend(-0.5);
+      transport.sendMidiModWheel(0.75);
+      transport.sendMidiPanic();
+
+      expect(backend.emitted.map((entry) => entry.message)).toEqual([
+        { action: 'midiNoteOn', note: 60, velocity: 0.9 },
+        { action: 'midiNoteOff', note: 60 },
+        { action: 'midiPitchBend', value: -0.5 },
+        { action: 'midiModWheel', value: 0.75 },
+        { action: 'midiPanic' },
+      ]);
+    });
+
+    it('onMidiState receives held notes + wheels from midiNoteState', () => {
+      const onMidiState = vi.fn();
+      const backend = makeBackend();
+      window.__JUCE__ = { backend };
+
+      createBridgeTransport({ onMidiState });
+
+      backend.dispatchFromNative(NATIVE_TO_JS_EVENT_ID, {
+        action: 'midiNoteState', held: [60, 64], pitchBend: -0.25, modWheel: 0.5,
+      });
+      backend.dispatchFromNative(NATIVE_TO_JS_EVENT_ID, {
+        action: 'midiNoteState', held: 'not-an-array', pitchBend: 0, modWheel: 0,
+      }); // malformed: ignored
+
+      expect(onMidiState).toHaveBeenCalledTimes(1);
+      expect(onMidiState).toHaveBeenCalledWith({ held: [60, 64], pitchBend: -0.25, modWheel: 0.5 });
     });
   });
 });

@@ -39,6 +39,7 @@ export function useParameterControls(ids = PILOT_PARAMETER_IDS) {
   const [snapshotVersion, setSnapshotVersion] = useState(0);
   const [presetState, setPresetState] = useState({ presets: [], current: '' });
   const [presetError, setPresetError] = useState(null);
+  const [midiState, setMidiState] = useState({ held: [], pitchBend: 0, modWheel: 0 });
 
   const transportRef = useRef(null);
   const draggingIdRef = useRef(null);
@@ -82,6 +83,10 @@ export function useParameterControls(ids = PILOT_PARAMETER_IDS) {
 
       onPresetError(error) {
         setPresetError(error);
+      },
+
+      onMidiState(state) {
+        setMidiState(state);
       },
     });
 
@@ -147,6 +152,44 @@ export function useParameterControls(ids = PILOT_PARAMETER_IDS) {
     transportRef.current?.sendSavePreset(name);
   }, []);
 
+  // ---- MIDI (page keyboard/wheels -> plugin; see bridge.js) ------------------
+  const sendMidiNoteOn = useCallback((note, velocity) => {
+    transportRef.current?.sendMidiNoteOn(note, velocity);
+  }, []);
+
+  const sendMidiNoteOff = useCallback((note) => {
+    transportRef.current?.sendMidiNoteOff(note);
+  }, []);
+
+  const sendMidiPitchBend = useCallback((value) => {
+    transportRef.current?.sendMidiPitchBend(value);
+  }, []);
+
+  const sendMidiModWheel = useCallback((value) => {
+    transportRef.current?.sendMidiModWheel(value);
+  }, []);
+
+  const sendMidiPanic = useCallback(() => {
+    transportRef.current?.sendMidiPanic();
+  }, []);
+
+  useEffect(() => {
+    // Selftest handle: lets the WebView2 host drive the page's OWN MIDI path
+    // (the same functions the keyboard callbacks call). No-op in local mode.
+    window.__pilotSendMidi = (message) => {
+      if (!message || typeof message.action !== 'string') return;
+      if (message.action === 'midiNoteOn') sendMidiNoteOn(message.note, message.velocity);
+      else if (message.action === 'midiNoteOff') sendMidiNoteOff(message.note);
+      else if (message.action === 'midiPitchBend') sendMidiPitchBend(message.value);
+      else if (message.action === 'midiModWheel') sendMidiModWheel(message.value);
+      else if (message.action === 'midiPanic') sendMidiPanic();
+    };
+
+    return () => {
+      delete window.__pilotSendMidi;
+    };
+  }, [sendMidiNoteOn, sendMidiNoteOff, sendMidiPitchBend, sendMidiModWheel, sendMidiPanic]);
+
   return {
     controls,
     parameters,
@@ -157,11 +200,17 @@ export function useParameterControls(ids = PILOT_PARAMETER_IDS) {
     summary,
     presetState,
     presetError,
+    midiState,
     pushParameter,
     handleChange,
     handleGesture,
     listPresets,
     loadPreset,
     savePreset,
+    sendMidiNoteOn,
+    sendMidiNoteOff,
+    sendMidiPitchBend,
+    sendMidiModWheel,
+    sendMidiPanic,
   };
 }

@@ -138,6 +138,9 @@ int main()
     check (asString (property (parsed, "messages.nativeToJs.presetError.fields.action"))
                .contains (NEURONiK::WebUI::BridgeActions::presetError),
            "presetError literal matches the compiled constant");
+    check (asString (property (parsed, "messages.nativeToJs.midiNoteState.fields.action"))
+               .contains (NEURONiK::WebUI::BridgeActions::midiNoteState),
+           "midiNoteState literal matches the compiled constant");
 
     // --- Actions: JS -> native -----------------------------------------------------
     check (asString (property (parsed, "messages.jsToNative.parameterChanged.fields.action"))
@@ -155,6 +158,23 @@ int main()
     check (asString (property (parsed, "messages.jsToNative.savePreset.fields.action"))
                .contains (NEURONiK::WebUI::BridgeActions::savePreset),
            "savePreset literal matches the compiled constant");
+    check (asString (property (parsed, "messages.jsToNative.midiNoteOn.fields.action"))
+               .contains (NEURONiK::WebUI::BridgeActions::midiNoteOn),
+           "midiNoteOn literal matches the compiled constant");
+    check (asString (property (parsed, "messages.jsToNative.midiNoteOff.fields.action"))
+               .contains (NEURONiK::WebUI::BridgeActions::midiNoteOff),
+           "midiNoteOff literal matches the compiled constant");
+    check (asString (property (parsed, "messages.jsToNative.midiPitchBend.fields.action"))
+               .contains (NEURONiK::WebUI::BridgeActions::midiPitchBend),
+           "midiPitchBend literal matches the compiled constant");
+    check (asString (property (parsed, "messages.jsToNative.midiModWheel.fields.action"))
+               .contains (NEURONiK::WebUI::BridgeActions::midiModWheel),
+           "midiModWheel literal matches the compiled constant");
+    check (asString (property (parsed, "messages.jsToNative.midiPanic.fields.action"))
+               .contains (NEURONiK::WebUI::BridgeActions::midiPanic),
+           "midiPanic literal matches the compiled constant");
+    check (! property (parsed, "behaviour.midiMessages").isVoid(),
+           "the contract documents the MIDI behaviour (ranges, rejection, no echo)");
 
     // --- Gestures: the phases the native side accepts ------------------------------
     {

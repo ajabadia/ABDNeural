@@ -538,6 +538,7 @@ endif()
 # audio-device stack (the pilot has no audio callback; parameter traffic only).
 target_link_libraries(NEURONiK_WebPilotHost PRIVATE
     juce::juce_audio_basics
+    juce::juce_audio_devices   # AudioProcessorPlayer: the pilot renders audio so page MIDI notes sound
     juce::juce_audio_utils
     juce::juce_data_structures
     juce::juce_dsp

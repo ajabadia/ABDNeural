@@ -3,7 +3,9 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <array>
 #include <atomic>
+#include <cstdint>
 #include <map>
+#include <vector>
 #include "../Serialization/PresetManager.h"
 #include "MidiMappingManager.h"
 #include "MidiChannelFilter.h"
@@ -112,9 +114,36 @@ public:
         return modulationValues[static_cast<size_t>(target)];
     }
 
-    // --- MIDI Injection (Used by Editor/Keyboard) ---
+    // --- MIDI Injection (Used by Editor/Keyboard/WebPilot bridge) ---
     void injectNoteOn(int midiChannel, int midiNoteNumber, float velocity);
     void injectNoteOff(int midiChannel, int midiNoteNumber, float velocity);
+    /** Pitch bend from UI threads: position14bit is the raw 14-bit value (0..16383, 8192 = center). */
+    void injectPitchBend(int midiChannel, int position14bit);
+    /** Continuous controller from UI threads (mod wheel CC1, etc.) through the same lock-free FIFO. */
+    void injectController(int midiChannel, int controllerNumber, int value);
+    /** UI-thread request to stop all sounding notes (channel change, page panic).
+     *  Consumed at the top of processBlock. */
+    void requestAllNotesOff();
+
+    // Last mod-wheel level injected through injectController (CC1), 0..1, for UI
+    // feedback loops (WebPilot keyboard page mirrors it on the shared wheel).
+    std::atomic<float> externalModWheel { 0.0f };
+
+    // Pitch bend as this block handed it to the engine, -1..+1 (0 = centre).
+    std::atomic<float> externalPitchBend { 0.0f };
+
+    /** @brief Notes currently held as the engine sees them (host MIDI after the
+     *         channel filter + injected notes), cumulative across blocks.
+     *  Bitmask over 4 x uint32, written from the audio thread in processBlock and
+     *  read relaxed from the UI thread (a torn 32-bit read is impossible).
+     *  Mirrored on the WebPilot page keyboard via midiNoteState.
+     */
+    [[nodiscard]] std::vector<int> getHeldNotes() const;
+
+    // Last mod-wheel level injected through injectController (CC1), 0..1, for UI
+    // feedback loops (WebPilot keyboard page mirrors it on the shared wheel).
+    // externalPitchBend (above) completes the external MIDI view.
+    std::atomic<std::uint32_t> heldNotesMask[4] { 0u, 0u, 0u, 0u };
 
     // Copies the APVTS values into the ui* telemetry atomics the visuals read
     // (envelope params, morph coordinates). processBlock calls it every block;

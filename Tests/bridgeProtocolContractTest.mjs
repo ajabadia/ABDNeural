@@ -100,6 +100,7 @@ const transport = createBridgeTransport({
   onParameterChanged: (id, value) => received.push(['changed', id, value]),
   onPresetList: (info) => received.push(['presetList', info]),
   onPresetError: (error) => received.push(['presetError', error]),
+  onMidiState: (state) => received.push(['midiState', state]),
 });
 
 check(transport.available === true, 'el transporte se activa con window.__JUCE__ presente');
@@ -194,6 +195,52 @@ globalThis.window.__JUCE__.backend.deliver(contract.channels.nativeToJs.eventId,
 check(
   received.some(([kind]) => kind === 'presetError'),
   'un presetError válido llega como onPresetError',
+);
+
+// --- MIDI (aditivo a v1): envío JS->nativo y entrega nativo->JS ----------------
+
+check(
+  Object.keys(contract.messages.jsToNative).includes('midiNoteOn')
+    && Object.keys(contract.messages.jsToNative).includes('midiNoteOff')
+    && Object.keys(contract.messages.jsToNative).includes('midiPitchBend')
+    && Object.keys(contract.messages.jsToNative).includes('midiModWheel')
+    && Object.keys(contract.messages.jsToNative).includes('midiPanic'),
+  'el contrato declara las acciones MIDI JS->nativo',
+);
+check(
+  Object.keys(contract.messages.nativeToJs).includes('midiNoteState'),
+  'el contrato declara midiNoteState nativo->JS',
+);
+
+transport.sendMidiNoteOn(60, 0.9);
+let [, midiMsg] = globalThis.window.__JUCE__.backend.sent.at(-1);
+check(
+  midiMsg.action === 'midiNoteOn' && midiMsg.note === 60 && midiMsg.velocity === 0.9,
+  'midiNoteOn lleva action/note/velocity',
+);
+
+transport.sendMidiNoteOff(60);
+[, midiMsg] = globalThis.window.__JUCE__.backend.sent.at(-1);
+check(midiMsg.action === 'midiNoteOff' && midiMsg.note === 60, 'midiNoteOff lleva action/note');
+
+transport.sendMidiPitchBend(-0.5);
+[, midiMsg] = globalThis.window.__JUCE__.backend.sent.at(-1);
+check(midiMsg.action === 'midiPitchBend' && midiMsg.value === -0.5, 'midiPitchBend lleva action/value');
+
+transport.sendMidiModWheel(0.75);
+[, midiMsg] = globalThis.window.__JUCE__.backend.sent.at(-1);
+check(midiMsg.action === 'midiModWheel' && midiMsg.value === 0.75, 'midiModWheel lleva action/value');
+
+transport.sendMidiPanic();
+[, midiMsg] = globalThis.window.__JUCE__.backend.sent.at(-1);
+check(midiMsg.action === 'midiPanic', 'midiPanic lleva solo action');
+
+globalThis.window.__JUCE__.backend.deliver(contract.channels.nativeToJs.eventId, {
+  action: 'midiNoteState', held: [60, 64], pitchBend: -0.25, modWheel: 0.5,
+});
+check(
+  received.some(([kind, state]) => kind === 'midiState' && state.held[0] === 60),
+  'un midiNoteState válido llega como onMidiState',
 );
 
 // --- nativo -> JS: el transporte filtra por action y acepta el esquema del contrato
