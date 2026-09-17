@@ -9,5 +9,6 @@
 # interno de midi-keyb resuelve aquí dentro, zero-copy.
 packages:
   - '.'
+  - '../WebPilotVite'
   - '../../ABDSharedAssets'
   - '../../ABDSharedCode/MidiKeyboard'

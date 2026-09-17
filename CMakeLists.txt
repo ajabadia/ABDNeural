@@ -10,7 +10,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Enable warnings
 if(MSVC)
-    add_compile_options(/W4)
+    # /MP: compilacion en paralelo a nivel de fichero dentro de cada proyecto
+    # (sin ella cl.exe compila los .cpp en secuencial dentro de cada vcxproj).
+    add_compile_options(/W4 /MP)
 else()
     add_compile_options(-Wall -Wextra -Wpedantic -Wconversion)
     add_compile_options(-fno-exceptions)

@@ -1,0 +1,21 @@
+{
+  "name": "@abdsynths/web-pilot-vite",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Contra-piloto Vite de la Fase 6: misma pagina que WebPilot (Next) reutilizada 1:1, solo cambia el empaquetador. El A/B (selftest + tamano + arranque) decide el framework definitivo.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@abdsynths/midi-keyb": "workspace:*",
+    "@abdsynths/shared": "workspace:*",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.0",
+    "vite": "^5.4.0"
+  }
+}

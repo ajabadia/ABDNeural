@@ -1,0 +1,10 @@
+/* Ajustes mínimos del shell (Next los llevaba en layout/body por defecto). */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}

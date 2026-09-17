@@ -9,6 +9,7 @@ REM        build.bat <directorio>       -> usa otro directorio de build
 REM        build.bat modelmaker         -> incluye la herramienta ModelMaker
 REM        build.bat build modelmaker   -> build limpio incluyendo ModelMaker
 REM        build.bat noselftest         -> omite el E2E del bridge (paso 8)
+REM        build.bat tests              -> modo rapido: solo contrato + suite de pruebas
 REM
 REM  ModelMaker queda fuera por defecto a proposito: su target arrastra
 REM  'UpdateVersion', que incrementa Source\ModelMaker\Version.h (fichero
@@ -32,6 +33,7 @@ if not "%~1"=="--internal-log" (
 set "BUILD_DIR="
 set "WITH_MODELMAKER=0"
 set "WITH_SELFTEST=1"
+set "TESTS_ONLY=0"
 
 for %%A in (%*) do (
     if /I "%%A"=="--internal-log" (
@@ -39,6 +41,9 @@ for %%A in (%*) do (
     ) else if /I "%%A"=="modelmaker" (
         set "WITH_MODELMAKER=1"
     ) else if /I "%%A"=="noselftest" (
+        set "WITH_SELFTEST=0"
+    ) else if /I "%%A"=="tests" (
+        set "TESTS_ONLY=1"
         set "WITH_SELFTEST=0"
     ) else (
         set "BUILD_DIR=%%A"
@@ -57,16 +62,25 @@ echo =======================================================
 echo          ABDNeural (NEURONiK) - Compilacion Release
 echo          Directorio de build: %BUILD_DIR%
 if "%WITH_MODELMAKER%"=="1" echo          ModelMaker: INCLUIDO ^(Version.h se incrementara^)
+if "%TESTS_ONLY%"=="1" echo          Modo: SOLO TESTS
+if "%TESTS_ONLY%"=="0" echo          Modo: COMPLETO
 echo =======================================================
 echo.
 
-echo [1/8] Configurando CMake...
-cmake -S . -B "%BUILD_DIR%" -DCMAKE_BUILD_TYPE=Release
-if !ERRORLEVEL! neq 0 (
-    echo.
-    echo [ERROR] Fallo en la configuracion de CMake.
-    set "EXIT_CODE=1"
-    goto :finish
+REM Reconfigurar solo la primera vez: cmake -S -B cuesta ~4s y no hace falta
+REM en cada pasada (los cambios en CMakeLists.txt los detecta MSBuild solo,
+REM via ZERO_CHECK). Borrar build\CMakeCache.txt fuerza una reconfiguracion.
+if exist "%BUILD_DIR%\CMakeCache.txt" (
+    echo [1/8] CMake ya configurado ^(se omite la reconfiguracion^)...
+) else (
+    echo [1/8] Configurando CMake...
+    cmake -S . -B "%BUILD_DIR%" -DCMAKE_BUILD_TYPE=Release
+    if !ERRORLEVEL! neq 0 (
+        echo.
+        echo [ERROR] Fallo en la configuracion de CMake.
+        set "EXIT_CODE=1"
+        goto :finish
+    )
 )
 
 echo.
@@ -86,6 +100,8 @@ if !ERRORLEVEL! neq 0 (
     set "EXIT_CODE=1"
     goto :finish
 )
+
+if "%TESTS_ONLY%"=="1" goto :tests
 
 echo.
 echo [3/8] Compilando Standalone y VST3...
@@ -175,9 +191,8 @@ if !ERRORLEVEL! neq 0 (
 )
 
 echo.
-echo [8/8] Selftest bidireccional del bridge del piloto...
 if "%WITH_SELFTEST%"=="0" goto :finish
-
+echo [8/8] Selftest bidireccional del bridge del piloto...
 REM Solo si el host compilo y la WebUI existe: sin pagina que cargar no hay E2E.
 set "PILOT_HOST=%BUILD_DIR%\NEURONiK_WebPilotHost_artefacts\Release\NEURONiK Web Pilot.exe"
 if "!HOST_BUILD_FAILED!"=="1" (
