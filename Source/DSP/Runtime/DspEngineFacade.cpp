@@ -1,5 +1,6 @@
 #include "DspEngineFacade.h"
 
+#include "../ISynthesisEngine.h"
 #include <juce_audio_basics/juce_audio_basics.h>
 
 namespace NEURONiK::DSP::Runtime
@@ -87,6 +88,16 @@ namespace NEURONiK::DSP::Runtime
     void DspEngineFacade::reset()
     {
         engine.reset();
+    }
+
+    void DspEngineFacade::setGlobalParams(const NEURONiK::DSP::GlobalParams& params)
+    {
+        engine.setGlobalParams(params);
+    }
+
+    void DspEngineFacade::setPolyphony(int numVoices)
+    {
+        engine.setPolyphony(numVoices);
     }
 
     void DspEngineFacade::allNotesOff()

@@ -1340,3 +1340,31 @@ dejar Next solo como referencia, o mantener ambos). El piloto quedó funcional e
 - `vite.config.js`: outDir a `../WebPilot/out` (antes `out-vite`, que ya no existe).
 - Validado: pasada completa por defecto (Vite, 4 recursos/445 KB, selftest OK, 11/11
   ctest), pasada `nextui noselftest` (Next OK) y restauración canónica por defecto.
+
+## 2026-09-17 (e): Fase 1 — frontera DSP separada (paridad bit-exacta)
+
+**Qué se hizo:**
+- `DspTypes.h` NUEVO: `GlobalParams` extraído del header de `ISynthesisEngine` a un
+  header POD **sin JUCE** (única dependencia: el propio fichero). `ISynthesisEngine.h`
+  lo incluye hacia atrás — nadie más cambió.
+- `DspEngineFacade.h` ya no incluye juce_*.h (solo `DspTypes.h` + `DspEvent.h`, con
+  forward-declaration del engine). El `#include <juce_audio_basics>` vive solo en el
+  `.cpp`, donde también vive el adaptador `Event`→`MidiMessage`: la separación de
+  tipos de evento del transporte JUCE es real (un host WASM nunca ve juce_*).
+- API de parámetros en la fachada: `setGlobalParams` / `setPolyphony` (delegan en el
+  engine, que hace el handoff RT-safe).
+- Contrato de `ISynthesisEngine` documentado EN la cabecera: ciclo de vida,
+  restricciones RT de `renderNextBlock`, hilos de los getters, y qué tipos cruzan
+  la frontera.
+- `DSPReferenceTest` ampliado con **paridad de frontera**: mismo motor, misma
+  secuencia de notas (on → 8 bloques → off → 12 de cola) por la ruta JUCE directa
+  (`renderNextBlock` + `MidiBuffer`) y por la ruta fachada (punteros crudos +
+  `Runtime::Event`); comparación **muestra a muestra sin tolerancia**. Resultado:
+  bit-exacta en 2×512 muestras (peak 0.216). Viable porque el DSP por defecto es
+  determinista: semillas constantes (siembra del 2026-09-17) y `entropyAmount=0`
+  (el jitter del resonador usa `getMillisecondCounter` pero está cortado a <0.001 —
+  si algún día se activa por defecto, ese path necesitará sembrado determinista).
+
+**Estado de la frontera:** `DspTypes.h` + `Runtime/*` compilan sin JUCE; el motor
+interno (`BaseEngine`, voces, efectos) sigue usando juce_* por decisión de diseño
+transicional (casilla abierta a propósito en el roadmap, se ataca con la Fase 5/WASM).

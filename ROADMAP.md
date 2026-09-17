@@ -63,13 +63,22 @@ La migración será incremental. No se sustituirá la interfaz JUCE ni se modifi
 
 Objetivo: conservar el DSP actual, pero definir una API que pueda ser utilizada por JUCE y WASM.
 
-- [ ] Documentar la API actual de `ISynthesisEngine`.
+- [x] Documentar la API actual de `ISynthesisEngine` (contrato en la cabecera: ciclo de
+      vida, seguridad RT de `renderNextBlock`, hilos de los getters de visualización).
 - [x] Definir una fachada progresiva con `prepare`, eventos MIDI y `process`.
-- [ ] Añadir parámetros a la fachada progresiva.
-- [ ] Mantener temporalmente `juce::AudioBuffer` y `juce::MidiBuffer` en el adaptador JUCE.
-- [ ] Separar los tipos de eventos de nota del transporte MIDI de JUCE.
-- [ ] Añadir un adaptador JUCE sin cambiar el resultado sonoro.
-- [ ] Comparar el nuevo adaptador con el Standalone de referencia.
+- [x] Añadir parámetros a la fachada progresiva (`setGlobalParams`/`setPolyphony`;
+      `GlobalParams` vive ya en `DspTypes.h`, POD sin JUCE).
+- [x] Separar los tipos de eventos de nota del transporte MIDI de JUCE
+      (`Runtime::Event` sin JUCE; el adaptador `Event`→`MidiMessage` vive SOLO en el
+      `.cpp` de la fachada).
+- [ ] Mantener temporalmente `juce::AudioBuffer` y `juce::MidiBuffer` en el adaptador
+      JUCE (estado transicional INTENCIONAL: solo la fachada y `DspTypes.h` están
+      libres de JUCE; el motor interno sigue usándolos hasta la Fase 5).
+- [x] Añadir un adaptador JUCE sin cambiar el resultado sonoro (paridad BIT-EXACTA
+      verificada: ruta directa vs ruta fachada, misma secuencia de notas, 0 tolerancia).
+- [x] Comparar el nuevo adaptador con el Standalone de referencia (automatizado en
+      `DSPReferenceTest`: el motor no cambió ni una línea, la comparación directa↔fachada
+      es bit-exacta y el Standalone compila sin cambios).
 
 ### Fase 2 — Estado, parámetros y presets
 

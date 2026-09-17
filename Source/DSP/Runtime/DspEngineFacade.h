@@ -1,7 +1,11 @@
 #pragma once
 
-#include "../ISynthesisEngine.h"
+// Sin juce_*.h: la fachada solo habla en tipos propios (Event) y datos planos
+// (GlobalParams, floats crudos). Es la frontera que consumirá el wrapper WASM.
+#include "../DspTypes.h"
 #include "DspEvent.h"
+
+namespace NEURONiK::DSP { class ISynthesisEngine; }
 
 namespace NEURONiK::DSP::Runtime
 {
@@ -24,6 +28,12 @@ namespace NEURONiK::DSP::Runtime
                      int numSamples,
                      const Event* events,
                      int eventCount);
+
+        /** Real-time safe parameter handoff to the wrapped engine. */
+        void setGlobalParams(const NEURONiK::DSP::GlobalParams& params);
+
+        /** Set the maximum number of active voices. */
+        void setPolyphony(int numVoices);
 
         void reset();
 
