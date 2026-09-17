@@ -132,6 +132,12 @@ int main()
     check (asString (property (parsed, "messages.nativeToJs.parameterChanged.fields.action"))
                .contains (NEURONiK::WebUI::BridgeActions::parameterChanged),
            "parameterChanged (native -> JS) literal matches the compiled constant");
+    check (asString (property (parsed, "messages.nativeToJs.presetList.fields.action"))
+               .contains (NEURONiK::WebUI::BridgeActions::presetList),
+           "presetList literal matches the compiled constant");
+    check (asString (property (parsed, "messages.nativeToJs.presetError.fields.action"))
+               .contains (NEURONiK::WebUI::BridgeActions::presetError),
+           "presetError literal matches the compiled constant");
 
     // --- Actions: JS -> native -----------------------------------------------------
     check (asString (property (parsed, "messages.jsToNative.parameterChanged.fields.action"))
@@ -140,6 +146,15 @@ int main()
     check (asString (property (parsed, "messages.jsToNative.requestState.fields.action"))
                .contains (NEURONiK::WebUI::BridgeActions::requestState),
            "requestState literal matches the compiled constant");
+    check (asString (property (parsed, "messages.jsToNative.listPresets.fields.action"))
+               .contains (NEURONiK::WebUI::BridgeActions::listPresets),
+           "listPresets literal matches the compiled constant");
+    check (asString (property (parsed, "messages.jsToNative.loadPreset.fields.action"))
+               .contains (NEURONiK::WebUI::BridgeActions::loadPreset),
+           "loadPreset literal matches the compiled constant");
+    check (asString (property (parsed, "messages.jsToNative.savePreset.fields.action"))
+               .contains (NEURONiK::WebUI::BridgeActions::savePreset),
+           "savePreset literal matches the compiled constant");
 
     // --- Gestures: the phases the native side accepts ------------------------------
     {

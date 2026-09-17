@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
 import { ParamChoice, ParamSlider } from '../lib/controls.jsx';
 import { displayText, realFromNormalized } from '../lib/paramValue.js';
@@ -37,6 +37,68 @@ function displayValue(control, realValue) {
   return realValue.toFixed(2);
 }
 
+/**
+ * Preset bar over the bridge's preset messages (protocol v1, additive):
+ * the select loads, the input + SAVE stores the current state. The host
+ * answers with presetList (which refreshes both) or presetError (shown).
+ * In local mode the hook's senders are no-ops and the bar stays disabled.
+ */
+function PresetBar({ presetState, presetError, bridgeAvailable, onLoad, onSave }) {
+  const [nameInput, setNameInput] = useState('');
+  const presets = presetState.presets;
+  const currentKnown = presets.includes(presetState.current);
+
+  function submitSave(event) {
+    event.preventDefault();
+    const name = nameInput.trim();
+    if (!name) return;
+    onSave(name);
+    setNameInput('');
+  }
+
+  return (
+    <div className="preset-block">
+      <form className="preset-bar" onSubmit={submitSave}>
+        <select
+          aria-label="Preset"
+          value={currentKnown ? presetState.current : ''}
+          disabled={!bridgeAvailable || presets.length === 0}
+          onChange={(event) => {
+            if (event.target.value) onLoad(event.target.value);
+          }}
+        >
+          {!currentKnown ? (
+            <option value="" disabled hidden>
+              {presets.length === 0 ? 'No presets yet' : 'Preset…'}
+            </option>
+          ) : null}
+          {presets.map((name) => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
+
+        <input
+          aria-label="New preset name"
+          placeholder="New preset name"
+          value={nameInput}
+          maxLength={100}
+          disabled={!bridgeAvailable}
+          onChange={(event) => setNameInput(event.target.value)}
+        />
+        <button type="submit" disabled={!bridgeAvailable || nameInput.trim() === ''}>
+          SAVE
+        </button>
+      </form>
+
+      {presetError ? (
+        <p className="preset-error" role="alert">
+          preset {presetError.operation}: {presetError.detail}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export default function HomePage() {
   const {
     controls: hookControls,
@@ -46,9 +108,13 @@ export default function HomePage() {
     snapshotVersion,
     contractErrors,
     summary: hookSummary,
+    presetState,
+    presetError,
     pushParameter,
     handleChange,
     handleGesture,
+    loadPreset,
+    savePreset,
   } = useParameterControls();
 
   const errors = useMemo(
@@ -140,6 +206,14 @@ export default function HomePage() {
           {contractLine}
           {bridgeAvailable ? ` · snapshot #${snapshotVersion}` : ''}
         </p>
+
+        <PresetBar
+          presetState={presetState}
+          presetError={presetError}
+          bridgeAvailable={bridgeAvailable}
+          onLoad={loadPreset}
+          onSave={savePreset}
+        />
 
         <div className="controls">{controls.map(renderControl)}</div>
 

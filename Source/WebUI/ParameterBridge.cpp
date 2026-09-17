@@ -37,6 +37,20 @@ namespace
             || gesture == BridgeGestures::change
             || gesture == BridgeGestures::end;
     }
+
+    /** @brief True when `name` cannot be a preset file name (empty, too long,
+     *         separators, or traversal). The wire is untrusted: a page bug or an
+     *         injection attempt must end in presetError, not in a file write. */
+    bool isUnsafePresetName (const juce::String& name)
+    {
+        if (name.isEmpty() || name.length() > 100)
+            return true;
+
+        return name.containsAnyOf ("/\\:*?\"<>|")
+            || name.contains ("..")
+            || name.startsWithChar ('.')
+            || name.trim() != name;
+    }
 }
 
 //==============================================================================
@@ -56,6 +70,12 @@ ParameterBridge::ParameterBridge (juce::AudioProcessorValueTreeState& stateToBri
 void ParameterBridge::setSender (Sender newSender)
 {
     sender = std::move (newSender);
+}
+
+void ParameterBridge::setPresetController (PresetController* newController) noexcept
+{
+    jassert (juce::MessageManager::existsAndIsCurrentThread());
+    presets = newController;
 }
 
 int ParameterBridge::getParameterCount() const noexcept
@@ -201,6 +221,105 @@ int ParameterBridge::closeOpenGestures()
 }
 
 //==============================================================================
+// Preset management (additive wire messages; see the header doc).
+
+void ParameterBridge::sendPresetList()
+{
+    juce::DynamicObject::Ptr message = new juce::DynamicObject();
+    message->setProperty ("action", BridgeActions::presetList);
+
+    juce::Array<juce::var> names;
+    const auto current = presets->getCurrentPreset();
+
+    for (const auto& name : presets->listPresets())
+        names.add (name);
+
+    message->setProperty ("presets", juce::var (names));
+    message->setProperty ("current", current);
+
+    send (juce::var (message.get()), false);
+}
+
+void ParameterBridge::sendPresetError (const char* operation, const juce::String& detail)
+{
+    juce::DynamicObject::Ptr message = new juce::DynamicObject();
+    message->setProperty ("action", BridgeActions::presetError);
+    message->setProperty ("operation", juce::String (operation));
+    message->setProperty ("detail", detail);
+
+    ++stats.presetErrors;
+    send (juce::var (message.get()), false);
+}
+
+void ParameterBridge::handleListPresets()
+{
+    if (presets == nullptr)
+    {
+        sendPresetError (BridgeActions::listPresets, "no preset backend installed");
+        return;
+    }
+
+    sendPresetList();
+}
+
+void ParameterBridge::handleLoadPreset (const juce::DynamicObject& message)
+{
+    const auto name = message.getProperty ("name").toString();
+
+    if (isUnsafePresetName (name))
+    {
+        sendPresetError (BridgeActions::loadPreset, "rejected preset name: " + name);
+        return;
+    }
+
+    if (presets == nullptr)
+    {
+        sendPresetError (BridgeActions::loadPreset, "no preset backend installed");
+        return;
+    }
+
+    if (! presets->loadPreset (name))
+    {
+        sendPresetError (BridgeActions::loadPreset, "preset not found: " + name);
+        return;
+    }
+
+    ++stats.presetsLoaded;
+
+    // The load rewrote the whole state: the page must resynchronise everything,
+    // and its open drags belong to a state that no longer exists.
+    closeOpenGestures();
+    sendFullSnapshot();
+    sendPresetList();
+}
+
+void ParameterBridge::handleSavePreset (const juce::DynamicObject& message)
+{
+    const auto name = message.getProperty ("name").toString();
+
+    if (isUnsafePresetName (name))
+    {
+        sendPresetError (BridgeActions::savePreset, "rejected preset name: " + name);
+        return;
+    }
+
+    if (presets == nullptr)
+    {
+        sendPresetError (BridgeActions::savePreset, "no preset backend installed");
+        return;
+    }
+
+    if (! presets->savePreset (name))
+    {
+        sendPresetError (BridgeActions::savePreset, "could not write preset: " + name);
+        return;
+    }
+
+    ++stats.presetsSaved;
+    sendPresetList();
+}
+
+//==============================================================================
 
 void ParameterBridge::handleJsEvent (const juce::var& message)
 {
@@ -225,6 +344,24 @@ void ParameterBridge::handleJsEvent (const juce::var& message)
     if (action == BridgeActions::requestState)
     {
         sendFullSnapshot();
+        return;
+    }
+
+    if (action == BridgeActions::listPresets)
+    {
+        handleListPresets();
+        return;
+    }
+
+    if (action == BridgeActions::loadPreset)
+    {
+        handleLoadPreset (*object);
+        return;
+    }
+
+    if (action == BridgeActions::savePreset)
+    {
+        handleSavePreset (*object);
         return;
     }
 

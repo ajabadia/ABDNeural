@@ -621,6 +621,34 @@ Checklist restante del paso 1: (a) visual: RANDOM nativo mueve morphX/Y en pági
 página mueve VOLUME nativo; (c) con telemetría dentro: XYPad nativo sigue a la página.
 (b) fallback embebido: HECHO.
 
+## Presets por el bridge (2026-09-17): protocolo v1 aditivo
+
+La página ya lista, carga y guarda presets. Decisiones de diseño:
+
+- **Wire (aditivo a v1, no hay bump de versión):** JS->nativo `listPresets`, `loadPreset{name}`,
+  `savePreset{name}`; nativo->JS `presetList{presets,current}` y `presetError{operation,detail}`.
+  Un load correcto cierra los gestos abiertos de la página y resincroniza TODO el estado
+  (snapshot completo + presetList); un save correcto responde presetList.
+- **Nombres no fiables:** `isUnsafePresetName` rechaza vacío, >100 chars, separadores, `..`,
+  punto inicial y bordes con espacio → `presetError`, nunca un file write.
+- **`PresetController` (interfaz en ParameterBridge.h):** el bridge posee el wire; el host
+  inyecta un adaptador sobre el `PresetManager` del plugin (puntero NO owned: el procesador
+  le sobrevive). Así `ParameterBridgeTest` prueba el protocolo con un backend falso, sin
+  tocar `Documents/NEURONiK/Presets`.
+- **El adaptador comprueba la existencia ANTES de cargar:** `loadPreset()` del PresetManager
+  hace no-op silencioso si el fichero no existe; sin ese check un preset inexistente
+  parecería cargar bien. `savePreset` verifica el fichero tras escribir.
+- **Stats nuevos:** `presetsLoaded`, `presetsSaved`, `presetErrors`.
+- **UI:** barra en `page.jsx` (select de carga + input/SAVE); deshabilitada en modo local.
+  El hook expone `presetState/presetError/listPresets/loadPreset/savePreset` y pide la lista
+  en el mount (tras `requestState`).
+- **Tests:** sección 8 de `ParameterBridgeTest` (list/load/traversal/save/fail/no-backend),
+  literales nuevos en el contrato anti-drift C++ y mjs, suite vitest del hook (42/42).
+  Trampa encontrada: la sección 7 del test desmonta el sender con `setSender({})`; la sección
+  8 debe reinstalar `recorder.sender()` o la respuesta no llega y el test segfaulta al indexar.
+- **Pendiente de oído/vista:** cargar/guardar de verdad contra `Documents/NEURONiK/Presets`
+  desde la ventana abierta (la barra está: seleccionar preset o escribir nombre y SAVE).
+
 **2ª compilación — enlace (previsto en el punto 1 del checklist):** 4x `LNK2019` sobre
 `juce::MidiKeyboardComponent`/`KeyboardComponentBase` (los usa NEURONiKEditor, no PresetBrowser
 como sospechábamos): `MidiKeyboardComponent` vive en `juce_audio_utils` → añadida al target del

@@ -173,7 +173,7 @@ describe('bridge transport', () => {
       window.__JUCE__ = { backend };
 
       const transport = createBridgeTransport({ onSnapshot, onParameterChanged });
-      expect(backend.listenerCount(NATIVE_TO_JS_EVENT_ID)).toBe(2);
+      expect(backend.listenerCount(NATIVE_TO_JS_EVENT_ID)).toBe(4);
 
       transport.dispose();
       expect(backend.listenerCount(NATIVE_TO_JS_EVENT_ID)).toBe(0);

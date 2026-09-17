@@ -24,6 +24,23 @@
                        gesture: "begin" | "change" | "end" }
                      { action: "requestState" }
 
+                   PRESET MESSAGES (additive to v1; a page or host without them
+                   keeps working — unknown actions are counted, never fatal)
+
+                     JS -> native
+                       { action: "listPresets" }
+                       { action: "loadPreset", name }
+                       { action: "savePreset", name }
+
+                     native -> JS
+                       { action: "presetList", presets: [name...], current }
+                       { action: "presetError", operation, detail }
+
+                     A successful load answers with a FULL parameter snapshot plus a
+                     fresh presetList; a successful save answers with a presetList.
+                     Preset names are sanitised by the native side: no path
+                     separators, no ".." — a rejected name answers presetError.
+
                    `value` is ALWAYS the normalised 0..1 value the APVTS uses, the
                    same convention as JUCE's own WebSliderRelay. `real` (denormalised)
                    and `text` are informational and only travel native -> JS, so the
@@ -86,7 +103,35 @@ namespace BridgeActions
     inline constexpr const char* syncAllParams = "syncAllParams";
     inline constexpr const char* parameterChanged = "parameterChanged";
     inline constexpr const char* requestState = "requestState";
+
+    // Preset management (additive to protocol v1; see the header doc above).
+    inline constexpr const char* listPresets = "listPresets";
+    inline constexpr const char* loadPreset = "loadPreset";
+    inline constexpr const char* savePreset = "savePreset";
+    inline constexpr const char* presetList = "presetList";
+    inline constexpr const char* presetError = "presetError";
 }
+
+/**
+ * @class PresetController
+ * @brief What the bridge needs from a preset backend, and nothing more.
+ *
+ * The bridge owns the WIRE side of the preset messages; the host injects an
+ * adapter around the plugin's PresetManager. Keeping this an interface lets
+ * ParameterBridgeTest exercise the protocol without a real preset directory.
+ */
+class PresetController
+{
+public:
+    virtual ~PresetController() = default;
+
+    [[nodiscard]] virtual juce::StringArray listPresets() const = 0;
+    /** @returns false when the preset does not exist (nothing was loaded). */
+    virtual bool loadPreset (const juce::String& name) = 0;
+    /** @returns false when the preset file could not be written. */
+    virtual bool savePreset (const juce::String& name) = 0;
+    [[nodiscard]] virtual juce::String getCurrentPreset() const = 0;
+};
 
 /** @brief Gesture phases a JS change can declare. */
 namespace BridgeGestures
@@ -124,6 +169,9 @@ public:
         int rejectedMessages = 0;   //!< malformed messages or unknown actions
         int gesturesOpened = 0;     //!< begin gestures accepted
         int gesturesClosed = 0;     //!< gestures closed, including the forced ones
+        int presetsLoaded = 0;      //!< successful loadPreset operations
+        int presetsSaved = 0;       //!< successful savePreset operations
+        int presetErrors = 0;       //!< failed/rejected preset operations
     };
 
     /** @brief Bridge `stateToBridge`, mirroring every parameter it contains. */
@@ -131,6 +179,13 @@ public:
 
     /** @brief Install the transport. Passing {} disconnects the bridge. */
     void setSender (Sender newSender);
+
+    /**
+     * @brief Install the preset backend. Passing nullptr disables the preset
+     *        messages: they answer presetError instead of crashing or lying.
+     *        Must be called on the message thread, before the page loads.
+     */
+    void setPresetController (PresetController* newController) noexcept;
 
     /**
      * @brief Handle one message from the WebUI.
@@ -195,12 +250,23 @@ private:
     /** @brief Write one JS change into the APVTS. */
     void applyParameterChange (const juce::DynamicObject& message);
 
+    /** @brief presetList message from the controller's view of the world. */
+    void sendPresetList();
+
+    /** @brief presetError message; counts in stats.presetErrors. */
+    void sendPresetError (const char* operation, const juce::String& detail);
+
+    void handleListPresets();
+    void handleLoadPreset (const juce::DynamicObject& message);
+    void handleSavePreset (const juce::DynamicObject& message);
+
     /** @brief Deliver a message if a transport is installed, counting the kind. */
     void send (const juce::var& message, bool isSnapshot);
 
     juce::AudioProcessorValueTreeState& apvts;
     std::vector<Entry> entries;
     Sender sender;
+    PresetController* presets = nullptr;   //!< not owned; the host outlives it
     int snapshotVersion = 0;
     Stats stats;
 

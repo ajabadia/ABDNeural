@@ -37,6 +37,8 @@ export function useParameterControls(ids = PILOT_PARAMETER_IDS) {
   const [changeCount, setChangeCount] = useState(0);
   const [bridgeAvailable, setBridgeAvailable] = useState(false);
   const [snapshotVersion, setSnapshotVersion] = useState(0);
+  const [presetState, setPresetState] = useState({ presets: [], current: '' });
+  const [presetError, setPresetError] = useState(null);
 
   const transportRef = useRef(null);
   const draggingIdRef = useRef(null);
@@ -72,6 +74,15 @@ export function useParameterControls(ids = PILOT_PARAMETER_IDS) {
         setParameters((current) =>
           id in current ? { ...current, [id]: value } : current);
       },
+
+      onPresetList({ presets, current }) {
+        setPresetState({ presets, current });
+        setPresetError(null);
+      },
+
+      onPresetError(error) {
+        setPresetError(error);
+      },
     });
 
     transportRef.current = transport;
@@ -80,6 +91,7 @@ export function useParameterControls(ids = PILOT_PARAMETER_IDS) {
     if (transport.available) {
       transport.announcePageLoaded();
       transport.sendRequestState();
+      transport.sendListPresets();
     }
 
     return () => {
@@ -122,6 +134,19 @@ export function useParameterControls(ids = PILOT_PARAMETER_IDS) {
     }
   }, []);
 
+  /** Preset management over the bridge; answers update presetState/presetError. */
+  const listPresets = useCallback(() => {
+    transportRef.current?.sendListPresets();
+  }, []);
+
+  const loadPreset = useCallback((name) => {
+    transportRef.current?.sendLoadPreset(name);
+  }, []);
+
+  const savePreset = useCallback((name) => {
+    transportRef.current?.sendSavePreset(name);
+  }, []);
+
   return {
     controls,
     parameters,
@@ -130,8 +155,13 @@ export function useParameterControls(ids = PILOT_PARAMETER_IDS) {
     snapshotVersion,
     contractErrors,
     summary,
+    presetState,
+    presetError,
     pushParameter,
     handleChange,
     handleGesture,
+    listPresets,
+    loadPreset,
+    savePreset,
   };
 }

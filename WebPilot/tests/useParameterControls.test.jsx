@@ -102,10 +102,59 @@ describe('useParameterControls', () => {
     expect(backend.emitted.map((entry) => entry.message.action)).toEqual([
       'pageLoaded',
       'requestState',
+      'listPresets',
     ]);
 
     unmount();
     expect(window.__pilotReady).toBe(false);
+  });
+
+  it('preset flow: loadPreset sends the wire message, presetList/presetError update state', () => {
+    const backend = makeBackend();
+    window.__JUCE__ = { backend };
+    const { result } = renderHook(() => useParameterControls());
+
+    // The page asks for the list on mount; here we simulate the host's answer.
+
+    act(() => {
+      backend.dispatchFromNative(NATIVE_TO_JS_EVENT_ID, {
+        action: 'presetList',
+        presets: ['Init Preset', 'Glass Bells'],
+        current: 'Init Preset',
+      });
+    });
+
+    expect(result.current.presetState).toEqual({
+      presets: ['Init Preset', 'Glass Bells'],
+      current: 'Init Preset',
+    });
+    expect(result.current.presetError).toBeNull();
+
+    act(() => {
+      result.current.loadPreset('Glass Bells');
+    });
+
+    const last = backend.emitted.at(-1);
+    expect(last.message).toEqual({ action: 'loadPreset', name: 'Glass Bells' });
+
+    act(() => {
+      backend.dispatchFromNative(NATIVE_TO_JS_EVENT_ID, {
+        action: 'presetError',
+        operation: 'loadPreset',
+        detail: 'preset not found: No Existe',
+      });
+    });
+
+    expect(result.current.presetError).toEqual({
+      operation: 'loadPreset',
+      detail: 'preset not found: No Existe',
+    });
+
+    act(() => {
+      result.current.savePreset('Pad Nocturno');
+    });
+
+    expect(backend.emitted.at(-1).message).toEqual({ action: 'savePreset', name: 'Pad Nocturno' });
   });
 
   it('handleChange without a drag lands as "end", and as "change" inside one', () => {

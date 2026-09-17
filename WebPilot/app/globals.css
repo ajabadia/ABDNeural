@@ -80,3 +80,25 @@ code { max-width: 100%; overflow-wrap: anywhere; color: var(--accent); }
 
 /* Pilot demo: the baseline slider keeps the native input (host --selftest). */
 .control input[type="range"] { width: 100%; }
+
+/* === Preset bar (bridge preset messages, protocol v1 additive) === */
+.preset-block { margin-top: 16px; }
+.preset-bar {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+}
+.preset-bar select { flex: 1 1 180px; min-width: 0; }
+.preset-bar input {
+  flex: 2 1 200px; min-width: 0; padding: 10px;
+  color: var(--text); background: #11141a;
+  border: 1px solid var(--line); border-radius: 6px;
+}
+.preset-bar input:focus-visible, .preset-bar select:focus-visible, .preset-bar button:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
+.preset-bar button {
+  padding: 10px 16px; color: var(--background);
+  background: var(--accent); border: 0; border-radius: 6px;
+  font-weight: 700; letter-spacing: .08em; cursor: pointer;
+}
+.preset-bar button:disabled { opacity: .4; cursor: default; }
+.preset-error { margin: 8px 0 0; color: #e07070; font-size: 12px; }

@@ -145,6 +145,55 @@ namespace
         if (auto* parameter = apvts.getParameter (id))
             parameter->setValueNotifyingHost (normalised);
     }
+
+    /** @brief Preset backend stub for the preset-message section. */
+    struct FakePresetController final : public PresetController
+    {
+        juce::StringArray names { "Init Preset", "Glass Bells" };
+        juce::String current = "Init Preset";
+        bool failLoads = false;
+        bool failSaves = false;
+        int loads = 0;
+        int saves = 0;
+
+        [[nodiscard]] juce::StringArray listPresets() const override { return names; }
+
+        bool loadPreset (const juce::String& name) override
+        {
+            if (failLoads || ! names.contains (name))
+                return false;
+
+            ++loads;
+            current = name;
+            return true;
+        }
+
+        bool savePreset (const juce::String& name) override
+        {
+            if (failSaves || name.isEmpty() || name.containsAnyOf ("/\\:*?\"<>|")
+                || name.contains (".."))
+                return false;
+
+            ++saves;
+
+            if (! names.contains (name))
+                names.add (name);
+
+            current = name;
+            return true;
+        }
+
+        [[nodiscard]] juce::String getCurrentPreset() const override { return current; }
+    };
+
+    /** @brief `{ action: <name>, name: <preset> }`, the shape preset messages use. */
+    juce::var jsPresetAction (const juce::String& action, const juce::String& presetName)
+    {
+        juce::DynamicObject::Ptr message = new juce::DynamicObject();
+        message->setProperty ("action", action);
+        message->setProperty ("name", presetName);
+        return juce::var (message.get());
+    }
 }
 
 int main()
@@ -381,11 +430,94 @@ int main()
     const auto beforeDetach = bridge.getStats();
     bridge.sendFullSnapshot();
     bridge.publishPendingChanges();
-    const auto afterDetach = bridge.getStats();
+    const auto afterDetach = bridge.getStats();        check (afterDetach.snapshotsSent == beforeDetach.snapshotsSent
+                   && afterDetach.changesSent == beforeDetach.changesSent,
+               "with no transport nothing counts as sent (the page is not loaded yet)");
 
-    check (afterDetach.snapshotsSent == beforeDetach.snapshotsSent
-               && afterDetach.changesSent == beforeDetach.changesSent,
-           "with no transport nothing counts as sent (the page is not loaded yet)");
+    // --- 8. Preset messages (additive to protocol v1) ----------------------------
+    std::cout << "\nPreset messages\n";
+
+    {
+        FakePresetController fake;
+        bridge.setPresetController (&fake);
+        bridge.setSender (recorder.sender());   // section 7 detached it
+        bridge.resetStats();
+        recorder.messages.clear();
+
+        bridge.handleJsEvent (jsAction (BridgeActions::listPresets));
+
+        const auto listed = recorder.withAction (BridgeActions::presetList);
+        check (listed.size() == 1, "listPresets answers exactly one presetList");
+
+        const auto* listObject = listed.size() == 1 ? listed[0].getDynamicObject() : nullptr;
+        const auto* names = listObject != nullptr
+                                ? listObject->getProperty ("presets").getArray()
+                                : nullptr;
+        check (names != nullptr && names->size() == 2,
+               "presetList carries the backend's preset names");
+        check (listObject != nullptr
+                   && listObject->getProperty ("current").toString() == "Init Preset",
+               "presetList names the current preset");
+
+        // A successful load answers with a full snapshot AND a fresh presetList.
+        recorder.messages.clear();
+        bridge.handleJsEvent (jsPresetAction (BridgeActions::loadPreset, "Glass Bells"));
+
+        check (bridge.getStats().presetsLoaded == 1, "the successful load is counted");
+        check (fake.loads == 1 && fake.current == "Glass Bells",
+               "the backend received the load and switched");
+        check (recorder.withAction (BridgeActions::syncAllParams).size() == 1,
+               "a load answers syncAllParams (the state was rewritten)");
+        check (recorder.withAction (BridgeActions::presetList).size() == 1,
+               "a load answers presetList (the current preset moved)");
+
+        // Traversal and separators never reach the backend: they answer presetError.
+        bridge.resetStats();
+        recorder.messages.clear();
+
+        bridge.handleJsEvent (jsPresetAction (BridgeActions::loadPreset, "../escape"));
+
+        const auto errors = recorder.withAction (BridgeActions::presetError);
+        check (errors.size() == 1, "an unsafe preset name answers presetError");
+        check (fake.loads == 1, "the unsafe name never reached the backend");
+        check (bridge.getStats().presetErrors == 1, "the rejection is counted in stats");
+        check (recorder.withAction (BridgeActions::syncAllParams).empty(),
+               "a rejected load never resynchronises the page");
+
+        // A name that is merely unknown is a backend-level failure, not a rejection.
+        bridge.handleJsEvent (jsPresetAction (BridgeActions::loadPreset, "Does Not Exist"));
+        check (bridge.getStats().presetErrors == 2,
+               "a missing preset is also a presetError");
+
+        // Save: happy path adds the name to the list; a backend failure is reported.
+        bridge.resetStats();
+        recorder.messages.clear();
+
+        bridge.handleJsEvent (jsPresetAction (BridgeActions::savePreset, "Pad Nocturno"));
+
+        check (bridge.getStats().presetsSaved == 1 && fake.saves == 1,
+               "a successful save is counted on both sides");
+        check (recorder.withAction (BridgeActions::presetList).size() == 1,
+               "a save answers presetList with the new name");
+
+        fake.failSaves = true;
+        bridge.handleJsEvent (jsPresetAction (BridgeActions::savePreset, "Broken"));
+        check (bridge.getStats().presetErrors == 1,
+               "a failed save answers presetError");
+
+        // Without a backend the preset messages degrade to presetError, never throw.
+        bridge.setPresetController (nullptr);
+        bridge.resetStats();
+        recorder.messages.clear();
+
+        bridge.handleJsEvent (jsPresetAction (BridgeActions::savePreset, "Whatever"));
+
+        const auto noBackend = recorder.withAction (BridgeActions::presetError);
+        check (noBackend.size() == 1
+                   && noBackend[0].getDynamicObject()->getProperty ("detail").toString()
+                          .contains ("no preset backend"),
+               "without a backend every preset action answers presetError");
+    }
 
     std::cout << '\n' << (failures == 0 ? "All checks passed." : "Checks failed.") << '\n';
     return failures == 0 ? 0 : 1;

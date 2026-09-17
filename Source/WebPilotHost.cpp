@@ -29,8 +29,10 @@
 #include <juce_core/juce_core.h>
 
 #include "Main/NEURONiKProcessor.h"
+#include "Serialization/PresetManager.h"
 #include "State/ParameterDescriptors.h"
 #include "UI/ParameterPanel.h"
+#include "UI/XYPad.h"
 #include "WebUI/ParameterBridge.h"
 
 #ifdef NEURONIK_HAS_PILOT_ASSETS
@@ -60,6 +62,53 @@ namespace
     };
 
     StartupMetrics metrics;
+
+    /**
+     * @brief Adapts the plugin's PresetManager to the bridge's PresetController
+     *        interface. All PresetManager calls must run on the message thread,
+     *        which is exactly where the bridge handles the preset messages.
+     */
+    class PresetManagerAdapter final : public NEURONiK::WebUI::PresetController
+    {
+    public:
+        explicit PresetManagerAdapter (NEURONiKProcessor& processorToWrap)
+            : presetManager (processorToWrap.getPresetManager()) {}
+
+        [[nodiscard]] juce::StringArray listPresets() const override
+        {
+            return presetManager.getAllPresets();
+        }
+
+        bool loadPreset (const juce::String& name) override
+        {
+            // loadPreset() silently no-ops on a missing file; check first so the
+            // bridge can answer presetError instead of reporting success.
+            const auto file = presetManager.getPresetsDirectory()
+                                  .getChildFile (name + NEURONiK::Serialization::PresetManager::presetExtension);
+
+            if (! file.existsAsFile())
+                return false;
+
+            presetManager.loadPreset (name);
+            return true;
+        }
+
+        bool savePreset (const juce::String& name) override
+        {
+            presetManager.savePreset (name);
+            return presetManager.getPresetsDirectory()
+                       .getChildFile (name + NEURONiK::Serialization::PresetManager::presetExtension)
+                       .existsAsFile();
+        }
+
+        [[nodiscard]] juce::String getCurrentPreset() const override
+        {
+            return presetManager.getCurrentPreset();
+        }
+
+    private:
+        NEURONiK::Serialization::PresetManager& presetManager;
+    };
 
     /** @brief Process exit code decided by the selftest (-1 = no verdict yet).
      *  PilotComponent writes it when the selftest finishes; PilotApplication reads
@@ -396,9 +445,22 @@ namespace
                         NEURONiK::WebUI::BridgeEventIds::nativeToJs, message);
             });
 
+            // Preset management for the page: the bridge owns the wire, this
+            // adapter owns the plugin behaviour. The processor (and with it the
+            // preset manager) outlives the bridge, so a bare pointer is safe.
+            presetAdapter = std::make_unique<PresetManagerAdapter> (processor);
+            bridge->setPresetController (presetAdapter.get());
+
             addAndMakeVisible (browser);
             nativePanel = std::make_unique<NEURONiK::UI::ParameterPanel> (processor);
             addAndMakeVisible (nativePanel.get());
+
+            // Exercise (c) of the checklist: the native XYPad follows morphX/morphY
+            // through the processor's uiMorph* telemetry, so a page edit (or a native
+            // RANDOM push) is visibly mirrored by the pad.
+            xyPad = std::make_unique<NEURONiK::UI::XYPad> (processor, processor.getAPVTS());
+            addAndMakeVisible (xyPad.get());
+
             browser.goToURL (juce::WebBrowserComponent::getResourceProviderRoot());
 
             startTimer (30);
@@ -417,6 +479,8 @@ namespace
         {
             auto bounds = getLocalBounds();
             nativePanel->setBounds (bounds.removeFromBottom (stripHeight));
+
+            xyPad->setBounds (bounds.removeFromRight (260));   // morph mirror next to the page
             browser.setBounds (bounds);
         }
 
@@ -694,8 +758,15 @@ namespace
         // the browser is alive -> browser first, then processor, bridge, panel last.
         juce::WebBrowserComponent browser;
         NEURONiKProcessor processor;
+        // The bridge only holds a PresetController* to this adapter; declared
+        // AFTER processor (it references its PresetManager) and destroyed with
+        // the component, before the processor's own members go away.
+        std::unique_ptr<PresetManagerAdapter> presetAdapter;
         std::unique_ptr<NEURONiK::WebUI::ParameterBridge> bridge;
         std::unique_ptr<NEURONiK::UI::ParameterPanel> nativePanel;
+        // Declared after processor/bridge so it is destroyed BEFORE them (it reads
+        // the APVTS and the IVisualizationSource in its 30 Hz timer).
+        std::unique_ptr<NEURONiK::UI::XYPad> xyPad;
         const bool autoQuit;
         const bool selftest;
         SelftestStage selftestStage = SelftestStage::idle;

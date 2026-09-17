@@ -19,6 +19,19 @@
  *                   gesture: "begin" | "change" | "end" }
  *                 { action: "requestState" }
  *
+ *   PRESETS (additive to protocol v1; see bridge-protocol.json)
+ *
+ *   JS -> native  { action: "listPresets" }
+ *                 { action: "loadPreset", name }
+ *                 { action: "savePreset", name }
+ *
+ *   native -> JS  { action: "presetList", presets: [name...], current }
+ *                 { action: "presetError", operation, detail }
+ *
+ *   A successful load also triggers a full parameter snapshot + a fresh presetList
+ *   from the host; a successful save answers with a presetList. Names are
+ *   sanitised natively — a rejected name answers presetError, never a file write.
+ *
  * `value` is ALWAYS the normalised 0..1 value; `real` and `text` are display only.
  *
  * When `window.__JUCE__` is absent (a plain browser, `next dev` on its own) the
@@ -42,7 +55,11 @@ function backend() {
  *   handlers.onSnapshot  full state from the host
  * @param {(id: string, value: number) => void}
  *   handlers.onParameterChanged  one parameter moved on the native side
- * @returns {{ available: boolean, sendParameterChange: Function, sendRequestState: Function, announcePageLoaded: Function, dispose: Function }}
+ * @param {({ presets: string[], current: string }) => void} [handlers.onPresetList]
+ *   the host's preset list and which preset is current
+ * @param {({ operation: string, detail: string }) => void} [handlers.onPresetError]
+ *   a preset operation the host rejected or failed
+ * @returns {{ available: boolean, sendParameterChange: Function, sendRequestState: Function, announcePageLoaded: Function, sendListPresets: Function, sendLoadPreset: Function, sendSavePreset: Function, dispose: Function }}
  */
 export function createBridgeTransport(handlers) {
   const carrier = backend();
@@ -54,6 +71,9 @@ export function createBridgeTransport(handlers) {
       sendParameterChange: () => {},
       sendRequestState: () => {},
       announcePageLoaded: () => {},
+      sendListPresets: () => {},
+      sendLoadPreset: () => {},
+      sendSavePreset: () => {},
       dispose: () => {},
     };
   }
@@ -82,6 +102,24 @@ export function createBridgeTransport(handlers) {
       handlers.onParameterChanged(message.id, message.value);
   });
 
+  const removePresetList = carrier.addEventListener(NATIVE_TO_JS_EVENT_ID, (message) => {
+    if (
+      message?.action === 'presetList'
+      && Array.isArray(message.presets)
+      && typeof message.current === 'string'
+    )
+      handlers.onPresetList?.({ presets: message.presets, current: message.current });
+  });
+
+  const removePresetError = carrier.addEventListener(NATIVE_TO_JS_EVENT_ID, (message) => {
+    if (
+      message?.action === 'presetError'
+      && typeof message.operation === 'string'
+      && typeof message.detail === 'string'
+    )
+      handlers.onPresetError?.({ operation: message.operation, detail: message.detail });
+  });
+
   return {
     available: true,
 
@@ -108,9 +146,25 @@ export function createBridgeTransport(handlers) {
       }
     },
 
+    sendListPresets() {
+      emit({ action: 'listPresets' });
+    },
+
+    /** Ask the host to load a preset by name; answers presetList or presetError. */
+    sendLoadPreset(name) {
+      emit({ action: 'loadPreset', name });
+    },
+
+    /** Ask the host to save the current state as `name`; answers presetList or presetError. */
+    sendSavePreset(name) {
+      emit({ action: 'savePreset', name });
+    },
+
     dispose() {
       carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removeSnapshot]);
       carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removeChange]);
+      carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removePresetList]);
+      carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removePresetError]);
     },
   };
 }

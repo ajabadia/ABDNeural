@@ -98,6 +98,8 @@ const received = [];
 const transport = createBridgeTransport({
   onSnapshot: (entries) => received.push(['snapshot', entries]),
   onParameterChanged: (id, value) => received.push(['changed', id, value]),
+  onPresetList: (info) => received.push(['presetList', info]),
+  onPresetError: (error) => received.push(['presetError', error]),
 });
 
 check(transport.available === true, 'el transporte se activa con window.__JUCE__ presente');
@@ -139,6 +141,59 @@ transport.sendParameterChange('morphX', 0.5);
 check(
   globalThis.window.__JUCE__.backend.sent.at(-1)[1].gesture === 'change',
   'un cambio sin gesto declarado envía "change" (default del contrato)',
+);
+
+// --- Presets (aditivo a v1): formas exactas de envío y entrega ---------------
+
+const jsPresetActions = contract.messages.jsToNative;
+
+check(
+  Object.keys(jsPresetActions).includes('listPresets')
+    && Object.keys(jsPresetActions).includes('loadPreset')
+    && Object.keys(jsPresetActions).includes('savePreset'),
+  'el contrato declara las tres acciones de preset JS->nativo',
+);
+
+transport.sendListPresets();
+let [, listMsg] = globalThis.window.__JUCE__.backend.sent.at(-1);
+check(
+  listMsg.action === 'listPresets' && Object.keys(listMsg).length === 1,
+  'listPresets lleva solo action',
+);
+
+transport.sendLoadPreset('Glass Bells');
+[, listMsg] = globalThis.window.__JUCE__.backend.sent.at(-1);
+check(
+  listMsg.action === 'loadPreset' && listMsg.name === 'Glass Bells'
+    && Object.keys(listMsg).length === 2,
+  'loadPreset lleva action+name (sin extensión)',
+);
+
+transport.sendSavePreset('Pad Nocturno');
+[, listMsg] = globalThis.window.__JUCE__.backend.sent.at(-1);
+check(
+  listMsg.action === 'savePreset' && listMsg.name === 'Pad Nocturno',
+  'savePreset lleva action+name',
+);
+
+globalThis.window.__JUCE__.backend.deliver(contract.channels.nativeToJs.eventId, {
+  action: 'presetList',
+  presets: ['Init Preset', 'Glass Bells'],
+  current: 'Glass Bells',
+});
+check(
+  received.some(([kind]) => kind === 'presetList'),
+  'un presetList válido llega como onPresetList',
+);
+
+globalThis.window.__JUCE__.backend.deliver(contract.channels.nativeToJs.eventId, {
+  action: 'presetError',
+  operation: 'loadPreset',
+  detail: 'preset not found: X',
+});
+check(
+  received.some(([kind]) => kind === 'presetError'),
+  'un presetError válido llega como onPresetError',
 );
 
 // --- nativo -> JS: el transporte filtra por action y acepta el esquema del contrato

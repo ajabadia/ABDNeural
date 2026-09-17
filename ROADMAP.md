@@ -171,8 +171,15 @@ quería despejar era exactamente el modo de fallo silencioso del canal.)
       mueve la página, y viceversa). Confirmado por el usuario (captura: 0.67/0.564/0.399 iguales
       en ambos lados) y por el selftest automatizado del host (`--selftest`, NATIVO->JS y
       JS->NATIVO OK, exit 0).
-- [ ] Validar presets, MIDI y persistencia.
-- [ ] Embebido de recursos y rutas relativas.
+- [x] Validar presets por el bridge (2026-09-17): `listPresets`/`loadPreset`/`savePreset` JS->nativo
+      responden `presetList`/`presetError` (aditivo a v1). Nombres sanitizados en nativo (sin
+      separadores ni `..`); un load correcto cierra gestos abiertos y resincroniza TODO el estado
+      (snapshot completo). `PresetController` como interfaz para testear sin directorio real;
+      adaptador a `PresetManager` en el host. Barra de presets en la página (select + guardar).
+      Tests: sección 8 de `ParameterBridgeTest`, literales en el contrato C++/mjs, vitest del hook.
+- [ ] Validar MIDI y persistencia (teclado + mensajes MIDI en el bridge, protocolo v2 aditivo).
+- [x] Embebido de recursos y rutas relativas (VALIDADO 2026-09-17: snapshot sin rutas de
+      error, `[embedded fallback: 8]` con el E2E del bridge en verde sobre la WebUI embebida).
 - [ ] Rebuild del EXE en cada cambio del bundle.
 
 ### Fase 5 — WASM
@@ -248,9 +255,12 @@ usuario:
       (NEURONiK_WebPilotAssets)` con `WebPilot/out/**` (sin `_not-found`). El host
       sirve DISCO primero (out/ fresco) y BINARIO como fallback (exe autocontenido;
       es la vía que usará el VST3). El informe imprime `[embedded fallback: N]`.
-- [ ] Validar con `build.bat` del usuario: el host enlaza ahora todo el plugin
-      (primera vez); si falla un símbolo, añadir la lib JUCE que falte.
-- [ ] Verificación visual: panel nativo real y página moviéndose mutuamente.
+- [x] Validado (2026-09-16 23:43, `build.bat`): el host enlaza todo el plugin, 10/10 tests
+      y selftest del bridge OK; fixes posteriores (exit codes, snapshot 404) revalidados el
+      2026-09-17.
+- [ ] Verificación visual: panel nativo real y página moviéndose mutuamente — queda la
+      (a) RANDOM→morphX/Y + slider→VOLUME y la (c) XYPad nativo (ya integrado en el host
+      como columna derecha); la (b) fallback embebido está hecha.
 
 ## Criterios de aceptación
 
