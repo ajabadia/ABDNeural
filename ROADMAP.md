@@ -233,7 +233,16 @@ cada synthe elige su skin. NEURONiK es el primer consumidor del paquete comparti
 - [x] Validar visualmente el nuevo page.jsx en el host: `--selftest` en verde tras el
       out/ nuevo (nativo->JS y JS->nativo OK) y arrastre 1:1 corregido en drag-core
       (ver corrección en HANDOFF).
-- [ ] Pantalla GENERAL en Next.js usando los controles compartidos + tokens del tema.
+- [x] Pantalla GENERAL en Next.js (2026-09-17): pestañas BRIDGE/GENERAL en UNA página (sin
+      rutas nuevas: el snapshot embebido sirve por basename y una segunda ruta colisionaría con
+      index.html). Knobs (ParamKnob), toggles de freeze (ParamToggle) y motor (ParamChoice)
+      sobre la familia compartida; gráfico ADSR en SVG puro con tokens del tema; grupos ENGINE /
+      AMPLITUDE ENVELOPE / SPECTRAL UNISON / RANDOM, los mismos de ParameterPanel.cpp. El hook
+      gobierna el estado de las dos pestañas a la vez (un preset o un gesto nativo se ve donde
+      mires). vitest 42/42 y selftest del host en verde.
+      NOTA: masterLevel conserva su input[type=range] nativo (el selftest lo conduce) y la
+      validación del footer usa ahora el validador NORMALIZADO del hook (el de unidades reales
+      daba errores falsos con envAttack, min 0.001).
 - [ ] Teclado (`createKeyboard` de `ABDSharedCode/MidiKeyboard`) + mensajes MIDI en el
       bridge (protocolo v2 aditivo: `midiNoteOn/midiNoteOff/...`).
 - [ ] Adoptar la familia en ABDMS2000 y ABDJUNiO601 cuando migren su WebUI (sin tocar

@@ -649,6 +649,27 @@ La página ya lista, carga y guarda presets. Decisiones de diseño:
 - **Pendiente de oído/vista:** cargar/guardar de verdad contra `Documents/NEURONiK/Presets`
   desde la ventana abierta (la barra está: seleccionar preset o escribir nombre y SAVE).
 
+## Pantalla GENERAL en Next.js (2026-09-17, Fase 7)
+
+Pestañas **BRIDGE/GENERAL** dentro de UNA página (`page.jsx`): el snapshot embebido sirve por
+basename y una segunda ruta colisionaría con `index.html` (bug del 404 ya sufrido). La GENERAL
+refleja la pestaña GENERAL nativa (IDs de `ParameterPanel.cpp`): motor, ADSR (gráfico SVG puro,
+proporciones por tiempo real con piso mínimo, sustain a ancho fijo), unison, RANDOM y los tres
+freeze. Puntos finos:
+
+- **Un solo hook para ambas pestañas** (`SCREEN_PARAMETER_IDS = PILOT + GENERAL`): el estado es
+  el mismo normalizado 0..1, así que un preset o un gesto nativo se ve en la pestaña que esté
+  abierta. `ParamKnob`/`ParamToggle` pintan SU propia etiqueta (ParamControlShell): en GENERAL no
+  se añade heading propio, solo un readout en unidades reales (`.control-value`).
+- **Footer**: la validación es la del hook (`contractErrors`, validador NORMALIZADO). El anterior
+  `validateState(controls.map(...), parameters)` comparaba estado normalizado contra rangos en
+  unidades reales → errores falsos en cuanto entraron floats con min≠0 (envAttack 0.001).
+- **pageContract.test.js** fija: `masterLevel` sigue siendo el `input[type=range]` nativo que el
+  selftest conduce, `ParamSlider`/`ParamChoice` en la BRIDGE, `value={normalized}` y
+  `handleChange(control.id…)` — todos los checks siguen en verde (vitest 42/42).
+- **CSS**: tabs/grupos/ADSR con tokens del tema (`--accent`, `--line`, `--muted`), sin frameworks
+  (regla del skill JUCE_hybrid: vanilla CSS dentro del WebView).
+
 **2ª compilación — enlace (previsto en el punto 1 del checklist):** 4x `LNK2019` sobre
 `juce::MidiKeyboardComponent`/`KeyboardComponentBase` (los usa NEURONiKEditor, no PresetBrowser
 como sospechábamos): `MidiKeyboardComponent` vive en `juce_audio_utils` → añadida al target del
