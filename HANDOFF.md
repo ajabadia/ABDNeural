@@ -1226,6 +1226,28 @@ El sistema de build tiene un target `UpdateVersion` que modifica automáticament
 `Source/ModelMaker/Version.h`. Revisar `git status` después de compilar y descartar cualquier
 incremento accidental que no forme parte de la tarea.
 
+## Persistencia de estado (Fase 4 cerrada, 2026-09-17)
+
+`NEURONiK_StatePersistenceTest` (procesador REAL, mismas fuentes que el host): roundtrip
+de sesión DAW completo — editar parámetros + mapping MIDI en A, getStateInformation,
+setStateInformation en B (instancia fresca), y comparar: 0 diferencias en el APVTS
+completo, mapping restaurado, y contratos de robustez (null/basura/estado extranjero
+ignorados sin corromper el estado vivo; estado de build antigua con ids extra aplica lo
+conocido y conserva defaults).
+
+**Bug real destapado por el test:** `MidiMappingManager::saveToValueTree` terminaba con
+`v.getOrCreateChildWithName("MIDIMAPPINGS") = midiNode;` — la asignación de ValueTree en
+JUCE **no copia contenido, re-referencia objetos** (semántica de puntero compartido). El
+nodo quedaba vacío y TODO mapping de MIDI Learn se perdía silenciosamente al guardar la
+sesión del DAW (los presets no estaban afectados: `saveToValueTree` solo lo llama
+`getStateInformation`). Fix: `removeChild` + `appendChild`, con comentario explicando la
+trampa para que nadie "simplifique" de vuelta.
+
+**Pipeline:** `build.bat` reordenado — la WebUI (paso 4) ANTES del host (paso 5), porque el
+host embebe `WebPilot/out` en el enlace (`juce_add_binary_data`); compilar el host antes
+dejaraba dentro el bundle de la pasada anterior. El test nuevo (`NEURONiK_StatePersistenceTest`)
+entró en el paso 7.
+
 ## Reglas de comparación
 
 Antes de cambiar el DSP:

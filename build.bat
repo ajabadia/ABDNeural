@@ -87,15 +87,11 @@ if !ERRORLEVEL! neq 0 (
 )
 
 echo.
-echo [4/8] Compilando el host del piloto WebPilot...
-cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_WebPilotHost
-if !ERRORLEVEL! neq 0 (
-    echo [AVISO] No se pudo compilar el host del piloto. El plugin sigue siendo valido.
-    set HOST_BUILD_FAILED=1
-)
-
+REM El orden IMPORTA: la WebUI (out/) va ANTES que el host. El host EMBIBE el
+REM snapshot de out/ en el enlace (juce_add_binary_data sobre WebPilot/out/*);
+REM compilar el host antes dejaba dentro el bundle de la pasada ANTERIOR.
 echo.
-echo [5/8] Exportando la WebUI del piloto...
+echo [4/8] Exportando la WebUI del piloto...
 if not exist "WebPilot\node_modules" goto :no_webui
 
 pushd WebPilot
@@ -110,11 +106,20 @@ if !ERRORLEVEL! neq 0 (
 )
 popd
 echo [OK] WebUI del piloto exportada en WebPilot\out
-goto :modelmaker
+goto :pilot_host
 
 :no_webui
 echo [INFO] WebPilot\node_modules no existe, se omite la exportacion.
 echo        Para habilitarla: cd WebPilot ^&^& pnpm install --ignore-workspace
+
+:pilot_host
+echo.
+echo [5/8] Compilando el host del piloto WebPilot (embibe la WebUI recien exportada)...
+cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_WebPilotHost
+if !ERRORLEVEL! neq 0 (
+    echo [AVISO] No se pudo compilar el host del piloto. El plugin sigue siendo valido.
+    set HOST_BUILD_FAILED=1
+)
 
 :modelmaker
 echo.
@@ -142,7 +147,7 @@ echo        Para incluirlo: build.bat modelmaker
 :tests
 echo.
 echo [7/8] Compilando y ejecutando la suite de pruebas...
-cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_DSPReferenceTest NEURONiK_MidiChannelFilterTest NEURONiK_VelocityCurveTest NEURONiK_LfoSyncTest NEURONiK_ParameterDescriptorTest NEURONiK_PresetRoundTripTest NEURONiK_ParameterBridgeTest NEURONiK_BridgeProtocolContractTest
+cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_DSPReferenceTest NEURONiK_MidiChannelFilterTest NEURONiK_VelocityCurveTest NEURONiK_LfoSyncTest NEURONiK_ParameterDescriptorTest NEURONiK_PresetRoundTripTest NEURONiK_StatePersistenceTest NEURONiK_ParameterBridgeTest NEURONiK_BridgeProtocolContractTest
 if !ERRORLEVEL! neq 0 (
     echo.
     echo [ERROR] Fallo al compilar las pruebas.

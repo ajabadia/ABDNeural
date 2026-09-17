@@ -393,6 +393,50 @@ target_link_libraries(NEURONiK_PresetRoundTripTest PRIVATE
 
 add_test(NAME NEURONiK_PresetRoundTripTest COMMAND NEURONiK_PresetRoundTripTest)
 
+# State persistence: the DAW-session round trip (getStateInformation /
+# setStateInformation) needs the REAL processor, so it compiles the same source
+# set as the WebPilot host (plugin sources minus the .rc) plus the bridge.
+set(NEURONIK_STATE_TEST_SOURCES ${NEURONIK_SOURCES})
+if(MSVC)
+    list(REMOVE_ITEM NEURONIK_STATE_TEST_SOURCES Resources/NEURONiK.rc)
+endif()
+
+add_executable(NEURONiK_StatePersistenceTest
+    Tests/StatePersistenceTest.cpp
+    Source/WebUI/ParameterBridge.cpp
+    ${NEURONIK_STATE_TEST_SOURCES}
+)
+
+target_include_directories(NEURONiK_StatePersistenceTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Main"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/UI"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/Panels"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/State"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Serialization"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/WebUI"
+)
+
+target_compile_definitions(NEURONiK_StatePersistenceTest PRIVATE
+    JucePlugin_Name="NEURONiK"
+)
+
+target_link_libraries(NEURONiK_StatePersistenceTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_audio_processors
+    juce::juce_audio_utils
+    juce::juce_core
+    juce::juce_data_structures
+    juce::juce_dsp
+    juce::juce_graphics
+    juce::juce_gui_basics
+    juce::juce_gui_extra
+    NEURONiK_Common
+)
+
+add_test(NAME NEURONiK_StatePersistenceTest COMMAND NEURONiK_StatePersistenceTest)
+
 # Parameter bridge: same real layout APVTS as the contract, no WebView2 — the
 # transport is a recording lambda, so the protocol is testable without a window.
 add_executable(NEURONiK_ParameterBridgeTest

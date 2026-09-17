@@ -160,7 +160,13 @@ void MidiMappingManager::saveToValueTree(juce::ValueTree& v)
             midiNode.appendChild(m, nullptr);
         }
     }
-    v.getOrCreateChildWithName("MIDIMAPPINGS", nullptr) = midiNode;
+
+    // NOTE: ValueTree assignment does NOT copy content — `a = b` just re-points
+    // the a reference at b's object. The old getOrCreateChildWithName(...) = midiNode
+    // therefore left the tree with an EMPTY node (or a stale one) and every MIDI
+    // Learn mapping was silently dropped from the saved session state.
+    v.removeChild(v.getChildWithName("MIDIMAPPINGS"), nullptr);
+    v.appendChild(midiNode, nullptr);
 }
 
 void MidiMappingManager::loadFromValueTree(const juce::ValueTree& v)

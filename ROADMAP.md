@@ -185,10 +185,20 @@ quería despejar era exactamente el modo de fallo silencioso del canal.)
       página (tab KEYS), protocolo aditivo `midiNoteOn/Off/pitchBend/modWheel/panic` +
       `midiNoteState` nativo→JS con feedback sin eco; host con `AudioProcessorPlayer` (el piloto
       SUENA) y selftest de 4 direcciones en verde). La PERSISTENCIA de ajustes sigue pendiente.
-- [ ] Validar persistencia de estado (guardar/recuperar con la sesión del DAW).
+- [x] Validar persistencia de estado (HECHO 2026-09-17 con `NEURONiK_StatePersistenceTest`,
+      procesador REAL: session A edita parámetros + un mapping MIDI → getStateInformation →
+      procesador B setStateInformation → 0 diferencias en el APVTS completo, mapping CC74→
+      masterLevel restaurado, datos basura/extranjeros/antiguos ignorados sin corromper el
+      estado vivo). EL TEST DESTAPÓ UN BUG REAL: `saveToValueTree` usaba asignación de
+      ValueTree (`= midiNode`, que NO copia contenido, solo re-referencia) y TODO mapping de
+      MIDI Learn se perdía silenciosamente al guardar la sesión del DAW. Arreglado con
+      removeChild+appendChild; además la página ya se resincroniza sola (pageLoaded →
+      syncAllParams) cuando el host reabre con estado del DAW.
 - [x] Embebido de recursos y rutas relativas (VALIDADO 2026-09-17: snapshot sin rutas de
       error, `[embedded fallback: 8]` con el E2E del bridge en verde sobre la WebUI embebida).
-- [ ] Rebuild del EXE en cada cambio del bundle.
+- [x] Rebuild del EXE en cada cambio del bundle (HECHO 2026-09-17: `build.bat` reordenado —
+      la WebUI (paso 4) va ANTES del host (paso 5), que EMBIBE `out/` en el enlace;
+      compilar el host antes dejaba dentro el bundle de la pasada anterior).
 
 ### Fase 5 — WASM
 
