@@ -11,7 +11,7 @@ Evolucionar NEURONiK desde su implementación actual en JUCE hacia una arquitect
 
 La migración será incremental. No se sustituirá la interfaz JUCE ni se modificará el motor DSP sin una prueba de regresión equivalente.
 
-## Estado actual — 2026-09-17
+## Estado actual — 2026-09-17 (tras cerrar las Fases 4 y 6)
 
 - [x] Repositorio clonado y revisado.
 - [x] Build Release de referencia generado.
@@ -22,18 +22,29 @@ La migración será incremental. No se sustituirá la interfaz JUCE ni se modifi
 - [x] Crear una fachada DSP progresiva para eventos y buffers.
 - [x] Crear adaptador de parámetros para la interfaz web (contrato generado del APVTS +
       `ParameterBridge` con presets; ver Fases 2-4).
-- [x] Probar una pantalla web dentro de WebView2 (piloto BRIDGE + GENERAL en el host,
-      fallback embebido y selftest E2E de tres direcciones; ver Fases 3-4 y 7).
-- [ ] Separar progresivamente el núcleo DSP de las abstracciones JUCE.
-- [ ] Crear wrapper WASM (la preparación mínima ya identificada: sembrar los `juce::Random`
-      de `LFO.h` y `NeurotikVoice.h` — en AudioWorklet la entropía de sistema crashea).
-- [x] Decidir entre React/Vite y Next.js estático — spike A/B hecho (2026-09-17, Fase 6):
-      la MISMA página del piloto compila en Vite y pasa el selftest completo del host
-      (nativo->JS, JS->nativo, notas+ruedas) en disco y con fallback embebido a 0.
-      Bundle 471 KB vs 854 KB (-45%), 4 recursos vs 10, build 2-6 s vs 15-25 s.
-      Datos y detalles en HANDOFF. SWITCH DECIDIDO (2026-09-17): `build.bat` usa Vite
-      por defecto (paso 4 → `WebPilot/out`); Next queda como referencia tras
-      `build.bat nextui`. El snapshot embebido del host lleva el bundle Vite.
+- [x] Probar una pantalla web dentro de WebView2 (piloto BRIDGE + GENERAL + KEYS en el
+      host; fallback embebido y selftest E2E de CUATRO direcciones: parámetros,
+      presets, teclado/ruedas MIDI y snapshot; ver Fases 3-4 y 7).
+- [x] Teclado MIDI compartido (`ABDSharedCode/MidiKeyboard` v0.2.0): tab KEYS con
+      feedback sin eco (notas + ruedas) y panic; el host ahora renderiza audio
+      (`AudioProcessorPlayer`) — el piloto suena.
+- [x] Persistencia de estado validada con roundtrip del procesador real (Fase 4); el
+      test destapó y arregló un bug real: los mappings de MIDI Learn no se guardaban
+      en la sesión del DAW.
+- [x] Decidir entre React/Vite y Next.js estático — spike A/B (Fase 6): la MISMA
+      página pasa el selftest completo con ambos motores; Vite gana (471 KB vs 854 KB,
+      build 2-6 s vs 15-25 s). SWITCH: `build.bat` compila Vite por defecto hacia
+      `WebPilot/out`; Next queda como referencia tras `build.bat nextui`. Datos en
+      HANDOFF.
+- [x] Siembra determinista de `juce::Random` (LFO, NeurotikVoice, panel RANDOM) — la
+      mina enterrada de la Fase 5 (WASM) ya está desactivada.
+- [x] Pipeline de build: /MP, sin reconfiguración redundante de CMake, modo rápido
+      `build.bat tests` (~19 s en caliente) y log espejo `build-last-run.log`.
+- [ ] Separar progresivamente el núcleo DSP de las abstracciones JUCE (Fase 1).
+- [ ] Crear wrapper WASM (Fase 5): la preparación mínima (sembrar los `juce::Random`)
+      ya está hecha; queda el resto del wrapper.
+- [ ] Validar de oído delay sync, chorus, reverb y curva de velocidad (Fase 2,
+      requiere presets reales y tus oídos).
 
 ## Fases
 
@@ -216,11 +227,16 @@ quería despejar era exactamente el modo de fallo silencioso del canal.)
 
 ### Fase 6 — Consolidación del framework
 
-- [ ] Comparar el piloto Next.js con una implementación equivalente React/Vite.
-- [ ] Medir tamaño del bundle y tiempo de arranque.
-- [ ] Validar WebView2 y exportación estática real, no solo `dev server`.
-- [ ] Elegir la opción con menor complejidad operativa.
-- [ ] Evitar que `ABDSharedCode` dependa directamente de Next.js.
+- [x] Comparar el piloto Next.js con una implementación equivalente React/Vite
+      (`WebPilotVite/`, misma página importada 1:1, cero copias).
+- [x] Medir tamaño del bundle y tiempo de arranque (471 KB vs 854 KB; build 2-6 s vs
+      15-25 s; arranque ~7 s empatado — lo domina el arranque frío de WebView2).
+- [x] Validar WebView2 y exportación estática real, no solo `dev server` (selftest
+      completo del host en disco y con snapshot embebido, fallback 0).
+- [x] Elegir la opción con menor complejidad operativa (Vite: sin turbopack.root,
+      config local, build 4x más rápido; switch hecho en `build.bat` 2026-09-17).
+- [x] Evitar que `ABDSharedCode` dependa directamente de Next.js (los paquetes
+      compartidos son vanilla y la página no importa nada de `next/*`).
 
 ### Fase 7 — Familia de controles compartidos (ABDSharedAssets, 2026-09-16)
 
