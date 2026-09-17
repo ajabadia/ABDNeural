@@ -1286,3 +1286,45 @@ No borrar ni sobrescribir `build-reference` hasta generar una nueva referencia v
 - `ParameterPanel::randomizeParameters` usa instancia local sembrada con reloj en vez de `getSystemRandom()` (UI, no RT; pero mismo principio).
 
 **Bug del pipeline (explicaba builds que morían en silencio):** en la rama de error del paso 4 había un `(staleness)` sin escapar dentro de un bloque `if (...)`. cmd parsea el bloque entero aunque la condición sea falsa: el `)` cerraba el bloque prematuramente y el script moría con "No se esperaba . en este momento" justo al terminar el paso 4 — sin llegar nunca al `pause` final. Escapado como las demás líneas. Cada pasada ahora deja además `build-last-run.log` (envoltorio PowerShell Tee-Object, UTF-8, exit code propagado).
+
+## 2026-09-17 (c): Fase 6 — spike Vite contra-piloto (A/B cerrado)
+
+**Qué es `WebPilotVite/`**: contra-piloto que compila la MISMA página que Next
+(`WebPilot/app/page.jsx` + `lib/`, importados 1:1 — cero copias) con Vite en vez de
+Next. Solo añade: `index.html`, `src/main.jsx` (entry que importa los CSS globales que
+en Next llevaba el layout), `src/main.css` (reset mínimo) y `vite.config.js`.
+Es miembro del workspace anidado de WebPilot (`pnpm-workspace.yaml`), así que los
+paquetes compartidos (@abdsynths/shared, @abdsynths/midi-keyb) resuelven igual.
+
+**Veredicto técnico: Vite gana en todo lo medible.**
+
+| Métrica | Next (next build) | Vite (vite build) |
+|---|---|---|
+| Bundle en disco | 854 KB / 10 recursos | **471 KB / 4 recursos** (-45%) |
+| Tiempo de build | 15-25 s | **2-6 s** |
+| Selftest del host | RESULT: OK, exit 0 | **RESULT: OK, exit 0** (mismo árbitro) |
+| Fallback embebido | 0 | 0 (con el fix de publicDir) |
+| Config extra | turbopack.root a la suite (obligatorio) | root local (resuelve symlinks solo) |
+
+**A/B hecho con swap de directorios** (`out` ↔ `out-vite`) sobre el MISMO exe del host,
+modo disco y modo embebido (rebuild del target del host). El arranque (~7.2-7.9 s react
+ready) está dominado por el arranque frío de WebView2 y resultó empardado: el ahorro
+real del bundle Vite se verá en el parseo JS y en memoria, no en el primer paint del
+host de prueba.
+
+**Trampas del camino:**
+1. `vite.config.js` con `--config` relativo + `pnpm --filter` falla (duplicación de
+   ruta). Sin `--config`: Vite encuentra vite.config.js en su cwd.
+2. Con raíz elevada a la suite (como hicimos en Turbopack) Rollup exige `input`
+   explícito y los `/src/...` absolutos del HTML se resuelven contra la raíz. Con raíz
+   local todo funciona sin trucos — NO es necesaria la raíz-suite en Vite.
+3. `publicDir` por defecto es `<root>/public`: el sprite `bender.png` del wheel vive en
+   `WebPilot/public/` y había que apuntarlo a mano (si no, el fallback embebido se
+   come 1 recurso y el A/B del snapshot queda cojo).
+
+**Cómo construirlo**: `cd WebPilot && pnpm --filter @abdsynths/web-pilot-vite build`
+(salida: `WebPilot/out-vite/`). Para probarlo en el host: swap `out` ↔ `out-vite` y
+relanzar; para embeberlo, rebuild del target `NEURONiK_WebPilotHost` con el swap hecho.
+
+**Pendiente de decisión**: el switch definitivo (migrar `build.bat` paso 4 a Vite y
+dejar Next solo como referencia, o mantener ambos). El piloto quedó funcional en ambos.

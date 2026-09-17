@@ -27,8 +27,11 @@ La migración será incremental. No se sustituirá la interfaz JUCE ni se modifi
 - [ ] Separar progresivamente el núcleo DSP de las abstracciones JUCE.
 - [ ] Crear wrapper WASM (la preparación mínima ya identificada: sembrar los `juce::Random`
       de `LFO.h` y `NeurotikVoice.h` — en AudioWorklet la entropía de sistema crashea).
-- [ ] Decidir entre React/Vite y Next.js estático (los datos de Next ya están: 572 KB de JS
-      de runtime, arranque ~1.6 s; falta el contra-piloto React/Vite, Fase 6).
+- [x] Decidir entre React/Vite y Next.js estático — spike A/B hecho (2026-09-17, Fase 6):
+      la MISMA página del piloto compila en Vite y pasa el selftest completo del host
+      (nativo->JS, JS->nativo, notas+ruedas) en disco y con fallback embebido a 0.
+      Bundle 471 KB vs 854 KB (-45%), 4 recursos vs 10, build 2-6 s vs 15-25 s.
+      Datos y detalles en HANDOFF. Pendiente: decidir el switch definitivo.
 
 ## Fases
 

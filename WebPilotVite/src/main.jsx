@@ -5,10 +5,10 @@ import { createRoot } from 'react-dom/client';
 // la familia compartida, widgets y CSS local de la página.
 import '@abdsynths/shared/styles/tokens.css';
 import '@abdsynths/shared/styles/components/widgets.css';
-import '../WebPilot/app/globals.css';
-import './src/main.css';
+import '../../WebPilot/app/globals.css';
+import './main.css';
 
-import PilotPage from '../WebPilot/app/page.jsx';
+import PilotPage from '../../WebPilot/app/page.jsx';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
