@@ -742,9 +742,10 @@ Puntos de diseño:
 - **Tests:** sección 9 de `ParameterBridgeTest` (routing/rangos/panic/sin-backend), literales
   MIDI en el contrato anti-drift C++ y mjs, vitest del bridge (formas exactas + midiNoteState)
   y del hook (`__pilotSendMidi` + `midiState`, limpieza en unmount). 46/46 en verde.
-- **Pendiente de oído/vista:** tocar la ventana abierta (teclas/QWERTY/ruedas/PANIC) y oír el
-  motor por el dispositivo de audio por defecto; hardware MIDI conectado al plugin debería
-  reflejarse en las teclas/ruedas de la página.
+- **VALIDADO por el usuario (2026-09-17):** el teclado suena y se comporta. El primer vistazo
+  mostró el keybed colapsado a una tira negra — culpable: el CSS del CONTENEDOR (`.keys-strip`)
+  no existía en la página (el keybed estira sus teclas a 100% de la altura del contenedor);
+  el componente compartido estaba bien. Fix en `117ac33` y re-validado.
 
 **Qué validar cuando compile** (en orden):
 
