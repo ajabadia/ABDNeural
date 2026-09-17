@@ -43,10 +43,19 @@ La migración será incremental. No se sustituirá la interfaz JUCE ni se modifi
 - [x] Separar progresivamente el núcleo DSP de las abstracciones JUCE (Fase 1,
       cerrada 2026-09-17: `DspEngineFacade` sin JUCE + paridad bit-exacta en `DSPReferenceTest`).
 - [x] Crear wrapper WASM (Fase 5, primer hito cerrado 2026-09-17: módulo real de 89 KB
-      renderizando audio, smoke test Node en verde). **Lección de ABDMS2000 aplicada**: su
-      build WASM duplica la lista de fuentes a mano y sufrió drift (4 fuentes del nativo no
-      llegan al WASM, incluido `SynthEngine.cpp`) — aquí la lista vive en `DspSources.cmake`
-      compartido por ambos builds, drift imposible.
+      renderizando audio, smoke test Node en verde). **Lección de ABDMS2000 aplicada y
+      auditoría extendida a TODA la suite (2026-09-17)**: MS2000 duplicaba la lista de
+      fuentes a mano y sufrió drift (4 fuentes del nativo no llegaban al WASM, incluido
+      `SynthEngine.cpp`); la auditoría encontró el mismo modo de fallo latente en CZ101
+      (GLOB nativo vs lista estática), JUNiO (46 ficheros de hueco) y EEP (57, mayoría
+      principistas). Los cinco proyectos con doble build viven ahora del mismo patrón:
+      lista single-source `DspSources.cmake` + exclusiones documentadas. Commits:
+      MS2000 `1dc0fa584`, JUNiO `0f1a9b8`, EEP `a5f8d15`, CZ101 `600a160`,
+      ABDSharedCode `a8643d5` (target `ABDShared::LutDSP` header-only que faltaba).
+      Recetas duras rescatadas en `ABDEep/wasm/README_WASM_COMPILATION.md` (§2.A.0
+      y lecciones 7-9): SSE bajo WASM (`-msimd128 -D__SSE__ -D__SSE2__ -include
+      immintrin.h` + `JUCE_NO_INLINE_ASM=1`), quirk de `emsdk_env.bat` y la trampa
+      headless de `juce_audio_processors` en JUCE 8.
 - [ ] Validar de oído delay sync, chorus, reverb y curva de velocidad (Fase 2,
       requiere presets reales y tus oídos).
 
