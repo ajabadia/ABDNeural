@@ -570,9 +570,9 @@ corría contra `WebPilot\out` ANTERIOR — en esta pasada celebró un OK con la 
 
 **Pendiente del checklist del paso 1:** (a) visual: RANDOM nativo mueve morphX/Y en página y
 slider de página mueve VOLUME nativo; (c) XYPad nativo sigue a la página. (b) fallback
-embebido **VALIDADO (2026-09-17, ver sección propia más abajo)**. El drill
-`--selftest-force-fail` es TEMPORAL: ya validado, retirar el flag/stage cuando se commite
-(buscar `TEMPORAL` en `Source/WebPilotHost.cpp`).
+embebido **VALIDADO (2026-09-17, ver sección propia más abajo)**. Drill
+`--selftest-force-fail`: RETIRADO (2026-09-17) tras validar; el flag ya no fuerza nada y se
+degraja a un `--selftest` normal.
 
 **Fix de revisión (2026-09-16, por compilar): el exit code del selftest nunca salía del exe.**
 `selftestPassed` moría en el `PilotComponent`: ni `finish()` ni `systemRequestedQuit()` lo
@@ -591,9 +591,10 @@ echo %ERRORLEVEL%   :: debe ser 0
 echo %ERRORLEVEL%   :: debe ser 1 (simulacro temporal, imprime selftest-forced-fail)
 ```
 
-El simulacro `--selftest-force-fail` (TEMPORAL, retirar tras validar) salta el E2E y publica
-el veredicto FAIL en el primer tick: comprueba que el exit 1 llega al proceso sin depender de
-que el bridge falle de verdad. En `--auto-quit`/cierre manual el exit sigue siendo 0.
+El simulacro `--selftest-force-fail` (RETIRADO 2026-09-17 tras validar) saltaba el E2E y
+publicaba el veredicto FAIL en el primer tick: comprobó que el exit 1 llegaba al proceso sin
+depender de que el bridge fallara de verdad. En `--auto-quit`/cierre manual el exit sigue
+siendo 0.
 **VALIDADO (2026-09-16 23:5x): ambos caminos, exit 0 y exit 1.** Revalidado 2026-09-17 con el
 host corregido del fallback (ambos en verde).
 

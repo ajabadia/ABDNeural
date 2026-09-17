@@ -21,10 +21,6 @@
  *          Measurements are appended to `pilot-startup.log` next to the executable
  *          and summarised in the window title. Pass `--auto-quit` to close the host
  *          automatically once the panel reports ready.
- *
- *          TEMPORARY drill: `--selftest-force-fail` forces the FAIL verdict (exit code 1)
- *          without running the E2E, to validate that the verdict reaches the process exit
- *          code. Remove the flag once both paths (0 and 1) have been verified.
  */
 
 #include <juce_gui_extra/juce_gui_extra.h>
@@ -384,12 +380,11 @@ namespace
                                  private juce::Timer
     {
     public:
-        PilotComponent (bool shouldAutoQuit, bool runSelftest, bool forceSelftestFailDrill)
+        PilotComponent (bool shouldAutoQuit, bool runSelftest)
             : browser (makeBrowserOptions()),
               processor(),
               autoQuit (shouldAutoQuit),
-              selftest (runSelftest),
-              forceSelftestFail (forceSelftestFailDrill)
+              selftest (runSelftest)
         {
             // The REAL processor, not a stand-in: the bridge mirrors the plugin's own
             // APVTS and the native panel below the page is the tab the editor ships.
@@ -439,26 +434,12 @@ namespace
         //   JS -> NATIVE: dispatch a real 'input' event on the page's slider (exactly what
         //                 a user drag produces), then read the APVTS parameter.
         // The script prints SELFTEST: OK / SELFTEST: FAIL and the process exits 0/1.
-        //
-        // TEMPORAL drill: `--selftest-force-fail` salta el E2E y publica FAIL a propósito,
-        // para probar que el veredicto llega de verdad al exit code del proceso
-        // (antes de g_selftestExitCode salía SIEMPRE 0). Retirar tras validar.
         // ============================================================================
 
-        enum class SelftestStage { idle, waitReady, nativePushed, jsPushed, forcedFail };
+        enum class SelftestStage { idle, waitReady, nativePushed, jsPushed };
 
         void startSelftest()
         {
-            // TEMPORAL drill (--selftest-force-fail): nada de E2E — veredicto FAIL
-            // inmediato en el primer tick, para poder comprobar el exit 1 sin tráfico
-            // de WebView2. Eliminar junto con el stage forcedFail tras validar.
-            if (forceSelftestFail)
-            {
-                selftestStage = SelftestStage::forcedFail;
-                std::cout << "[selftest] FORCED-FAIL drill: skipping the E2E; exit code 1 is published on purpose.\n";
-                return;
-            }
-
             selftestStage = SelftestStage::waitReady;
             std::cout << "[selftest] waiting for the page to be ready...\n";
         }
@@ -497,10 +478,6 @@ namespace
                     });
                     break;
                 }
-
-                case SelftestStage::forcedFail:
-                    selftestFinish();   // TEMPORAL drill: verdict FAIL y exit 1, él solo cierra
-                    break;
 
                 case SelftestStage::nativePushed:
                     break;   // waiting on the async evaluation above
@@ -575,10 +552,8 @@ namespace
             g_selftestExitCode.store (allOk ? 0 : 1, std::memory_order_relaxed);
 
             // Report the startup metrics plus the verdict, then leave: the process
-            // exit code is what scripts and build.bat read. The forced-fail drill gets
-            // its own reason so a drill run is never confused with a real failure.
-            finish (allOk ? "selftest-ok"
-                          : (forceSelftestFail ? "selftest-forced-fail" : "selftest-fail"));
+            // exit code is what scripts and build.bat read.
+            finish (allOk ? "selftest-ok" : "selftest-fail");
         }
 
         /** @brief Browser options, with the transport of the parameter bridge. */
@@ -637,7 +612,7 @@ namespace
             {
                 selftestTick();
 
-                if (finished)   // e.g. the forced-fail drill finishes on its very first tick
+                if (finished)   // the selftest can finish inside its own tick
                     return;
             }
 
@@ -723,7 +698,6 @@ namespace
         std::unique_ptr<NEURONiK::UI::ParameterPanel> nativePanel;
         const bool autoQuit;
         const bool selftest;
-        const bool forceSelftestFail;   // TEMPORAL drill flag, see startSelftest()
         SelftestStage selftestStage = SelftestStage::idle;
         bool selftestNativeToJsOk = false;
         bool selftestJsToNativeOk = false;
@@ -737,13 +711,13 @@ namespace
     class MainWindow final : public juce::DocumentWindow
     {
     public:
-        MainWindow (bool autoQuit, bool runSelftest, bool forceSelftestFail)
+        MainWindow (bool autoQuit, bool runSelftest)
             : DocumentWindow("NEURONiK Web Pilot",
                              juce::Colours::black,
                              DocumentWindow::allButtons)
         {
             setUsingNativeTitleBar(true);
-            setContentOwned(new PilotComponent (autoQuit, runSelftest, forceSelftestFail), true);
+            setContentOwned(new PilotComponent (autoQuit, runSelftest), true);
             centreWithSize(900, 760);
             setResizable(true, true);
             setVisible(true);
@@ -768,14 +742,10 @@ namespace
 
             // --selftest implies --auto-quit: the check runs unattended and the exit
             // code is the verdict (0 = both directions moved, 1 = something didn't).
-            // TEMPORAL drill: --selftest-force-fail contiene "--selftest" como subcadena,
-            // así que runSelftest sale true solo y shouldAutoQuit con él; el flag fuerza
-            // el veredicto FAIL (exit 1 esperado).
-            const auto forcedFailDrill = containsArgument (commandLine, "--selftest-force-fail");
             const auto runSelftest = containsArgument (commandLine, "--selftest");
             const auto shouldAutoQuit = containsArgument (commandLine, "--auto-quit") || runSelftest;
 
-            window = std::make_unique<MainWindow> (shouldAutoQuit, runSelftest, forcedFailDrill);
+            window = std::make_unique<MainWindow> (shouldAutoQuit, runSelftest);
         }
 
         void shutdown() override
