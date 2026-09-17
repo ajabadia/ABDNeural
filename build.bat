@@ -19,14 +19,24 @@ REM  selftest bidireccional del bridge (nativo->JS y JS->nativo, sobre el
 REM  canal real de WebView2). Exit code != 0 si alguna direccion no se mueve.
 REM
 REM  El script siempre termina con PAUSA, incluso si algo falla.
+REM  Cada pasada deja ademas build-last-run.log (log espejo de la consola),
+REM  asi si la ventana se cierra sin querer el resultado queda en disco.
 REM ============================================================================
+
+REM ---- Log espejo: relanza el script internamente y teed consola+fichero ----
+if not "%~1"=="--internal-log" (
+    powershell -NoProfile -Command "& cmd /c '\"%~f0\" --internal-log %*' 2>&1 | Tee-Object -Variable out; $out | Out-File -FilePath 'build-last-run.log' -Encoding utf8; exit $LASTEXITCODE"
+    exit /b !ERRORLEVEL!
+)
 
 set "BUILD_DIR="
 set "WITH_MODELMAKER=0"
 set "WITH_SELFTEST=1"
 
 for %%A in (%*) do (
-    if /I "%%A"=="modelmaker" (
+    if /I "%%A"=="--internal-log" (
+        rem bandera del envoltorio de log: ignorar
+    ) else if /I "%%A"=="modelmaker" (
         set "WITH_MODELMAKER=1"
     ) else if /I "%%A"=="noselftest" (
         set "WITH_SELFTEST=0"
@@ -42,6 +52,7 @@ set "WEBUI_BUILD_FAILED=0"
 
 cd /d "%~dp0"
 
+echo === Sesion: %DATE% %TIME% ===
 echo =======================================================
 echo          ABDNeural (NEURONiK) - Compilacion Release
 echo          Directorio de build: %BUILD_DIR%
@@ -99,7 +110,7 @@ call pnpm build
 if !ERRORLEVEL! neq 0 (
     popd
     echo [ERROR] Fallo la exportacion de la WebUI del piloto. Sin WebUI nueva no hay
-    echo         selftest honesto: corria contra WebPilot\out ANTERIOR (staleness).
+    echo         selftest honesto: corria contra WebPilot\out ANTERIOR \^(staleness\^).
     set "WEBUI_BUILD_FAILED=1"
     set "EXIT_CODE=1"
     goto :modelmaker

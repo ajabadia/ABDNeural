@@ -65,8 +65,8 @@ protected:
     Effects::Reverb reverb;
     juce::LinearSmoothedValue<float> masterLevelSmoother;
 
-    // Shared LFOs
-    Core::LFO lfo1, lfo2;
+    // Shared LFOs (semillas distintas: S&H decorrelacionado entre lfo1/lfo2)
+    Core::LFO lfo1 { 0x1D0F1u }, lfo2 { 0x1D0F2u };
     std::atomic<float> lfo1Value { 0.0f };
     std::atomic<float> lfo2Value { 0.0f };
 

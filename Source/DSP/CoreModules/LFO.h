@@ -36,7 +36,11 @@ public:
         TempoSync
     };
 
-    LFO() noexcept;
+    // Seed explícita: el ctor por defecto de juce::Random busca entropía del
+    // sistema, prohibida dentro del hilo AudioWorklet (target WASM).
+    // Instancias paralelas deben usar semillas distintas para no correlacionar
+    // el Sample & Hold.
+    explicit LFO (juce::uint32 seed = 0x1D0F1u) noexcept;
     ~LFO() = default;
 
     // --- Configuration (Non-Realtime) ---

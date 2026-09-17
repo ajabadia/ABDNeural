@@ -92,7 +92,9 @@ void ParameterPanel::setupControl(VerticalSliderControl& ctrl, const juce::Strin
 
 void ParameterPanel::randomizeParameters()
 {
-    auto& random = juce::Random::getSystemRandom();
+    // Instancia local en vez de getSystemRandom(): sin entropia de sistema
+    // (regla WASM 7A) y sin estado global compartido entre hilos.
+    juce::Random random { (juce::int64) juce::Time::getMillisecondCounter() };
 
     auto randomizeParam = [&](const juce::String& id, float minVal, float maxVal) {
         if (auto* param = vts.getParameter(id))

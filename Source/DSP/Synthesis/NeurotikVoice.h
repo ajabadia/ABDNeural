@@ -22,7 +22,9 @@ namespace NEURONiK::DSP::Synthesis {
 class NeurotikVoice : public IVoice
 {
 public:
-    NeurotikVoice();
+    // voiceIndex evita semillas identicas entre voces: con la misma semilla,
+    // el ruido de excitacion seria identico en unison (artefacto audible).
+    explicit NeurotikVoice (int voiceIndex = 0);
     ~NeurotikVoice() override = default;
 
     struct Params

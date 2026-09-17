@@ -15,8 +15,11 @@
 
 namespace NEURONiK::DSP::Synthesis {
 
-NeurotikVoice::NeurotikVoice()
+NeurotikVoice::NeurotikVoice (int voiceIndex)
 {
+    // Semilla determinista sin entropia de sistema (WASM-safe) y unica por
+    // voz para que el ruido de excitacion no se correlacione entre voces.
+    random.setSeed ((juce::uint64) (0x9E3779B9u + 7919u * (juce::uint32) voiceIndex));
     lastNoiseSample = 0.0f;
 }
 

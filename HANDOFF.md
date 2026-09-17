@@ -1276,3 +1276,13 @@ No borrar ni sobrescribir `build-reference` hasta generar una nueva referencia v
 - No migrar toda la interfaz JUCE antes de validar un panel piloto.
 - No añadir Next.js al proyecto principal sin probar antes exportación estática y WebView2.
 - No comparar solo por oído: mantener pruebas automatizadas de audio.
+
+## 2026-09-17 (b): Siembra de juce::Random + bomba de paréntesis en build.bat
+
+**Siembra Random (regla 7A del skill JUCE hybrid — preparación WASM):**
+- `LFO` ahora toma semilla explícita por constructor (antes: `getMillisecondCounter`, no determinista; y el miembro pasaba por el ctor por defecto, que busca entropía del sistema).
+- `BaseEngine` instancia `lfo1`/`lfo2` con semillas distintas (S&H decorrelacionado).
+- `NeurotikVoice(int voiceIndex)` siembra determinista y única por voz (con semilla idéntica, el ruido de excitación sería idéntico entre voces en unison: artefacto audible).
+- `ParameterPanel::randomizeParameters` usa instancia local sembrada con reloj en vez de `getSystemRandom()` (UI, no RT; pero mismo principio).
+
+**Bug del pipeline (explicaba builds que morían en silencio):** en la rama de error del paso 4 había un `(staleness)` sin escapar dentro de un bloque `if (...)`. cmd parsea el bloque entero aunque la condición sea falsa: el `)` cerraba el bloque prematuramente y el script moría con "No se esperaba . en este momento" justo al terminar el paso 4 — sin llegar nunca al `pause` final. Escapado como las demás líneas. Cada pasada ahora deja además `build-last-run.log` (envoltorio PowerShell Tee-Object, UTF-8, exit code propagado).

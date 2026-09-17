@@ -18,7 +18,7 @@ NeurotikEngine::NeurotikEngine()
 {
     activeVoiceLimit.store(8);
     for (int i = 0; i < 32; ++i)
-        voices.push_back(std::make_unique<Synthesis::NeurotikVoice>());
+        voices.push_back(std::make_unique<Synthesis::NeurotikVoice>(i));
 }
 
 void NeurotikEngine::prepare(double sampleRate, int samplesPerBlock)

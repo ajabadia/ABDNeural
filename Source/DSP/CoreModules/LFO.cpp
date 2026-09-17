@@ -13,10 +13,12 @@
 
 namespace NEURONiK::DSP::Core {
 
-LFO::LFO() noexcept
+LFO::LFO (juce::uint32 seed) noexcept
 {
-    // Seed the random generator for Sample & Hold
-    random_.setSeed(juce::Time::getMillisecondCounter());
+    // Seed determinista sin entropia de sistema (regla 7A del skill JUCE
+    // hybrid: la entropia crashea en AudioWorklet). El reloj que habia aqui
+    // ademas hacia el patron S&H irreproducible entre sesiones.
+    random_.setSeed (seed);
     lastRandomValue_ = random_.nextFloat() * 2.0f - 1.0f; // -1 to 1
     nextRandomValue_ = random_.nextFloat() * 2.0f - 1.0f; // -1 to 1
     randomInterpolationPhase_ = 0.0f;
