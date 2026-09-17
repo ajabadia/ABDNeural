@@ -500,7 +500,7 @@ namespace
         // The script prints SELFTEST: OK / SELFTEST: FAIL and the process exits 0/1.
         // ============================================================================
 
-        enum class SelftestStage { idle, waitReady, nativePushed, jsPushed };
+        enum class SelftestStage { idle, waitReady, nativePushed, jsPushed, generalCheck };
 
         void startSelftest()
         {
@@ -600,14 +600,76 @@ namespace
                                   << juce::String (nativeValue, 4) << " -> " << (okJs ? "OK" : "FAIL") << "\n";
                         selftestJsToNativeOk = okJs;
 
-                        selftestFinish();
+                        selftestStartGeneralCheck();
                     });
                 });
         }
 
+        // --- GENERAL E2E (Phase 7) -------------------------------------------------
+        // The GENERAL tab joined 11 new parameter ids to the page's state. The bridge
+        // mirrors the WHOLE APVTS, so every snapshot must carry them; and a native
+        // edit of one of them must land in the page's normalised state. The footer
+        // serialises that state as JSON (<code>), which is exactly what we read back.
+        void selftestStartGeneralCheck()
+        {
+            selftestStage = SelftestStage::generalCheck;
+
+            if (auto* parameter = processor.getAPVTS().getParameter ("envAttack"))
+                parameter->setValueNotifyingHost (0.5f);
+
+            juce::Timer::callAfterDelay (400, [this]
+            {
+                browser.evaluateJavascript (
+                    "(() => { try {"
+                    "  const state = JSON.parse(document.querySelector('.panel-footer code').textContent);"
+                    "  const ids = ['engineType','envAttack','envDecay','envSustain','envRelease',"
+                    "    'unisonDetune','unisonSpread','randomStrength','freezeResonator',"
+                    "    'freezeFilter','freezeEnvelopes'];"
+                    "  return JSON.stringify({"
+                    "    missing: ids.filter((id) => !(id in state)),"
+                    "    bad: ids.filter((id) => typeof state[id] !== 'number')"
+                    "             .map((id) => id + '=' + String(state[id])),"
+                    "    envAttack: state.envAttack });"
+                    " } catch (e) { return 'GENERAL_FAIL: ' + e.message; } })()",
+                    [this] (juce::WebBrowserComponent::EvaluationResult result)
+                    {
+                        selftestGeneralCheck (result.getResult() != nullptr
+                                                  ? result.getResult()->toString()
+                                                  : juce::String ("NO_RESULT"));
+                    });
+            });
+        }
+
+        void selftestGeneralCheck (const juce::String& raw)
+        {
+            const auto parsed = juce::JSON::parse (raw);
+            const auto* object = parsed.getDynamicObject();
+            const auto envAttack = object != nullptr
+                                       ? static_cast<double> (object->getProperty ("envAttack"))
+                                       : -1.0;
+            const auto* missing = object != nullptr
+                                      ? object->getProperty ("missing").getArray()
+                                      : nullptr;
+            const auto* bad = object != nullptr
+                                  ? object->getProperty ("bad").getArray()
+                                  : nullptr;
+
+            const auto ok = object != nullptr
+                                && missing != nullptr && missing->isEmpty()
+                                && bad != nullptr && bad->isEmpty()
+                                && std::abs (envAttack - 0.5) < 0.02;
+
+            std::cout << "[selftest] GENERAL: 11 ids on the page, envAttack = "
+                      << juce::String (envAttack, 3) << " (native 0.5) -> "
+                      << (ok ? "OK" : "FAIL") << "\n";
+            selftestGeneralOk = ok;
+
+            selftestFinish();
+        }
+
         void selftestFinish()
         {
-            const auto allOk = selftestNativeToJsOk && selftestJsToNativeOk;
+            const auto allOk = selftestNativeToJsOk && selftestJsToNativeOk && selftestGeneralOk;
 
             std::cout << "[selftest] RESULT: " << (allOk ? "OK" : "FAIL") << "\n";
             selftestPassed = allOk;
@@ -772,6 +834,7 @@ namespace
         SelftestStage selftestStage = SelftestStage::idle;
         bool selftestNativeToJsOk = false;
         bool selftestJsToNativeOk = false;
+        bool selftestGeneralOk = false;   // 11 GENERAL ids present + native->page propagation
         bool selftestPassed = false;
         bool probeInFlight = false;
         bool finished = false;

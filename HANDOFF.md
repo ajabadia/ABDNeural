@@ -667,6 +667,11 @@ freeze. Puntos finos:
 - **pageContract.test.js** fija: `masterLevel` sigue siendo el `input[type=range]` nativo que el
   selftest conduce, `ParamSlider`/`ParamChoice` en la BRIDGE, `value={normalized}` y
   `handleChange(control.id…)` — todos los checks siguen en verde (vitest 42/42).
+- **Selftest con 3er chequeo E2E (GENERAL)**: tras las dos direcciones de `masterLevel`, el
+  selftest empuja `envAttack` (normalizado 0.5) desde nativo y lee el estado de la página desde
+  el JSON del footer: los 11 ids de la GENERAL deben estar presentes y numéricos, y `envAttack`
+  debe valer 0.5. El veredicto del selftest exige ahora las TRES direcciones
+  (`selftestNativeToJsOk && selftestJsToNativeOk && selftestGeneralOk`).
 - **CSS**: tabs/grupos/ADSR con tokens del tema (`--accent`, `--line`, `--muted`), sin frameworks
   (regla del skill JUCE_hybrid: vanilla CSS dentro del WebView).
 
