@@ -11,7 +11,7 @@ Evolucionar NEURONiK desde su implementación actual en JUCE hacia una arquitect
 
 La migración será incremental. No se sustituirá la interfaz JUCE ni se modificará el motor DSP sin una prueba de regresión equivalente.
 
-## Estado actual — 2026-09-16
+## Estado actual — 2026-09-17
 
 - [x] Repositorio clonado y revisado.
 - [x] Build Release de referencia generado.
@@ -20,11 +20,15 @@ La migración será incremental. No se sustituirá la interfaz JUCE ni se modifi
 - [x] Dependencia de parámetros centralizada en `Source/State/ParameterDefinitions.h`.
 - [x] Prueba offline inicial del DSP registrada en CTest.
 - [x] Crear una fachada DSP progresiva para eventos y buffers.
+- [x] Crear adaptador de parámetros para la interfaz web (contrato generado del APVTS +
+      `ParameterBridge` con presets; ver Fases 2-4).
+- [x] Probar una pantalla web dentro de WebView2 (piloto BRIDGE + GENERAL en el host,
+      fallback embebido y selftest E2E de tres direcciones; ver Fases 3-4 y 7).
 - [ ] Separar progresivamente el núcleo DSP de las abstracciones JUCE.
-- [ ] Crear adaptador de parámetros para la interfaz web.
-- [ ] Crear wrapper WASM.
-- [ ] Probar una pantalla web dentro de WebView2.
-- [ ] Decidir entre React/Vite y Next.js estático a partir de un prototipo real.
+- [ ] Crear wrapper WASM (la preparación mínima ya identificada: sembrar los `juce::Random`
+      de `LFO.h` y `NeurotikVoice.h` — en AudioWorklet la entropía de sistema crashea).
+- [ ] Decidir entre React/Vite y Next.js estático (los datos de Next ya están: 572 KB de JS
+      de runtime, arranque ~1.6 s; falta el contra-piloto React/Vite, Fase 6).
 
 ## Fases
 
