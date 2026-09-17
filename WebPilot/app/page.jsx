@@ -17,6 +17,16 @@ import {
   describePilotControls,
   getDescriptor,
 } from '../lib/parameters.js';
+import { engineIndexFromNormalized } from '../lib/audioParams.js';
+import {
+  isAudioEngineReady,
+  onAudioEngineChange,
+  panicWorklet,
+  pushEngineToWorklet,
+  pushMidiToWorklet,
+  pushParamsToWorklet,
+  startAudioEngine,
+} from '../lib/audioWorkletEngine.js';
 
 // Bound at module scope: these come from the generated C++ contract, not from
 // hand written constants, so a range change in the plugin cannot be missed here.
@@ -249,6 +259,49 @@ function PresetBar({ presetState, presetError, bridgeAvailable, onLoad, onSave }
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState('bridge');
 
+  // ---- Web audio path (AudioWorklet + WASM DSP real, Fase 5) ----------------
+  // El navegador exige un gesto de usuario para arrancar audio: el botón
+  // SOUND ON es la puerta; el estado llega por onAudioEngineChange.
+  const [audio, setAudio] = useState({ status: 'idle', error: null, sampleRate: 0 });
+
+  useEffect(() => {
+    let active = true;
+
+    onAudioEngineChange((state) => {
+      if (active)
+        setAudio({ status: state.status, error: state.error, sampleRate: state.sampleRate });
+    });
+
+    return () => { active = false; };
+  }, []);
+
+  async function handleStartSound() {
+    await startAudioEngine();
+  }
+
+  function audioControl() {
+    if (audio.status === 'ready')
+      return (
+        <span className="status">
+          AUDIO ON · {(audio.sampleRate / 1000).toFixed(1)} kHz
+        </span>
+      );
+
+    if (audio.status === 'loading')
+      return <span className="status">AUDIO…</span>;
+
+    return (
+      <button
+        type="button"
+        className="keys-panic"
+        onClick={handleStartSound}
+        title={audio.error ?? 'Arranca el motor DSP real en el navegador (AudioWorklet)'}
+      >
+        {audio.status === 'error' ? 'AUDIO ERROR — REINTENTAR' : 'SOUND ON'}
+      </button>
+    );
+  }
+
   const {
     controls: hookControls,
     parameters,
@@ -271,6 +324,26 @@ export default function HomePage() {
     sendMidiModWheel,
     sendMidiPanic,
   } = useParameterControls(SCREEN_PARAMETER_IDS);
+
+  // Sync completo al worklet en cada cambio de estado: cubre ediciones de la
+  // página Y snapshots nativos (bridge) con un único camino, sin wrappers por
+  // control. El motor va aparte porque reconstruye el engine (caro): sólo
+  // cuando cambia su índice.
+  const lastEngineIndexRef = useRef(-1);
+
+  useEffect(() => {
+    if (audio.status !== 'ready') return;
+
+    const engineIndex =
+      engineIndexFromNormalized (parameters.engineType ?? 0, getDescriptor ('engineType'));
+
+    if (engineIndex !== lastEngineIndexRef.current) {
+      lastEngineIndexRef.current = engineIndex;
+      pushEngineToWorklet (engineIndex);
+    }
+
+    pushParamsToWorklet (parameters);
+  }, [parameters, audio.status]);
 
   const bridgeControls = useMemo(
     () => hookControls.filter((control) => PILOT_PARAMETER_IDS.includes(control.id)),
@@ -417,6 +490,7 @@ export default function HomePage() {
             <h1>Parameter bridge</h1>
           </div>
           <span className="status">{bridgeAvailable ? 'BRIDGE LIVE' : 'LOCAL MODE'}</span>
+          {audioControl()}
         </header>
 
         <p className="intro">
@@ -527,14 +601,25 @@ export default function HomePage() {
           <KeysTab
             midiState={midiState}
             bridgeAvailable={bridgeAvailable}
-            onNoteOn={sendMidiNoteOn}
-            onNoteOff={sendMidiNoteOff}
-            onPitchBend={sendMidiPitchBend}
+            onNoteOn={(note, velocity) => {
+              // Dual path: bridge nativo (si vive) + motor WASM local.
+              sendMidiNoteOn (note, velocity);
+              pushMidiToWorklet ({ kind: 'noteOn', note, velocity });
+            }}
+            onNoteOff={(note) => {
+              sendMidiNoteOff (note);
+              pushMidiToWorklet ({ kind: 'noteOff', note });
+            }}
+            onPitchBend={(value) => {
+              sendMidiPitchBend (value);
+              pushMidiToWorklet ({ kind: 'pitchBend', value });
+            }}
             onModWheel={sendMidiModWheel}
             onPanic={() => {
               // Native side of the page panic: stop EVERY sounding note in the
               // plugin (page, hardware and DAW alike) — midiPanic action.
               sendMidiPanic();
+              panicWorklet();
             }}
           />
         ) : null}

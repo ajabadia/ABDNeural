@@ -1400,3 +1400,27 @@ transicional (casilla abierta a propósito en el roadmap, se ataca con la Fase 5
 - Artefactos: build-wasm/neuronik_dsp.js (13 KB) + .wasm (89 KB), ES6+MODULARIZE,
   listos para AudioWorklet. Quedan en la Fase 5: worklet JS, paridad WASM<->nativo
   (el DSP es determinista: bit-exacta alcanzable) y wire-up de presets/params en UI.
+
+## 2026-09-18 — AudioWorklet del piloto (Fase 5, segundo hito)
+- `WebPilot/public/worklet/neuronik-worklet.js`: AudioWorkletProcessor que
+  instancia el módulo WASM real (glue ES6 importado; binario entregado por
+  processorOptions como ArrayBuffer clonado — el scope del worklet no tiene
+  fetch al mundo de la página) y renderiza via neuronikProcess. Eventos MIDI
+  apilados a Runtime::Event (24 B), GlobalParams escritos por índice de campo
+  (bpm f64 aparte), telemetría de voces/LFO cada ~21 ms.
+- `WebPilot/lib/audioParams.js`: mapeo contrato -> índices de GlobalParams
+  (21 campos reachables; bpm sin contrato aún). Conversion normalizada->real
+  con la MISMA matemática del panel nativo (fromNormalized). Test de contrato
+  (`tests/audioParams.test.js`): defaults C++ vs contrato, discretos, skew.
+- `WebPilot/lib/audioWorkletEngine.js`: ciclo de vida del AudioContext en la
+  página (botón SOUND ON = gesto de usuario), sync de parámetros por snapshot
+  completo (cubre ediciones locales Y snapshots nativos del bridge), notas/
+  wheels/panic en camino dual (bridge + worklet).
+- Sincronización de artefactos: `sync_wasm.bat` / `pnpm --filter
+  @abdsynths/web-pilot-vite sync:wasm` copia build-wasm/ -> public/worklet/
+  (ejecutar tras cada build_wasm.bat; el .wasm se sirve desde la exportación).
+- Validación: vitest 55/55, build Vite 4.1 s (306 KB JS), smoke Node del
+  módulo servido (peak 0.53, drain OK), selftest del host exit 0 con la página
+  nueva, build nativo + ctest 11/11.
+- Pendiente de la Fase 5: paridad WASM<->nativo bit-exacta y wire-up de
+  presets en la vía web.

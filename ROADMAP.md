@@ -56,6 +56,17 @@ La migración será incremental. No se sustituirá la interfaz JUCE ni se modifi
       y lecciones 7-9): SSE bajo WASM (`-msimd128 -D__SSE__ -D__SSE2__ -include
       immintrin.h` + `JUCE_NO_INLINE_ASM=1`), quirk de `emsdk_env.bat` y la trampa
       headless de `juce_audio_processors` en JUCE 8.
+- [x] AudioWorklet en el piloto WebPilot (Fase 5, segundo hito cerrado 2026-09-18):
+      processor `neuronik-processor` (WebPilot/public/worklet/) instancia el
+      módulo real vía processorOptions (el binario cruza como ArrayBuffer
+      clonado; el scope del worklet no tiene fetch al mundo de la página). La
+      página puentea snapshot de parámetros (mapeo contrato→GlobalParams en
+      lib/audioParams.js, con test de contrato: 9 tests), motor, notas/wheels
+      del teclado y panic. Botón SOUND ON (gesto de usuario para el
+      AudioContext). Sincronización de artefactos: sync_wasm.bat /
+      `pnpm sync:wasm` tras cada build_wasm.bat. Validado: vitest 55/55, build
+      Vite 4.1 s (306 KB JS), smoke Node del módulo servido (peak 0.53),
+      selftest del host exit 0 con la página nueva.
 - [ ] Validar de oído delay sync, chorus, reverb y curva de velocidad (Fase 2,
       requiere presets reales y tus oídos).
 
