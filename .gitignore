@@ -66,3 +66,4 @@ TOTALCODE*.txt
 CONTROL_FILESCODE*.txt
 Scripts/Temp/
 Testing/
+build-wasm/

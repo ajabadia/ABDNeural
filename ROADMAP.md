@@ -40,9 +40,13 @@ La migración será incremental. No se sustituirá la interfaz JUCE ni se modifi
       mina enterrada de la Fase 5 (WASM) ya está desactivada.
 - [x] Pipeline de build: /MP, sin reconfiguración redundante de CMake, modo rápido
       `build.bat tests` (~19 s en caliente) y log espejo `build-last-run.log`.
-- [ ] Separar progresivamente el núcleo DSP de las abstracciones JUCE (Fase 1).
-- [ ] Crear wrapper WASM (Fase 5): la preparación mínima (sembrar los `juce::Random`)
-      ya está hecha; queda el resto del wrapper.
+- [x] Separar progresivamente el núcleo DSP de las abstracciones JUCE (Fase 1,
+      cerrada 2026-09-17: `DspEngineFacade` sin JUCE + paridad bit-exacta en `DSPReferenceTest`).
+- [x] Crear wrapper WASM (Fase 5, primer hito cerrado 2026-09-17: módulo real de 89 KB
+      renderizando audio, smoke test Node en verde). **Lección de ABDMS2000 aplicada**: su
+      build WASM duplica la lista de fuentes a mano y sufrió drift (4 fuentes del nativo no
+      llegan al WASM, incluido `SynthEngine.cpp`) — aquí la lista vive en `DspSources.cmake`
+      compartido por ambos builds, drift imposible.
 - [ ] Validar de oído delay sync, chorus, reverb y curva de velocidad (Fase 2,
       requiere presets reales y tus oídos).
 
@@ -227,11 +231,20 @@ quería despejar era exactamente el modo de fallo silencioso del canal.)
 
 ### Fase 5 — WASM
 
-- [ ] Preparar un target WASM del núcleo DSP.
-- [ ] Exponer una API C/ABI mínima y estable.
-- [ ] Crear `AudioWorklet` para el renderizado.
-- [ ] Comparar salida WASM con la salida nativa usando los mismos parámetros.
-- [ ] Añadir pruebas de audio no nulo, note-on/off y cambio de preset.
+- [x] Preparar un target WASM del núcleo DSP (hecho 2026-09-17: DSP real sin port, JUCE
+      8.0.12 compilado con em++ sobre la frontera Fase 1; `build_wasm.bat` auto-arma VS+emsdk,
+      salida `build-wasm/neuronik_dsp.js|.wasm` ES6+MODULARIZE, 89 KB; smoke test Node en
+      verde: audio finito no nulo, drain de release, panic).
+- [x] Exponer una API C/ABI mínima y estable (`Source/Wasm/NeuronikWasmBridge.cpp`:
+      init/setEngine/process/setGlobalParams/layouts por offsetof/allNotesOff/numActiveVoices/
+      getLfo; static_asserts de layout de 24 bytes por evento).
+- [ ] Crear `AudioWorklet` para el renderizado (el módulo ya es ES6+MODULARIZE, apto para
+      worklet; falta el worklet JS + integración WebUI).
+- [ ] Comparar salida WASM con la salida nativa usando los mismos parámetros (el DSP es
+      determinista: paridad bit-exacta alcanzable; el smoke test Node ya es el ancla JS).
+- [x] Añadir pruebas de audio no nulo, note-on/off y cambio de preset (smoke test Node:
+      peak 0.53 finito, 1 voz activa, drain de release ~<2 s, allNotesOff OK; el preset
+      vía setGlobalParams queda wire-up en UI).
 - [ ] Validar sample rates y tamaños de bloque.
 
 ### Fase 6 — Consolidación del framework

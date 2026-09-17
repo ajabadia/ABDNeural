@@ -292,7 +292,7 @@ float Resonator::processSample(int sampleIdx) noexcept
         phaseV += incV;
         
         // Wrap phase [0, 1]
-        auto wrapMask = juce::dsp::SIMDRegister<float>::greaterThanOrEqual(phaseV, setAll(1.0f));
+        auto wrapMask = simdGreaterThanOrEqual (phaseV, setAll (1.0f));
         phaseV -= simdSelect(wrapMask, setAll(1.0f), setAll(0.0f));
         storeUnaligned(&currentPhases[i], phaseV);
 

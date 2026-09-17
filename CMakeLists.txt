@@ -46,20 +46,8 @@ endif()
 # ADD SOURCE FILES (DSP CORE)
 # ============================================================================
 
-set(NEURONIK_DSP_SOURCES
-    Source/DSP/Runtime/DspEngineFacade.cpp
-    Source/DSP/CoreModules/LFO.cpp
-    Source/DSP/CoreModules/Oscillator.cpp
-    Source/DSP/CoreModules/Resonator.cpp
-    Source/DSP/CoreModules/Envelope.cpp
-    Source/DSP/CoreModules/FilterBank.cpp
-    Source/DSP/CoreModules/ResonatorBank.cpp
-    Source/DSP/CoreModules/NeuronikEngine.cpp
-    Source/DSP/CoreModules/NeurotikEngine.cpp
-    Source/DSP/BaseEngine.cpp
-    Source/DSP/Synthesis/AdditiveVoice.cpp
-    Source/DSP/Synthesis/NeurotikVoice.cpp
-)
+# Lista DSP compartida con el build WASM (single-source, anti-drift):
+include("${CMAKE_CURRENT_SOURCE_DIR}/DspSources.cmake")
 
 set(NEURONIK_SOURCES
     # Main

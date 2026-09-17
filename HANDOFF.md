@@ -1368,3 +1368,35 @@ dejar Next solo como referencia, o mantener ambos). El piloto quedó funcional e
 **Estado de la frontera:** `DspTypes.h` + `Runtime/*` compilan sin JUCE; el motor
 interno (`BaseEngine`, voces, efectos) sigue usando juce_* por decisión de diseño
 transicional (casilla abierta a propósito en el roadmap, se ataca con la Fase 5/WASM).
+
+## 2026-09-17 (d) — Fase 5: DSP real compilado a WASM (smoke test Node en verde)
+
+- `wasm/CMakeLists.txt` + `build_wasm.bat`: compilan el DSP REAL (sin port) sobre la
+  frontera de la Fase 1 (DspEngineFacade). JUCE 8.0.12 con em++ requiere: (a) entorno
+  de Visual Studio ANTES que emsdk en el PATH (bootstrap de juceaide; el bat lo auto-arma
+  via vswhere), (b) generador Ninja (el generador VS no soporta el toolchain em++),
+  (c) `-includeemscripten.h` global (bug de juce_SystemStats_wasm.cpp en 8.0.12: usa
+  emscripten_get_now() sin incluir <emscripten.h>), (d) parche minimo en
+  C:/JUCE/modules/juce_core/native/juce_ThreadPriorities_native.h (rama JUCE_WASM con
+  tabla a 0, igual que LINUX; auditoria del hash original en /tmp/juce_patch_audit.txt —
+  replicar el parche si se actualiza JUCE).
+- `DspSources.cmake` (nuevo): lista DSP single-source compartida nativo<->WASM.
+  Leccion ABDMS2000 aplicada (su WASM duplicaba la lista a mano y sufrio drift: le
+  faltaban 4 fuentes del nativo, incluido SynthEngine.cpp).
+- `SIMDWrapper.h` dual: nativo sigue con juce::dsp::SIMDRegister (intacto); WASM usa
+  fallback escalar de 4 lanes con API identica (JUCE no define SIMDRegister bajo
+  Emscripten: JUCE_USE_SIMD=0 y forzarlo choca con #error interno). `Resonator.cpp`
+  ya no usa SIMDRegister directamente (pasa por simdGreaterThanOrEqual del wrapper).
+  Paridad nativa intacta: DSPReferenceTest bit-exacta en verde (11/11).
+- `Source/Wasm/NeuronikWasmBridge.cpp`: ABI C plana (convencion ABDMS2000) hablando
+  con DspEngineFacade; layouts de GlobalParams/modMatrix por offsetof (JS nunca
+  hardcodea offsets); static_assert de Event = 24 bytes standard-layout.
+- Smoke test Node (`Tests/neuronik_wasm_smoke.mjs`): binario entregado via hook
+  instantiateWasm (el glue ES6 con ENVIRONMENT=web,worker usa fetch sobre
+  import.meta.url y no sabe leer file://), HEAPF32/HEAP32 en EXPORTED_RUNTIME_METHODS.
+  Verifica: audio finito no nulo (peak 0.53), voz activa tras noteOn, drain de release
+  tras allNotesOff (contrato: dispara releases RT-safe; la cola exponencial de 200 ms
+  cruza el umbral de Idle ~1.4-1.9 s), exit 0.
+- Artefactos: build-wasm/neuronik_dsp.js (13 KB) + .wasm (89 KB), ES6+MODULARIZE,
+  listos para AudioWorklet. Quedan en la Fase 5: worklet JS, paridad WASM<->nativo
+  (el DSP es determinista: bit-exacta alcanzable) y wire-up de presets/params en UI.
