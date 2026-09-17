@@ -10,6 +10,7 @@ REM        build.bat modelmaker         -> incluye la herramienta ModelMaker
 REM        build.bat build modelmaker   -> build limpio incluyendo ModelMaker
 REM        build.bat noselftest         -> omite el E2E del bridge (paso 8)
 REM        build.bat tests              -> modo rapido: solo contrato + suite de pruebas
+REM        build.bat nextui             -> WebUI con Next.js en vez de Vite (referencia)
 REM
 REM  ModelMaker queda fuera por defecto a proposito: su target arrastra
 REM  'UpdateVersion', que incrementa Source\ModelMaker\Version.h (fichero
@@ -34,6 +35,7 @@ set "BUILD_DIR="
 set "WITH_MODELMAKER=0"
 set "WITH_SELFTEST=1"
 set "TESTS_ONLY=0"
+set "WITH_NEXTUI=0"
 
 for %%A in (%*) do (
     if /I "%%A"=="--internal-log" (
@@ -45,6 +47,8 @@ for %%A in (%*) do (
     ) else if /I "%%A"=="tests" (
         set "TESTS_ONLY=1"
         set "WITH_SELFTEST=0"
+    ) else if /I "%%A"=="nextui" (
+        set "WITH_NEXTUI=1"
     ) else (
         set "BUILD_DIR=%%A"
     )
@@ -117,22 +121,44 @@ echo.
 REM El orden IMPORTA: la WebUI (out/) va ANTES que el host. El host EMBIBE el
 REM snapshot de out/ en el enlace (juce_add_binary_data sobre WebPilot/out/*);
 REM compilar el host antes dejaba dentro el bundle de la pasada ANTERIOR.
+REM
+REM Motor por defecto: Vite (A/B de la Fase 6: -45%% de bundle, build 4x mas
+REM rapido, misma pagina y mismo selftest). Next queda detras de `nextui`.
+REM Ambos motores VACIAN out/ al empezar: no se mezclan restos de motor.
 echo.
 echo [4/8] Exportando la WebUI del piloto...
 if not exist "WebPilot\node_modules" goto :no_webui
 
 pushd WebPilot
-call pnpm build
+if "%WITH_NEXTUI%"=="1" goto :webui_next
+
+echo [INFO] Motor WebUI: Vite ^(@abdsynths/web-pilot-vite^)
+call pnpm --filter @abdsynths/web-pilot-vite build
 if !ERRORLEVEL! neq 0 (
     popd
-    echo [ERROR] Fallo la exportacion de la WebUI del piloto. Sin WebUI nueva no hay
+    echo [ERROR] Fallo la exportacion de la WebUI con Vite. Sin WebUI nueva no hay
     echo         selftest honesto: corria contra WebPilot\out ANTERIOR \^(staleness\^).
     set "WEBUI_BUILD_FAILED=1"
     set "EXIT_CODE=1"
     goto :modelmaker
 )
 popd
-echo [OK] WebUI del piloto exportada en WebPilot\out
+echo [OK] WebUI del piloto exportada con Vite en WebPilot\out
+goto :pilot_host
+
+:webui_next
+echo [INFO] Motor WebUI: Next.js ^(referencia, flag nextui^)
+call pnpm build
+if !ERRORLEVEL! neq 0 (
+    popd
+    echo [ERROR] Fallo la exportacion de la WebUI con Next. Sin WebUI nueva no hay
+    echo         selftest honesto: corria contra WebPilot\out ANTERIOR \^(staleness\^).
+    set "WEBUI_BUILD_FAILED=1"
+    set "EXIT_CODE=1"
+    goto :modelmaker
+)
+popd
+echo [OK] WebUI del piloto exportada con Next en WebPilot\out
 goto :pilot_host
 
 :no_webui

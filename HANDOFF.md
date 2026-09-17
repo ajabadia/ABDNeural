@@ -1328,3 +1328,15 @@ relanzar; para embeberlo, rebuild del target `NEURONiK_WebPilotHost` con el swap
 
 **Pendiente de decisión**: el switch definitivo (migrar `build.bat` paso 4 a Vite y
 dejar Next solo como referencia, o mantener ambos). El piloto quedó funcional en ambos.
+
+## 2026-09-17 (d): Switch del paso 4 a Vite — Next queda como referencia
+
+- `build.bat` (paso 4) ahora construye con **Vite** por defecto:
+  `pnpm --filter @abdsynths/web-pilot-vite build`, salida DIRECTA a `WebPilot/out`
+  (la ruta que consumen el snapshot embebido y el selftest — nada cambia de sitio).
+  `emptyOutDir` deja `out/` solo con ficheros del motor activo: no se mezclan restos.
+- **`build.bat nextui`** conserva la ruta Next intacta (misma página, otro empaquetador)
+  para comparaciones futuras: `build.bat nextui [modelmaker|noselftest|tests|<dir>]`.
+- `vite.config.js`: outDir a `../WebPilot/out` (antes `out-vite`, que ya no existe).
+- Validado: pasada completa por defecto (Vite, 4 recursos/445 KB, selftest OK, 11/11
+  ctest), pasada `nextui noselftest` (Next OK) y restauración canónica por defecto.

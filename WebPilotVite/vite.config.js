@@ -12,8 +12,10 @@ export default defineConfig({
   // por defecto Vite lo busca relativo a esta raíz, donde no existe.
   publicDir: path.resolve(fileURLToPath(new URL('.', import.meta.url)), '../WebPilot/public'),
   build: {
-    // Salida junto a WebPilot/out para que el swap A/B sea un `mv`.
-    outDir: path.resolve(fileURLToPath(new URL('.', import.meta.url)), '../WebPilot/out-vite'),
+    // Salida DIRECTA a WebPilot/out: es la ruta que consume el host (snapshot
+    // embebido) y el selftest, y build.bat la da como buena en ambos motores.
+    // emptyOutDir deja out/ solo con ficheros del motor activo.
+    outDir: path.resolve(fileURLToPath(new URL('.', import.meta.url)), '../WebPilot/out'),
     emptyOutDir: true,
     assetsDir: 'assets',
   },

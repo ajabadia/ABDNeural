@@ -31,7 +31,9 @@ La migración será incremental. No se sustituirá la interfaz JUCE ni se modifi
       la MISMA página del piloto compila en Vite y pasa el selftest completo del host
       (nativo->JS, JS->nativo, notas+ruedas) en disco y con fallback embebido a 0.
       Bundle 471 KB vs 854 KB (-45%), 4 recursos vs 10, build 2-6 s vs 15-25 s.
-      Datos y detalles en HANDOFF. Pendiente: decidir el switch definitivo.
+      Datos y detalles en HANDOFF. SWITCH DECIDIDO (2026-09-17): `build.bat` usa Vite
+      por defecto (paso 4 → `WebPilot/out`); Next queda como referencia tras
+      `build.bat nextui`. El snapshot embebido del host lleva el bundle Vite.
 
 ## Fases
 
