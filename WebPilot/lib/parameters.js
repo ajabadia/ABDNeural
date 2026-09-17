@@ -160,6 +160,58 @@ export function defaultState(ids = PILOT_PARAMETER_IDS) {
 }
 
 /**
+ * Default state in the HOOK's state space: normalised 0..1 for every kind.
+ * Floats go through the NormalisableRange mapping; choices map the default
+ * index to index/(count-1), the same encoding ParamChoice and the wire use.
+ * (defaultState() above is REAL-space — mixing them was a real seeding bug.)
+ */
+export function defaultNormalizedState(ids = PILOT_PARAMETER_IDS) {
+  const state = {};
+
+  for (const id of ids) {
+    const descriptor = getDescriptor(id);
+    if (!descriptor) continue;
+
+    if (descriptor.kind === 'float') {
+      state[id] = toNormalized(descriptor, descriptor.defaultValue);
+    } else {
+      const count = Math.max(descriptor.choices.length, 1);
+      state[id] = count > 1 ? descriptor.defaultChoiceIndex / (count - 1) : 0;
+    }
+  }
+
+  return state;
+}
+
+/**
+ * Validate a NORMALISED state (the hook's state space): every value must sit
+ * in 0..1. validateState() above expects real units / integer choice indexes
+ * and would raise false errors against normalised values.
+ */
+export function validateNormalizedState(ids, state) {
+  const errors = [];
+
+  for (const id of ids) {
+    if (!getDescriptor(id)) {
+      errors.push(`unknown parameter "${id}"`);
+      continue;
+    }
+
+    const value = state[id];
+
+    if (value === undefined) {
+      errors.push(`missing value for "${id}"`);
+      continue;
+    }
+
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1)
+      errors.push(`"${id}" out of normalised range: ${value}`);
+  }
+
+  return errors;
+}
+
+/**
  * Check that the parameters a screen depends on exist and that a state holds
  * valid values for them. Used by the pilot footer to make contract problems
  * visible instead of silently rendering wrong bounds.

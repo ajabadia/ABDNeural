@@ -1,0 +1,304 @@
+/*
+  ==============================================================================
+
+    ParameterBridge.cpp
+    Created: 16 Sep 2026
+    Description: Implementation of the two way parameter bridge. Kept transport free
+                 on purpose: see ParameterBridge.h for the wire format and for why
+                 outgoing changes are polled instead of pushed from listeners.
+
+  ==============================================================================
+*/
+
+#include "ParameterBridge.h"
+
+#include <cmath>
+
+namespace NEURONiK::WebUI
+{
+
+namespace
+{
+    /** Value below which two normalised values count as the same position.
+     *  Tighter than any slider resolution and looser than float noise after a
+     *  denormalise/renormalise round trip through a skewed range.
+     */
+    constexpr float valueEpsilon = 1.0e-6f;
+
+    juce::String gestureFrom (const juce::DynamicObject& message)
+    {
+        const auto declared = message.getProperty ("gesture").toString();
+        return declared.isEmpty() ? juce::String (BridgeGestures::change) : declared;
+    }
+
+    bool isKnownGesture (const juce::String& gesture)
+    {
+        return gesture == BridgeGestures::begin
+            || gesture == BridgeGestures::change
+            || gesture == BridgeGestures::end;
+    }
+}
+
+//==============================================================================
+
+ParameterBridge::ParameterBridge (juce::AudioProcessorValueTreeState& stateToBridge)
+    : apvts (stateToBridge)
+{
+    // The mirrored set is the APVTS layout itself, in layout order, so a parameter
+    // added to createParameterLayout() shows up here without touching this class.
+    for (auto* parameter : apvts.processor.getParameters())
+    {
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (parameter))
+            entries.push_back ({ ranged, ranged->getParameterID(), 0.0f, false, false });
+    }
+}
+
+void ParameterBridge::setSender (Sender newSender)
+{
+    sender = std::move (newSender);
+}
+
+int ParameterBridge::getParameterCount() const noexcept
+{
+    return static_cast<int> (entries.size());
+}
+
+juce::String ParameterBridge::getParameterId (int index) const
+{
+    if (index < 0 || index >= getParameterCount())
+        return {};
+
+    return entries[static_cast<size_t> (index)].id;
+}
+
+int ParameterBridge::indexOfParameter (const juce::String& id) const
+{
+    for (size_t i = 0; i < entries.size(); ++i)
+        if (entries[i].id == id)
+            return static_cast<int> (i);
+
+    return -1;
+}
+
+float ParameterBridge::getNormalisedValue (const juce::String& id) const
+{
+    const auto index = indexOfParameter (id);
+
+    if (index < 0)
+        return 0.0f;
+
+    return entries[static_cast<size_t> (index)].parameter->getValue();
+}
+
+//==============================================================================
+
+juce::var ParameterBridge::describe (const Entry& entry) const
+{
+    const auto normalised = entry.parameter->getValue();
+
+    juce::DynamicObject::Ptr item = new juce::DynamicObject();
+    item->setProperty ("id", entry.id);
+    item->setProperty ("value", static_cast<double> (normalised));
+    item->setProperty ("real", static_cast<double> (entry.parameter->getNormalisableRange()
+                                                        .convertFrom0to1 (normalised)));
+    item->setProperty ("text", entry.parameter->getText (normalised, 32));
+
+    return juce::var (item.get());
+}
+
+juce::var ParameterBridge::buildSnapshotVar() const
+{
+    juce::Array<juce::var> parameters;
+
+    for (const auto& entry : entries)
+        parameters.add (describe (entry));
+
+    juce::DynamicObject::Ptr message = new juce::DynamicObject();
+    message->setProperty ("action", BridgeActions::syncAllParams);
+    message->setProperty ("version", snapshotVersion + 1);
+    message->setProperty ("parameterCount", getParameterCount());
+    message->setProperty ("parameters", juce::var (parameters));
+
+    return juce::var (message.get());
+}
+
+void ParameterBridge::send (const juce::var& message, bool isSnapshot)
+{
+    // Counters describe traffic actually handed to the transport, so a bridge with
+    // no web view yet reads as idle rather than as "sent into the void".
+    if (sender == nullptr)
+        return;
+
+    if (isSnapshot)
+        ++stats.snapshotsSent;
+    else
+        ++stats.changesSent;
+
+    sender (message);
+}
+
+void ParameterBridge::sendFullSnapshot()
+{
+    auto snapshot = buildSnapshotVar();
+    ++snapshotVersion;
+
+    send (snapshot, true);
+
+    // The page now knows every value: anything the native side changes from here on
+    // is a delta, and nothing is re-sent on the next poll.
+    for (auto& entry : entries)
+    {
+        entry.lastReported = entry.parameter->getValue();
+        entry.reported = true;
+    }
+}
+
+int ParameterBridge::publishPendingChanges()
+{
+    int sent = 0;
+
+    for (auto& entry : entries)
+    {
+        const auto current = entry.parameter->getValue();
+
+        if (entry.reported && std::abs (current - entry.lastReported) <= valueEpsilon)
+            continue;
+
+        entry.lastReported = current;
+        entry.reported = true;
+
+        juce::DynamicObject::Ptr message = new juce::DynamicObject();
+        message->setProperty ("action", BridgeActions::parameterChanged);
+        message->setProperty ("id", entry.id);
+        message->setProperty ("value", static_cast<double> (current));
+        message->setProperty ("real", static_cast<double> (entry.parameter->getNormalisableRange()
+                                                                .convertFrom0to1 (current)));
+        message->setProperty ("text", entry.parameter->getText (current, 32));
+
+        send (juce::var (message.get()), false);
+        ++sent;
+    }
+
+    return sent;
+}
+
+int ParameterBridge::closeOpenGestures()
+{
+    int closed = 0;
+
+    for (auto& entry : entries)
+    {
+        if (! entry.gestureOpen)
+            continue;
+
+        entry.parameter->endChangeGesture();
+        entry.gestureOpen = false;
+        ++stats.gesturesClosed;
+        ++closed;
+    }
+
+    return closed;
+}
+
+//==============================================================================
+
+void ParameterBridge::handleJsEvent (const juce::var& message)
+{
+    jassert (juce::MessageManager::existsAndIsCurrentThread());
+
+    const auto* object = message.getDynamicObject();
+
+    if (object == nullptr)
+    {
+        ++stats.rejectedMessages;
+        return;
+    }
+
+    const auto action = object->getProperty ("action").toString();
+
+    if (action == BridgeActions::parameterChanged)
+    {
+        applyParameterChange (*object);
+        return;
+    }
+
+    if (action == BridgeActions::requestState)
+    {
+        sendFullSnapshot();
+        return;
+    }
+
+    ++stats.rejectedMessages;
+}
+
+void ParameterBridge::applyParameterChange (const juce::DynamicObject& message)
+{
+    const auto id = message.getProperty ("id").toString();
+
+    if (id.isEmpty())
+    {
+        ++stats.rejectedMessages;
+        return;
+    }
+
+    const auto index = indexOfParameter (id);
+
+    if (index < 0)
+    {
+        // Unknown ids are ordinary while the two sides are developed together or
+        // when an old page talks to a new plugin; they are counted, not fatal.
+        ++stats.unknownIds;
+        return;
+    }
+
+    const auto valueProperty = message.getProperty ("value");
+
+    if (! valueProperty.isDouble() && ! valueProperty.isInt() && ! valueProperty.isInt64())
+    {
+        ++stats.rejectedMessages;
+        return;
+    }
+
+    const auto gesture = gestureFrom (message);
+
+    if (! isKnownGesture (gesture))
+    {
+        ++stats.rejectedMessages;
+        return;
+    }
+
+    auto& entry = entries[static_cast<size_t> (index)];
+
+    if (gesture == BridgeGestures::begin && ! entry.gestureOpen)
+    {
+        entry.parameter->beginChangeGesture();
+        entry.gestureOpen = true;
+        ++stats.gesturesOpened;
+    }
+
+    const auto requested = juce::jlimit (0.0f, 1.0f, static_cast<float> (static_cast<double> (valueProperty)));
+
+    if (std::abs (entry.parameter->getValue() - requested) > valueEpsilon)
+    {
+        entry.parameter->setValueNotifyingHost (requested);
+        ++stats.appliedFromJs;
+    }
+    else
+    {
+        ++stats.idleChanges;
+    }
+
+    // Whatever the APVTS ended up storing (it may snap or re-map the value) is what
+    // the page already shows, so it is never echoed back to the sender.
+    entry.lastReported = entry.parameter->getValue();
+    entry.reported = true;
+
+    if (gesture == BridgeGestures::end && entry.gestureOpen)
+    {
+        entry.parameter->endChangeGesture();
+        entry.gestureOpen = false;
+        ++stats.gesturesClosed;
+    }
+}
+
+} // namespace NEURONiK::WebUI

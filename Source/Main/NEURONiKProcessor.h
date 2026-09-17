@@ -116,6 +116,14 @@ public:
     void injectNoteOn(int midiChannel, int midiNoteNumber, float velocity);
     void injectNoteOff(int midiChannel, int midiNoteNumber, float velocity);
 
+    // Copies the APVTS values into the ui* telemetry atomics the visuals read
+    // (envelope params, morph coordinates). processBlock calls it every block;
+    // the WebPilot host — which has NO audio callback — polls it from its timer
+    // so the native XYPad/EnvelopeVisualizer stay live there too. Thread-safe by
+    // construction (atomics + APVTS raw-value loads). NOT the engine-derived
+    // telemetry (spectral/LFO/output envelopes): that only exists after render.
+    void refreshUiTelemetryFromApvts() noexcept;
+
 protected:
     // ValueTree::Listener
     void valueTreePropertyChanged(juce::ValueTree& tree, const juce::Identifier& property) override;

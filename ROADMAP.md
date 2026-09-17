@@ -153,12 +153,24 @@ Si el panel funciona con una complejidad razonable, se continuará con React/Nex
 
 ### Fase 4 — WebView2 y bridge
 
-Solo comienza después de superar el punto de decisión del piloto.
+Solo comienza después de superar el punto de decisión del piloto. (El 2026-09-16 empezó
+adelantándose al punto de decisión formal, como prueba acotada del transporte: el riesgo que
+quería despejar era exactamente el modo de fallo silencioso del canal.)
 
-
-- [ ] Crear el adaptador WebView2/JUCE.
-- [ ] Enviar cambios de parámetros al procesador nativo.
-- [ ] Recibir snapshots del estado y reflejarlos en la UI.
+- [x] Crear el adaptador WebView2/JUCE (protocolo `ParameterBridge` + transporte en el host;
+      la dirección del canal está protegida por el guard compartido de `ABDSharedCode`).
+- [x] Versionar el protocolo como contrato (`WebPilot/contracts/bridge-protocol.json` +
+      `BRIDGE_PROTOCOL.md`), con tests anti-drift en C++ y JS que fijan literales, formas de
+      mensaje y comportamientos en ambos lados.
+- [x] Enviar cambios de parámetros al procesador nativo (JS -> nativo sobre `nativeEvent`,
+      con clamping, conteo de IDs desconocidos y fases de gesto begin/change/end).
+- [x] Recibir snapshots del estado y reflejarlos en la UI (nativo -> JS sobre `event`,
+      snapshot completo bajo demanda y deltas por sondeo sin eco ni duplicados).
+- [x] Tira nativa de comparación en el host (sliders JUCE con attachment sobre el mismo APVTS).
+- [x] Verificar a la vista la doble dirección en el host recompilado (mover el slider nativo
+      mueve la página, y viceversa). Confirmado por el usuario (captura: 0.67/0.564/0.399 iguales
+      en ambos lados) y por el selftest automatizado del host (`--selftest`, NATIVO->JS y
+      JS->NATIVO OK, exit 0).
 - [ ] Validar presets, MIDI y persistencia.
 - [ ] Embebido de recursos y rutas relativas.
 - [ ] Rebuild del EXE en cada cambio del bundle.
@@ -180,6 +192,66 @@ Solo comienza después de superar el punto de decisión del piloto.
 - [ ] Elegir la opción con menor complejidad operativa.
 - [ ] Evitar que `ABDSharedCode` dependa directamente de Next.js.
 
+### Fase 7 — Familia de controles compartidos (ABDSharedAssets, 2026-09-16)
+
+Extraída y acordada con el usuario: los knobs/sliders/botones no serán un modelo único;
+cada synthe elige su skin. NEURONiK es el primer consumidor del paquete compartido.
+
+- [x] Crear la familia de controles en `ABDSharedAssets/components/` con el contrato de
+      la familia (`Wheel`): Knob, Slider, Toggle + `drag-core.js` DRY compartido.
+- [x] Sistema de skins: mapa de renderers por tipo de control, `applySkin()` despacha por
+      `CONTROL_KIND`, fallback por-tipo a 'vector'. `registerSkin()` para skins de proyecto.
+- [x] Skins incluidas: `vector` (SVG/CSS sin assets), `ms2000` (extraída de ABDMS2000),
+      `junio` (sprites PNG extraídos de ABDJUNiO601: knob, slider cap/slot, botones 6 colores).
+- [x] Assets compartidos en `ABDSharedAssets/assets/junio/` (15 PNG, fuente única).
+- [x] Tests: 24/24 en verde (contrato, clamping, semántica onChange/setValue, gestos,
+      despacho de skins, fallback, destroy sin fugas).
+- [x] Demo única: sección 8 en `demo/demo.html` con la familia completa en las 3 skins;
+      `demo/proto/` deprecada y eliminada (no mostraba nada único; `npm run demo` sirve la
+      raíz del paquete, abrir `/demo/demo.html`).
+- [x] Wrappers React (`WebPilot/lib/controls.jsx`): `useSharedControl` monta el control
+      imperativo una vez (StrictMode-safe), React -> `setValue` programático (sin eco),
+      `onChange/onDragStart/onDragEnd` -> callbacks con refs estables, `destroy()` al
+      desmontar. `ParamSlider`/`ParamKnob`/`ParamToggle`/`ParamChoice` sobre el contrato.
+- [x] Glue de página: `WebPilot/lib/useParameterControls.js` (estado normalizado + push
+      al bridge con fases de gesto) y `WebPilot/lib/paramValue.js` (mapeo real<->0..1,
+      snap de intervalo, encoding de choices N/(count-1)). Bug corregido de pasada: la
+      página convertía real->normalizado con la función inversa (fallaría con skew≠1).
+- [x] Consumo por paquete: `@abdsynths/shared` como `file:../../ABDSharedAssets` en el
+      WebPilot (instalado con `pnpm install --ignore-workspace`), export `./components`
+      añadido al paquete, `tokens.css` sin `@import` remoto (build offline). `masterLevel`
+      conserva `input[type=range]` nativo a propósito: es el que conduce el `--selftest`
+      del host; el resto de la página usa la familia compartida. Página con wrappers y
+      build estático en verde; 15 tests nuevos del piloto.
+- [x] Validar visualmente el nuevo page.jsx en el host: `--selftest` en verde tras el
+      out/ nuevo (nativo->JS y JS->nativo OK) y arrastre 1:1 corregido en drag-core
+      (ver corrección en HANDOFF).
+- [ ] Pantalla GENERAL en Next.js usando los controles compartidos + tokens del tema.
+- [ ] Teclado (`createKeyboard` de `ABDSharedCode/MidiKeyboard`) + mensajes MIDI en el
+      bridge (protocolo v2 aditivo: `midiNoteOn/midiNoteOff/...`).
+- [ ] Adoptar la familia en ABDMS2000 y ABDJUNiO601 cuando migren su WebUI (sin tocar
+      nada hoy: sus controles actuales siguen funcionando).
+
+#### Paso 1 — ParameterPanel real en el host (2026-09-16, en compilación)
+
+Ejecutado a ciegas (sin compilar, por acuerdo de turno) a la espera del `build.bat` del
+usuario:
+
+- [x] El host instancia el `NEURONiKProcessor` real (fuera el APVTS de juguete
+      `createLayoutApvts`): el bridge puentea el APVTS del plugin de verdad y las
+      divergencias uiOnly/notRouted se comportan igual que en el plugin.
+- [x] La tira de comparación (`NativeStrip`, 4 sliders) se sustituye por el
+      **`ParameterPanel` real** (la pestaña GENERAL del editor: envolvente, unison,
+      freeze, RANDOM, selector de motor). El E2E de migración pasa a ser: mover un
+      control del panel nativo real debe mover la página, y viceversa.
+- [x] **Assets de la WebUI embebidos en el exe**: `juce_add_binary_data
+      (NEURONiK_WebPilotAssets)` con `WebPilot/out/**` (sin `_not-found`). El host
+      sirve DISCO primero (out/ fresco) y BINARIO como fallback (exe autocontenido;
+      es la vía que usará el VST3). El informe imprime `[embedded fallback: N]`.
+- [ ] Validar con `build.bat` del usuario: el host enlaza ahora todo el plugin
+      (primera vez); si falla un símbolo, añadir la lib JUCE que falte.
+- [ ] Verificación visual: panel nativo real y página moviéndose mutuamente.
+
 ## Criterios de aceptación
 
 No se avanzará de fase si se cumple alguna de estas condiciones:
@@ -188,6 +260,8 @@ No se avanzará de fase si se cumple alguna de estas condiciones:
 - El audio cambia sin una explicación y una referencia documentada.
 - Los presets no conservan sus parámetros.
 - El bridge genera listeners duplicados o eventos perdidos.
+  (Mitigado por diseño en el puente actual: la salida es por sondeo diferido por valor, la
+  entrada es idempotente y `Tests/ParameterBridgeTest.cpp` fija ambas cosas.)
 - La versión web depende accidentalmente de un servidor Node en producción.
 - El bundle web no funciona dentro del EXE embebido.
 

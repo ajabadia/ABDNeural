@@ -1,0 +1,84 @@
+{
+  "contract": "NEURONiK bridge protocol",
+  "version": 1,
+  "sourceOfTruth": "Source/WebUI/ParameterBridge.h",
+  "transport": "juce::WebBrowserComponent (WebView2 native integration)",
+  "channels": {
+    "nativeToJs": {
+      "eventId": "event",
+      "api": "emitEventIfBrowserIsVisible(eventId, object)",
+      "note": "The only direction that fires window.__JUCE__.backend.addEventListener on the page."
+    },
+    "jsToNative": {
+      "eventId": "nativeEvent",
+      "api": "window.__JUCE__.backend.emitEvent(eventId, object)",
+      "note": "Received natively with Options::withEventListener(eventId, listener)."
+    },
+    "pageLoaded": {
+      "eventId": "pageLoaded",
+      "api": "window.__JUCE__.backend.emitEvent(eventId, object)",
+      "note": "Emitted by the page on (re)load; the host closes open gestures and answers with syncAllParams."
+    }
+  },
+  "valueConvention": {
+    "value": "ALWAYS normalised 0..1, the same scale AudioProcessorParameter::getValue() reports. Clamped by the native side before entering the APVTS.",
+    "real": "Denormalised value in parameter units. Native -> JS only, informational.",
+    "text": "Display text formatted by the parameter. Native -> JS only, informational.",
+    "gesture": "JS -> native only: 'begin' opens a host gesture, 'change' continues it, 'end' closes it. Absent means 'change'. Unknown phases reject the message."
+  },
+  "messages": {
+    "nativeToJs": {
+      "syncAllParams": {
+        "sentWhen": "Page (re)load, requestState, or host-side decision to resynchronise.",
+        "fields": {
+          "action": "'syncAllParams' (literal)",
+          "version": "Monotonic counter, incremented on every snapshot.",
+          "parameterCount": "Number of entries in parameters.",
+          "parameters": "Array of { id, value, real, text } in layout order, one per APVTS parameter."
+        }
+      },
+      "parameterChanged": {
+        "sentWhen": "A parameter moved on the native side since the last report (value-diffed poll), or an external/automation change.",
+        "fields": {
+          "action": "'parameterChanged' (literal)",
+          "id": "Parameter ID as defined by the APVTS layout.",
+          "value": "Normalised 0..1.",
+          "real": "Denormalised value.",
+          "text": "Display text."
+        }
+      }
+    },
+    "jsToNative": {
+      "parameterChanged": {
+        "sentWhen": "The user moved a control on the page, in any phase of a drag.",
+        "fields": {
+          "action": "'parameterChanged' (literal)",
+          "id": "Parameter ID as defined by the APVTS layout.",
+          "value": "Normalised 0..1.",
+          "gesture": "'begin' | 'change' | 'end'."
+        }
+      },
+      "requestState": {
+        "sentWhen": "The page mounts, or wants a fresh full snapshot for any reason.",
+        "fields": {
+          "action": "'requestState' (literal)"
+        }
+      }
+    }
+  },
+  "behaviour": {
+    "echoSuppression": "A value applied from JS marks the entry as reported; the native poller never echoes it back to the page that sent it.",
+    "outgoingDelivery": "Outgoing changes are POLLED via publishPendingChanges() (value-diffed), never pushed from parameter listeners. One message per changed parameter per poll.",
+    "gestureLifecycle": "begin opens at most one gesture per parameter; end closes it; a page reload closes every gesture the page left open (closeOpenGestures). An end without begin is tolerated and still writes the value.",
+    "malformedInput": "Malformed messages and unknown actions/ids are counted in stats, never thrown. Unknown parameter ids are counted separately from malformed messages.",
+    "transportGuards": "The native side MUST emit with emitEventIfBrowserIsVisible and MUST NOT call window.__JUCE__.backend.emitEvent from C++ (wrong channel direction, message silently discarded). Enforced by Tests/webviewBridgeDirectionTest.mjs.",
+    "localMode": "Without window.__JUCE__.backend the page keeps working with local state only; all sends are no-ops."
+  },
+  "implementations": {
+    "nativeProtocol": "Source/WebUI/ParameterBridge.{h,cpp}",
+    "nativeTransport": "Source/WebPilotHost.cpp",
+    "jsTransport": "WebPilot/lib/bridge.js",
+    "jsConsumer": "WebPilot/app/page.jsx",
+    "directionGuard": "../ABDSharedCode/WebView2Bridge/testing/webviewBridgeDirection.js"
+  }
+}

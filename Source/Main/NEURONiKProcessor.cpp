@@ -377,20 +377,9 @@ void NEURONiKProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
             modulationValues[i].store(mods[i], std::memory_order_relaxed);
         }
         
-        // Update envelope parameters for visualization
-        uiAttack.store(apvts.getRawParameterValue(IDs::envAttack)->load(), std::memory_order_relaxed);
-        uiDecay.store(apvts.getRawParameterValue(IDs::envDecay)->load(), std::memory_order_relaxed);
-        uiSustain.store(apvts.getRawParameterValue(IDs::envSustain)->load(), std::memory_order_relaxed);
-        uiRelease.store(apvts.getRawParameterValue(IDs::envRelease)->load(), std::memory_order_relaxed);
-
-        uiFAttack.store(apvts.getRawParameterValue(IDs::filterAttack)->load(), std::memory_order_relaxed);
-        uiFDecay.store(apvts.getRawParameterValue(IDs::filterDecay)->load(), std::memory_order_relaxed);
-        uiFSustain.store(apvts.getRawParameterValue(IDs::filterSustain)->load(), std::memory_order_relaxed);
-        uiFRelease.store(apvts.getRawParameterValue(IDs::filterRelease)->load(), std::memory_order_relaxed);
-        
-        // Update XY Pad parameters for visualization
-        uiMorphX.store(apvts.getRawParameterValue(IDs::morphX)->load(), std::memory_order_relaxed);
-        uiMorphY.store(apvts.getRawParameterValue(IDs::morphY)->load(), std::memory_order_relaxed);
+        // APVTS-derived UI telemetry (safe from any thread — also polled by the
+        // WebPilot host, which has no audio callback).
+        refreshUiTelemetryFromApvts();
     }
 
     // MIDI Thru. The engine always receives the input; the toggle only decides
@@ -505,6 +494,24 @@ void NEURONiKProcessor::reloadModels()
             if (file.existsAsFile()) loadModel(file, i);
         }
     }
+}
+
+void NEURONiKProcessor::refreshUiTelemetryFromApvts() noexcept
+{
+    // Envelope parameters for the visualizers.
+    uiAttack.store(apvts.getRawParameterValue(IDs::envAttack)->load(), std::memory_order_relaxed);
+    uiDecay.store(apvts.getRawParameterValue(IDs::envDecay)->load(), std::memory_order_relaxed);
+    uiSustain.store(apvts.getRawParameterValue(IDs::envSustain)->load(), std::memory_order_relaxed);
+    uiRelease.store(apvts.getRawParameterValue(IDs::envRelease)->load(), std::memory_order_relaxed);
+
+    uiFAttack.store(apvts.getRawParameterValue(IDs::filterAttack)->load(), std::memory_order_relaxed);
+    uiFDecay.store(apvts.getRawParameterValue(IDs::filterDecay)->load(), std::memory_order_relaxed);
+    uiFSustain.store(apvts.getRawParameterValue(IDs::filterSustain)->load(), std::memory_order_relaxed);
+    uiFRelease.store(apvts.getRawParameterValue(IDs::filterRelease)->load(), std::memory_order_relaxed);
+
+    // XY Pad coordinates.
+    uiMorphX.store(apvts.getRawParameterValue(IDs::morphX)->load(), std::memory_order_relaxed);
+    uiMorphY.store(apvts.getRawParameterValue(IDs::morphY)->load(), std::memory_order_relaxed);
 }
 
 void NEURONiKProcessor::valueTreePropertyChanged(juce::ValueTree&, const juce::Identifier&) {}

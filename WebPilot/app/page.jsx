@@ -1,15 +1,14 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 
+import { ParamChoice, ParamSlider } from '../lib/controls.jsx';
+import { displayText, realFromNormalized } from '../lib/paramValue.js';
+import { useParameterControls } from '../lib/useParameterControls.js';
 import {
-  PARAMETERS,
-  PILOT_PARAMETER_IDS,
   UNROUTED_PARAMETERS,
   contractSummary,
-  defaultState,
   describePilotControls,
-  formatValue,
   getDescriptor,
   validateState,
 } from '../lib/parameters.js';
@@ -17,48 +16,50 @@ import {
 // Bound at module scope: these come from the generated C++ contract, not from
 // hand written constants, so a range change in the plugin cannot be missed here.
 const controls = describePilotControls();
-const initialState = defaultState();
 const summary = contractSummary();
 const contractLine =
   `${summary.total} parameters · ${summary.implemented} wired to the DSP · ` +
   `${summary.uiOnly} UI only · ${summary.notRouted} not routed` +
   (UNROUTED_PARAMETERS.length > 0 ? ` · ${UNROUTED_PARAMETERS.length} not in the layout` : '');
 
-function displayValue(control, value) {
+/**
+ * The baseline parameter keeps a native range input ON PURPOSE: the host's
+ * --selftest drives `document.querySelector('input[type=range]')` and that
+ * must be masterLevel. Everything else renders through the shared family.
+ */
+const BASELINE_PARAMETER_ID = 'masterLevel';
+
+function displayValue(control, realValue) {
   // A unit-less 0..1 range reads better as a percentage in the pilot UI.
   if (control.kind === 'float' && control.min === 0 && control.max === 1)
-    return `${Math.round(value * 100)}%`;
+    return `${Math.round(realValue * 100)}%`;
 
-  return formatValue(getDescriptor(control.id), value);
+  return realValue.toFixed(2);
 }
 
 export default function HomePage() {
-  const [parameters, setParameters] = useState(initialState);
-  const [changeCount, setChangeCount] = useState(0);
+  const {
+    controls: hookControls,
+    parameters,
+    changeCount,
+    bridgeAvailable,
+    snapshotVersion,
+    contractErrors,
+    summary: hookSummary,
+    pushParameter,
+    handleChange,
+    handleGesture,
+  } = useParameterControls();
 
-  const contractErrors = useMemo(
-    () => validateState(PILOT_PARAMETER_IDS, parameters),
+  const errors = useMemo(
+    () => validateState(controls.map((control) => control.id), parameters),
     [parameters],
   );
 
-  // Marker used by the WebView2 host to time the real startup of the panel.
-  useEffect(() => {
-    window.__pilotReady = true;
-
-    return () => {
-      window.__pilotReady = false;
-    };
-  }, []);
-
-  function updateParameter(id, nextValue) {
-    setParameters((current) => ({ ...current, [id]: nextValue }));
-    setChangeCount((current) => current + 1);
-  }
-
   function renderControl(control) {
-    const value = parameters[control.id];
-
-    // The contract tells us whether the DSP will react at all.
+    const normalized = parameters[control.id];
+    const descriptor = getDescriptor(control.id);
+    const realValue = realFromNormalized(control, normalized);
     const divergent = control.dspStatus !== 'implemented';
 
     const heading = (
@@ -67,11 +68,11 @@ export default function HomePage() {
           {control.label}
           {divergent ? ' *' : ''}
         </span>
-        <strong>{displayValue(control, value)}</strong>
+        <strong>{displayValue(control, realValue)}</strong>
       </span>
     );
 
-    if (control.kind === 'float') {
+    if (control.id === BASELINE_PARAMETER_ID) {
       return (
         <label className="control" key={control.id}>
           {heading}
@@ -80,27 +81,41 @@ export default function HomePage() {
             min={control.min}
             max={control.max}
             step={control.step}
-            value={value}
-            onChange={(event) => updateParameter(control.id, Number(event.target.value))}
+            value={realValue}
+            onPointerDown={() => handleGesture(control.id, 'begin')}
+            onPointerUp={() => handleGesture(control.id, 'end')}
+            onChange={(event) =>
+              pushParameter(control.id, Number(event.target.value), 'change')}
           />
         </label>
       );
     }
 
+    if (control.kind === 'choice') {
+      return (
+        <div className="control" key={control.id}>
+          {heading}
+          <ParamChoice
+            id={control.id}
+            control={control}
+            value={normalized}
+            onChange={(normalizedValue) => handleChange(control.id, normalizedValue)}
+          />
+        </div>
+      );
+    }
+
     return (
-      <label className="control" key={control.id}>
+      <div className="control" key={control.id}>
         {heading}
-        <select
-          value={value}
-          onChange={(event) => updateParameter(control.id, Number(event.target.value))}
-        >
-          {control.options.map((option, index) => (
-            <option key={option} value={index}>
-              {option}
-            </option>
-          ))}
-        </select>
-      </label>
+        <ParamSlider
+          id={control.id}
+          control={control}
+          value={normalized}
+          onChange={(normalizedValue) => handleChange(control.id, normalizedValue)}
+          onGesture={(phase) => handleGesture(control.id, phase)}
+        />
+      </div>
     );
   }
 
@@ -112,15 +127,19 @@ export default function HomePage() {
             <p className="eyebrow">NEURONiK / WEB PILOT</p>
             <h1>Parameter bridge</h1>
           </div>
-          <span className="status">STATIC EXPORT</span>
+          <span className="status">{bridgeAvailable ? 'BRIDGE LIVE' : 'LOCAL MODE'}</span>
         </header>
 
         <p className="intro">
-          Minimal Next.js screen driven by the generated parameter contract. State is still
-          local: the JUCE bridge is not connected yet.
+          {bridgeAvailable
+            ? 'Connected to the JUCE host over the WebView2 channel. The native strip below binds the same APVTS parameters — move either side and watch both.'
+            : 'Next.js screen driven by the generated parameter contract. No JUCE backend detected: state stays local.'}
         </p>
 
-        <p className="contract-line">{contractLine}</p>
+        <p className="contract-line">
+          {contractLine}
+          {bridgeAvailable ? ` · snapshot #${snapshotVersion}` : ''}
+        </p>
 
         <div className="controls">{controls.map(renderControl)}</div>
 
@@ -133,8 +152,8 @@ export default function HomePage() {
 
         <footer className="panel-footer">
           <span>
-            Local parameter updates: {changeCount}
-            {contractErrors.length > 0 ? ` · contract errors: ${contractErrors.join(', ')}` : ''}
+            Parameter updates: {changeCount}
+            {errors.length > 0 ? ` · contract errors: ${errors.join(', ')}` : ''}
           </span>
           <code>{JSON.stringify(parameters)}</code>
         </footer>

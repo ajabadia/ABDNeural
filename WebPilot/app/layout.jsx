@@ -1,3 +1,5 @@
+import '@abdsynths/shared/styles/tokens.css';
+import '@abdsynths/shared/styles/components/widgets.css';
 import './globals.css';
 
 export const metadata = {

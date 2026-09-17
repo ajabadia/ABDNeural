@@ -65,3 +65,18 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 select { padding: 10px; color: var(--text); background: #11141a; border: 1px solid var(--line); border-radius: 6px; }
 .panel-footer { align-items: flex-start; flex-direction: column; color: var(--muted); font-size: 12px; }
 code { max-width: 100%; overflow-wrap: anywhere; color: var(--accent); }
+
+/* === Shared control family (ABDSharedAssets) === */
+.param-control { display: grid; gap: 10px; }
+.param-control__label {
+  display: flex; align-items: center; justify-content: space-between;
+  color: var(--muted); font-size: 14px;
+}
+.param-control__label select { margin-left: 12px; }
+.param-error { color: #e07070; font-size: 12px; }
+
+/* The widgets paint inside their host; give vertical sliders room. */
+.param-control__widget { min-height: 28px; }
+
+/* Pilot demo: the baseline slider keeps the native input (host --selftest). */
+.control input[type="range"] { width: 100%; }

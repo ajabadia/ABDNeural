@@ -85,6 +85,7 @@ Abandonar Next.js en este punto no invalida los componentes React ni el contrato
 - [x] `next build` y exportación estática verificados.
 - [x] Crear un host JUCE/WebView2 mínimo separado.
 - [x] Ejecutar el host y verificar visualmente la carga de `out/`.
+- [x] Conectar el bridge de parámetros real (APVTS <-> WebView2) con tira nativa de comparación.
 - [ ] Registrar la decisión final en `ROADMAP.md` y `HANDOFF.md`.
 
 ## Resultado de la verificación manual (2026-09-16)
@@ -112,19 +113,83 @@ next build (output: 'export')
 
 Conclusión: la exportación estática de Next.js **es compatible con WebView2** y las rutas absolutas que genera (`/_next/static/...`) se resuelven contra el origen `https://juce.backend/`, que es precisamente el origen que intercepta `WebBrowserComponent`.
 
+## Bridge real de parámetros (2026-09-16)
+
+El panel ya no mantiene su estado solo: existe un canal bidireccional entre un APVTS real y la
+página, sobre el canal de eventos de JUCE 8 (`juce_WebBrowserComponent`).
+
+```text
+Source/WebUI/ParameterBridge.{h,cpp}    protocolo bidireccional, testeado sin WebView2
+Source/WebPilotHost.cpp                 transporte: withEventListener + emitEventIfBrowserIsVisible
+WebPilot/lib/bridge.js                  transporte JS: window.__JUCE__.backend (modo local si no hay JUCE)
+WebPilot/app/page.jsx                   panel conectado al transporte, con fases de gesto
+Tests/ParameterBridgeTest.cpp           protocolo contra el APVTS real del contrato
+Tests/webviewBridgeDirectionTest.mjs    guard de dirección del canal (ABDSharedCode)
+```
+
+El APVTS que refleja el host es `State::createLayoutApvts()`: exactamente el layout del plugin
+(70 parámetros), no una copia escrita a mano. El host añade además una **tira nativa de
+comparación** (sliders JUCE con `SliderAttachment` sobre los mismos IDs) para verificar a la vista
+que mover un lado mueve el otro.
+
+Formato en el cable (ambas direcciones son objetos JSON; `value` SIEMPRE normalizado 0..1,
+`real`/`text` solo informativos):
+
+```text
+nativo -> JS  (emitEventIfBrowserIsVisible "event")
+  { action: "syncAllParams", version, parameterCount, parameters: [{ id, value, real, text }] }
+  { action: "parameterChanged", id, value, real, text }
+
+JS -> nativo  (backend.emitEvent "nativeEvent", recibido con withEventListener)
+  { action: "parameterChanged", id, value, gesture: "begin" | "change" | "end" }
+  { action: "requestState" }
+
+JS -> nativo  (backend.emitEvent "pageLoaded", listener dedicado)
+  el host cierra gestos abiertos y responde con syncAllParams
+```
+
+Decisiones de diseño:
+
+- **Salida por sondeo, no por listeners**: `publishPendingChanges()` (timer de 30 ms en el host)
+  difunde por valor; un parámetro puesto al valor que ya tenía no genera tráfico. Es la protección
+  deliberada contra el modo de fallo "listener duplicado / evento perdido" del ROADMAP.
+- **Sin eco**: lo que la página envía se marca como conocido; el sondeo no se lo devuelve.
+- **Gestos siempre cerrados**: si la página se recarga en mitad de un arrastre, el host cierra el
+  gesto (`closeOpenGestures()`) para que el parámetro no quede "en automatización" para siempre.
+- **Entrada tolerante**: mensajes malformados e IDs desconocidos se cuentan, nunca lanzan.
+- **Modo local**: sin `window.__JUCE__` (navegador normal, `next dev` solo) la página funciona
+  exactamente como antes del bridge; el distintivo muestra `LOCAL MODE` frente a `BRIDGE LIVE`.
+- **Dirección del canal vigilada**: el guard compartido (`NEURONiK_WebViewBridgeDirection` en ctest)
+  garantiza que el C++ nunca usa `backend.emitEvent` (canal JS->nativo) hacia el WebUI, el fallo
+  silencioso que ya costó una depuración larga en ABDMS2000.
+
+El protocolo completo es además un **contrato versionado**, al nivel del de parámetros:
+
+```text
+WebPilot/contracts/bridge-protocol.json     contrato versionado en git
+WebPilot/BRIDGE_PROTOCOL.md                 especificación y política de versiones
+NEURONiK_BridgeProtocolContractTest         C++: JSON vs constantes compiladas del bridge
+NEURONiK_BridgeProtocolJs (node)            JS: JSON vs bridge.js + formas de mensaje reales
+```
+
+Cambiar un literal o una forma de mensaje en un solo lado rompe la suite; el detalle (incluida la
+política de cuándo se incrementa la versión) está en `BRIDGE_PROTOCOL.md`.
+
 ## Contrato real de parámetros (sustituye al mock)
 
 El panel ya no usa una lista escrita a mano. Lee los descriptores generados desde el APVTS:
 
 ```text
 lib/parameters.js                        (adaptador: lookup, escalado, formato, validación)
+lib/bridge.js                            (transporte del canal, ver sección anterior)
 generated/parameters.generated.js        (70 parámetros reales)
 generated/parameters.generated.d.ts      (tipos para TypeScript)
 generated/parameters.generated.json      (instantánea de datos)
 ```
 
-El estado sigue siendo local: todavía no hay bridge JUCE. Lo que ya es real son los IDs, rangos,
-intervalos, `skew`, defaults y listas de opciones.
+Los IDs, rangos, intervalos, `skew`, defaults y listas de opciones son reales, y ahora también lo
+es el transporte: el estado de la página parte del snapshot del host y ambos lados se actualizan
+entre sí.
 
 Estos tres ficheros **se versionan a propósito** (no están en `.gitignore`): el test anti-drift los
 compara contra una exportación nueva, así que tenerlos en el repositorio es lo que da valor a esa
@@ -211,7 +276,9 @@ del workspace.
 7. ~~Sustituir el mock por el adaptador de parámetros real.~~
 8. ~~Medir el arranque real dentro de WebView2 (instrumentación del host).~~
 9. Repetir la medición con el host en caliente y actualizar la tabla de arriba.
-10. Conectar el bridge de parámetros real (JUCE -> WebView2) y comparar contra la UI JUCE.
+10. ~~Conectar el bridge de parámetros real (JUCE -> WebView2) y comparar contra la UI JUCE.~~
+    (protocolo + transporte + guard de dirección + tira nativa de comparación; verificación
+    interactiva de doble dirección pendiente de un `build.bat`)
 11. Registrar la decisión final sobre Next.js en `ROADMAP.md` y `HANDOFF.md`.
 
 ## Regla de alcance

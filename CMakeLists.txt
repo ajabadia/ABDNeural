@@ -393,6 +393,74 @@ target_link_libraries(NEURONiK_PresetRoundTripTest PRIVATE
 
 add_test(NAME NEURONiK_PresetRoundTripTest COMMAND NEURONiK_PresetRoundTripTest)
 
+# Parameter bridge: same real layout APVTS as the contract, no WebView2 — the
+# transport is a recording lambda, so the protocol is testable without a window.
+add_executable(NEURONiK_ParameterBridgeTest
+    Tests/ParameterBridgeTest.cpp
+    Source/WebUI/ParameterBridge.cpp
+)
+
+target_include_directories(NEURONiK_ParameterBridgeTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/State"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/WebUI"
+)
+
+target_link_libraries(NEURONiK_ParameterBridgeTest PRIVATE
+    NEURONiK_ParameterContract
+)
+
+add_test(NAME NEURONiK_ParameterBridgeTest COMMAND NEURONiK_ParameterBridgeTest)
+
+# Bridge protocol contract: pins the versioned WebPilot/contracts/bridge-protocol.json
+# against the wire constants compiled into ParameterBridge.h. Same anti-drift mechanism
+# as the parameter contract above (NEURONIK_PARAMETER_ARTIFACTS_DIR).
+add_executable(NEURONiK_BridgeProtocolContractTest
+    Tests/BridgeProtocolContractTest.cpp
+)
+
+target_include_directories(NEURONiK_BridgeProtocolContractTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/WebUI"
+)
+
+target_link_libraries(NEURONiK_BridgeProtocolContractTest PRIVATE
+    # ParameterContract pulls juce_data_structures + juce_audio_processors, which
+    # satisfies the Colour/Colours symbols ParameterBridge.h drags in via
+    # juce_audio_processors -> juce_gui_basics headers.
+    NEURONiK_ParameterContract
+)
+
+target_compile_definitions(NEURONiK_BridgeProtocolContractTest PRIVATE
+    NEURONIK_BRIDGE_PROTOCOL_JSON="${CMAKE_CURRENT_SOURCE_DIR}/WebPilot/contracts/bridge-protocol.json"
+)
+
+add_test(NAME NEURONiK_BridgeProtocolContractTest COMMAND NEURONiK_BridgeProtocolContractTest)
+
+# JS twin of the same anti-drift check: bridge.js literals + real message shapes
+# against the same versioned JSON. Needs node (located below, before first use), so it
+# is skipped with a notice when there is none — same policy as the direction guard.
+find_program(NEURONIK_NODE_EXECUTABLE node)
+
+if(NEURONIK_NODE_EXECUTABLE)
+    add_test(NAME NEURONiK_BridgeProtocolJs
+        COMMAND ${NEURONIK_NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/Tests/bridgeProtocolContractTest.mjs"
+    )
+else()
+    message(STATUS "node not found: NEURONiK_BridgeProtocolJs test skipped")
+endif()
+
+# WebView2 bridge direction guard, shared with the rest of the ABDSynths suite: the
+# WebUI only hears messages sent with emitEventIfBrowserIsVisible(). Needs node, so
+# it is skipped with a notice rather than failing the configure when there is none.
+if(NEURONIK_NODE_EXECUTABLE)
+    add_test(NAME NEURONiK_WebViewBridgeDirection
+        COMMAND ${NEURONIK_NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/Tests/webviewBridgeDirectionTest.mjs"
+    )
+else()
+    message(STATUS "node not found: NEURONiK_WebViewBridgeDirection test skipped")
+endif()
+
 
 # ============================================================================
 # NEXT.JS WEBVIEW2 PILOT HOST
@@ -406,6 +474,28 @@ if(NOT EXISTS "${NEURONIK_WEBPILOT_OUT_DIR}/index.html")
         "inside ${CMAKE_CURRENT_SOURCE_DIR}/WebPilot before configuring this host.")
 endif()
 
+# Embedded snapshot of the WebUI export: the host serves from disk first (fresh
+# `pnpm build` output) and falls back to this copy inside the exe when the folder
+# is not next to it. This is also how the final VST3 will carry its WebUI.
+file(GLOB_RECURSE NEURONIK_WEBPILOT_ASSETS CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/WebPilot/out/*")
+
+# The error routes (`404.html`, `404/index.html`, `_not-found/…`) share the root
+# document's basename (`index.html`): juce_add_binary_data keeps ONE identifier per
+# basename (alphabetically the 404 copy won it), so the embedded snapshot used to
+# serve the not-found page as index.html and the pilot never reached react-ready.
+# They are error pages the fallback never needs to serve -> exclude all of them so
+# the embedded identifiers are unique AND honest. loadEmbeddedResource keeps a
+# matching guard so an error-route request can never shadow a normal one.
+list(FILTER NEURONIK_WEBPILOT_ASSETS EXCLUDE REGEX "_not-found")
+list(FILTER NEURONIK_WEBPILOT_ASSETS EXCLUDE REGEX "[/\\\\]404([/\\\\]|\\.html$)")
+
+if(NEURONIK_WEBPILOT_ASSETS)
+    juce_add_binary_data(NEURONiK_WebPilotAssets SOURCES ${NEURONIK_WEBPILOT_ASSETS})
+else()
+    message(WARNING "WebPilot/out is empty: the pilot host will require the folder next to the exe (no embedded WebUI).")
+endif()
+
 juce_add_gui_app(NEURONiK_WebPilotHost
     PRODUCT_NAME "NEURONiK Web Pilot"
     VERSION "0.1.0"
@@ -414,20 +504,73 @@ juce_add_gui_app(NEURONiK_WebPilotHost
     SOURCES Source/WebPilotHost.cpp
 )
 
-target_sources(NEURONiK_WebPilotHost PRIVATE Source/WebPilotHost.cpp)
+# The REAL plugin, not a stand-in: the host instantiates NEURONiKProcessor, and
+# the native panel below the page is the tab the editor ships (ParameterPanel).
+# Same copy-the-sources pattern the Standalone target already uses.
+set(NEURONIK_WEBPILOT_HOST_SOURCES ${NEURONIK_SOURCES})
+if(MSVC)
+    # The plugin .rc (VERSIONINFO/icon) would collide with the gui app's own.
+    list(REMOVE_ITEM NEURONIK_WEBPILOT_HOST_SOURCES Resources/NEURONiK.rc)
+endif()
+
+target_sources(NEURONiK_WebPilotHost PRIVATE
+    Source/WebPilotHost.cpp
+    Source/WebUI/ParameterBridge.cpp
+    ${NEURONIK_WEBPILOT_HOST_SOURCES}
+)
 
 target_compile_definitions(NEURONiK_WebPilotHost PRIVATE
     JUCE_USE_WIN_WEBVIEW2=1
     JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1
     NEURONiK_WEBPILOT_OUT_DIR="${NEURONIK_WEBPILOT_OUT_DIR}"
+    # Plugin sources (copied below) reference JucePlugin_Name; the gui app target
+    # does not generate plugin macros, so pin the same value the plugin target uses.
+    JucePlugin_Name="NEURONiK"
+)
+
+if(TARGET NEURONiK_WebPilotAssets)
+    target_link_libraries(NEURONiK_WebPilotHost PRIVATE NEURONiK_WebPilotAssets)
+    target_compile_definitions(NEURONiK_WebPilotHost PRIVATE NEURONIK_HAS_PILOT_ASSETS=1)
+endif()
+
+# The panel's UI dependencies (RotaryControl, GlassBox, MidiLearner, themes...)
+# and the processor's DSP chain: the same set the Standalone links, minus the
+# audio-device stack (the pilot has no audio callback; parameter traffic only).
+target_link_libraries(NEURONiK_WebPilotHost PRIVATE
+    juce::juce_audio_basics
+    juce::juce_audio_utils
+    juce::juce_data_structures
+    juce::juce_dsp
+    NEURONiK_Common
+)
+
+target_include_directories(NEURONiK_WebPilotHost PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Main"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/UI"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/Panels"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/Browser"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/State"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Serialization"
+)
+
+target_include_directories(NEURONiK_WebPilotHost PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/WebUI"
 )
 
 target_link_libraries(NEURONiK_WebPilotHost PRIVATE
+    # The contract library brings the real APVTS layout (createLayoutApvts), so the host
+    # bridges exactly the parameters the plugin ships, not a hand written copy.
+    NEURONiK_ParameterContract
     juce::juce_core
     juce::juce_events
     juce::juce_graphics
     juce::juce_gui_basics
     juce::juce_gui_extra
+    # SliderAttachment / ComboBoxAttachment for the native comparison strip.
+    juce::juce_audio_processors
 )
 
 # ============================================================================

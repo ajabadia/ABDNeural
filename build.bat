@@ -4,24 +4,32 @@ setlocal enabledelayedexpansion
 REM ============================================================================
 REM  ABDNeural (NEURONiK) - Compilacion Release
 REM
-REM  Uso:  build.bat                    -> plugin + contrato + WebUI + tests
+REM  Uso:  build.bat                    -> plugin + contrato + WebUI + tests + selftest
 REM        build.bat <directorio>       -> usa otro directorio de build
 REM        build.bat modelmaker         -> incluye la herramienta ModelMaker
 REM        build.bat build modelmaker   -> build limpio incluyendo ModelMaker
+REM        build.bat noselftest         -> omite el E2E del bridge (paso 8)
 REM
 REM  ModelMaker queda fuera por defecto a proposito: su target arrastra
 REM  'UpdateVersion', que incrementa Source\ModelMaker\Version.h (fichero
 REM  versionado) en cada compilacion.
+REM
+REM  El paso 8 abre brevemente la ventana del host del piloto y ejecuta el
+REM  selftest bidireccional del bridge (nativo->JS y JS->nativo, sobre el
+REM  canal real de WebView2). Exit code != 0 si alguna direccion no se mueve.
 REM
 REM  El script siempre termina con PAUSA, incluso si algo falla.
 REM ============================================================================
 
 set "BUILD_DIR="
 set "WITH_MODELMAKER=0"
+set "WITH_SELFTEST=1"
 
 for %%A in (%*) do (
     if /I "%%A"=="modelmaker" (
         set "WITH_MODELMAKER=1"
+    ) else if /I "%%A"=="noselftest" (
+        set "WITH_SELFTEST=0"
     ) else (
         set "BUILD_DIR=%%A"
     )
@@ -29,6 +37,8 @@ for %%A in (%*) do (
 
 if "%BUILD_DIR%"=="" set "BUILD_DIR=build-reference"
 set "EXIT_CODE=0"
+set "HOST_BUILD_FAILED=0"
+set "WEBUI_BUILD_FAILED=0"
 
 cd /d "%~dp0"
 
@@ -39,7 +49,7 @@ if "%WITH_MODELMAKER%"=="1" echo          ModelMaker: INCLUIDO ^(Version.h se in
 echo =======================================================
 echo.
 
-echo [1/7] Configurando CMake...
+echo [1/8] Configurando CMake...
 cmake -S . -B "%BUILD_DIR%" -DCMAKE_BUILD_TYPE=Release
 if !ERRORLEVEL! neq 0 (
     echo.
@@ -49,7 +59,7 @@ if !ERRORLEVEL! neq 0 (
 )
 
 echo.
-echo [2/7] Generando el contrato de parametros (WebPilot\generated)...
+echo [2/8] Generando el contrato de parametros (WebPilot\generated)...
 cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_ParameterExport
 if !ERRORLEVEL! neq 0 (
     echo.
@@ -67,7 +77,7 @@ if !ERRORLEVEL! neq 0 (
 )
 
 echo.
-echo [3/7] Compilando Standalone y VST3...
+echo [3/8] Compilando Standalone y VST3...
 cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_Standalone NEURONiK_VST3
 if !ERRORLEVEL! neq 0 (
     echo.
@@ -77,21 +87,25 @@ if !ERRORLEVEL! neq 0 (
 )
 
 echo.
-echo [4/7] Compilando el host del piloto WebPilot...
+echo [4/8] Compilando el host del piloto WebPilot...
 cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_WebPilotHost
 if !ERRORLEVEL! neq 0 (
     echo [AVISO] No se pudo compilar el host del piloto. El plugin sigue siendo valido.
+    set HOST_BUILD_FAILED=1
 )
 
 echo.
-echo [5/7] Exportando la WebUI del piloto...
+echo [5/8] Exportando la WebUI del piloto...
 if not exist "WebPilot\node_modules" goto :no_webui
 
 pushd WebPilot
 call pnpm build
 if !ERRORLEVEL! neq 0 (
     popd
-    echo [AVISO] Fallo la exportacion de la WebUI del piloto. El plugin sigue siendo valido.
+    echo [ERROR] Fallo la exportacion de la WebUI del piloto. Sin WebUI nueva no hay
+    echo         selftest honesto: corria contra WebPilot\out ANTERIOR (staleness).
+    set "WEBUI_BUILD_FAILED=1"
+    set "EXIT_CODE=1"
     goto :modelmaker
 )
 popd
@@ -104,7 +118,7 @@ echo        Para habilitarla: cd WebPilot ^&^& pnpm install --ignore-workspace
 
 :modelmaker
 echo.
-echo [6/7] Herramienta ModelMaker...
+echo [6/8] Herramienta ModelMaker...
 if "%WITH_MODELMAKER%"=="0" goto :no_modelmaker
 
 cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_ModelMaker
@@ -127,8 +141,8 @@ echo        Para incluirlo: build.bat modelmaker
 
 :tests
 echo.
-echo [7/7] Compilando y ejecutando la suite de pruebas...
-cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_DSPReferenceTest NEURONiK_MidiChannelFilterTest NEURONiK_VelocityCurveTest NEURONiK_LfoSyncTest NEURONiK_ParameterDescriptorTest NEURONiK_PresetRoundTripTest
+echo [7/8] Compilando y ejecutando la suite de pruebas...
+cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_DSPReferenceTest NEURONiK_MidiChannelFilterTest NEURONiK_VelocityCurveTest NEURONiK_LfoSyncTest NEURONiK_ParameterDescriptorTest NEURONiK_PresetRoundTripTest NEURONiK_ParameterBridgeTest NEURONiK_BridgeProtocolContractTest
 if !ERRORLEVEL! neq 0 (
     echo.
     echo [ERROR] Fallo al compilar las pruebas.
@@ -143,6 +157,42 @@ if !ERRORLEVEL! neq 0 (
     set "EXIT_CODE=1"
     goto :finish
 )
+
+echo.
+echo [8/8] Selftest bidireccional del bridge del piloto...
+if "%WITH_SELFTEST%"=="0" goto :finish
+
+REM Solo si el host compilo y la WebUI existe: sin pagina que cargar no hay E2E.
+set "PILOT_HOST=%BUILD_DIR%\NEURONiK_WebPilotHost_artefacts\Release\NEURONiK Web Pilot.exe"
+if "!HOST_BUILD_FAILED!"=="1" (
+    echo [AVISO] El host del piloto NO recompilo en esta pasada: el enlace borro el exe
+    echo         anterior. Selftest omitido para no dar un OK enganoso.
+    set "EXIT_CODE=1"
+    goto :finish
+)
+if not exist "%PILOT_HOST%" (
+    echo [AVISO] Host del piloto no disponible, selftest omitido.
+    goto :finish
+)
+if "!WEBUI_BUILD_FAILED!"=="1" (
+    echo [AVISO] La WebUI del piloto no se pudo exportar en esta pasada: el selftest
+    echo         se omitiria contra WebPilot\out ANTERIOR. Exporta de nuevo con
+    echo         cd WebPilot ^&^& pnpm build y relanza build.bat.
+    goto :finish
+)
+if not exist "WebPilot\out\index.html" (
+    echo [AVISO] WebPilot\out no existe, selftest omitido.
+    goto :finish
+)
+
+"%PILOT_HOST%" --selftest
+if !ERRORLEVEL! neq 0 (
+    echo.
+    echo [ERROR] El selftest del bridge fallo: alguna direccion no se movio.
+    set "EXIT_CODE=1"
+    goto :finish
+)
+echo [OK] Bridge verificado: nativo-^>JS y JS-^>nativo.
 
 echo.
 echo =======================================================

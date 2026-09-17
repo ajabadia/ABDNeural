@@ -114,6 +114,19 @@ ctest --test-dir build-reference -C Release --output-on-failure
 del piloto, exportación de la WebUI y la suite completa. Acepta un directorio de build como
 argumento (por defecto `build-reference`).
 
+Arranque de la versión web (`start.bat`, mismo patrón que ABDMS2000, menú 1-3):
+
+1. **Piloto en WebView2** — lanza "NEURONiK Web Pilot.exe" (bridge bidireccional con el
+   plugin; es la web "de verdad", como el Vite 8384 en ABDMS2000).
+2. **Solo WebUI en navegador** — sirve `WebPilot/out` en `http://localhost:8399` con
+   `npx serve`; sin JUCE la página queda en LOCAL MODE (útil para depurar la página a solas).
+3. **Selftest del bridge** — ejecuta el host con `--selftest` (E2E automático NATIVO->JS y
+   JS->NATIVO, imprime resultado y cierra solo; exit 0 = OK).
+
+Antes de lanzar la opción 1 o 3 debe existir el host (compilar con `build.bat`); el propio
+`start.bat` comprueba artefactos y avisa si faltan. Termina con pausa para poder leer la
+salida (regla de trabajo de este proyecto).
+
 ## Arquitectura actual relevante
 
 ### Procesador JUCE
@@ -200,19 +213,22 @@ La prueba `NEURONiK_DSPReferenceTest` ya pasa a través de esta fachada.
 
 ## Próximo trabajo recomendado
 
-1. Añadir `setParameter` y estructuras de parámetros a la fachada.
-2. Validar note-off y eventos expresivos mediante pruebas.
-3. Crear una conversión explícita de APVTS a un modelo de parámetros común.
-4. Mantener un adaptador JUCE que produzca exactamente la misma salida.
-5. Añadir pruebas de:
+1. Lanzar `build.bat`: compila el host con el bridge y añade `NEURONiK_ParameterBridgeTest` a la
+   suite (8 tests). Verificación interactiva que solo puede hacerse con la ventana delante:
+   mover un slider de la tira nativa debe mover el control web y viceversa.
+2. Añadir `setParameter` y estructuras de parámetros a la fachada.
+3. Validar note-off y eventos expresivos mediante pruebas.
+4. Crear una conversión explícita de APVTS a un modelo de parámetros común.
+5. Mantener un adaptador JUCE que produzca exactamente la misma salida.
+6. Añadir pruebas de:
    - note-on/note-off;
    - cambio de `masterLevel`;
    - cambio de `morphX/morphY`;
    - presets;
    - selección de `engineType`.
-6. Crear un piloto aislado de Next.js con un solo panel y estado simulado.
-7. Probar exportación estática y carga en WebView2 antes de migrar más UI.
-8. Solo si el piloto supera el punto de decisión, iniciar el wrapper WASM y la primera pantalla web conectada.
+7. Crear un piloto aislado de Next.js con un solo panel y estado simulado.
+8. Probar exportación estática y carga en WebView2 antes de migrar más UI.
+9. Solo si el piloto supera el punto de decisión, iniciar el wrapper WASM y la primera pantalla web conectada.
 
 ## Piloto Next.js creado
 
@@ -305,6 +321,379 @@ El proveedor de recursos se ha endurecido después de la verificación:
 Nota operativa: el `.exe` del host queda bloqueado mientras la ventana está abierta, así que hay que
 cerrarla antes de recompilar.
 
+## Bridge de parámetros JUCE <-> WebUI (2026-09-16)
+
+El host del piloto ya no es solo un visor: refleja un APVTS real en ambos sentidos por el canal de
+eventos de JUCE 8 y lleva una tira nativa de comparación.
+
+```text
+Source/WebUI/ParameterBridge.{h,cpp}   protocolo bidireccional (sin WebView2: testeable con una lambda)
+Source/WebPilotHost.cpp                transporte + APVTS real (createLayoutApvts) + tira nativa
+WebPilot/lib/bridge.js                 transporte JS (window.__JUCE__.backend; modo local sin JUCE)
+WebPilot/app/page.jsx                  panel conectado, con fases de gesto y estado normalizado
+Tests/ParameterBridgeTest.cpp          protocolo completo contra el APVTS del contrato
+Tests/webviewBridgeDirectionTest.mjs   guard de dirección (compartido con ABDSharedCode)
+```
+
+Puntos clave de diseño (el detalle completo está en `WEB_PILOT.md`, sección del bridge):
+
+- El APVTS reflejado es `State::createLayoutApvts()`: el layout exacto del plugin (70 parámetros).
+- **Salida por sondeo** (`publishPendingChanges`, timer de 30 ms) en lugar de listeners de
+  parámetros: elimina por construcción el modo de fallo "listener duplicado / evento perdido" y
+  permite diferir por valor (un parámetro puesto al valor que ya tenía no viaja).
+- **Sin eco**: lo que llega de JS actualiza `lastReported`, y el sondeo no se lo devuelve.
+- **Gestos**: begin/change/end desde JS; si la página se recarga en mitad de un arrastre, el host
+  cierra el gesto abierto (listener `pageLoaded` + `closeOpenGestures`).
+- **Tolerancia**: mensajes malformados e IDs desconocidos se cuentan en `Stats`, nunca lanzan.
+- `value` en el cable SIEMPRE normalizado 0..1; `real`/`text` viajan solo nativo -> JS.
+- El host sirve `juce.js` sin interferir (integración nativa activada: sin ella no hay
+  `window.__JUCE__` y ambas direcciones mueren).
+- La tira nativa del host usa `SliderAttachment` reales sobre los mismos IDs: mover un lado debe
+  mover el otro. Verificación interactiva pendiente del próximo `build.bat`.
+
+Validado sin compilar el plugin: `next build` en verde, el smoke test del transporte JS (ids y
+payloads en ambas direcciones, dispose sin fugas) y el guard de dirección sobre los 98 ficheros de
+`Source/`. El test `NEURONiK_ParameterBridgeTest` compila y corre con `build.bat`.
+
+### El protocolo, como contrato versionado (2026-09-16)
+
+El formato del cable está fijado en `WebPilot/contracts/bridge-protocol.json` (versionado en git,
+versión 1) con especificación completa en `WebPilot/BRIDGE_PROTOCOL.md`. Misma mecánica que el
+contrato de parámetros: el fichero no se genera, se edita, y dos tests anti-drift lo comparan con
+lo que cada lado ejecuta:
+
+```text
+NEURONiK_BridgeProtocolContractTest   C++: JSON vs literales compilados de ParameterBridge.h
+NEURONiK_BridgeProtocolJs (node)      JS: JSON vs bridge.js + formas de mensaje reales (backend simulado)
+```
+
+Fijado por ellos: los tres event ids (`event`, `nativeEvent`, `pageLoaded`), las acciones
+(`syncAllParams`, `parameterChanged`, `requestState`), las fases de gesto, la convención de
+escala (`value` normalizado, `real`/`text` solo nativo->JS) y los comportamientos (sin eco,
+salida por sondeo, gestos siempre cerrados, entrada tolerante, modo local). La política de
+versiones está en `BRIDGE_PROTOCOL.md`: cambio aditivo opcional no la incrementa; renombrar un
+literal o cambiar la escala, sí.
+
+Ambos tests están en verde, y con ellos la suite sube a **10 tests** en el próximo `build.bat`
+(8 C++ + 2 node).
+
+**Validado por el usuario (build.bat completo, 2026-09-16 18:11): 10/10 tests, plugin recompilado
+byte-idéntico (md5 f15de044…) y host del piloto con el bridge sirviendo la página (8 recursos,
+478 KB, panel en DOM a 1645 ms, ready a 2384 ms; el 2,4 s vuelve a ser perfil WebView2 frío tras
+recompilar — en caliente la serie documentada está en 886-1166 ms).**
+
+### Verificación bidireccional automatizada: `--selftest` (2026-09-16 18:26)
+
+El host del piloto incluye un modo que ejecuta el doble E2E del bridge sobre el canal real de
+WebView2 (mismo recorrido que una prueba manual con el ratón):
+
+```text
+"NEURONiK Web Pilot.exe" --selftest
+  [selftest] NATIVE -> JS: native masterLevel = 0.25, page slider = 0.25 -> OK
+  [selftest] JS -> NATIVE: page slider set to 0.75, native masterLevel = 0.7500 -> OK
+  [selftest] RESULT: OK        (exit code 0)
+```
+
+- NATIVO -> JS: `setValueNotifyingHost(0.25)` en el APVTS y, 400 ms después, lectura del `value`
+  del primer slider de la página (0.25 exacto).
+- JS -> NATIVO: dispatch de un evento `input` real sobre el slider (lo que dispara un arrastre de
+  usuario) con valor 0.75 y, tras el ciclo React -> bridge -> poller, lectura del parámetro nativo
+  (0.7500 exacto).
+- `--selftest` implica `--auto-quit`; el exit code (0/1) es el veredicto. En este modo el selftest
+  es quien cierra la ventana, no el sondeo de arranque.
+- **`build.bat` lo ejecuta como paso 8/8** (tras la suite de tests), solo si el host compiló y
+  existe `WebPilot\out`. Un fallo del selftest marca el build como CON ERRORES. Se omite con
+  `build.bat noselftest`. La ventana del piloto parpadea unos 3 segundos: es el selftest.
+- **Verificación manual del usuario (misma sesión): confirmada.** Captura del host con la página
+  en `BRIDGE LIVE` y la tira nativa mostrando exactamente los mismos valores (0.67/0.564/0.399 en
+  ambos lados, 261 actualizaciones de parámetro). El punto de ROADMAP queda cerrado.
+
+## Reglas de trabajo vigentes (desde la migración a Next.js, 2026-09-16)
+
+1. **Sin monolitos**: ningún fichero nuevo por encima de ~300 líneas; si crece, se divide.
+2. **DRY**: la matemática/interacción compartida vive en un módulo común (p. ej.
+   `drag-core.js`), nunca duplicada entre controles o paneles.
+3. **Tests al cerrar cada paso relevante**: JS con vitest, C++ con ctest; un paso sin su
+   test no cuenta como terminado.
+4. **Sin NTFS junctions en nada nuevo**: la reutilización va por paquetes npm/pnpm
+   (workspace `@abdsynths/*` o `file:`); los junctions existentes son legacy.
+
+## Familia de controles compartidos en ABDSharedAssets (2026-09-16)
+
+NEURONiK arranca la migración de UI como **primer consumidor** de la familia de controles
+compartidos del paquete `@abdsynths/shared` (`ABDSharedAssets/`). Documentación completa:
+`ABDSharedAssets/COMPONENTS.md`. Resumen operativo:
+
+- **Familia**: `Knob`, `Slider`, `Toggle` (+ `Wheel` preexistente) en
+  `ABDSharedAssets/components/`, contrato común (constructor + `setValue/getValue/destroy`,
+  `onChange` solo en ediciones de usuario), interacción DRY vía `drag-core.js`.
+- **Skins**: el ASPECTO es intercambiable por synthe. Una skin es un **mapa de renderers por
+  tipo** (`{knob, slider, toggle}`); `applySkin()` despacha por `CONTROL_KIND` y cae al renderer
+  'vector' cuando falta un tipo. Incluidas: `vector` (SVG/CSS sin assets), `ms2000`
+  (extraída de ABDMS2000), `junio` (sprites PNG extraídos de ABDJUNiO601, en
+  `ABDSharedAssets/assets/junio/`). `registerSkin()` para skins de proyecto.
+- **Demo única**: `ABDSharedAssets/demo/demo.html` **sección 8** (familia completa, 3 skins,
+  colores del toggle junio, toggle momentary). `demo/proto/` fue **deprecada y eliminada**:
+  su única aportación (cascada de tema de 3 niveles) está documentada en
+  `docs/INTEGRATION_GUIDE.md` §5 bis y no mostraba ningún componente que la demo principal
+  no tuviera. `npm run demo` sirve la raíz del paquete → abrir `/demo/demo.html`.
+- **Tests**: `pnpm test` en ABDSharedAssets (vitest+jsdom) — 24/24 en verde: contrato,
+  clamping, onChange/setValue, gestos, despacho de skins, fallback, destroy sin fugas.
+- **Consumo sin junctions**: paquete pnpm (`workspace:*`) o `file:`; los controles no saben
+  nada de JUCE/bridge/React — el envoltorio React es quien conecta con el contrato.
+
+### Wrappers React en el WebPilot (2026-09-16)
+
+Primera integración real de la familia en una pantalla Next.js del plugin:
+
+- `WebPilot/lib/controls.jsx` — `useSharedControl(Clase, props)`: monta el control
+  imperativo una vez por instancia (efecto ligado a la clase, no a las props), React ->
+  `control.setValue()` (programático, **sin eco** de onChange), callbacks de usuario vía
+  refs estables (`handlersRef`), `destroy()` en el cleanup. Wrappers: `ParamKnob`,
+  `ParamSlider`, `ParamToggle` (bool como 0/1 en el cable) y `ParamChoice` (select nativo,
+  índice N viaja como N/(count-1), el encoding discreto del APVTS).
+- `WebPilot/lib/paramValue.js` — plomería de valores sobre el contrato: `realFromNormalized`
+  / `normalizedFromReal` (misma matemática NormalisableRange que el host, con snap de
+  intervalo), `displayText` (percent en rangos 0..1 sin unidad, unidades reales en el resto),
+  `describeParam` (view-model del contrato; null para IDs desconocidos → error visible).
+- `WebPilot/lib/useParameterControls.js` — glue de página: estado normalizado + snapshot
+  inicial + push al bridge con fases de gesto (`begin`/`change`/`end`), modo local si no hay
+  `window.__JUCE__`.
+- `app/page.jsx` — reescrito sobre el hook y los wrappers. **`masterLevel` conserva
+  `input[type=range]` nativo a propósito**: el `--selftest` del host lo conduce con
+  `querySelector('input[type=range]')`; el resto (morphX, morphY, engineType) usa la familia
+  compartida. Bug corregido de pasada: la página anterior convertía real→normalizado con
+  `fromNormalized` (la inversa); fallaría con skew≠1 o rangos no 0..1.
+- Consumo: `"@abdsynths/shared": "file:../../ABDSharedAssets"` en WebPilot/package.json,
+  instalado con `pnpm install --ignore-workspace` (el workspace raíz capturaría el install).
+  El paquete exportó además `"./components"` (barrel) y `tokens.css` dejó de `@import`ar
+  Google Fonts (rompía `output: 'export'` sin red).
+- Validado: **15/15 tests nuevos** (`pnpm test` en WebPilot: unitarios de paramValue + guard
+  de contrato de página) y `pnpm build` en verde con el CSS de la familia embebido. E2E
+  re-verificado con `--selftest` tras la corrección del drag (ver abajo).
+
+### Corrección de interacción: drag 1:1 en la familia compartida (2026-09-16 21:45)
+
+**Síntoma informado por el usuario**: los sliders morphX/morphY "iban a toda velocidad" al
+arrastrar (masterLevel, el `input` nativo, iba bien). **Causa raíz** en `ABDSharedAssets/
+components/drag-core.js` (afecta a TODA la familia: knob, slider y wheel): el delta se medía
+**desde el origen del arrastre** pero los controles lo aplican como **incremento** sobre el
+valor ya actualizado — el valor se componía y la velocidad crecía cuadráticamente con el
+número de eventos de movimiento. Silencioso en tests porque los drags sintéticos iban en un
+solo `pointermove`.
+
+**Fix**: el delta es ahora **relativo al movimiento anterior** (`lastX/lastY` actualizados en
+cada `pointermove`); el valor sigue al puntero 1:1 (N eventos de d px = N*d px de recorrido).
+Test de regresión nuevo en `tests/controls.test.js` (drag en 4 movimientos → valor exacto);
+suite en **25/25**. Requiere re-servir/re-exportar cualquier WebUI que embebiera `drag-core`.
+
+
+## Paso 1 ejecutado: ParameterPanel real + assets embebidos (2026-09-16, por validar)
+
+Escrito SIN compilar (acuerdo de turno: compila el usuario con `build.bat`). Estado en disco:
+
+- **Host con el plugin de verdad.** `PilotComponent` instancia `NEURONiKProcessor` (miembro
+  propio, declarado DESPUÉS de `browser` y ANTES de `bridge` — el orden de destrucción importa:
+  el panel y el bridge mueren antes que el procesador). Fuera `State::createLayoutApvts()`: el
+  bridge puentea `processor.getAPVTS()`. El selftest consulta `processor.getAPVTS()` igual que
+  antes consultaba el APVTS de juguete — protocolo y página no cambian.
+- **Panel real en vez de tira.** `NativeStrip` eliminado; abajo del navegador vive ahora el
+  `NEURONiK::UI::ParameterPanel` real (pestaña GENERAL: envolvente, unison, freeze, RANDOM,
+  selector de motor, MidiLearners). Altura 240 px (la tira eran 120). El `timerCallback` ya no
+  refresca etiquetas (las pintaba la tira); el panel se repinta con sus propios timers.
+- **CMake del host.** Compila las mismas fuentes que el plugin (`${NEURONIK_SOURCES}`, sin el
+  `.rc` para no duplicar VERSIONINFO), patrón igual que el Standalone. Enlaza además
+  `juce_audio_basics`, `juce_data_structures`, `juce_dsp` y `NEURONiK_Common`. Include dirs de
+  Main/UI/Panels/Browser/DSP/State/Serialization añadidos.
+- **Assets WebUI embebidos (apuntado por el usuario y hecho).** `juce_add_binary_data
+  (NEURONiK_WebPilotAssets)` con el GLOB de `WebPilot/out/**` (CONFIGURE_DEPENDS, excluyendo
+  `_not-found` para no duplicar identificadores). `loadPilotResource` sirve DISCO primero y
+  cae a `BinaryData` si el exe está solo (`loadEmbeddedResource`, match por sufijo/basename);
+  define `NEURONIK_HAS_PILOT_ASSETS`. El informe del log imprime `[embedded fallback: N]`.
+  Esta es la vía de servicio del VST3 final.
+
+**Correcciones tras la primera compilación (2026-09-16):**
+
+- `C2065 JucePlugin_Name` (NEURONiKProcessor.cpp:418): el target gui-app no genera macros de
+  plugin → `JucePlugin_Name="NEURONiK"` clavado en `target_compile_definitions` del host
+  (mismo valor que el vcxproj del plugin).
+- `C3861 loadEmbeddedResource`: estaba definida DESPUÉS de `loadPilotResource` → declaración
+  adelantada dentro de la clase (el orden de definición ya no importa).
+- `C2039 getNumResources` / `C2664 getNamedResourceOriginalFilename(i)`: esas APIs NO existen
+  en el `BinaryData` generado. La real: `BinaryData::namedResourceListSize` +
+  `namedResourceList[]` (nombres mangled), y el payload se pide por NOMBRE de recurso
+  (`getNamedResource(resourceName, size)`), nunca por ruta; el nombre original se saca con
+  `getNamedResourceOriginalFilename(resourceName)` para el match por sufijo/basename.
+- `C2039 fromLastCharacterOfDelimiter`: no existe en `juce::String` → `fromLastOccurrenceOf
+  ("/", false, true)`.
+
+**Bug preexistente destapado por el piloto (corregido 2026-09-16):** TODA la telemetría de UI
+se sincronizaba SOLO dentro de `processBlock` (`uiAttack…uiFRelease`, `uiMorphX/Y`). En el
+plugin da igual (siempre hay audio), pero el host del piloto NO tiene callback de audio →
+XYPad y EnvelopeVisualizer nativos se quedaban congelados. Fix: extraído a
+`NEURONiKProcessor::refreshUiTelemetryFromApvts()` (público, thread-safe: atomics + loads del
+APVTS); `processBlock` lo sigue llamando cada bloque y el host lo consulta en su timer.
+La telemetría derivada del MOTOR (espectral, LFO, envolventes de salida) sigue donde estaba:
+solo existe tras render.
+
+Observaciones auditadas SIN cambiar (por si parecen bugs y no lo son):
+- `morphX/morphY` son 0..1 con default 0 — "esquina modelo A", no centro. El DSP hace
+  `lerp(modelA, modelB, morphX)` con `jlimit(0,1)`: legal por diseño. El fallback local 0.5
+  del XYPad es inofensivo (lo sobrescribe el source al instante). El centro real del pad
+  depende de qué modelos cargue el preset.
+- El XYPad nativo invierte Y de forma consistente (pintado, ratón y thumb con el mismo
+  `1 - y`): correcto.
+
+**3ª compilación (2026-09-16 23:03) — HOST ENLAZA Y PASA:** juce_audio_utils resolvió los
+LNK2019, selftest OK con host recompilado, 10/10. NOTA: los fixes de telemetría (23:05) son
+posteriores a los .obj (22:57) → necesitan UNA pasada más (rápida: 2 ficheros). El lado WebUI
+(hook normalizado) SÍ quedó dentro (paso 5 regeneró out/).
+
+**4ª compilación (2026-09-16 23:43, build.bat completo): 10/10 tests + selftest OK, telemetría
+dentro (exe 23:43 > fixes 23:05) y el exit code del selftest YA llega al proceso — verificado
+en ambos caminos: `--selftest` → exit 0; `--selftest-force-fail` (drill temporal) →
+`RESULT: FAIL`, `reason=selftest-forced-fail`, exit 1.** La pasada aun así imprimió
+RESULTADO: OK pese a un fallo real en el paso 5 (incidencia y endurecimiento abajo).
+
+**Incidencia del paso 5 (RESUELTA): snapshot viejo de `@abdsynths/shared` en node_modules.**
+El barrel instalado ya exportaba XYPad pero le faltaba `components/xypad.js` (copia a medias
+de la sesión cortada) → `next build` murió con `Module not found: Can't resolve './xypad.js'`.
+El XYPad SÍ está completo en ABDSharedAssets: `xypad.js` (23:11), 12 tests propios, suite
+**37/37** en verde, exportado en el barrel y usado en la demo (sección 8). Resolución:
+`cd WebPilot && pnpm install --ignore-workspace` refresca los deps `file:` desde el paquete
+fuente. **Lección:** tocar `ABDSharedAssets` exige re-install en cada consumidor `file:`, no
+basta re-exportar; el snapshot de node_modules puede quedarse a medias si la sesión muere.
+
+**Endurecido build.bat (el paso 5 ya no es blando):** un fallo de `pnpm build` marca
+`WEBUI_BUILD_FAILED`, `EXIT_CODE=1` y el paso 8 OMITE el selftest. Antes: aviso y el selftest
+corría contra `WebPilot\out` ANTERIOR — en esta pasada celebró un OK con la WebUI vieja.
+
+**Pendiente del checklist del paso 1:** (a) visual: RANDOM nativo mueve morphX/Y en página y
+slider de página mueve VOLUME nativo; (c) XYPad nativo sigue a la página. (b) fallback
+embebido **VALIDADO (2026-09-17, ver sección propia más abajo)**. El drill
+`--selftest-force-fail` es TEMPORAL: ya validado, retirar el flag/stage cuando se commite
+(buscar `TEMPORAL` en `Source/WebPilotHost.cpp`).
+
+**Fix de revisión (2026-09-16, por compilar): el exit code del selftest nunca salía del exe.**
+`selftestPassed` moría en el `PilotComponent`: ni `finish()` ni `systemRequestedQuit()` lo
+publicaban, así que el proceso salía SIEMPRE con 0 y la puerta del paso 8/8 de `build.bat`
+(`if !ERRORLEVEL! neq 0`) era decorativa — un selftest FAIL se habría celebrado como
+`[OK] Bridge verificado`. Arreglado en `Source/WebPilotHost.cpp`: `g_selftestExitCode`
+(atómico, -1 = sin veredicto) lo escribe `selftestFinish()` y `PilotApplication::
+systemRequestedQuit()` lo aplica con `setApplicationReturnValue(code)`. Sin selftest
+(`--auto-quit` o cierre manual) el default 0 se conserva. Validación:
+
+```bat
+"build-reference\NEURONiK_WebPilotHost_artefacts\Release\NEURONiK Web Pilot.exe" --selftest
+echo %ERRORLEVEL%   :: debe ser 0
+
+"build-reference\NEURONiK_WebPilotHost_artefacts\Release\NEURONiK Web Pilot.exe" --selftest-force-fail
+echo %ERRORLEVEL%   :: debe ser 1 (simulacro temporal, imprime selftest-forced-fail)
+```
+
+El simulacro `--selftest-force-fail` (TEMPORAL, retirar tras validar) salta el E2E y publica
+el veredicto FAIL en el primer tick: comprueba que el exit 1 llega al proceso sin depender de
+que el bridge falle de verdad. En `--auto-quit`/cierre manual el exit sigue siendo 0.
+**VALIDADO (2026-09-16 23:5x): ambos caminos, exit 0 y exit 1.** Revalidado 2026-09-17 con el
+host corregido del fallback (ambos en verde).
+
+## Ejercicio del fallback embebido — VALIDADO (2026-09-17), con 2 bugs arreglados
+
+Ejercicio: renombrar `WebPilot/out`, lanzar `--selftest`, restaurar. Resultado final:
+**`[embedded fallback: 8]` (497 KB), E2E del bridge OK en ambos sentidos sobre la WebUI
+embebida, exit 0**; con disco 8/496 KB; y `--selftest-force-fail` sigue publicando exit 1.
+
+- **Bug 1 — fuga de exit code en timeout:** un selftest que moría por `timeout` sin veredicto
+  salía con 0. `finish()` ahora publica FAIL si el selftest acaba sin veredicto
+  (`selftestFinish()` graba el código ANTES de llamar a `finish`, así que nunca lo pisa).
+- **Bug 2 — el snapshot embebido servía la página 404 como `index.html` (causa raíz del
+  timeout):** el glob de CMake excluía `_not-found` pero NO la ruta `404/`, y
+  `404/index.html` ganó el identificador `index.html` (juce_add_binary_data usa UN identificador
+  por basename, orden alfabético). Síntoma perverso: `resources served: 7 (460 KB)` con **cero
+  misses** — pedía 7 y le servían 7, pero el documento era el not-found (sin `.panel`).
+  Arreglo en `CMakeLists.txt`: excluir del snapshot `_not-found`, `404.html` y `404/…`; el
+  matcher (`loadEmbeddedResource`) conserva el guard para que una ruta de error jamás
+  responda a una petición normal. Lección: tras tocar el snapshot, verificar que
+  `originalFilenames` no tiene duplicados (`grep '"index.html"' BinaryData1.cpp` → 1).
+
+Checklist restante del paso 1: (a) visual: RANDOM nativo mueve morphX/Y en página, slider de
+página mueve VOLUME nativo; (c) con telemetría dentro: XYPad nativo sigue a la página.
+(b) fallback embebido: HECHO.
+
+**2ª compilación — enlace (previsto en el punto 1 del checklist):** 4x `LNK2019` sobre
+`juce::MidiKeyboardComponent`/`KeyboardComponentBase` (los usa NEURONiKEditor, no PresetBrowser
+como sospechábamos): `MidiKeyboardComponent` vive en `juce_audio_utils` → añadida al target del
+host. Lección: la lib que falta no la indica el símbolo, hay que saber en qué módulo JUCE vive
+cada componente.
+
+**Trampa de pipeline corregida (build.bat):** el paso 4 era "blando" (aviso y continúa) y el
+selftest del paso 8 corría igual con el exe VIEJO del host — un host sin recompilar daba
+`RESULTADO: OK` engañoso porque el selftest solo prueba el bridge y la WebUI se carga en
+caliente desde disco. Ahora el build recuerda `HOST_BUILD_FAILED` y, si el host no compiló,
+**omite el selftest y sale con error**. Si un día quieres compilar solo el plugin, usa
+`set WITH_SELFTEST=0` o compila los targets a mano.
+
+**Qué validar cuando compile** (en orden):
+
+1. Que el host enlaza (primera vez con el plugin entero dentro; si falta un símbolo, añadir la
+   lib JUCE que pida — candidata: `juce_audio_utils` si PresetBrowser toca file choosers).
+2. `--selftest` en verde (el E2E no cambió: `masterLevel` sigue siendo el `input` nativo).
+3. A la vista: mover un knob del panel nativo REAL (p. ej. ATTACK) y ver que la página no
+   cambia (no es de las 4 que muestra) pero RANDOM sí debe mover morphX/morphY en la página;
+   y mover un slider de la página debe verse en el knob VOLUME del panel.
+4. Con la carpeta `WebPilot/out` renombrada, el host debe seguir cargando la UI (fallback
+   embebido) y el log debe contar recursos con `[embedded fallback: N]`.
+
+## Migrar la primera pantalla real a Next.js: qué falta (2026-09-16)
+
+El piloto ya valida la cadena completa (Next.js estático + WebView2 + bridge bidireccional +
+contrato versionado). Lo que sigue es migrar UI real del plugin. Candidato natural: la pestaña
+**GENERAL** (`ParameterPanel`, `Source/UI/ParameterPanel.{h,cpp}`, 274 líneas), porque es la que
+usa el contrato de parámetros tal cual (sliders/choices sobre IDs) sin piezas nativas especiales.
+
+En orden, lo que falta:
+
+1. **Doble host temporal (lo primero y más barato).** Dentro del `WebPilotHost`, sustituir la tira
+   nativa de comparación por un `ParameterPanel` real del plugin (necesita `NEURONiKProcessor&`, no
+   solo el APVTS: los botones de acción del panel leen el procesador). Verificación: mover un
+   slider nativo del panel real mueve la página, y viceversa. Si esto pasa, la migración es
+   mecánica.
+2. **Transporte de acciones de panel.** El contrato de parámetros cubre sliders/choices, pero
+   `ParameterPanel` también dispara acciones (randomize, preset save/load). Añadir al protocolo
+   (versión 2, aditiva) un mensaje `panelAction { name, args? }` JS->nativo y registrar las
+   acciones soportadas en el contrato JSON.
+3. **Reutilizar el tema.** `ThemeManager` expone colores (surface, text, accent…). Exportarlos al
+   bridge (un `themeChanged` nativo->JS o variables CSS inyectadas) para que la pantalla web y la
+   nativa no diverjan visualmente.
+4. **Componentes web equivalentes.** Mapear los controles custom JUCE (XYPad, LcdDisplay,
+   EnvelopeVisualizer, SpectralVisualizer) a React. Para la pestaña GENERAL no hace falta ninguno;
+   son la fase 2 de la migración (y probablemente canvas, no DOM).
+5. **Estado del editor vs estado del plugin.** La página web hoy refleja el APVTS. Faltan:
+   restaurar `window.__pilotReady` tras recarga (ya funciona) y decidir qué pasa con parámetros
+   uiOnly (randomStrength) — hoy viajan y no tienen efecto DSP: documentar en el contrato que son
+   "efectivos solo vía acciones".
+6. **Decisión formal Next.js** (punto de decisión del ROADMAP) con los números reales de esta
+   sesión: bundle 476 KB / 8 peticiones, arranque 886-1166 ms en caliente, y el coste del runtime
+   (~572 KB crudo / 172 KB gzip) como suelo conocido.
+
+No-bloqueantes pero a tener en cuenta: el host mide `document interactive` ~3.2 s en la primera
+ejecución tras recompilar (perfil de WebView2 frío; en caliente vuelve a <1.2 s); si la migración
+huele lenta, repetir la medición con el perfil caliente antes de culpar al framework.
+
+## Cobertura de tests del lado web (auditoría 2026-09-16)
+
+- **Hueco encontrado:** `WebPilot/lib/bridge.js` (la contrapartida JS del protocolo versionado)
+  no tenía NINGÚN test: su filtrado de mensajes, modo local y dispose solo se ejercitaban en el
+  selftest E2E. `parameters.js` además sin cubrir `defaultState`/`validateState`/
+  `describeControl`/`divergentParameters`.
+- **Relleno:** `tests/bridge.test.js` (9 tests contra un backend falso de `window.__JUCE__`:
+  formato de cable exacto JS->nativo, `pageLoaded` en su propio event id, routing
+  nativo->JS, mensajes malformados ignorados sin lanzar, dispose sin fugas, backend que
+  lanza no tira la página) y `tests/parametersState.test.js` (11: siembra de defaults por
+  tipo, validación de estado, divergencias, resumen de pantalla).
+- **Suite WebPilot: 15 -> 35 tests.** Suite completa de la sesión: 10 C++ (ctest) + 35 web
+  + 25 ABDSharedAssets.
+
 ## Contrato de parámetros (generado)
 
 El contrato que consume la WebUI se genera desde el propio APVTS:
@@ -388,10 +777,11 @@ Tests nuevos:
 NEURONiK_MidiChannelFilterTest   20 comprobaciones
 NEURONiK_LfoSyncTest             19 comprobaciones
 NEURONiK_VelocityCurveTest       36 comprobaciones
-NEURONiK_PresetRoundTripTest     31 comprobaciones
+NEURONiK_PresetRoundTripTest     31 comprobaciones  (verificado con build.bat 2026-09-16)
 ```
 
-Los tres registrados en CTest: la suite pasa 5/5 sin hardware.
+Los tres registrados en CTest: la suite pasa 6/6 sin hardware (build.bat, 2026-09-16, pasos 1-7 con
+ModelMaker omitido por diseño).
 
 `NEURONiK_DSPReferenceTest` cubre además el camino de pánico: tras `allNotesOff()` las voces
 dejan de ser activas cuando termina el release (≈4,4 s con el release de 500 ms por defecto, ya que
@@ -588,22 +978,24 @@ Un solo comando hace el ciclo completo y **termina siempre con pausa**, tanto si
 falla, para poder copiar la salida:
 
 ```bat
-build.bat                    :: plugin + contrato + WebUI + tests (usa build-reference)
+build.bat                    :: plugin + contrato + WebUI + tests + selftest (usa build-reference)
 build.bat build              :: lo mismo, en un directorio de build limpio
 build.bat modelmaker         :: además compila la herramienta ModelMaker
 build.bat build modelmaker   :: build limpio incluyendo ModelMaker
+build.bat noselftest         :: omite el E2E del bridge (paso 8)
 ```
 
 Pasos que ejecuta, en orden:
 
 ```text
-1/7  cmake -S . -B <dir> -DCMAKE_BUILD_TYPE=Release
-2/7  NEURONiK_ParameterExport + regeneracion de WebPilot\generated
-3/7  NEURONiK_Standalone + NEURONiK_VST3
-4/7  NEURONiK_WebPilotHost            (si falla, solo avisa)
-5/7  WebPilot: pnpm build            (se omite si no hay node_modules)
-6/7  NEURONiK_ModelMaker             (solo con 'modelmaker', ver abajo)
-7/7  compilacion de los 6 tests + ctest --output-on-failure
+1/8  cmake -S . -B <dir> -DCMAKE_BUILD_TYPE=Release
+2/8  NEURONiK_ParameterExport + regeneracion de WebPilot\generated
+3/8  NEURONiK_Standalone + NEURONiK_VST3
+4/8  NEURONiK_WebPilotHost            (si falla, solo avisa)
+5/8  WebPilot: pnpm build            (se omite si no hay node_modules)
+6/8  NEURONiK_ModelMaker             (solo con 'modelmaker', ver abajo)
+7/8  compilacion de los 8 tests + ctest --output-on-failure
+8/8  selftest del bridge del piloto  (se omite con 'noselftest'; ver arriba)
 ```
 
 Artefactos:
@@ -670,11 +1062,31 @@ La segunda es el build validado con `build.bat`:
 contrato: 70 parametros · 65 wired · 4 UI only · 1 not routed · 1 not in the layout
 ```
 
+Comprobado también después del último `build.bat` (2026-09-16 15:4x): el md5 del Standalone
+**sigue coincidiendo** con esta copia, así que es una referencia válida y no un binario de una
+revisión anterior.
+
 Sirven como A/B de oído: entre las dos solo cambian la retirada de `harmMix`, la curva de
 velocidad, el MIDI thru opt-in y las sincronizaciones ya documentadas. Con los defaults, la
 diferencia audible esperada en presets existentes es **ninguna**; en el A/B, el default de
 `velocityCurve` es `Linear` (identidad) y el de `midiThru` es off (antes el búfer se devolvía
 siempre, lo que solo se nota si el host leía el MIDI del plugin).
+
+### Build post-wrappers (2026-09-16 21:30)
+
+Primera build con la familia de controles compartidos en la WebUI del piloto (wrappers React
+`ParamSlider`/`ParamChoice` + `useParameterControls`; ver sección "Wrappers React en el
+WebPilot"). Validada con `build.bat` completo: 10/10 tests + selftest del bridge OK
+(NATIVO->JS y JS->NATIVO).
+
+```text
+NEURONiK_2026-09-16_2130_post-wrappers.exe                 5.383.168 bytes (Standalone)
+NEURONiK_WebPilotHost_2026-09-16_2130_post-wrappers.exe    3.453.440 bytes (host del piloto)
+```
+
+Nota: el Standalone quedó **byte-idéntico** a la copia de las 15:17 (los wrappers viven en la
+WebUI, no en el plugin); el binario que cambia es el host del piloto, y la WebUI nueva es la
+que `build.bat` exporta a `WebPilot\out` (paso 5/8) — el host la carga desde ahí en caliente.
 
 Detalles:
 
