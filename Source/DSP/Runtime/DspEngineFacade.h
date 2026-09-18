@@ -1,8 +1,9 @@
 #pragma once
 
 // Sin juce_*.h: la fachada solo habla en tipos propios (Event) y datos planos
-// (GlobalParams, floats crudos). Es la frontera que consumirá el wrapper WASM.
+// (GlobalParams, floats crudos). Es la frontera que consume el wrapper WASM.
 #include "../DspTypes.h"
+#include "../DspMidiBuffer.h"
 #include "DspEvent.h"
 
 namespace NEURONiK::DSP { class ISynthesisEngine; }
@@ -47,5 +48,9 @@ namespace NEURONiK::DSP::Runtime
 
     private:
         NEURONiK::DSP::ISynthesisEngine& engine;
+
+        // Reutilizado entre bloques: la conversion Event -> MidiMessage no
+        // asigna memoria en el hilo de audio (clear() conserva la capacidad).
+        dsp::MidiBuffer midiBuffer;
     };
 }

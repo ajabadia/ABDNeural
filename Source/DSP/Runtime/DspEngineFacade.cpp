@@ -2,47 +2,50 @@
 #include "DspEngineFacade.h"
 
 #include "../ISynthesisEngine.h"
-#include <juce_audio_basics/juce_audio_basics.h>
 
 namespace NEURONiK::DSP::Runtime
 {
     namespace
     {
-        juce::MidiMessage toMidiMessage(const Event& event)
+        // Event -> dsp::MidiMessage. Sin JUCE: la fachada sigue siendo una
+        // frontera sin juce_*. El note on/off usa la factoria float (misma
+        // cuantizacion de velocity que antes, dsp::roundToInt) y el resto usa
+        // el truncado explicito de siempre.
+        dsp::MidiMessage toMidiMessage(const Event& event)
         {
             const int channel = dsp::jlimit(1, 16, event.channel);
 
             switch (event.type)
             {
                 case EventType::NoteOn:
-                    return juce::MidiMessage::noteOn(channel,
+                    return dsp::MidiMessage::noteOn(channel,
+                                                    dsp::jlimit(0, 127, event.note),
+                                                    dsp::jlimit(0.0f, 1.0f, event.value));
+
+                case EventType::NoteOff:
+                    return dsp::MidiMessage::noteOff(channel,
                                                      dsp::jlimit(0, 127, event.note),
                                                      dsp::jlimit(0.0f, 1.0f, event.value));
 
-                case EventType::NoteOff:
-                    return juce::MidiMessage::noteOff(channel,
-                                                      dsp::jlimit(0, 127, event.note),
-                                                      dsp::jlimit(0.0f, 1.0f, event.value));
-
                 case EventType::PitchBend:
-                    return juce::MidiMessage::pitchWheel(channel, dsp::jlimit(0, 16383, event.value14));
+                    return dsp::MidiMessage::pitchWheel(channel, dsp::jlimit(0, 16383, event.value14));
 
                 case EventType::ChannelPressure:
-                    return juce::MidiMessage::channelPressureChange(channel,
+                    return dsp::MidiMessage::channelPressureChange(channel,
                                                               dsp::jlimit(0, 127,
                                                                            static_cast<int>(event.value * 127.0f)));
 
                 case EventType::PolyAftertouch:
-                    return juce::MidiMessage::aftertouchChange(channel,
-                                                               dsp::jlimit(0, 127, event.note),
-                                                               dsp::jlimit(0, 127,
-                                                                            static_cast<int>(event.value * 127.0f)));
+                    return dsp::MidiMessage::aftertouchChange(channel,
+                                                              dsp::jlimit(0, 127, event.note),
+                                                              dsp::jlimit(0, 127,
+                                                                           static_cast<int>(event.value * 127.0f)));
 
                 case EventType::Timbre:
-                    return juce::MidiMessage::controllerEvent(channel,
-                                                               74,
-                                                               dsp::jlimit(0, 127,
-                                                                            static_cast<int>(event.value * 127.0f)));
+                    return dsp::MidiMessage::controllerEvent(channel,
+                                                              74,
+                                                              dsp::jlimit(0, 127,
+                                                                           static_cast<int>(event.value * 127.0f)));
             }
 
             return {};
@@ -73,17 +76,17 @@ namespace NEURONiK::DSP::Runtime
         buffer.setDataToReferTo(channels, 2, numSamples);
         buffer.clear();
 
-        juce::MidiBuffer midi;
+        midiBuffer.clear();
         if (events != nullptr && eventCount > 0)
         {
             for (int i = 0; i < eventCount; ++i)
             {
                 const auto& event = events[i];
-                midi.addEvent(toMidiMessage(event), dsp::jlimit(0, numSamples - 1, event.sampleOffset));
+                midiBuffer.addEvent(toMidiMessage(event), dsp::jlimit(0, numSamples - 1, event.sampleOffset));
             }
         }
 
-        engine.renderNextBlock(buffer, midi);
+        engine.renderNextBlock(buffer, midiBuffer);
     }
 
     void DspEngineFacade::reset()

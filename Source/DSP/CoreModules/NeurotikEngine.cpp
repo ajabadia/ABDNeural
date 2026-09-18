@@ -27,7 +27,7 @@ void NeurotikEngine::prepare(double sampleRate, int samplesPerBlock)
     BaseEngine::prepare(sampleRate, samplesPerBlock);
 }
 
-void NeurotikEngine::renderNextBlock(dsp::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+void NeurotikEngine::renderNextBlock(dsp::AudioBuffer<float>& buffer, dsp::MidiBuffer& midiMessages)
 {
     const int numSamples = buffer.getNumSamples();
     
@@ -183,7 +183,7 @@ void NeurotikEngine::setVoiceParams(const NEURONiK::DSP::Synthesis::NeurotikVoic
     pendingVoiceParams = p;
 }
 
-void NeurotikEngine::handleMidiEvent(const juce::MidiMessage& m)
+void NeurotikEngine::handleMidiEvent(const dsp::MidiMessage& m)
 {
     int channel = m.getChannel();
 

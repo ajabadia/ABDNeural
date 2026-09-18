@@ -95,9 +95,14 @@ Objetivo: conservar el DSP actual, pero definir una API que pueda ser utilizada 
 - [x] Separar los tipos de eventos de nota del transporte MIDI de JUCE
       (`Runtime::Event` sin JUCE; el adaptador `Event`→`MidiMessage` vive SOLO en el
       `.cpp` de la fachada).
-- [ ] Mantener temporalmente `juce::AudioBuffer` y `juce::MidiBuffer` en el adaptador
-      JUCE (estado transicional INTENCIONAL: solo la fachada y `DspTypes.h` están
-      libres de JUCE; el motor interno sigue usándolos hasta la Fase 5).
+- [x] Quitar `juce::AudioBuffer` del motor (`dsp::AudioBuffer`, paso 2/6) y la frontera MIDI
+      entera del motor (`dsp::MidiMessage` + `dsp::MidiBuffer`, paso 4/6): el único sitio
+      donde queda el transporte MIDI de JUCE es el adaptador `Runtime::JuceMidiAdapter`,
+      que los hosts JUCE usan para traducir. La fachada `Runtime/*` ya no incluye juce_*.
+- [ ] Quitar lo que aún queda de JUCE en el motor: `juce::Reverb` (`Effects/Reverb.h`),
+      la rama nativa de `SIMDWrapper.h` y los includes que sobreviven por
+      `JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR` + `DBG`/`jassertfalse` de `DSPUtils.h`
+      (pasos 5/6 y 6/6).
 - [x] Añadir un adaptador JUCE sin cambiar el resultado sonoro (paridad BIT-EXACTA
       verificada: ruta directa vs ruta fachada, misma secuencia de notas, 0 tolerancia).
 - [x] Comparar el nuevo adaptador con el Standalone de referencia (automatizado en

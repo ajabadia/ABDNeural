@@ -14,7 +14,7 @@
 namespace
 {
     // ─── Fase 1: paridad de la frontera ───
-    // La ruta JUCE directa (renderNextBlock con MidiBuffer) y la ruta fachada
+    // La ruta directa del motor (renderNextBlock con dsp::MidiBuffer) y la fachada
     // (punteros crudos + Runtime::Event) deben producir EXACTAMENTE el mismo
     // audio: mismas llamadas internas, mismos datos. El DSP con parámetros por
     // defecto es determinista (semillas constantes, entropy=0), así que la
@@ -34,15 +34,16 @@ namespace
         engine.prepare(sampleRate, blockSize);
 
         juce::AudioBuffer<float> buffer(2, blockSize);
-        juce::MidiBuffer midi;
 
-        // Frontera dsp::AudioBuffer <-> juce::AudioBuffer (motor sin JUCE):
-        // vista zero-copy de los mismos canales (patron DspEngineFacade::process).
+        // Frontera del motor (sin JUCE): vista zero-copy del audio (patron
+        // DspEngineFacade::process) y dsp::MidiBuffer construido con las mismas
+        // factorias que usa el puente WASM.
         dsp::AudioBuffer<float> dspBufferView (buffer.getArrayOfWritePointers(),
                                                buffer.getNumChannels(),
                                                buffer.getNumSamples());
+        dsp::MidiBuffer midi;
 
-        midi.addEvent(juce::MidiMessage::noteOn(1, plan.note, plan.velocity), 0);
+        midi.addEvent(dsp::MidiMessage::noteOn(1, plan.note, plan.velocity), 0);
         // IMPORTANTE: limpiar a traves de la VISTA, no del buffer JUCE. El motor
         // suma en el buffer (addFrom) y escribe via la vista: si limpiamos con
         // buffer.clear(), el flag isClear del buffer JUCE queda true tras el
@@ -56,7 +57,7 @@ namespace
         {
             midi.clear();
             if (b == plan.sustainBlocks - 1)
-                midi.addEvent(juce::MidiMessage::noteOff(1, plan.note, plan.velocity), 0);
+                midi.addEvent(dsp::MidiMessage::noteOff(1, plan.note, plan.velocity), 0);
             dspBufferView.clear();
             engine.renderNextBlock(dspBufferView, midi);
         }

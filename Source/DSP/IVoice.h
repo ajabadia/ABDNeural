@@ -10,7 +10,9 @@
 
 #pragma once
 
-#include <juce_audio_basics/juce_audio_basics.h>
+// dsp::AudioBuffer es el tipo de la frontera; antes se obtenia por rebote del
+// include de juce_audio_basics (ya no hace falta JUCE aqui).
+#include "DspCore.h"
 
 namespace NEURONiK::DSP {
 

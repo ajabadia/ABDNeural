@@ -343,6 +343,26 @@ target_link_libraries(NEURONiK_MidiChannelFilterTest PRIVATE
 
 add_test(NAME NEURONiK_MidiChannelFilterTest COMMAND NEURONiK_MidiChannelFilterTest)
 
+# MIDI ports of the DSP core (Fase 1, paso 4/6): dsp::MidiMessage/MidiBuffer are
+# ports of juce::MidiMessage/MidiBuffer, so this test pins them against their
+# originals (byte-space sweep, factories, velocity quantisation) and pins the
+# JUCE -> dsp adapter (order, positions, dropped system messages).
+add_executable(NEURONiK_MidiPortTest
+    Tests/MidiPortTest.cpp
+)
+
+target_include_directories(NEURONiK_MidiPortTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+)
+
+target_link_libraries(NEURONiK_MidiPortTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_core
+)
+
+add_test(NAME NEURONiK_MidiPortTest COMMAND NEURONiK_MidiPortTest)
+
 # Velocity curve: pure MIDI shaping, no plugin dependencies needed.
 add_executable(NEURONiK_VelocityCurveTest
     Tests/VelocityCurveTest.cpp

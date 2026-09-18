@@ -95,7 +95,7 @@ void BaseEngine::reset()
     }
 }
 
-void BaseEngine::handleMidiMessage(const juce::MidiMessage& msg)
+void BaseEngine::handleMidiMessage(const dsp::MidiMessage& msg)
 {
     handleMidiEvent(msg);
 }
@@ -134,7 +134,7 @@ void BaseEngine::allNotesOff()
             voice->noteOff (0.0f, true);
 }
 
-void BaseEngine::processMidiBuffer(juce::MidiBuffer& midiMessages)
+void BaseEngine::processMidiBuffer(dsp::MidiBuffer& midiMessages)
 {
     for (const auto metadata : midiMessages)
     {

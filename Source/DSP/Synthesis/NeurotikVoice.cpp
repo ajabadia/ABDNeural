@@ -9,6 +9,7 @@
 */
 
 #include "DspCore.h"
+#include "../DspMidiMessage.h"
 #include "NeurotikVoice.h"
 #include "../DSPUtils.h"
 #include <algorithm>
@@ -39,7 +40,7 @@ void NeurotikVoice::noteOn(int midiNoteNumber, float velocity)
 {
     currentNote = midiNoteNumber;
     currentVelocity = velocity;
-    baseFreq = (float)juce::MidiMessage::getMidiNoteInHertz(midiNoteNumber);
+    baseFreq = (float)dsp::MidiMessage::getMidiNoteInHertz(midiNoteNumber);
     
     resonatorBank.setBaseFrequency(baseFreq);
     resonatorBank.reset(); // Crucial: Clear ANY history/denormals from previous note

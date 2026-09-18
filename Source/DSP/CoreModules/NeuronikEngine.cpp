@@ -27,7 +27,7 @@ void NeuronikEngine::prepare(double sampleRate, int samplesPerBlock)
     BaseEngine::prepare(sampleRate, samplesPerBlock);
 }
 
-void NeuronikEngine::renderNextBlock(dsp::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+void NeuronikEngine::renderNextBlock(dsp::AudioBuffer<float>& buffer, dsp::MidiBuffer& midiMessages)
 {
     const int numSamples = buffer.getNumSamples();
     
@@ -186,7 +186,7 @@ void NeuronikEngine::setVoiceParams(const NEURONiK::DSP::Synthesis::AdditiveVoic
     pendingVoiceParams = p;
 }
 
-void NeuronikEngine::handleMidiEvent(const juce::MidiMessage& m)
+void NeuronikEngine::handleMidiEvent(const dsp::MidiMessage& m)
 {
     int channel = m.getChannel();
 

@@ -7,6 +7,7 @@
 #include "../DSP/CoreModules/NeurotikEngine.h"
 #include "../DSP/Synthesis/AdditiveVoice.h"
 #include "../DSP/Synthesis/NeurotikVoice.h"
+#include "../DSP/Runtime/JuceMidiAdapter.h"
 
 using namespace NEURONiK::State;
 
@@ -426,7 +427,13 @@ void NEURONiKProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
         dsp::AudioBuffer<float> dspBufferView (buffer.getArrayOfWritePointers(),
                                                buffer.getNumChannels(),
                                                buffer.getNumSamples());
-        engine->renderNextBlock(dspBufferView, midiMessages);
+
+        // Frontera MIDI juce::MidiBuffer -> dsp::MidiBuffer (motor sin JUCE):
+        // copia los bytes crudos del subconjunto que el motor interpreta, en
+        // el mismo orden y con las mismas posiciones. engineMidiBuffer se
+        // reutiliza entre bloques, asi que no asigna en el hilo de audio.
+        NEURONiK::DSP::Runtime::copyToDspMidiBuffer (midiMessages, engineMidiBuffer);
+        engine->renderNextBlock(dspBufferView, engineMidiBuffer);
 
         // External MIDI view for UI feedback (WebPilot keyboard): fold this
         // block's note on/off into the 128-bit held mask. Relax order: the mask

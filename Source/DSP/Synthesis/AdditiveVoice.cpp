@@ -8,6 +8,7 @@
 */
 
 #include "DspCore.h"
+#include "../DspMidiMessage.h"
 #include "AdditiveVoice.h"
 #include "../DSPUtils.h"
 #include <cmath>
@@ -67,7 +68,7 @@ void AdditiveVoice::noteOn(int midiNoteNumber, float velocity)
         curvedVelocity = std::sqrt(velocity);
 
     currentVelocity = curvedVelocity;
-    originalFrequency = static_cast<float>(juce::MidiMessage::getMidiNoteInHertz(midiNoteNumber));
+    originalFrequency = static_cast<float>(dsp::MidiMessage::getMidiNoteInHertz(midiNoteNumber));
     
     resonator.setBaseFrequency(originalFrequency);
     

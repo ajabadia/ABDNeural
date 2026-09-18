@@ -12,11 +12,11 @@
 
 // GlobalParams vive en DspTypes.h (libre de JUCE) para que hosts sin JUCE
 // (fachada Runtime, wrapper WASM) puedan hablar de parámetros con el motor.
-// DspCore.h: dsp::AudioBuffer (port libre de JUCE) que cruza la frontera.
+// DspCore.h: dsp::AudioBuffer / dsp::MidiBuffer / dsp::MidiMessage (ports
+// libres de JUCE) son los tipos que cruzan la frontera del bloque.
 #include "DspTypes.h"
 #include "DspCore.h"
-#include <juce_audio_basics/juce_audio_basics.h>
-#include <juce_events/juce_events.h>
+#include "DspMidiBuffer.h"
 
 namespace NEURONiK::Common { struct SpectralModel; }
 
@@ -45,10 +45,10 @@ namespace NEURONiK::DSP {
  * Hilos de los getters de visualización: seguros desde cualquier hilo
  * (atómicos/dobles buffers internos); pensados para un timer de UI (~30 Hz).
  *
- * NO depende del host: los tipos que cruza la frontera son GlobalParams
- * (DspTypes.h, POD sin JUCE) y dsp::AudioBuffer/juce::MidiBuffer, que hoy
- * son la representación temporal del bloque. Un host sin JUCE usa la fachada
- * Runtime::DspEngineFacade (punteros crudos + Runtime::Event).
+ * NO depende del host: los tipos que cruza la frontera (GlobalParams,
+ * dsp::AudioBuffer, dsp::MidiBuffer, dsp::MidiMessage) no incluyen JUCE. Un
+ * host sin JUCE usa la fachada Runtime::DspEngineFacade (punteros crudos +
+ * Runtime::Event); un host JUCE traduce con Runtime::JuceMidiAdapter.
  */
 class ISynthesisEngine {
 public:
@@ -61,7 +61,7 @@ public:
     virtual void prepare(double sampleRate, int samplesPerBlock) = 0;
 
     /** Processes a block of audio. */
-    virtual void renderNextBlock(dsp::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages) = 0;
+    virtual void renderNextBlock(dsp::AudioBuffer<float>& buffer, dsp::MidiBuffer& midiMessages) = 0;
 
     /** Real-time safe parameter update. */
     virtual void updateParameters() = 0;
@@ -73,7 +73,7 @@ public:
     virtual void reset() = 0;
 
     /** Inject a MIDI message from the UI or external source. */
-    virtual void handleMidiMessage(const juce::MidiMessage& msg) = 0;
+    virtual void handleMidiMessage(const dsp::MidiMessage& msg) = 0;
 
     /** Visualization getters (Thread-safe) */
     virtual float getLfoValue(int index) const = 0;

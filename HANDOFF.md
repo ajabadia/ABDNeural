@@ -1491,3 +1491,82 @@ transicional (casilla abierta a propósito en el roadmap, se ataca con la Fase 5
   emscripten lo exige; MSVC era laxo). Paridad intacta.
 - Validación: build.bat RESULTADO OK, paridad WASM A/B/D/E=0 ulps y C=16
   (presupuesto), smoke OK, vitest 56/56 tras sync_wasm.
+
+## Fase 1 [4/6] — la frontera MIDI deja de ser JUCE (2026-09-18)
+
+**Qué se hizo:** el motor ya no conoce el transporte MIDI de JUCE. Solo queda el
+adaptador del lado host.
+
+- `Source/DSP/DspMidiMessage.h` NUEVO: `dsp::MidiMessage`, port LITERAL del
+  subconjunto que el motor interpreta (note on/off, pitch wheel, aftertouch de
+  canal y polifónico, CC). Mismos cuerpos y defaults que JUCE, incluido el
+  detalle que más importa: **`isNoteOff()` trata note-on con velocity 0 como
+  note-off** (default de JUCE) y `getFloatVelocity()` sale del byte, no del
+  float de entrada. Fuera del alcance a propósito: SysEx, meta y realtime.
+- `Source/DSP/DspMidiBuffer.h` NUEVO: `dsp::MidiBuffer`, port de
+  `juce::MidiBuffer` con el mismo empaquetado (`[int32 pos][uint16 size][bytes]`)
+  y la misma semántica de inserción (ordenado por posición, port literal de
+  `findEventAfter`; los empates quedan FIFO). `ensureSize()` + `clear()` que
+  conserva la capacidad = cero asignaciones en el hilo de audio.
+- `dsp::roundToInt` en `DspCore.h`: port literal del truco de doble precisión de
+  JUCE (empates **al par**, no como `std::lround`). Es lo que cuantiza la
+  velocity de nota en `floatValueToMidiByte`, así que sin él el port habría
+  cambiado el sonido en los empates.
+- `Source/DSP/Runtime/JuceMidiAdapter.h` NUEVO: frontera
+  `juce::MidiBuffer` → `dsp::MidiBuffer` para hosts JUCE. Copia los bytes crudos
+  (cero re-cuantización), conserva orden y posiciones, y descarta lo que el
+  motor no interpreta (SysEx/meta/realtime y >3 bytes). `#error` explícito si
+  se incluye bajo `__EMSCRIPTEN__`.
+- `DspEngineFacade` deja de incluir `juce_audio_basics`: construye
+  `dsp::MidiMessage` con las mismas factorías y **reutiliza un `dsp::MidiBuffer`
+  miembro** (antes creaba un buffer local por bloque → asignaba en el hilo de
+  audio). La frontera `Runtime/*` es ya 100 % libre de JUCE.
+- `Source/Main/NEURONiKProcessor`: traduce a `engineMidiBuffer` cada bloque
+  (miembro reutilizado). El resto del procesador (filtro de canal, curva de
+  velocidad, máscara de notas, MIDI thru) sigue con su `juce::MidiBuffer`: es el
+  lado host y ahí JUCE es lo correcto.
+- Limpiezas de paso: `IVoice.h` incluye `DspCore.h` (antes obtenía
+  `dsp::AudioBuffer` por rebote de `juce_audio_basics`); eliminado
+  `Source/DSP/Synthesis/ResonatorSound.h`, que era **código muerto** (cero
+  referencias) y el único `juce_audio_processors` del árbol DSP.
+- `Tests/MidiPortTest.cpp` NUEVO (target `NEURONiK_MidiPortTest`, en ctest y en
+  el paso 7 de `build.bat`): anti-drift contra los originales — barrido de 2.849
+  patrones de bytes comparando TODOS los predicados/getters, 1.824 casos de las
+  seis factorías comparando bytes crudos, 2.541 valores de velocity (incluye el
+  empate 63.5), `roundToInt` en semienteros, `getMidiNoteInHertz` en las 128
+  notas, semántica de `dsp::MidiBuffer` (orden, posiciones, empates, `clear()`) y
+  del adaptador (qué se copia, qué se descarta, reutilización del destino).
+
+**Verificación ejecutada (2026-09-18, todo en esta máquina):**
+
+```text
+build_wasm.bat (5 pasos)                    EXIT 0 → paridad A/B/D/E = 0 ulps,
+                                            C = 16 (presupuesto), smoke peak=0.53199
+cmake --build ... NEURONiK_Standalone       EXIT 0 (procesador + editor + plugin)
+ctest --test-dir build-reference -C Release 12/12 (11 previos + MidiPortTest)
+pnpm --filter @abdsynths/web-pilot-vite build  EXIT 0 (bundle de la WebUI)
+NEURONiK_WebPilotHost + --selftest          EXIT 0 → 4/4 direcciones:
+                                            NATIVO->JS, JS->NATIVO, GENERAL y MIDI
+```
+
+La paridad no se movió por el port: los picos nativos de los cinco escenarios
+son idénticos a los de antes (A 0.531995, B 0.006339, C 0.528966, D 0.553536,
+E 0.434755) y A/B/D/E siguen bit-exactos. El selftest es el que valida de punta
+a punta el lado host del paso: la página manda note on/off de la 60 y el host
+lee la máscara de notas (su línea `MIDI: ... -> OK` pasa por
+`NEURONiKProcessor` → `copyToDspMidiBuffer` → `dsp::MidiBuffer` → motor).
+Falta la pasada completa de `build.bat`, que repite todo lo anterior en un solo
+comando (y solo añade el bundle embebido del host y el informe de pasos).
+
+**Lo que aún queda de JUCE en el motor** (pasos 5/6 y 6/6):
+
+| Dependencia | Dónde |
+|---|---|
+| `juce::Reverb` | `Source/DSP/Effects/Reverb.h` |
+| `juce::dsp::SIMDRegister` | `Source/DSP/Utils/SIMDWrapper.h` (rama nativa; WASM ya usa el fallback escalar) |
+| `JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR` | 10 clases del DSP (incluidos `BaseEngine.h`, `LFO.h`, los efectos y las voces) |
+| `JUCE_DEBUG`/`DBG`/`jassertfalse` | `Source/DSP/DSPUtils.h`, `AdditiveVoice.cpp`, `NeurotikVoice.cpp` |
+| includes `juce_core`/`juce_audio_basics` residuales | `Envelope.h`, `FilterBank.h`, `Oscillator.h`, `Resonator.h`, `ResonatorBank.h`, `RhythmicDivision.h`, `Saturation.h`, `Chorus.h`, `Delay.h`, `NeurotikVoice.h` (varios son vestigiales: ya no usan ningún símbolo `juce::`) |
+
+Pendiente heredado, no tocado en este paso: los 8 avisos `C4100` (`paramName`
+sin usar en `validateAudioParam` con NDEBUG) que imprime el build del plugin.

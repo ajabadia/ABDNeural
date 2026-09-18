@@ -26,7 +26,7 @@ public:
     // --- ISynthesisEngine Implementation ---
     Type getType() const override { return Type::Neuronik; }
     void prepare(double sampleRate, int samplesPerBlock) override;
-    void renderNextBlock(dsp::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages) override;
+    void renderNextBlock(dsp::AudioBuffer<float>& buffer, dsp::MidiBuffer& midiMessages) override;
     void updateParameters() override;
     void getSpectralData(float* destination64) const override;
     void getEnvelopeLevels(float& amp, float& filter) const override;
@@ -40,7 +40,7 @@ public:
     void loadModel(const NEURONiK::Common::SpectralModel& model, int slot) override;
 
 private:
-    void handleMidiEvent(const juce::MidiMessage& m) override;
+    void handleMidiEvent(const dsp::MidiMessage& m) override;
     void applyModulation();
 
     ::NEURONiK::DSP::Synthesis::AdditiveVoice::Params pendingVoiceParams;

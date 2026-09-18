@@ -199,6 +199,11 @@ private:
     // velocities (audio thread, no allocation after the first blocks)
     juce::MidiBuffer channelFilteredMidi;
 
+    // Vista dsp:: del bloque para el motor (traducida cada bloque desde
+    // midiMessages por Runtime::JuceMidiAdapter). Reutilizada entre bloques:
+    // no asigna en el hilo de audio una vez reservada.
+    dsp::MidiBuffer engineMidiBuffer;
+
     // Set from parameterChanged (message thread), consumed in processBlock
     std::atomic<bool> allNotesOffRequested { false };
 

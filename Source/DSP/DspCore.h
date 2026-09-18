@@ -156,6 +156,29 @@ Type jlimit (Type lowerLimit,
 }
 
 //==============================================================================
+/** Port literal de juce::roundToInt.
+
+    Mismo truco de doble precision que JUCE: sumar 2^52 + 2^51 al valor
+    promovido a double y leer los 32 bits bajos. Redondea al entero mas
+    cercano con los empates AL PAR (difiere de std::lround en los empates),
+    y esa diferencia se oye: MidiMessage::floatValueToMidiByte cuantiza la
+    velocity de nota con esta funcion.
+
+    Todos los objetivos del proyecto (x86, x64 y wasm) son little-endian, que
+    es la rama que JUCE compila con JUCE_BIG_ENDIAN a 0.
+*/
+template <typename FloatType>
+int roundToInt (const FloatType value) noexcept
+{
+    static_assert (sizeof (int) == 4, "roundToInt asume int de 32 bits");
+
+    union { int asInt[2]; double asDouble; } n;
+    n.asDouble = ((double) value) + 6755399441055744.0;
+
+    return n.asInt[0];
+}
+
+//==============================================================================
 /** Helper class providing an RAII-based mechanism for temporarily disabling
     denormals on your CPU.
     Port literal de dsp::ScopedNoDenormals: misma mascara 0x8040 (FTZ | DAZ)

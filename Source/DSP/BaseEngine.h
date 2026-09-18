@@ -19,8 +19,9 @@
 #include "Effects/Chorus.h"
 #include "Effects/Reverb.h"
 #include "CoreModules/LFO.h"
-#include <juce_audio_basics/juce_audio_basics.h>
-#include <juce_events/juce_events.h>
+// juce_core solo por JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (detector
+// de fugas de Debug). La frontera MIDI del motor ya es dsp::Midi*.
+#include <juce_core/juce_core.h>
 #include <vector>
 #include <memory>
 #include <atomic>
@@ -37,7 +38,7 @@ public:
     void prepare(double sampleRate, int samplesPerBlock) override;
     void updateParameters() override;
     void reset() override;
-    void handleMidiMessage(const juce::MidiMessage& msg) override;
+    void handleMidiMessage(const dsp::MidiMessage& msg) override;
     
     float getLfoValue(int index) const override;
     void getModulationValues(float* destination, int count) const override;
@@ -52,10 +53,10 @@ protected:
     void applyGlobalFX(dsp::AudioBuffer<float>& buffer);
     
     /** Subclasses must implement this to route MIDI to their specific voice types. */
-    virtual void handleMidiEvent(const juce::MidiMessage& m) = 0;
+    virtual void handleMidiEvent(const dsp::MidiMessage& m) = 0;
     
     /** Common MIDI processing loop. */
-    void processMidiBuffer(juce::MidiBuffer& midiMessages);
+    void processMidiBuffer(dsp::MidiBuffer& midiMessages);
 
     std::vector<std::unique_ptr<IVoice>> voices;
     std::atomic<int> activeVoiceLimit { 16 };
