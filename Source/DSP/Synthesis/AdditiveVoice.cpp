@@ -8,6 +8,7 @@
 */
 
 #include "DspCore.h"
+#include "../DspDebug.h"
 #include "../DspMidiMessage.h"
 #include "AdditiveVoice.h"
 #include "../DSPUtils.h"
@@ -24,8 +25,10 @@ AdditiveVoice::AdditiveVoice()
 
 void AdditiveVoice::prepare(double sampleRate, int samplesPerBlock)
 {
-    dsp::ignoreUnused(samplesPerBlock);
-    
+    // Reserva el jitter de entropia AQUI (fuera del hilo de audio):
+    // Resonator::prepareEntropy ya no asigna memoria en el callback.
+    resonator.prepareJitterBuffers(samplesPerBlock);
+
     resonator.setSampleRate(sampleRate);
     ampEnvelope.setSampleRate(sampleRate);
     filterEnvelope.setSampleRate(sampleRate);
@@ -212,9 +215,7 @@ bool AdditiveVoice::renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int s
 
         if (badBlock)
         {
-            #if JUCE_DEBUG
-            DBG("WARNING: NaN/Inf detected in AdditiveVoice output - voice reset");
-            #endif
+            dspDbg ("WARNING: NaN/Inf detected in AdditiveVoice output - voice reset");
             reset(); 
             return false;
         }

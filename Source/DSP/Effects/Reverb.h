@@ -87,7 +87,7 @@ private:
     dsp::LinearSmoothedValue<float> widthSmoother { 1.0f };
     dsp::LinearSmoothedValue<float> mixSmoother { 0.0f };
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Reverb)
+    dspDeclareNonCopyableWithLeakDetector(Reverb)
 };
 
 } // namespace NEURONiK::DSP::Effects

@@ -12,7 +12,6 @@
 
 #include "DspCore.h"
 
-#include <juce_audio_basics/juce_audio_basics.h>
 #include <vector>
 
 namespace NEURONiK::DSP::Effects {
@@ -101,7 +100,7 @@ private:
     dsp::LinearSmoothedValue<float> timeSmoother;
     dsp::LinearSmoothedValue<float> feedbackSmoother;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Delay)
+    dspDeclareNonCopyableWithLeakDetector(Delay)
 };
 
 } // namespace NEURONiK::DSP::Effects

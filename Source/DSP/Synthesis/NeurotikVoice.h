@@ -15,8 +15,6 @@
 #include "../IVoice.h"
 #include "../CoreModules/ResonatorBank.h"
 #include "../CoreModules/Envelope.h"
-#include <juce_core/juce_core.h>
-#include <juce_audio_basics/juce_audio_basics.h>
 #include <array>
 
 namespace NEURONiK::DSP::Synthesis {
@@ -97,7 +95,7 @@ private:
     dsp::LinearSmoothedValue<float> resonanceSmoother;
     dsp::LinearSmoothedValue<float> unisonDetuneSmoother;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NeurotikVoice)
+    dspDeclareNonCopyableWithLeakDetector(NeurotikVoice)
 };
 
 } // namespace NEURONiK::DSP::Synthesis

@@ -238,35 +238,45 @@ void Resonator::updateHarmonicsFromModels(float morphX, float morphY) noexcept
     }
 }
 
+void Resonator::prepareJitterBuffers(int maxBlockSize)
+{
+    // Unica asignacion: desde prepare(), fuera del hilo de audio. Los valores no
+    // se conservan entre bloques (prepareEntropy los regenera), asi que basta con
+    // asignar el tamano.
+    const auto size = (size_t) dsp::jmax(1, maxBlockSize);
+    ampJitterBuffer.assign(size, 0.0f);
+    phaseJitterBuffer.assign(size, 0.0f);
+    jitterLength = 0;
+}
+
 void Resonator::prepareEntropy(int numSamples) noexcept
 {
     if (entropyAmount < 0.001f) return;
-    
-    if (ampJitterBuffer.size() < (size_t)numSamples) ampJitterBuffer.resize(numSamples);
-    if (phaseJitterBuffer.size() < (size_t)numSamples) phaseJitterBuffer.resize(numSamples);
-    
-    for (int s = 0; s < numSamples; ++s)
-    {
-        ampJitterBuffer[s] = 1.0f + fastFloatRand(randomSeed) * entropyAmount * 0.5f;
-        phaseJitterBuffer[s] = fastFloatRand(randomSeed) * entropyAmount * 0.2f;
-    }
-}
 
-float Resonator::processSample() noexcept
-{
-    // Note: To truly eliminate branching, we'd need a processBlock in Resonator
-    // that takes a sample index. For now, this is a placeholder for future block-op.
-    return processSample(0); // This won't work as is, keeping original for now but cleaner
+    // Sin asignaciones en el hilo de audio: el tamano lo fija prepareJitterBuffers().
+    // Un bloque mayor que lo reservado se recicla por modulo en processSample().
+    const int capacity = (int) ampJitterBuffer.size();
+    jitterLength = dsp::jmin(numSamples, capacity);
+
+    for (int s = 0; s < jitterLength; ++s)
+    {
+        ampJitterBuffer[(size_t)s] = 1.0f + fastFloatRand(randomSeed) * entropyAmount * 0.5f;
+        phaseJitterBuffer[(size_t)s] = fastFloatRand(randomSeed) * entropyAmount * 0.2f;
+    }
 }
 
 float Resonator::processSample(int sampleIdx) noexcept
 {
-    // Entropy path (rarely used, kept separate to keep SIMD hot)
-    if (entropyAmount > 0.001f)
+    // Entropy path (rarely used, kept separate to keep SIMD hot). Exige el jitter
+    // preparado en este bloque: si no lo esta (nadie llamo a prepareJitterBuffers),
+    // la entropia queda inerte en vez de leer fuera de rango. Con el bloque dentro
+    // de lo reservado, sampleIdx % jitterLength == sampleIdx.
+    if (entropyAmount > 0.001f && jitterLength > 0)
     {
+        const int jitterIndex = sampleIdx % jitterLength;
         float out = 0.0f;
-        float ampJitter = ampJitterBuffer[sampleIdx];
-        float phaseJitter = phaseJitterBuffer[sampleIdx];
+        float ampJitter = ampJitterBuffer[(size_t)jitterIndex];
+        float phaseJitter = phaseJitterBuffer[(size_t)jitterIndex];
         
         for (int i = 0; i < 128; ++i)
         {

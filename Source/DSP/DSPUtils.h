@@ -12,8 +12,8 @@
 #pragma once
 
 #include "DspCore.h"
+#include "DspDebug.h"
 
-#include <juce_core/juce_core.h>
 #include <cmath>
 #include <limits>
 
@@ -30,12 +30,13 @@ inline T validateAudioParam(T value, T minVal, T maxVal, T fallback, const char*
     // Use std::isfinite to detect NaN and Infinity
     if (!std::isfinite(value) || value < minVal || value > maxVal)
     {
-        #if JUCE_DEBUG
-        // Only log in debug to avoid performance hit in release, 
-        // though it shouldn't happen often if we are careful.
-        DBG("WARNING: Invalid " << paramName << " (" << value << ") clamped to " << fallback);
-        jassertfalse; 
-        #endif
+        // Aviso solo en Debug: dspDbg/dspAssert compilan a nada en Release
+        // (misma puerta que JUCE_DEBUG), asi que la puerta explicita sobra.
+        // ignoreUnused evita el C4100 de paramName cuando el aviso no existe.
+        dsp::ignoreUnused (paramName);
+        dspDbg ("WARNING: Invalid " << paramName << " (" << value
+                                    << ") clamped to " << fallback);
+        dspAssert (false);
         return fallback;
     }
     
@@ -57,9 +58,7 @@ inline bool sanitizeAudioBuffer(dsp::AudioBuffer<float>& buffer, int startSample
         {
             if (!std::isfinite(data[i]))
             {
-                #if JUCE_DEBUG
-                jassertfalse; // Alert in debug
-                #endif
+                dspAssert (false); // aviso en Debug; en Release solo silencia
                 data[i] = 0.0f; // Silence in release
                 foundInvalid = true;
             }

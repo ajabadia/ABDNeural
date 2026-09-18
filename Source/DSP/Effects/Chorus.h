@@ -12,7 +12,6 @@
 
 #include "DspCore.h"
 
-#include <juce_audio_basics/juce_audio_basics.h>
 #include <vector>
 
 namespace NEURONiK::DSP::Effects {
@@ -115,7 +114,7 @@ private:
     dsp::LinearSmoothedValue<float> depthSmoother { 0.2f };
     dsp::LinearSmoothedValue<float> mixSmoother { 0.0f };
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Chorus)
+    dspDeclareNonCopyableWithLeakDetector(Chorus)
 };
 
 } // namespace NEURONiK::DSP::Effects

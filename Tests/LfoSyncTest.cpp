@@ -18,6 +18,10 @@
 #include "../Source/DSP/CoreModules/LFO.h"
 #include "../Source/DSP/CoreModules/RhythmicDivision.h"
 
+// Los headers del DSP ya no arrastran juce_core (Fase 1, paso 6/6): este test usa
+// juce::String en sus ayudantes, asi que lo incluye el mismo.
+#include <juce_core/juce_core.h>
+
 #include <cmath>
 #include <iostream>
 #include <vector>

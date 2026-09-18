@@ -205,7 +205,10 @@ void MainComponent::audioDeviceIOCallbackWithContext(const float* const* inputCh
     {
         for (int i = 0; i < numSamples; ++i)
         {
-            float samp = previewResonator.processSample() * 0.5f; 
+            // Indice dentro del bloque: la ruta de entropia lee su jitter por indice
+            // (la ruta SIMD por defecto no lo necesita). Si algun dia se activa
+            // entropy en el preview, hay que llamar a prepareJitterBuffers() antes.
+            float samp = previewResonator.processSample(i) * 0.5f; 
             if (i < bufferToFill.numSamples)
             {
                 for (int ch = 0; ch < numOutputChannels; ++ch)

@@ -2391,3 +2391,9 @@ private:
 };
 
 } // namespace dsp
+
+//==============================================================================
+// Detector de fugas: sustituto del JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR
+// de juce_core. Se incluye desde aqui para que el macro siga estando disponible
+// donde antes lo ponia juce_core, sin tocar a los consumidores.
+#include "DspLeakedObjectDetector.h"

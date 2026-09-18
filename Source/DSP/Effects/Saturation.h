@@ -12,7 +12,6 @@
 
 #include "DspCore.h"
 
-#include <juce_core/juce_core.h>
 #include <cmath>
 
 namespace NEURONiK::DSP::Effects {
@@ -93,7 +92,7 @@ public:
 private:
     dsp::LinearSmoothedValue<float> driveSmoother { 1.0f };
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Saturation)
+    dspDeclareNonCopyableWithLeakDetector(Saturation)
 };
 
 } // namespace NEURONiK::DSP::Effects

@@ -1568,5 +1568,65 @@ comando (y solo añade el bundle embebido del host y el informe de pasos).
 | `JUCE_DEBUG`/`DBG`/`jassertfalse` | `Source/DSP/DSPUtils.h`, `AdditiveVoice.cpp`, `NeurotikVoice.cpp` |
 | includes `juce_core`/`juce_audio_basics` residuales | `Envelope.h`, `FilterBank.h`, `Oscillator.h`, `Resonator.h`, `ResonatorBank.h`, `RhythmicDivision.h`, `Saturation.h`, `Chorus.h`, `Delay.h`, `NeurotikVoice.h` (varios son vestigiales: ya no usan ningún símbolo `juce::`) |
 
-Pendiente heredado, no tocado en este paso: los 8 avisos `C4100` (`paramName`
-sin usar en `validateAudioParam` con NDEBUG) que imprime el build del plugin.
+## Arreglo de tiempo real: el jitter de entropía y el placeholder de `Resonator` (2026-09-18)
+
+Dos cosas que marcó la auditoría del motor, ya cerradas:
+
+1. **`Resonator::prepareEntropy` ya no asigna en el hilo de audio.** Hacía
+   `ampJitterBuffer.resize(...)` dentro del callback cuando la entropía estaba
+   activa (guardado por `entropyAmount < 0.001f`, y la entropía es 0 por defecto,
+   pero es exactamente la regla ZERO ALLOCATIONS). Ahora los buffers se reservan
+   UNA vez con `Resonator::prepareJitterBuffers(maxBlockSize)`, que llama
+   `AdditiveVoice::prepare()`; `prepareEntropy` solo rellena y deja
+   `jitterLength = min(numSamples, capacidad)`. Si un host entrega un bloque mayor
+   que el preparado, el jitter se recicla por módulo (determinista) en vez de
+   reservar: con el bloque dentro de lo reservado `sampleIdx % jitterLength ==
+   sampleIdx`, así que el audio es idéntico (paridad A/B/D/E = 0 ulps y picos
+   nativos sin cambios).
+2. **Fuera el placeholder `Resonator::processSample()` sin argumento.** Devolvía
+   `processSample(0)` («This won't work as is») y ModelMaker lo llamaba de verdad:
+   con entropía activa y sin jitter preparado leía fuera del vector. Ahora hay una
+   sola sobrecarga indexada, ModelMaker pasa su `i`, y la ruta de entropía exige
+   `jitterLength > 0` (si nadie preparó el jitter queda inerte en vez de tocar
+   memoria inválida).
+
+## Fase 1 [6/6] — el motor deja de incluir JUCE (2026-09-18)
+
+- `DspDebug.h` NUEVO: `dspDbg(...)`, port de `DBG` con la misma puerta
+  (`! defined (NDEBUG)` = `JUCE_DEBUG`): en Release no compila ni evalúa la
+  expresión. Escribe en stderr (el motor no tiene Logger).
+- `DspLeakedObjectDetector.h` NUEVO: `dspLeakDetector` /
+  `dspDeclareNonCopyableWithLeakDetector(Class)`, port de
+  `JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR` + `juce::LeakedObjectDetector`.
+  **Como en JUCE, el detector solo existe en Debug** (en Release el macro deja
+  únicamente el borrado de copia), así que el binario Release no engorda.
+  `DspCore.h` lo incluye al final para que el macro siga estando disponible donde
+  antes lo ponía juce_core.
+- Macro de JUCE sustituido en las 9 clases del DSP que lo usaban (`BaseEngine`,
+  `LFO`, los dos motores, `Chorus`, `Delay`, `Saturation`, `Reverb`,
+  `NeurotikVoice`).
+- `DSPUtils.h`: `JUCE_DEBUG`/`DBG`/`jassertfalse` → `dspDbg`/`dspAssert`, sin la
+  puerta explícita (el macro ya es un no-op en Release). `dsp::ignoreUnused
+  (paramName)` mata además los **8 avisos C4100** que rompían la puerta de «0
+  avisos»: el plugin y el host del piloto compilan ahora **limpios**.
+- Fuera los includes `juce_core`/`juce_audio_basics` **vestigiales** (ninguno de
+  esos ficheros usaba ya un símbolo `juce::`): `Envelope.h`, `FilterBank.h`,
+  `Oscillator.h`, `Resonator.h`, `ResonatorBank.h`, `RhythmicDivision.h`, `LFO.h`,
+  `Saturation.h`, `Chorus.h`, `Delay.h`, `NeurotikVoice.h`, `DSPUtils.h`,
+  `BaseEngine.h`, `NeuronikEngine.h`, `NeurotikEngine.h`. `Resonator.h` recupera
+  `<cstdint>`/`<vector>`, que obtenía por rebote.
+- `Tests/LfoSyncTest.cpp` incluye `juce_core` explícitamente: usaba `juce::String`
+  en sus ayudantes apoyándose en el include del DSP.
+
+**Lo único que queda de JUCE en `Source/DSP`** (a propósito):
+
+| Dependencia | Dónde | Por qué |
+|---|---|---|
+| `juce::Reverb` | `Effects/Reverb.h` | el port a `dsp::Reverb` es el paso 5/6 |
+| `juce::dsp::SIMDRegister` (rama nativa) | `Utils/SIMDWrapper.h` | es la implementación nativa real, no un vestigio; WASM ya usa el fallback escalar |
+| `juce::MidiBuffer` → `dsp::MidiBuffer` | `Runtime/JuceMidiAdapter.h` | es la frontera del host JUCE, por diseño |
+
+**Verificación (2026-09-18):** `build_wasm.bat` EXIT 0 (paridad A/B/D/E = 0 ulps,
+C = 16, smoke peak 0.53199), `ctest` 12/12, Standalone y host del piloto EXIT 0 con
+**0 avisos**, `--selftest` 4/4 direcciones, y `NEURONiK_ModelMaker` EXIT 0
+(comprueba el cambio de `processSample`; su `Version.h` se restauró).

@@ -12,8 +12,6 @@
 
 #include "DspCore.h"
 
-#include <juce_core/juce_core.h>
-#include <juce_audio_basics/juce_audio_basics.h>
 #include <atomic>
 #include <cmath>
 
@@ -89,7 +87,7 @@ private:
     float generateSquare() const noexcept;
     float generateRandomSampleAndHold() noexcept;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LFO)
+    dspDeclareNonCopyableWithLeakDetector(LFO)
 };
 
 } // namespace NEURONiK::DSP::Core

@@ -19,9 +19,6 @@
 #include "Effects/Chorus.h"
 #include "Effects/Reverb.h"
 #include "CoreModules/LFO.h"
-// juce_core solo por JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (detector
-// de fugas de Debug). La frontera MIDI del motor ya es dsp::Midi*.
-#include <juce_core/juce_core.h>
 #include <vector>
 #include <memory>
 #include <atomic>
@@ -79,7 +76,7 @@ protected:
     double currentSampleRate = 48000.0;
     int currentSamplesPerBlock = 512;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(BaseEngine)
+    dspDeclareNonCopyableWithLeakDetector(BaseEngine)
 };
 
 } // namespace NEURONiK::DSP

@@ -9,6 +9,7 @@
 */
 
 #include "DspCore.h"
+#include "../DspDebug.h"
 #include "../DspMidiMessage.h"
 #include "NeurotikVoice.h"
 #include "../DSPUtils.h"
@@ -151,9 +152,7 @@ bool NeurotikVoice::renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int s
         }
 
         if (badBlock) {
-            #if JUCE_DEBUG
-            DBG("NeurotikVoice NaN detected - resetting voice");
-            #endif
+            dspDbg ("NeurotikVoice NaN detected - resetting voice");
             reset();
             return false; // Stop processing this voice
         }

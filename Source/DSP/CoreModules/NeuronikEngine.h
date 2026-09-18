@@ -46,7 +46,7 @@ private:
     ::NEURONiK::DSP::Synthesis::AdditiveVoice::Params pendingVoiceParams;
     std::array<float, 64> lastModulations { 0.0f };
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NeuronikEngine)
+    dspDeclareNonCopyableWithLeakDetector(NeuronikEngine)
 };
 
 } // namespace NEURONiK::DSP

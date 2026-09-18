@@ -11,8 +11,9 @@
 
 #pragma once
 
-#include <juce_core/juce_core.h>
 #include <array>
+#include <cstdint>
+#include <vector>
 #include "Oscillator.h"
 #include "SpectralModel.h"
 
@@ -43,11 +44,29 @@ public:
     void setShift(float amount) noexcept;
     void setRollOff(float amount) noexcept;
     void setUnison(float detune, float spread) noexcept;
-    float processSample() noexcept;
+
+    /**
+     * Renderiza UNA muestra del bloque.
+     * @param sampleIdx indice dentro del bloque actual (0..numSamples-1). Solo lo
+     *                  usa la ruta de entropia, que lee su jitter por indice; la
+     *                  ruta SIMD (por defecto) no depende de el.
+     */
     float processSample(int sampleIdx) noexcept;
     void reset() noexcept;
-    
-    // Call once per block to pre-calculate jitter if entropy is active
+
+    /**
+     * Pre-reserva los buffers de jitter. NO es real-time safe (asigna memoria):
+     * se llama UNA vez desde prepare(), de modo que prepareEntropy nunca reserva
+     * dentro del hilo de audio (regla ZERO ALLOCATIONS del proyecto).
+     * @param maxBlockSize tamano maximo de bloque que se va a renderizar.
+     */
+    void prepareJitterBuffers(int maxBlockSize);
+
+    /**
+     * Rellena el jitter del bloque. Real-time safe: sin asignaciones ni locks.
+     * Si el host entrega un bloque mayor que lo reservado, el jitter se recicla
+     * por modulo (determinista) en lugar de reservar aqui.
+     */
     void prepareEntropy(int numSamples) noexcept;
 
     const std::array<float, 64>& getPartialAmplitudes() const noexcept { return partialAmplitudes; }
@@ -93,9 +112,10 @@ private:
 
     std::array<float, 64> lnTable;
 
-    // Entropy Buffers (for block processing)
+    // Entropy Buffers (for block processing). Se reservan en prepareJitterBuffers().
     std::vector<float> ampJitterBuffer;
     std::vector<float> phaseJitterBuffer;
+    int jitterLength = 0;
 };
 
 #if defined(_MSC_VER)

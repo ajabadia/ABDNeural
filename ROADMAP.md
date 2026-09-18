@@ -99,10 +99,13 @@ Objetivo: conservar el DSP actual, pero definir una API que pueda ser utilizada 
       entera del motor (`dsp::MidiMessage` + `dsp::MidiBuffer`, paso 4/6): el único sitio
       donde queda el transporte MIDI de JUCE es el adaptador `Runtime::JuceMidiAdapter`,
       que los hosts JUCE usan para traducir. La fachada `Runtime/*` ya no incluye juce_*.
-- [ ] Quitar lo que aún queda de JUCE en el motor: `juce::Reverb` (`Effects/Reverb.h`),
-      la rama nativa de `SIMDWrapper.h` y los includes que sobreviven por
-      `JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR` + `DBG`/`jassertfalse` de `DSPUtils.h`
-      (pasos 5/6 y 6/6).
+- [x] Quitar del motor los includes de JUCE, el macro de leak detector y el
+      `DBG`/`jassertfalse` (paso 6/6): `dspDbg` y
+      `dspDeclareNonCopyableWithLeakDetector` (Debug-only, como en JUCE), y el
+      build del plugin/host queda con 0 avisos.
+- [ ] Quedan dos dependencias deliberadas: `juce::Reverb` en `Effects/Reverb.h`
+      (paso 5/6, port a `dsp::Reverb`) y la rama nativa de `Utils/SIMDWrapper.h`
+      (`juce::dsp::SIMDRegister`, que es la implementación real y no un vestigio).
 - [x] Añadir un adaptador JUCE sin cambiar el resultado sonoro (paridad BIT-EXACTA
       verificada: ruta directa vs ruta fachada, misma secuencia de notas, 0 tolerancia).
 - [x] Comparar el nuevo adaptador con el Standalone de referencia (automatizado en
