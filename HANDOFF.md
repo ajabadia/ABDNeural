@@ -1422,5 +1422,24 @@ transicional (casilla abierta a propósito en el roadmap, se ataca con la Fase 5
 - Validación: vitest 55/55, build Vite 4.1 s (306 KB JS), smoke Node del
   módulo servido (peak 0.53, drain OK), selftest del host exit 0 con la página
   nueva, build nativo + ctest 11/11.
-- Pendiente de la Fase 5: paridad WASM<->nativo bit-exacta y wire-up de
-  presets en la vía web.
+- Pendiente de la Fase 5: wire-up de presets en la vía web.
+
+## 2026-09-18 (b) — Paridad bit-exacta WASM<->nativo (Fase 5, tercer hito, CERRADO)
+- `Tests/WasmParityTest.cpp` (target `NEURONiK_WasmParityTest` en CMake, junto a
+  DSPReferenceTest): ejecuta 4 escenarios sobre la MISMA frontera
+  (DspEngineFacade) que consume el puente WASM y vuelca el canal izquierdo a
+  `build-wasm/parity-native.json`: A_neuronik_default (32 bloques),
+  B_neurotik_default (32), C_fx_panico (48: panico a mitad y cola de
+  reverb/delay), D_modmatrix (24: modMorphX con case 4).
+- `Tests/neuronik_wasm_parity.mjs`: instancia el módulo WASM real y compara
+  muestra a muestra con distancia en ulps (double fract32) + presupuesto por
+  escenario. bpm se escribe partido en dos mitades de 32 bits (el modulo no
+  exporta HEAPF64). `--strict` exige 0 ulps en TODO (para CI sin tolerancia).
+- Resultado medido: **A/B/D bit-exactos a 0 ulps** (osciladores, envolventes,
+  modMatrix — la libm coincide); C difiere en 2 de 6144 muestras a 16 ulps
+  (~3e-8, -150 dBFS): divergencia MSVC vs musl de 1 ulp amplificada por el
+  feedback del delay en la cola. Presupuesto de C documentado en 16 ulps;
+  A/B/D exigen 0 (cualquier dif alli es regresion real).
+- Integracion: `build_wasm.bat` pasa a 5 pasos (genera referencia nativa ->
+  compila WASM -> paridad Node -> smoke). build.bat valida con exit 0.
+- Falta el wire-up de presets en la via web (ultimo pendiente de la Fase 5).

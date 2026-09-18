@@ -273,6 +273,32 @@ target_link_libraries(NEURONiK_DSPReferenceTest PRIVATE
 add_test(NAME NEURONiK_DSPReferenceTest COMMAND NEURONiK_DSPReferenceTest)
 
 # ============================================================================
+# WASM PARITY REFERENCE (Fase 5)
+# ============================================================================
+# Genera build-wasm/parity-native.json: la referencia nativa de los 4
+# escenarios que Tests/neuronik_wasm_parity.mjs re-ejecuta sobre el módulo
+# WASM real y compara muestra a muestra. No entra en ctest: es un generador,
+# el árbitro final es el test Node (paso 4 de build_wasm.bat).
+add_executable(NEURONiK_WasmParityTest
+    Tests/WasmParityTest.cpp
+    ${NEURONIK_DSP_SOURCES}
+)
+
+target_include_directories(NEURONiK_WasmParityTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+)
+
+target_link_libraries(NEURONiK_WasmParityTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_audio_formats
+    juce::juce_core
+    juce::juce_data_structures
+    juce::juce_dsp
+    NEURONiK_Common
+)
+
+# ============================================================================
 # PARAMETER DESCRIPTOR CONTRACT
 # ============================================================================
 
