@@ -1618,11 +1618,11 @@ Dos cosas que marcó la auditoría del motor, ya cerradas:
 - `Tests/LfoSyncTest.cpp` incluye `juce_core` explícitamente: usaba `juce::String`
   en sus ayudantes apoyándose en el include del DSP.
 
-**Lo único que queda de JUCE en `Source/DSP`** (a propósito):
+**Lo único que queda de JUCE en `Source/DSP`** (a propósito) — `juce::Reverb`
+se portó en el paso 5/6, ver la sección siguiente:
 
 | Dependencia | Dónde | Por qué |
 |---|---|---|
-| `juce::Reverb` | `Effects/Reverb.h` | el port a `dsp::Reverb` es el paso 5/6 |
 | `juce::dsp::SIMDRegister` (rama nativa) | `Utils/SIMDWrapper.h` | es la implementación nativa real, no un vestigio; WASM ya usa el fallback escalar |
 | `juce::MidiBuffer` → `dsp::MidiBuffer` | `Runtime/JuceMidiAdapter.h` | es la frontera del host JUCE, por diseño |
 
@@ -1630,3 +1630,67 @@ Dos cosas que marcó la auditoría del motor, ya cerradas:
 C = 16, smoke peak 0.53199), `ctest` 12/12, Standalone y host del piloto EXIT 0 con
 **0 avisos**, `--selftest` 4/4 direcciones, y `NEURONiK_ModelMaker` EXIT 0
 (comprueba el cambio de `processSample`; su `Version.h` se restauró).
+
+## Fase 1 [5/6] — el motor deja de depender de juce::Reverb (2026-09-18)
+
+- `Effects/DspReverb.h` NUEVO: port libre de JUCE de `juce::Reverb` (Freeverb,
+  JUCE 8.0.12, `juce_audio_basics/utilities/juce_Reverb.h`): 8 comb filters en
+  paralelo + 4 all-pass en serie por canal, con los tunings y el stereo spread
+  idénticos. `Effects/Reverb.h` queda como envoltorio de producto (mapeo
+  mix→wet/dry y suavizado), de modo que el efecto puro es reutilizable tal cual.
+  **Ya no queda ninguna dependencia de `juce_audio_basics` en `Source/DSP/Effects`.**
+- `dspUndenormalise` (en `DspCore.h`) NUEVO: port de `JUCE_UNDENORMALISE` con una
+  decisión de política documentada. El macro de JUCE está definido **solo en x86**
+  y **no es un no-op**: `(x + 0.1f) - 0.1f` redondea dos veces, aplasta los
+  denormales (su propósito) y **perturba los valores normales en ~2 ulps de 1.0**.
+  `juce::Reverb` lo aplica a `last` y a `temp` en cada muestra de cada comb
+  filter, así que el mismo `juce::Reverb` **calculaba distinto en nativo y en
+  WASM**. El port es no-op uniforme: la paridad bit a bit nativo↔WASM es la
+  invariante del motor, y los denormales en x86 ya los cubre
+  `dsp::ScopedNoDenormals`, que es determinista porque cambia el modo de la FPU y
+  no las muestras.
+- **La puerta de paridad se endurece: los cinco escenarios a 0 ulps.** El
+  escenario `C_fx_panico` (delay + chorus + reverb a mix no nulo + pánico)
+  medía 16 ulps y estaban atribuidos a libm (`sin`/`exp` en el feedback del delay)
+  desde la Fase 5. **No era libm: era `JUCE_UNDENORMALISE`.** Con el port, C mide
+  0 ulps y su presupuesto vuelve a 0 en `Tests/neuronik_wasm_parity.mjs` (la
+  historia queda escrita en la cabecera del test, para que nadie vuelva a
+  atribuirlo a libm).
+- **Bug latente del port de `dsp::HeapBlock` corregido**: `clear` y `allocate`
+  tomaban **bytes** y JUCE toma **elementos** (`sizeof(ElementType) * numElements`).
+  Era invisible porque sus únicos consumidores eran `AudioBuffer` (que no usa
+  `HeapBlock`) y `DspMidiBuffer` (`HeapBlock<uint8_t>`: elementos == bytes).
+  `juce::Reverb` sí lo expone: `buffer.clear((size_t) bufferSize)` sobre un
+  `HeapBlock<float>` con la semántica de bytes dejaba 3/4 del buffer de cada comb
+  filter sin inicializar y realimentaba basura —la reverb divergía a ~1e35 en
+  pocos bloques, y por eso el primer `<reverb>.reset()` no bastaba para que dos
+  renders fueran idénticos—. Corregido en `DspCore.h` con la nota de la
+  discrepancia; `DspMidiBuffer` no cambia de comportamiento (uint8).
+- `build_wasm.bat`: nuevo paso **[6/6]** que ejecuta `sync-wasm.mjs`. El drift de
+  artefactos (worklet servido con el DSP de la pasada anterior) ya había ocurrido
+  dos veces y no se detecta en el código porque los `.js`/`.wasm` se versionan.
+
+**Tests nuevos** (el mismo fuente se compila dos veces, con y sin el define):
+
+- `NEURONiK_DspReverbParityTest`: la política enviada (no-op uniforme) contra
+  `juce::Reverb` con presupuesto documentado, más determinismo (dos renders bit
+  idénticos, con `reset()` de por medio) y una cola larga de silencio sin NaN ni
+  infinitos.
+- `NEURONiK_DspReverbJucePolicyTest`: el mismo fuente con
+  `-DDSP_UNDENORMALISE_JUCE_POLICY=1` (réplica de `JUCE_UNDENORMALISE`) exigiendo
+  **0 ulps**. Esto es lo que prueba que el port es literal: la única diferencia
+  con `juce::Reverb` es la política, y queda cuantificada.
+
+**Medido** (MSVC x64 Release, 48 kHz, 24 bloques de 512, estéreo y mono): modo
+JUCE **0 ulps** y 0.000e+00 en las 36.864 muestras comparadas; modo enviado
+maxDiff **2.384e-07** (exactamente 2 ulps de 1.0) y ≤ 5.632 ulps en cola de
+magnitud pequeña. La condición de arquitectura es propia (`DSP_HOST_IS_X86`),
+**no `JUCE_INTEL`**: un header JUCE-free no puede depender de un macro que solo
+existe si antes se incluyó JUCE —el primer intento hacía que la política de JUCE
+nunca se activara y el test del port literal pasaba en falso—.
+
+**Verificación (2026-09-18):** `build_wasm.bat` (6 pasos) EXIT 0 → paridad
+**A/B/C/D/E = 0 ulps** (C incluido) y smoke peak 0.53199; `ctest` **14/14**;
+host del piloto EXIT 0 con `--selftest` **4/4** direcciones (NATIVO↔JS, GENERAL,
+MIDI); `NEURONiK_WebPilotHost` compila con 0 avisos nuevos. `juce::Reverb` ya
+solo aparece en el test que lo usa como referencia.

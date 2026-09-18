@@ -363,6 +363,47 @@ target_link_libraries(NEURONiK_MidiPortTest PRIVATE
 
 add_test(NAME NEURONiK_MidiPortTest COMMAND NEURONiK_MidiPortTest)
 
+# Reverb del motor (Fase 1, paso 5/6): dsp::Reverb es el port libre de JUCE de
+# juce::Reverb. El mismo fuente se compila DOS veces porque el port tiene una
+# politica de denormales conmutable (ver DspCore.h -> dspUndenormalise):
+#   - por defecto: no-op uniforme (es lo que se envia; paridad nativo <-> WASM)
+#   - DSP_UNDENORMALISE_JUCE_POLICY=1: replica de JUCE_UNDENORMALISE, que no es
+#     un no-op en x86 y es lo que permite exigir 0 ulps contra juce::Reverb.
+add_executable(NEURONiK_DspReverbParityTest
+    Tests/DspReverbParityTest.cpp
+)
+
+target_include_directories(NEURONiK_DspReverbParityTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+)
+
+target_link_libraries(NEURONiK_DspReverbParityTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_core
+)
+
+add_test(NAME NEURONiK_DspReverbParityTest COMMAND NEURONiK_DspReverbParityTest)
+
+# Mismo fuente con la politica de JUCE: prueba que el port es literal (0 ulps).
+add_executable(NEURONiK_DspReverbJucePolicyTest
+    Tests/DspReverbParityTest.cpp
+)
+
+target_include_directories(NEURONiK_DspReverbJucePolicyTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+)
+
+target_compile_definitions(NEURONiK_DspReverbJucePolicyTest PRIVATE DSP_UNDENORMALISE_JUCE_POLICY=1)
+
+target_link_libraries(NEURONiK_DspReverbJucePolicyTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_core
+)
+
+add_test(NAME NEURONiK_DspReverbJucePolicyTest COMMAND NEURONiK_DspReverbJucePolicyTest)
+
 # Velocity curve: pure MIDI shaping, no plugin dependencies needed.
 add_executable(NEURONiK_VelocityCurveTest
     Tests/VelocityCurveTest.cpp

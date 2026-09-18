@@ -103,6 +103,17 @@ Objetivo: conservar el DSP actual, pero definir una API que pueda ser utilizada 
       `DBG`/`jassertfalse` (paso 6/6): `dspDbg` y
       `dspDeclareNonCopyableWithLeakDetector` (Debug-only, como en JUCE), y el
       build del plugin/host queda con 0 avisos.
+- [x] Quitar `juce::Reverb` del motor (paso 5/6, 2026-09-18): `Effects/DspReverb.h`
+      es el port libre de JUCE (Freeverb, tunings idénticos) y `Effects/Reverb.h`
+      queda como envoltorio de producto, con el efecto puro reutilizable tal cual.
+      El port es **bit a bit idéntico** a `juce::Reverb` (0 ulps,
+      `NEURONiK_DspReverbJucePolicyTest`) y **elimina la última divergencia de coma
+      flotante entre nativo y WASM**: `JUCE_UNDENORMALISE` solo existe en x86 y no
+      es un no-op, así que `juce::Reverb` calculaba distinto en cada build.
+      Efecto medido: el escenario de paridad `C_fx_panico` baja de 16 ulps a 0 y su
+      presupuesto vuelve a 0 (los cinco escenarios quedan bit-exactos).
+      Por el camino se corrigió un bug latente del port de `dsp::HeapBlock`
+      (`clear`/`allocate` tomaban bytes y JUCE toma elementos).
 - [ ] Quedan dos dependencias deliberadas: `juce::Reverb` en `Effects/Reverb.h`
       (paso 5/6, port a `dsp::Reverb`) y la rama nativa de `Utils/SIMDWrapper.h`
       (`juce::dsp::SIMDRegister`, que es la implementación real y no un vestigio).

@@ -86,6 +86,64 @@ constexpr bool approximatelyEqual (Type a, Type b) noexcept
 }
 
 //==============================================================================
+// Lavado de denormales (port de JUCE_UNDENORMALISE, definido en
+// juce_core/maths/juce_MathsFunctions.h).
+//
+// JUCE lo define asi SOLO en plataformas Intel:
+//     #define JUCE_UNDENORMALISE(x)   { (x) += 0.1f; (x) -= 0.1f; }
+// y como macro vacio en el resto.
+//
+// Dos hechos que importan:
+//
+//  1. NO es un no-op aritmetico. (x + 0.1f) - 0.1f redondea dos veces en
+//     float: aplasta los denormales (su proposito) pero tambien PERTURBA los
+//     valores normales (~2e-8 absolutos para x ~ 1.0, mas que el presupuesto
+//     de ulps del motor). No es un lavado inocuo: es un cambio de resultado.
+//
+//  2. JUCE_INTEL solo se define bajo JUCE_WINDOWS / JUCE_MAC / JUCE_LINUX, y
+//     NUNCA bajo __wasm__ (juce_TargetPlatform.h). Es decir: juce::Reverb
+//     calcula distinto en el build nativo y en el build WASM. Esa era, medida,
+//     una de las fuentes de divergencia del escenario C de paridad.
+//
+// El port es un no-op deliberado y UNIFORME en las dos plataformas: la paridad
+// bit a bit nativo <-> WASM es la invariante del motor. El problema que el
+// macro resuelve (penalizacion por denormales en x86) ya lo cubre
+// dsp::ScopedNoDenormals con FTZ|DAZ, que es determinista porque cambia el modo
+// de la FPU y no toca las muestras; en WASM no hay esa penalizacion.
+//
+// La variante fiel a JUCE se conserva tras DSP_UNDENORMALISE_JUCE_POLICY para
+// el test que demuestra que el port es literal (ver
+// Tests/DspReverbParityTest.cpp): con la politica de JUCE el port coincide bit
+// a bit con juce::Reverb, y sin ella difiere solo en lo que documenta arriba.
+//
+// Uso: se llama en los bucles de realimentacion, donde JUCE lo llamaba, para
+// dejar marcado el punto exacto de la diferencia de politica.
+
+// La condicion de arquitectura es PROPIA, no JUCE_INTEL: DspCore.h es un header
+// JUCE-free y no incluye JUCE, asi que JUCE_INTEL estaria sin definir en el
+// momento de parsear este fichero (el port habria sido siempre no-op y el test
+// del port literal no probaria nada). Se replican las mismas arquitecturas que
+// hacen que JUCE_INTEL sea 1: x86 de 32/64 bits. wasm32 define __wasm__ y
+// ninguno de los macros de abajo, igual que en JUCE.
+#if defined (_M_IX86) || defined (_M_X64) || defined (__i386__) || defined (__x86_64__)
+  #define DSP_HOST_IS_X86 1
+#else
+  #define DSP_HOST_IS_X86 0
+#endif
+
+#if defined (DSP_UNDENORMALISE_JUCE_POLICY) && DSP_UNDENORMALISE_JUCE_POLICY
+  #if DSP_HOST_IS_X86
+    #define dspUndenormalise(x)     do { (x) += 0.1f; (x) -= 0.1f; } while (false)
+  #else
+    #define dspUndenormalise(x)     do { } while (false)
+  #endif
+#else
+  /** No-op uniforme (ver arriba). Recibe la referencia para documentar el punto. */
+  inline void undenormalise (float&) noexcept {}
+  #define dspUndenormalise(x)         ::dsp::undenormalise (x)
+#endif
+
+//==============================================================================
 // Asercion del port (sustituye a jassert): aborta en Debug, se compila fuera
 // en Release. Nunca afecta al resultado numerico.
 
@@ -1006,9 +1064,19 @@ Type unalignedPointerCast (const void* data) noexcept          { return reinterp
 //
 //==============================================================================
 /**
-    Sustituto minimo de juce::HeapBlock (solo la superficie que consume
-    AudioBuffer): malloc/calloc con liberacion automatica, clear y swap.
-    Excepcion documentada del port literal (nota anti-drift del equipo).
+    Sustituto minimo de juce::HeapBlock (malloc/calloc/allocate con liberacion
+    automatica, clear y swap). Excepcion documentada del port literal (nota
+    anti-drift del equipo).
+
+    CORREGIDO (Fase 1 [5/6], hallado al portar juce::Reverb): `clear` y
+    `allocate` tomaban BYTES y JUCE toma ELEMENTOS (multiplica por
+    sizeof(ElementType)). La discrepancia era latente porque hasta ahora el unico
+    consumidor era AudioBuffer (que no usa HeapBlock) y DspMidiBuffer, cuyo
+    bloque es uint8_t (elementos == bytes). juce::Reverb si la expone:
+    `buffer.clear((size_t) bufferSize)` sobre un HeapBlock<float> limpia 4x
+    memoria con la semantica de JUCE, y con la de bytes dejaba 3/4 del buffer de
+    cada comb filter sin inicializar y realimentaba basura (la reverb divergia a
+    ~1e35 en pocos bloques). Ahora las dos coinciden con JUCE.
 */
 template <typename ElementType, bool throwOnFailure = false>
 class HeapBlock
@@ -1048,11 +1116,12 @@ public:
         data = static_cast<ElementType*> (::calloc (newNumElements, elementSize));
     }
 
-    void allocate (size_t newNumBytes, bool zeroFill)
+    /** Asigna y, opcionalmente, limpia. Numero de ELEMENTOS, como JUCE. */
+    void allocate (size_t newNumElements, bool zeroFill)
     {
         release();
-        data = static_cast<ElementType*> (zeroFill ? ::calloc (1, newNumBytes)
-                                                   : ::malloc (newNumBytes));
+        data = static_cast<ElementType*> (zeroFill ? ::calloc (newNumElements, sizeof (ElementType))
+                                                   : ::malloc (newNumElements * sizeof (ElementType)));
     }
 
     void free()
@@ -1060,10 +1129,12 @@ public:
         release();
     }
 
-    void clear (size_t newNumBytes) noexcept
+    /** Rellena de ceros hasta el numero de ELEMENTOS indicado, como JUCE
+        (zeromem (data, sizeof (ElementType) * numElements)). */
+    void clear (size_t numElements) noexcept
     {
         if (data != nullptr)
-            std::memset (data, 0, newNumBytes);
+            std::memset (data, 0, sizeof (ElementType) * numElements);
     }
 
     template <typename OtherBlock>

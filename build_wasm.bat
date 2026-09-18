@@ -39,7 +39,7 @@ if not exist "%VCVARS%" (
     exit /b 1
 )
 
-echo [1/5] Preparando entorno Visual Studio + emsdk ...
+echo [1/6] Preparando entorno Visual Studio + emsdk ...
 call "%VCVARS%" >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] vcvars64 fallo
@@ -56,7 +56,7 @@ where cl.exe >nul 2>&1 || (echo [ERROR] cl.exe no esta en PATH tras vcvars64 & e
 where emcmake >nul 2>&1 || (echo [ERROR] emcmake no esta en PATH: falta %EMSDK_ROOT%\upstream\emscripten & exit /b 1)
 
 REM --- 3. Configurar y compilar ------------------------------------------------
-echo [2/5] Configurando (emcmake + Ninja) ...
+echo [2/6] Configurando (emcmake + Ninja) ...
 rem Generador Ninja: el generador Visual Studio no soporta el compilador
 rem em++ del toolchain Emscripten. El entorno de vcvars ya esta armado,
 rem asi que el bootstrap de juceaide encuentra MSVC sin problema.
@@ -66,12 +66,12 @@ emcmake cmake -S wasm -B build-wasm -G Ninja -DCMAKE_BUILD_TYPE=Release
 if errorlevel 1 goto :fail
 popd
 
-echo [3/5] Compilando ...
+echo [3/6] Compilando ...
 cmake --build build-wasm --config Release
 if errorlevel 1 goto :fail
 
 REM --- 4. Smoke test Node ------------------------------------------------------
-echo [4/5] Referencia nativa + test de paridad WASM contra nativo ...
+echo [4/6] Referencia nativa + test de paridad WASM contra nativo ...
 REM La referencia nativa ejecuta los MISMOS 4 escenarios que el test Node
 REM re-ejecuta sobre el modulo WASM: si difieren, el DSP o la frontera han
 REM cambiado por un lado y no por el otro.
@@ -82,16 +82,26 @@ if errorlevel 1 goto :fail
 node "%~dp0Tests\neuronik_wasm_parity.mjs" "%~dp0build-wasm\neuronik_dsp.js" "%~dp0build-wasm\parity-native.json"
 if errorlevel 1 goto :fail
 
-echo [5/5] Smoke test Node del modulo WASM ...
+echo [5/6] Smoke test Node del modulo WASM ...
 node "%~dp0Tests\neuronik_wasm_smoke.mjs" "%~dp0build-wasm\neuronik_dsp.js"
+if errorlevel 1 goto :fail
+
+REM --- 6. Sincronizar los artefactos que sirve la WebUI ------------------------
+REM Sin este paso el worklet de WebPilot\public\worklet se queda en el DSP de la
+REM pasada anterior: el drift no se ve en el codigo (los .js/.wasm se versionan)
+REM y solo aparece como audio viejo en la WebUI. Ocurrio dos veces; ahora es
+REM imposible por construccion.
+echo [6/6] Sincronizando artefactos con WebPilot\public\worklet ...
+node "%~dp0WebPilotVite\scripts\sync-wasm.mjs"
 if errorlevel 1 goto :fail
 
 echo.
 echo =======================================================
-echo  [EXITO] WASM compilado y validado (paridad + smoke)
+echo  [EXITO] WASM compilado y validado (paridad + smoke + sync)
 echo    build-wasm\neuronik_dsp.js
 echo    build-wasm\neuronik_dsp.wasm
 echo    build-wasm\parity-native.json  (referencia nativa)
+echo    WebPilot\public\worklet\      (sincronizado)
 echo =======================================================
 exit /b 0
 

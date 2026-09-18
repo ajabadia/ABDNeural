@@ -8,14 +8,21 @@
  * muestra a muestra.
  *
  * Comparación: distancia en ulps (unidades del último lugar de float32) con
- * presupuesto POR ESCENARIO. Resultado medido con MSVC vs emscripten/musl:
- * A/B/D son bit-exactos (0 ulps) — el núcleo (osciladores, envolventes,
- * modMatrix) coincide bit a bit entre toolchains. C (cola de delay/reverb
- * tras el pánico) difiere en <= 16 ulps: una diferencia de 1 ulp de libm
- * (sin/exp) se amplifica por el feedback del delay; 16 ulps en muestras de
- * ~1e-3 son ~3e-8 absolutos (≈ -150 dBFS, inaudible). Presupuesto 0 en
- * A/B/D = alarma inmediata ante CUALQUIER cambio de algoritmo o
- * determinismo; el presupuesto de C solo tolera ruido de libm de la cola.
+ * presupuesto POR ESCENARIO. Medido con MSVC vs emscripten/musl: los CINCO
+ * escenarios son bit-exactos (0 ulps) — el núcleo (osciladores, envolventes,
+ * modMatrix) y la cola de FX coinciden bit a bit entre toolchains.
+ *
+ * HISTORIA de la cola C (importa para no recaer): C llegó a llevar un
+ * presupuesto de 16 ulps atribuido a libm (sin/exp en el feedback del delay).
+ * El port de juce::Reverb de la Fase 1 [5/6] demostró que la causa real era
+ * JUCE_UNDENORMALISE: el macro de juce::Reverb solo existe en x86 y no es un
+ * no-op aritmético ((x + 0.1f) - 0.1f redondea dos veces), de modo que el
+ * mismo juce::Reverb calculaba distinto en el build nativo y en el WASM.
+ * Desde el port, dsp::Reverb es no-op uniforme (ver DspCore.h), C mide 0 ulps
+ * y el presupuesto vuelve a 0. Nada de eso era ruido de libm.
+ *
+ * Presupuesto 0 = alarma inmediata ante CUALQUIER cambio de algoritmo,
+ * determinismo o política de coma flotante, en cualquier escenario.
  * Guard absoluto adicional: maxDiffAbs <= 1e-6 en todos los escenarios.
  *
  * Si cambias un escenario aquí, cambia su gemelo en Tests/WasmParityTest.cpp.
@@ -33,7 +40,7 @@ if (!jsPathArg) {
 
 const MAX_DIFF_ABS = 1e-6;
 /** Presupuesto de ulps por escenario (ver cabecera): 0 = bit-exacta exigida. */
-const ULP_BUDGET = { A_neuronik_default: 0, B_neurotik_default: 0, C_fx_panico: 16, D_modmatrix: 0, E_modelo_espectral: 0 };
+const ULP_BUDGET = { A_neuronik_default: 0, B_neurotik_default: 0, C_fx_panico: 0, D_modmatrix: 0, E_modelo_espectral: 0 };
 
 const jsPath = path.resolve(process.cwd(), jsPathArg);
 const jsonPath = path.resolve(process.cwd(), jsonPathArg ?? 'build-wasm/parity-native.json');
@@ -89,6 +96,8 @@ function buildScenarios() {
       blocks: 32, panicAtBlock: -1,
     },
     {
+      // FX a mix no nulo (chorus 0.35, reverb 0.25) y pánico a mitad: el único
+      // escenario que ejercita delay + chorus + reverb de verdad.
       name: 'C_fx_panico', engineType: 0, ulpBudget: ULP_BUDGET.C_fx_panico,
       params: { ...defaultParams(), masterLevel: 0.5, chorusRate: 0.8, chorusMix: 0.35, reverbSize: 0.7, reverbDamping: 0.6, reverbMix: 0.25 },
       events: [{ block: 0, note: 64, velocity: 100 / 127 }],
@@ -268,4 +277,4 @@ if (totalFailed > 0) {
   console.error('[parity] FALLO: escenario(s) fuera de su presupuesto de ulps.');
   process.exit(1);
 }
-console.log('[parity] OK: paridad WASM<->nativo — bit-exacta en el núcleo (A/B/D/E), cola C dentro del presupuesto de libm.');
+console.log('[parity] OK: paridad WASM<->nativo — bit-exacta en los cinco escenarios (núcleo y cola de FX).');

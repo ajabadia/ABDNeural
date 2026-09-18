@@ -3,7 +3,15 @@
 
     Reverb.h
     Created: 26 Jan 2026
-    Description: Wrapper for JUCE standard Reverb.
+    Description: Envoltorio de producto sobre el reverb del motor.
+
+    Hasta la Fase 1 [5/6] esto envolvia juce::Reverb. Ahora envuelve dsp::Reverb
+    (Effects/DspReverb.h), el port libre de JUCE: el motor ya no depende de
+    juce_audio_basics para la reverb.
+
+    Separacion de responsabilidades: DspReverb.h es el efecto puro (reutilizable
+    tal cual); aqui vive lo especifico del producto (mapeo de mix a wet/dry y
+    suavizado de parametros).
 
   ==============================================================================
  */
@@ -11,8 +19,7 @@
 #pragma once
 
 #include "DspCore.h"
-
-#include <juce_audio_basics/juce_audio_basics.h>
+#include "DspReverb.h"
 
 namespace NEURONiK::DSP::Effects {
 
@@ -79,8 +86,8 @@ public:
     }
 
 private:
-    juce::Reverb reverb;
-    juce::Reverb::Parameters params;
+    dsp::Reverb reverb;
+    dsp::Reverb::Parameters params;
 
     dsp::LinearSmoothedValue<float> sizeSmoother { 0.5f };
     dsp::LinearSmoothedValue<float> dampingSmoother { 0.5f };
