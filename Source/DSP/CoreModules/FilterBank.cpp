@@ -8,6 +8,7 @@
   ==============================================================================
 */
 
+#include "DspCore.h"
 #include "FilterBank.h"
 #include "../DSPUtils.h"
 #include <cmath>
@@ -82,7 +83,7 @@ void FilterBank::updateCoefficients() noexcept
     FilterType t = type_.load(std::memory_order_acquire);
 
     // RBJ Biquad Calculations
-    float omega = juce::MathConstants<float>::twoPi * f / static_cast<float>(sampleRate_);
+    float omega = dsp::MathConstants<float>::twoPi * f / static_cast<float>(sampleRate_);
     float cosW = std::cos(omega);
     float sinW = std::sin(omega);
     float alpha = sinW / (2.0f * q);

@@ -7,6 +7,7 @@
   ==============================================================================
 */
 
+#include "DspCore.h"
 #include "BaseEngine.h"
 
 #include "CoreModules/RhythmicDivision.h"
@@ -60,7 +61,7 @@ void BaseEngine::updateParameters()
 
     auto applyLfo = [bpm] (Core::LFO& lfo, const GlobalParams::LFOParams& p)
     {
-        lfo.setWaveform (static_cast<Core::LFO::Waveform> (juce::jlimit (0, 5, p.waveform)));
+        lfo.setWaveform (static_cast<Core::LFO::Waveform> (dsp::jlimit (0, 5, p.waveform)));
         lfo.setRate (p.rateHz);
         lfo.setDepth (p.depth);
         lfo.setSyncMode (p.syncMode == 0 ? Core::LFO::SyncMode::Free
@@ -122,7 +123,7 @@ int BaseEngine::getNumActiveVoices() const
 
 void BaseEngine::setPolyphony(int numVoices)
 {
-    activeVoiceLimit.store(juce::jlimit(1, 32, numVoices));
+    activeVoiceLimit.store(dsp::jlimit(1, 32, numVoices));
 }
 
 void BaseEngine::allNotesOff()

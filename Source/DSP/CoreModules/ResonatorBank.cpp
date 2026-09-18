@@ -7,6 +7,7 @@
   ==============================================================================
 */
 
+#include "DspCore.h"
 #include "ResonatorBank.h"
 #include "../DSPUtils.h"
 #include "../Utils/SIMDWrapper.h"
@@ -59,7 +60,7 @@ void ResonatorBank::updateFilterCoefficients(int i, float partialFreq, float q, 
     // Layer 1 (Main)
     if (partialFreq < static_cast<float>(sampleRate * 0.48) && partialFreq > 10.0f)
     {
-        float omega = juce::MathConstants<float>::twoPi * partialFreq / static_cast<float>(sampleRate);
+        float omega = dsp::MathConstants<float>::twoPi * partialFreq / static_cast<float>(sampleRate);
         float cosW = std::cos(omega);
         float alpha = std::sin(omega) / (2.0f * q);
         float a0 = 1.0f + alpha;
@@ -78,7 +79,7 @@ void ResonatorBank::updateFilterCoefficients(int i, float partialFreq, float q, 
             float freqUnison = partialFreq * (1.0f + detuneVal);
             if (freqUnison < static_cast<float>(sampleRate * 0.48))
             {
-                float omegaU = juce::MathConstants<float>::twoPi * freqUnison / static_cast<float>(sampleRate);
+                float omegaU = dsp::MathConstants<float>::twoPi * freqUnison / static_cast<float>(sampleRate);
                 float cosWU = std::cos(omegaU);
                 float alphaU = std::sin(omegaU) / (2.0f * q);
                 float a0U = 1.0f + alphaU;
@@ -105,10 +106,10 @@ void ResonatorBank::updateFilterCoefficients(int i, float partialFreq, float q, 
 
 void ResonatorBank::updateParameters(float morphX, float morphY, float resonance, float detune) noexcept
 {
-    float mx = juce::jlimit(0.0f, 1.0f, morphX);
-    float my = juce::jlimit(0.0f, 1.0f, morphY);
-    float res = juce::jlimit(0.0f, 1.0f, resonance);
-    float det = juce::jlimit(-1.0f, 1.0f, detune);
+    float mx = dsp::jlimit(0.0f, 1.0f, morphX);
+    float my = dsp::jlimit(0.0f, 1.0f, morphY);
+    float res = dsp::jlimit(0.0f, 1.0f, resonance);
+    float det = dsp::jlimit(-1.0f, 1.0f, detune);
 
     bool anythingChanged = modelChanged || 
                           (mx != lastMorphX) || (my != lastMorphY) ||
@@ -153,7 +154,7 @@ void ResonatorBank::updateParameters(float morphX, float morphY, float resonance
 
 float ResonatorBank::processSample(float excitation) noexcept
 {
-    juce::ScopedNoDenormals noDenormals;
+    dsp::ScopedNoDenormals noDenormals;
     SIMDFloat inputV = setAll(excitation);
     SIMDFloat totalSumV = setZero();
 

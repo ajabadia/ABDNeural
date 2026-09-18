@@ -8,6 +8,7 @@
   ==============================================================================
 */
 
+#include "DspCore.h"
 #include "NeurotikEngine.h"
 #include "../Synthesis/NeurotikVoice.h"
 #include "../DSPUtils.h"
@@ -83,7 +84,7 @@ void NeurotikEngine::applyModulation()
         const auto& route = currentGlobalParams.modMatrix[i];
         if (route.source == 0 || route.destination == 0) continue;
         
-        float rawMod = sources[juce::jlimit(0, 5, route.source)] * route.amount;
+        float rawMod = sources[dsp::jlimit(0, 5, route.source)] * route.amount;
         
         // Update visualization
         if (route.destination >= 0 && route.destination < 64)
@@ -138,7 +139,7 @@ void NeurotikEngine::getModulationValues(float* destination, int count) const
 {
     if (destination == nullptr || count <= 0) return;
     
-    int numToCopy = juce::jmin(count, (int)lastModulations.size());
+    int numToCopy = dsp::jmin(count, (int)lastModulations.size());
     for (int i = 0; i < numToCopy; ++i)
         destination[i] = lastModulations[i];
         

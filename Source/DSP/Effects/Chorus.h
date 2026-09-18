@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include "DspCore.h"
+
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <vector>
 
@@ -59,7 +61,7 @@ public:
             float currentDepth = depthSmoother.getNextValue();
             float currentMix = mixSmoother.getNextValue();
 
-            float phaseInc = juce::MathConstants<float>::twoPi * currentRate / static_cast<float>(currentSampleRate);
+            float phaseInc = dsp::MathConstants<float>::twoPi * currentRate / static_cast<float>(currentSampleRate);
 
             // Modulation: LFO between 5ms and 30ms
             float mod = (std::sin(phase) + 1.0f) * 0.5f; // 0 to 1
@@ -89,7 +91,7 @@ public:
             }
 
             phase += phaseInc;
-            if (phase >= juce::MathConstants<float>::twoPi) phase -= juce::MathConstants<float>::twoPi;
+            if (phase >= dsp::MathConstants<float>::twoPi) phase -= dsp::MathConstants<float>::twoPi;
 
             if (++writePos >= bufferSize) writePos = 0;
         }

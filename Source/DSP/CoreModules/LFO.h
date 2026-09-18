@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include "DspCore.h"
+
 #include <juce_core/juce_core.h>
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <atomic>
@@ -40,7 +42,7 @@ public:
     // sistema, prohibida dentro del hilo AudioWorklet (target WASM).
     // Instancias paralelas deben usar semillas distintas para no correlacionar
     // el Sample & Hold.
-    explicit LFO (juce::uint32 seed = 0x1D0F1u) noexcept;
+    explicit LFO (dsp::uint32 seed = 0x1D0F1u) noexcept;
     ~LFO() = default;
 
     // --- Configuration (Non-Realtime) ---

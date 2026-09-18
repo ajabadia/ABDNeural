@@ -11,6 +11,8 @@
 
 #pragma once
 
+#include "DspCore.h"
+
 #include <juce_core/juce_core.h>
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <cmath>
@@ -38,7 +40,7 @@ inline T validateAudioParam(T value, T minVal, T maxVal, T fallback, const char*
         return fallback;
     }
     
-    return juce::jlimit(minVal, maxVal, value);
+    return dsp::jlimit(minVal, maxVal, value);
 }
 
 /**

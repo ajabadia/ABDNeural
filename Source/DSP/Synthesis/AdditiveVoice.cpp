@@ -7,6 +7,7 @@
   ==============================================================================
 */
 
+#include "DspCore.h"
 #include "AdditiveVoice.h"
 #include "../DSPUtils.h"
 #include <cmath>
@@ -22,7 +23,7 @@ AdditiveVoice::AdditiveVoice()
 
 void AdditiveVoice::prepare(double sampleRate, int samplesPerBlock)
 {
-    juce::ignoreUnused(samplesPerBlock);
+    dsp::ignoreUnused(samplesPerBlock);
     
     resonator.setSampleRate(sampleRate);
     ampEnvelope.setSampleRate(sampleRate);
@@ -140,15 +141,15 @@ bool AdditiveVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int 
     }
 
     // Update DSP modules once per block
-    float startMorphX = juce::jlimit(0.0f, 1.0f, morphXSmoother.getNextValue() + modMorphX);
-    float startMorphY = juce::jlimit(0.0f, 1.0f, morphYSmoother.getNextValue() + modMorphY);
-    float startInharmonicity = juce::jlimit(0.0f, 1.0f, inharmonicitySmoother.getNextValue() + modInharmonicity);
-    float startRoughness = juce::jlimit(0.0f, 1.0f, roughnessSmoother.getNextValue() + modRoughness);
-    float startParity = juce::jlimit(0.0f, 1.0f, paritySmoother.getNextValue() + modParity);
-    float startShift = juce::jlimit(0.0f, 2.0f, shiftSmoother.getNextValue() + modShift);
-    float startRollOff = juce::jlimit(0.0f, 1.0f, rollOffSmoother.getNextValue());
-    float startDetune = juce::jlimit(0.0f, 0.1f, unisonDetuneSmoother.getNextValue() + modUnison);
-    float startSpread = juce::jlimit(0.0f, 1.0f, unisonSpreadSmoother.getNextValue());
+    float startMorphX = dsp::jlimit(0.0f, 1.0f, morphXSmoother.getNextValue() + modMorphX);
+    float startMorphY = dsp::jlimit(0.0f, 1.0f, morphYSmoother.getNextValue() + modMorphY);
+    float startInharmonicity = dsp::jlimit(0.0f, 1.0f, inharmonicitySmoother.getNextValue() + modInharmonicity);
+    float startRoughness = dsp::jlimit(0.0f, 1.0f, roughnessSmoother.getNextValue() + modRoughness);
+    float startParity = dsp::jlimit(0.0f, 1.0f, paritySmoother.getNextValue() + modParity);
+    float startShift = dsp::jlimit(0.0f, 2.0f, shiftSmoother.getNextValue() + modShift);
+    float startRollOff = dsp::jlimit(0.0f, 1.0f, rollOffSmoother.getNextValue());
+    float startDetune = dsp::jlimit(0.0f, 0.1f, unisonDetuneSmoother.getNextValue() + modUnison);
+    float startSpread = dsp::jlimit(0.0f, 1.0f, unisonSpreadSmoother.getNextValue());
 
     resonator.setStretching(startInharmonicity);
     resonator.setEntropy(startRoughness * 0.5f);
@@ -168,7 +169,7 @@ bool AdditiveVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int 
     }
 
     // 2. Render Audio Logic (Inner Loop)
-    juce::ScopedNoDenormals noDenormals; // Local safety for feedback loops
+    dsp::ScopedNoDenormals noDenormals; // Local safety for feedback loops
     
     // Process in sub-blocks for control rate smoothing and buffer safety
     static constexpr int kSubBlockSize = 32;
@@ -187,12 +188,12 @@ bool AdditiveVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int 
             float fEnv = filterEnvelope.processSample();
             
             float targetCutoff = currentCutoff + modCutoff + (fEnv * currentParams.fEnvAmount * 18000.0f);
-            filter.setCutoff(juce::jlimit(20.0f, 20000.0f, targetCutoff));
+            filter.setCutoff(dsp::jlimit(20.0f, 20000.0f, targetCutoff));
             filter.setResonance(currentRes);
             
             float filteredSample = filter.processSample(rawSample);
             float envValue = ampEnvelope.processSample();
-            float levelMod = juce::jlimit(0.0f, 2.0f, currentParams.oscLevel + modLevel);
+            float levelMod = dsp::jlimit(0.0f, 2.0f, currentParams.oscLevel + modLevel);
             
             tempBuffer[i] = filteredSample * envValue * currentVelocity * levelMod;
         }

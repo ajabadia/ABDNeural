@@ -8,6 +8,7 @@
   ==============================================================================
 */
 
+#include "DspCore.h"
 #include "Resonator.h"
 #include "../DSPUtils.h"
 #include "../Utils/SIMDWrapper.h"
@@ -114,29 +115,29 @@ void Resonator::setEntropy(float amount) noexcept
 
 void Resonator::setParity(float amount) noexcept
 {
-    parityAmount = juce::jlimit(0.0f, 1.0f, amount);
+    parityAmount = dsp::jlimit(0.0f, 1.0f, amount);
 }
 
 void Resonator::setShift(float amount) noexcept
 {
-    shiftAmount = juce::jlimit(0.1f, 4.0f, amount);
+    shiftAmount = dsp::jlimit(0.1f, 4.0f, amount);
 }
 
 void Resonator::setRollOff(float amount) noexcept
 {
-    rollOffAmount = juce::jlimit(0.1f, 5.0f, amount);
+    rollOffAmount = dsp::jlimit(0.1f, 5.0f, amount);
 }
 
 void Resonator::setUnison(float detune, float spread) noexcept
 {
-    unisonDetune = juce::jlimit(0.0f, 0.1f, detune);
-    unisonSpread = juce::jlimit(0.0f, 1.0f, spread);
+    unisonDetune = dsp::jlimit(0.0f, 0.1f, detune);
+    unisonSpread = dsp::jlimit(0.0f, 1.0f, spread);
 }
 
 void Resonator::updateHarmonicsFromModels(float morphX, float morphY) noexcept
 {
-    morphX = juce::jlimit(0.0f, 1.0f, morphX);
-    morphY = juce::jlimit(0.0f, 1.0f, morphY);
+    morphX = dsp::jlimit(0.0f, 1.0f, morphX);
+    morphY = dsp::jlimit(0.0f, 1.0f, morphY);
 
     // Optimization: check if anything meaningful changed
     bool anythingChanged = modelChanged || 
@@ -184,8 +185,8 @@ void Resonator::updateHarmonicsFromModels(float morphX, float morphY) noexcept
         float baseAmp = lerp(ampTop, ampBottom, morphY);
         
         bool isEven = ((i + 1) % 2 == 0);
-        float parityScale = isEven ? juce::jlimit(0.0f, 1.0f, parityAmount * 2.0f) 
-                                   : juce::jlimit(0.0f, 1.0f, (1.0f - parityAmount) * 2.0f);
+        float parityScale = isEven ? dsp::jlimit(0.0f, 1.0f, parityAmount * 2.0f) 
+                                   : dsp::jlimit(0.0f, 1.0f, (1.0f - parityAmount) * 2.0f);
         
         // Fast power approximation using exp(ln(n)*x)
         float rollOffScale = std::exp(-lnTable[i] * (rollOffAmount - 1.0f));

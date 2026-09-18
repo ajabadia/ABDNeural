@@ -8,12 +8,13 @@
   ==============================================================================
 */
 
+#include "DspCore.h"
 #include "LFO.h"
 #include "../DSPUtils.h"
 
 namespace NEURONiK::DSP::Core {
 
-LFO::LFO (juce::uint32 seed) noexcept
+LFO::LFO (dsp::uint32 seed) noexcept
 {
     // Seed determinista sin entropia de sistema (regla 7A del skill JUCE
     // hybrid: la entropia crashea en AudioWorklet). El reloj que habia aqui
@@ -196,10 +197,10 @@ float LFO::generateSine() const noexcept
     // Fast Parabolic Sine Approximation (Bhaskara I variant)
     // t is phase in [0, 1]
     // x is shifted to [-PI, PI] for the approximation
-    float x = (phase_ - 0.5f) * juce::MathConstants<float>::twoPi * -1.0f; // Shifted and flipped to match sine starting at 0
+    float x = (phase_ - 0.5f) * dsp::MathConstants<float>::twoPi * -1.0f; // Shifted and flipped to match sine starting at 0
     
-    constexpr float B = 4.0f / juce::MathConstants<float>::pi;
-    constexpr float C = -4.0f / (juce::MathConstants<float>::pi * juce::MathConstants<float>::pi);
+    constexpr float B = 4.0f / dsp::MathConstants<float>::pi;
+    constexpr float C = -4.0f / (dsp::MathConstants<float>::pi * dsp::MathConstants<float>::pi);
     
     float y = B * x + C * x * std::abs(x);
     
@@ -247,7 +248,7 @@ float LFO::generateRandomSampleAndHold() noexcept
     if (randomInterpolationPhase_ < 1.0f)
     {
         // Smooth interpolation using a simple linear approach for now
-        float interpolatedValue = juce::jmap(randomInterpolationPhase_,
+        float interpolatedValue = dsp::jmap(randomInterpolationPhase_,
                                            0.0f, 1.0f, lastRandomValue_, nextRandomValue_);
         randomInterpolationPhase_ += randomInterpolationSpeed_ * phaseIncrement_ / 0.01f; // Adjust speed
         return interpolatedValue;

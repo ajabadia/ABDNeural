@@ -8,6 +8,7 @@
   ==============================================================================
 */
 
+#include "DspCore.h"
 #include "Envelope.h"
 #include <cmath>
 
@@ -30,24 +31,24 @@ void Envelope::setSampleRate(double newSampleRate) noexcept
 
 void Envelope::setAttackTime(float ms) noexcept
 {
-    attackTimeMs_.store(juce::jmax(0.1f, ms), std::memory_order_release);
+    attackTimeMs_.store(dsp::jmax(0.1f, ms), std::memory_order_release);
     parametersDirty_.store(true, std::memory_order_release);
 }
 
 void Envelope::setDecayTime(float ms) noexcept
 {
-    decayTimeMs_.store(juce::jmax(0.1f, ms), std::memory_order_release);
+    decayTimeMs_.store(dsp::jmax(0.1f, ms), std::memory_order_release);
     parametersDirty_.store(true, std::memory_order_release);
 }
 
 void Envelope::setSustainLevel(float level) noexcept
 {
-    sustainLevel_.store(juce::jlimit(0.0f, 1.0f, level), std::memory_order_release);
+    sustainLevel_.store(dsp::jlimit(0.0f, 1.0f, level), std::memory_order_release);
 }
 
 void Envelope::setReleaseTime(float ms) noexcept
 {
-    releaseTimeMs_.store(juce::jmax(0.1f, ms), std::memory_order_release);
+    releaseTimeMs_.store(dsp::jmax(0.1f, ms), std::memory_order_release);
     parametersDirty_.store(true, std::memory_order_release);
 }
 

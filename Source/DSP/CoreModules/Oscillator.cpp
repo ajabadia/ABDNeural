@@ -8,6 +8,7 @@
   ==============================================================================
 */
 
+#include "DspCore.h"
 #include "Oscillator.h"
 
 namespace NEURONiK::DSP::Core {
@@ -20,7 +21,7 @@ void Oscillator::initializeTable() noexcept
     if (tableInitialized) return;
     for (int i = 0; i <= WAVETABLE_SIZE; ++i)
     {
-        float phase = (static_cast<float>(i) / static_cast<float>(WAVETABLE_SIZE)) * juce::MathConstants<float>::twoPi;
+        float phase = (static_cast<float>(i) / static_cast<float>(WAVETABLE_SIZE)) * dsp::MathConstants<float>::twoPi;
         sineTable[i] = std::sin(phase);
     }
     tableInitialized = true;
@@ -52,7 +53,7 @@ void Oscillator::reset() noexcept
 
 void Oscillator::setFrequency(float newFreqHz) noexcept
 {
-    newFreqHz = juce::jlimit(0.1f, 22000.0f, newFreqHz);
+    newFreqHz = dsp::jlimit(0.1f, 22000.0f, newFreqHz);
     frequencyHz_.store(newFreqHz, std::memory_order_release);
 }
 

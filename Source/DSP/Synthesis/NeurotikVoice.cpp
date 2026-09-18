@@ -8,6 +8,7 @@
   ==============================================================================
 */
 
+#include "DspCore.h"
 #include "NeurotikVoice.h"
 #include "../DSPUtils.h"
 #include <algorithm>
@@ -19,7 +20,7 @@ NeurotikVoice::NeurotikVoice (int voiceIndex)
 {
     // Semilla determinista sin entropia de sistema (WASM-safe) y unica por
     // voz para que el ruido de excitacion no se correlacione entre voces.
-    random.setSeed ((juce::uint64) (0x9E3779B9u + 7919u * (juce::uint32) voiceIndex));
+    random.setSeed ((dsp::uint64) (0x9E3779B9u + 7919u * (dsp::uint32) voiceIndex));
     lastNoiseSample = 0.0f;
 }
 
@@ -58,7 +59,7 @@ void NeurotikVoice::noteOn(int midiNoteNumber, float velocity)
 
 void NeurotikVoice::noteOff(float velocity, bool /*allowTail*/)
 {
-    juce::ignoreUnused(velocity);
+    dsp::ignoreUnused(velocity);
     ampEnvelope.noteOff();
 }
 
@@ -84,10 +85,10 @@ bool NeurotikVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int 
         float detune = unisonDetuneSmoother.getNextValue();
 
         // Apply Modulations from IVoice
-        mX = juce::jlimit(0.0f, 1.0f, mX + modMorphX);
-        mY = juce::jlimit(0.0f, 1.0f, mY + modMorphY);
-        res = juce::jlimit(0.0f, 1.0f, res + modResonance);
-        detune = juce::jlimit(0.0f, 0.1f, detune + modUnison);
+        mX = dsp::jlimit(0.0f, 1.0f, mX + modMorphX);
+        mY = dsp::jlimit(0.0f, 1.0f, mY + modMorphY);
+        res = dsp::jlimit(0.0f, 1.0f, res + modResonance);
+        detune = dsp::jlimit(0.0f, 0.1f, detune + modUnison);
 
         // FIX: Catch up the smoothers (fix for 32x lag)
         if (thisBlockSamples > 1) {
@@ -102,21 +103,21 @@ bool NeurotikVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int 
         resonatorBank.updateParameters(mX, mY, res, detune);
 
         // 2. Render Audio Logic (Inner Loop)
-        juce::ScopedNoDenormals noDenormals; // Local safety for feedback loops
+        dsp::ScopedNoDenormals noDenormals; // Local safety for feedback loops
         
         for (int i = 0; i < thisBlockSamples; ++i)
         {
              // Noise Generation
              float rawNoise = (random.nextFloat() * 2.0f - 1.0f);
-             float alpha = juce::jlimit(0.01f, 0.99f, currentParams.excitationColor + modExciteColor);
+             float alpha = dsp::jlimit(0.01f, 0.99f, currentParams.excitationColor + modExciteColor);
              
              // Simple One-Pole Color Filter
              float coloredNoise = alpha * rawNoise + (1.0f - alpha) * lastNoiseSample;
              lastNoiseSample = coloredNoise; // Update state
 
              // Excite Mix
-             float exciteAmt = juce::jlimit(0.0f, 1.0f, currentParams.excitationNoise + modExciteNoise); 
-             float iMix = juce::jlimit(0.0f, 1.0f, currentParams.impulseMix + modImpulseMix);
+             float exciteAmt = dsp::jlimit(0.0f, 1.0f, currentParams.excitationNoise + modExciteNoise); 
+             float iMix = dsp::jlimit(0.0f, 1.0f, currentParams.impulseMix + modImpulseMix);
              
              // Mix Impulse and Noise
              float excitation = (coloredNoise * (1.0f - iMix)) + (impulseTrigger * iMix);
@@ -131,7 +132,7 @@ bool NeurotikVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int 
              // Envelope
              float env = ampEnvelope.processSample();
              
-             float levelMod = juce::jlimit(0.0f, 2.0f, currentParams.level + modLevel);
+             float levelMod = dsp::jlimit(0.0f, 2.0f, currentParams.level + modLevel);
              float finalSample = voiceSample * env * currentVelocity * levelMod;
              
              // Write to temp buffer

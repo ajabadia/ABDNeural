@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include "DspCore.h"
+
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <vector>
 
@@ -41,14 +43,14 @@ public:
 
     void setParameters(float timeInSeconds, float feedback, float mix = 0.5f) noexcept
     {
-        juce::ignoreUnused(mix);
+        dsp::ignoreUnused(mix);
         timeSmoother.setTargetValue(timeInSeconds * static_cast<float>(currentSampleRate));
-        feedbackSmoother.setTargetValue(juce::jlimit(0.0f, 0.95f, feedback));
+        feedbackSmoother.setTargetValue(dsp::jlimit(0.0f, 0.95f, feedback));
     }
 
     void processBlock(juce::AudioBuffer<float>& buffer)
     {
-        juce::ScopedNoDenormals noDenormals;
+        dsp::ScopedNoDenormals noDenormals;
         const int numChannels = buffer.getNumChannels();
         const int numSamples = buffer.getNumSamples();
         const int bufferSize = delayBuffer.getNumSamples();

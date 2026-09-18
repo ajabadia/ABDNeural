@@ -1,3 +1,4 @@
+#include "DspCore.h"
 #include "DspEngineFacade.h"
 
 #include "../ISynthesisEngine.h"
@@ -9,38 +10,38 @@ namespace NEURONiK::DSP::Runtime
     {
         juce::MidiMessage toMidiMessage(const Event& event)
         {
-            const int channel = juce::jlimit(1, 16, event.channel);
+            const int channel = dsp::jlimit(1, 16, event.channel);
 
             switch (event.type)
             {
                 case EventType::NoteOn:
                     return juce::MidiMessage::noteOn(channel,
-                                                     juce::jlimit(0, 127, event.note),
-                                                     juce::jlimit(0.0f, 1.0f, event.value));
+                                                     dsp::jlimit(0, 127, event.note),
+                                                     dsp::jlimit(0.0f, 1.0f, event.value));
 
                 case EventType::NoteOff:
                     return juce::MidiMessage::noteOff(channel,
-                                                      juce::jlimit(0, 127, event.note),
-                                                      juce::jlimit(0.0f, 1.0f, event.value));
+                                                      dsp::jlimit(0, 127, event.note),
+                                                      dsp::jlimit(0.0f, 1.0f, event.value));
 
                 case EventType::PitchBend:
-                    return juce::MidiMessage::pitchWheel(channel, juce::jlimit(0, 16383, event.value14));
+                    return juce::MidiMessage::pitchWheel(channel, dsp::jlimit(0, 16383, event.value14));
 
                 case EventType::ChannelPressure:
                     return juce::MidiMessage::channelPressureChange(channel,
-                                                              juce::jlimit(0, 127,
+                                                              dsp::jlimit(0, 127,
                                                                            static_cast<int>(event.value * 127.0f)));
 
                 case EventType::PolyAftertouch:
                     return juce::MidiMessage::aftertouchChange(channel,
-                                                               juce::jlimit(0, 127, event.note),
-                                                               juce::jlimit(0, 127,
+                                                               dsp::jlimit(0, 127, event.note),
+                                                               dsp::jlimit(0, 127,
                                                                             static_cast<int>(event.value * 127.0f)));
 
                 case EventType::Timbre:
                     return juce::MidiMessage::controllerEvent(channel,
                                                                74,
-                                                               juce::jlimit(0, 127,
+                                                               dsp::jlimit(0, 127,
                                                                             static_cast<int>(event.value * 127.0f)));
             }
 
@@ -78,7 +79,7 @@ namespace NEURONiK::DSP::Runtime
             for (int i = 0; i < eventCount; ++i)
             {
                 const auto& event = events[i];
-                midi.addEvent(toMidiMessage(event), juce::jlimit(0, numSamples - 1, event.sampleOffset));
+                midi.addEvent(toMidiMessage(event), dsp::jlimit(0, numSamples - 1, event.sampleOffset));
             }
         }
 
