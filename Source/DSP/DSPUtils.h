@@ -14,7 +14,6 @@
 #include "DspCore.h"
 
 #include <juce_core/juce_core.h>
-#include <juce_audio_basics/juce_audio_basics.h>
 #include <cmath>
 #include <limits>
 
@@ -47,7 +46,7 @@ inline T validateAudioParam(T value, T minVal, T maxVal, T fallback, const char*
  * Sanitizes an audio buffer, replacing NaN/Inf with silence.
  * Returns true if any invalid values were found.
  */
-inline bool sanitizeAudioBuffer(juce::AudioBuffer<float>& buffer, int startSample, int numSamples) noexcept
+inline bool sanitizeAudioBuffer(dsp::AudioBuffer<float>& buffer, int startSample, int numSamples) noexcept
 {
     bool foundInvalid = false;
     

@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include "DspCore.h"
+
 #include <juce_core/juce_core.h>
 #include <cmath>
 
@@ -59,7 +61,7 @@ public:
     /**
      * Processes an entire buffer of samples.
      */
-    void processBlock(juce::AudioBuffer<float>& buffer) noexcept
+    void processBlock(dsp::AudioBuffer<float>& buffer) noexcept
     {
         const int numSamples = buffer.getNumSamples();
         const int numChannels = buffer.getNumChannels();
@@ -89,7 +91,7 @@ public:
     }
 
 private:
-    juce::LinearSmoothedValue<float> driveSmoother { 1.0f };
+    dsp::LinearSmoothedValue<float> driveSmoother { 1.0f };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Saturation)
 };

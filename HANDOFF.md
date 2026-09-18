@@ -1470,3 +1470,24 @@ transicional (casilla abierta a propósito en el roadmap, se ataca con la Fase 5
   completos (parámetros + timbre). Siguiente en el roadmap: quitar juce_* del
   motor interno y las decisiones abiertas (¿WASM con ambos motores?, formato
   de preset común).
+
+## Fase 1 (de-JUCE del motor) — en curso
+
+- Commit A (`5e24271`): `DspCore.h` con ports literales de jmin/jmax/jmap/jlimit,
+  MathConstants, ignoreUnused, ScopedNoDenormals (máscara MXCSR 0x8040) y
+  LinearSmoothedValue. Swap mecánico en Source/DSP. Validado bit-exacto.
+- Commit B+C: port de **AudioBuffer** (HeapBlock, setSize/allocateData,
+  setDataToReferTo, addFrom/copyFrom/clear, FloatVectorOperations escalares
+  literales sin FMA) + vista zero-copy en la frontera (processor, test).
+  `ISynthesisEngine::renderNextBlock` ya toma `dsp::AudioBuffer`.
+- **Lección del arnés (bug latente del test desenterrado por el port):** el
+  test limpiaba el buffer JUCE subyacente mientras el motor escribía vía la
+  vista `dsp::AudioBuffer`: dos flags `isClear` desincronizados => clear() en
+  no-op desde el bloque 2 => residuos entre bloques (21x el nivel). Era
+  invisible en el baseline (heap fresco = páginas a cero). Diagnóstico con
+  motores sobre memoria envenenada 0xAA/0x00: el motor es determinista. Fix:
+  limpiar SIEMPRE a través del mismo objeto que recibe las escrituras.
+- Fix de portabilidad: HeapBlock del port necesita move ctor/assign (clang/
+  emscripten lo exige; MSVC era laxo). Paridad intacta.
+- Validación: build.bat RESULTADO OK, paridad WASM A/B/D/E=0 ulps y C=16
+  (presupuesto), smoke OK, vitest 56/56 tras sync_wasm.

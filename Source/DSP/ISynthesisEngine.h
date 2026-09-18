@@ -12,7 +12,9 @@
 
 // GlobalParams vive en DspTypes.h (libre de JUCE) para que hosts sin JUCE
 // (fachada Runtime, wrapper WASM) puedan hablar de parámetros con el motor.
+// DspCore.h: dsp::AudioBuffer (port libre de JUCE) que cruza la frontera.
 #include "DspTypes.h"
+#include "DspCore.h"
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <juce_events/juce_events.h>
 
@@ -44,7 +46,7 @@ namespace NEURONiK::DSP {
  * (atómicos/dobles buffers internos); pensados para un timer de UI (~30 Hz).
  *
  * NO depende del host: los tipos que cruza la frontera son GlobalParams
- * (DspTypes.h, POD sin JUCE) y juce::AudioBuffer/juce::MidiBuffer, que hoy
+ * (DspTypes.h, POD sin JUCE) y dsp::AudioBuffer/juce::MidiBuffer, que hoy
  * son la representación temporal del bloque. Un host sin JUCE usa la fachada
  * Runtime::DspEngineFacade (punteros crudos + Runtime::Event).
  */
@@ -59,7 +61,7 @@ public:
     virtual void prepare(double sampleRate, int samplesPerBlock) = 0;
 
     /** Processes a block of audio. */
-    virtual void renderNextBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages) = 0;
+    virtual void renderNextBlock(dsp::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages) = 0;
 
     /** Real-time safe parameter update. */
     virtual void updateParameters() = 0;

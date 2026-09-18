@@ -26,7 +26,7 @@ public:
     // --- ISynthesisEngine Implementation ---
     Type getType() const override { return Type::Neuronik; }
     void prepare(double sampleRate, int samplesPerBlock) override;
-    void renderNextBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages) override;
+    void renderNextBlock(dsp::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages) override;
     void updateParameters() override;
     void getSpectralData(float* destination64) const override;
     void getEnvelopeLevels(float& amp, float& filter) const override;

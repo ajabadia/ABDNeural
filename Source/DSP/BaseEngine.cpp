@@ -142,7 +142,7 @@ void BaseEngine::processMidiBuffer(juce::MidiBuffer& midiMessages)
     }
 }
 
-void BaseEngine::applyGlobalFX(juce::AudioBuffer<float>& buffer)
+void BaseEngine::applyGlobalFX(dsp::AudioBuffer<float>& buffer)
 {
     const int numSamples = buffer.getNumSamples();
 

@@ -48,7 +48,7 @@ public:
         feedbackSmoother.setTargetValue(dsp::jlimit(0.0f, 0.95f, feedback));
     }
 
-    void processBlock(juce::AudioBuffer<float>& buffer)
+    void processBlock(dsp::AudioBuffer<float>& buffer)
     {
         dsp::ScopedNoDenormals noDenormals;
         const int numChannels = buffer.getNumChannels();
@@ -94,12 +94,12 @@ public:
     }
 
 private:
-    juce::AudioBuffer<float> delayBuffer;
+    dsp::AudioBuffer<float> delayBuffer;
     int writePos = 0;
     double currentSampleRate = 44100.0;
 
-    juce::LinearSmoothedValue<float> timeSmoother;
-    juce::LinearSmoothedValue<float> feedbackSmoother;
+    dsp::LinearSmoothedValue<float> timeSmoother;
+    dsp::LinearSmoothedValue<float> feedbackSmoother;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Delay)
 };

@@ -8,7 +8,7 @@
   ==============================================================================
 */
 
-#include "DspCore.h"
+#include "../DspCore.h"
 #include "Resonator.h"
 #include "../DSPUtils.h"
 #include "../Utils/SIMDWrapper.h"

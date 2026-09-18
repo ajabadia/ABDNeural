@@ -49,7 +49,7 @@ public:
         mixSmoother.setTargetValue(mix);
     }
 
-    void processBlock(juce::AudioBuffer<float>& buffer)
+    void processBlock(dsp::AudioBuffer<float>& buffer)
     {
         const int numChannels = buffer.getNumChannels();
         const int numSamples = buffer.getNumSamples();
@@ -106,14 +106,14 @@ public:
     }
 
 private:
-    juce::AudioBuffer<float> delayBuffer;
+    dsp::AudioBuffer<float> delayBuffer;
     int writePos = 0;
     float phase = 0.0f;
     double currentSampleRate = 44100.0;
 
-    juce::LinearSmoothedValue<float> rateSmoother { 1.0f };
-    juce::LinearSmoothedValue<float> depthSmoother { 0.2f };
-    juce::LinearSmoothedValue<float> mixSmoother { 0.0f };
+    dsp::LinearSmoothedValue<float> rateSmoother { 1.0f };
+    dsp::LinearSmoothedValue<float> depthSmoother { 0.2f };
+    dsp::LinearSmoothedValue<float> mixSmoother { 0.0f };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Chorus)
 };

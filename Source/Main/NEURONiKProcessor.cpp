@@ -419,7 +419,14 @@ void NEURONiKProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
 
     if (engine != nullptr)
     {
-        engine->renderNextBlock(buffer, midiMessages);
+        // Frontera dsp::AudioBuffer <-> juce::AudioBuffer (motor sin JUCE):
+        // vista zero-copy de los mismos canales (patron de
+        // DspEngineFacade::process) — el motor escribe directamente en la
+        // memoria del buffer del host.
+        dsp::AudioBuffer<float> dspBufferView (buffer.getArrayOfWritePointers(),
+                                               buffer.getNumChannels(),
+                                               buffer.getNumSamples());
+        engine->renderNextBlock(dspBufferView, midiMessages);
 
         // External MIDI view for UI feedback (WebPilot keyboard): fold this
         // block's note on/off into the 128-bit held mask. Relax order: the mask

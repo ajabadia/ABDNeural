@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include "DspCore.h"
+
 #include "ISynthesisEngine.h"
 #include "IVoice.h"
 #include "Effects/Saturation.h"
@@ -47,7 +49,7 @@ public:
 
 protected:
     /** Subclasses must call this at the end of their renderNextBlock. */
-    void applyGlobalFX(juce::AudioBuffer<float>& buffer);
+    void applyGlobalFX(dsp::AudioBuffer<float>& buffer);
     
     /** Subclasses must implement this to route MIDI to their specific voice types. */
     virtual void handleMidiEvent(const juce::MidiMessage& m) = 0;
@@ -63,7 +65,7 @@ protected:
     Effects::Delay delay;
     Effects::Chorus chorus;
     Effects::Reverb reverb;
-    juce::LinearSmoothedValue<float> masterLevelSmoother;
+    dsp::LinearSmoothedValue<float> masterLevelSmoother;
 
     // Shared LFOs (semillas distintas: S&H decorrelacionado entre lfo1/lfo2)
     Core::LFO lfo1 { 0x1D0F1u }, lfo2 { 0x1D0F2u };

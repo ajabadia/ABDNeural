@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include "DspCore.h"
+
 #include "../IVoice.h"
 #include "../CoreModules/ResonatorBank.h"
 #include "../CoreModules/Envelope.h"
@@ -45,7 +47,7 @@ public:
     void prepare(double sampleRate, int samplesPerBlock) override;
     void noteOn(int midiNoteNumber, float velocity) override;
     void noteOff(float velocity, bool allowTail) override;
-    bool renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int startSample, int numSamples) override;
+    bool renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int startSample, int numSamples) override;
     bool isActive() const override;
     int getCurrentlyPlayingNote() const override { return currentNote; }
     void updateParameters() override;
@@ -90,10 +92,10 @@ private:
     float mpeTimbre = 0.0f;
 
     // Smoothers
-    juce::LinearSmoothedValue<float> morphXSmoother;
-    juce::LinearSmoothedValue<float> morphYSmoother;
-    juce::LinearSmoothedValue<float> resonanceSmoother;
-    juce::LinearSmoothedValue<float> unisonDetuneSmoother;
+    dsp::LinearSmoothedValue<float> morphXSmoother;
+    dsp::LinearSmoothedValue<float> morphYSmoother;
+    dsp::LinearSmoothedValue<float> resonanceSmoother;
+    dsp::LinearSmoothedValue<float> unisonDetuneSmoother;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NeurotikVoice)
 };

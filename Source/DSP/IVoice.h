@@ -46,7 +46,7 @@ public:
      * Renders audio for this voice into the provided buffer.
      * Returns true if the voice is still active, false if it has finished its tail.
      */
-    virtual bool renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int startSample, int numSamples) = 0;
+    virtual bool renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int startSample, int numSamples) = 0;
 
     /** Returns true if the voice is currently producing sound. */
     virtual bool isActive() const = 0;

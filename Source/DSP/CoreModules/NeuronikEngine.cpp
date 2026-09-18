@@ -27,7 +27,7 @@ void NeuronikEngine::prepare(double sampleRate, int samplesPerBlock)
     BaseEngine::prepare(sampleRate, samplesPerBlock);
 }
 
-void NeuronikEngine::renderNextBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+void NeuronikEngine::renderNextBlock(dsp::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     const int numSamples = buffer.getNumSamples();
     

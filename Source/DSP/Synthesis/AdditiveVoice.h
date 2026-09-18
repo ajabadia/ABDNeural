@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include "DspCore.h"
+
 #include "../IVoice.h"
 #include "../CoreModules/Resonator.h"
 #include "../CoreModules/Envelope.h"
@@ -47,7 +49,7 @@ public:
     void prepare(double sampleRate, int samplesPerBlock) override;
     void noteOn(int midiNoteNumber, float velocity) override;
     void noteOff(float velocity, bool allowTail) override;
-    bool renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int startSample, int numSamples) override;
+    bool renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int startSample, int numSamples) override;
     bool isActive() const override;
     int getCurrentlyPlayingNote() const override { return currentNote; }
     void updateParameters() override;
@@ -85,17 +87,17 @@ private:
     float originalFrequency = 440.0f;
 
     // Smoothers
-    juce::LinearSmoothedValue<float> cutoffSmoother;
-    juce::LinearSmoothedValue<float> resSmoother;
-    juce::LinearSmoothedValue<float> morphXSmoother;
-    juce::LinearSmoothedValue<float> morphYSmoother;
-    juce::LinearSmoothedValue<float> inharmonicitySmoother;
-    juce::LinearSmoothedValue<float> roughnessSmoother;
-    juce::LinearSmoothedValue<float> paritySmoother;
-    juce::LinearSmoothedValue<float> shiftSmoother;
-    juce::LinearSmoothedValue<float> rollOffSmoother;
-    juce::LinearSmoothedValue<float> unisonDetuneSmoother;
-    juce::LinearSmoothedValue<float> unisonSpreadSmoother;
+    dsp::LinearSmoothedValue<float> cutoffSmoother;
+    dsp::LinearSmoothedValue<float> resSmoother;
+    dsp::LinearSmoothedValue<float> morphXSmoother;
+    dsp::LinearSmoothedValue<float> morphYSmoother;
+    dsp::LinearSmoothedValue<float> inharmonicitySmoother;
+    dsp::LinearSmoothedValue<float> roughnessSmoother;
+    dsp::LinearSmoothedValue<float> paritySmoother;
+    dsp::LinearSmoothedValue<float> shiftSmoother;
+    dsp::LinearSmoothedValue<float> rollOffSmoother;
+    dsp::LinearSmoothedValue<float> unisonDetuneSmoother;
+    dsp::LinearSmoothedValue<float> unisonSpreadSmoother;
 
     // MPE State
     float mpePitchBend = 0.0f;  // semitones

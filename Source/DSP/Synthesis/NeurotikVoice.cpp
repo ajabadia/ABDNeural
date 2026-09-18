@@ -63,7 +63,7 @@ void NeurotikVoice::noteOff(float velocity, bool /*allowTail*/)
     ampEnvelope.noteOff();
 }
 
-bool NeurotikVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int startSample, int numSamples)
+bool NeurotikVoice::renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int startSample, int numSamples)
 {
     if (!isActive()) return false;
 

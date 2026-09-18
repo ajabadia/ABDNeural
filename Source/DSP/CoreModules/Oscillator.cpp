@@ -8,7 +8,7 @@
   ==============================================================================
 */
 
-#include "DspCore.h"
+#include "../DspCore.h"
 #include "Oscillator.h"
 
 namespace NEURONiK::DSP::Core {

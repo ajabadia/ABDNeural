@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include "DspCore.h"
+
 #include <juce_audio_basics/juce_audio_basics.h>
 
 namespace NEURONiK::DSP::Effects {
@@ -41,7 +43,7 @@ public:
         mixSmoother.setTargetValue(mix);
     }
 
-    void processBlock(juce::AudioBuffer<float>& buffer)
+    void processBlock(dsp::AudioBuffer<float>& buffer)
     {
         // Update parameters once per block (standard JUCE Reverb is block-based)
         // For smoother transitions, we could process in smaller sub-blocks if needed, 
@@ -80,10 +82,10 @@ private:
     juce::Reverb reverb;
     juce::Reverb::Parameters params;
 
-    juce::LinearSmoothedValue<float> sizeSmoother { 0.5f };
-    juce::LinearSmoothedValue<float> dampingSmoother { 0.5f };
-    juce::LinearSmoothedValue<float> widthSmoother { 1.0f };
-    juce::LinearSmoothedValue<float> mixSmoother { 0.0f };
+    dsp::LinearSmoothedValue<float> sizeSmoother { 0.5f };
+    dsp::LinearSmoothedValue<float> dampingSmoother { 0.5f };
+    dsp::LinearSmoothedValue<float> widthSmoother { 1.0f };
+    dsp::LinearSmoothedValue<float> mixSmoother { 0.0f };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Reverb)
 };

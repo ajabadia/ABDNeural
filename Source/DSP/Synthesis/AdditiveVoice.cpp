@@ -132,7 +132,7 @@ void AdditiveVoice::updateParameters()
     unisonSpreadSmoother.setTargetValue(currentParams.unisonSpread);
 }
 
-bool AdditiveVoice::renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int startSample, int numSamples)
+bool AdditiveVoice::renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int startSample, int numSamples)
 {
     if (ampEnvelope.getCurrentState() == NEURONiK::DSP::Core::Envelope::State::Idle)
     {

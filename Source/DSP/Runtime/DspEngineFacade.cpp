@@ -68,7 +68,7 @@ namespace NEURONiK::DSP::Runtime
         if (left == nullptr || right == nullptr || numSamples <= 0)
             return;
 
-        juce::AudioBuffer<float> buffer;
+        dsp::AudioBuffer<float> buffer;
         float* channels[] = { left, right };
         buffer.setDataToReferTo(channels, 2, numSamples);
         buffer.clear();

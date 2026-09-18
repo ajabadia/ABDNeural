@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -35,16 +36,29 @@ namespace
         juce::AudioBuffer<float> buffer(2, blockSize);
         juce::MidiBuffer midi;
 
+        // Frontera dsp::AudioBuffer <-> juce::AudioBuffer (motor sin JUCE):
+        // vista zero-copy de los mismos canales (patron DspEngineFacade::process).
+        dsp::AudioBuffer<float> dspBufferView (buffer.getArrayOfWritePointers(),
+                                               buffer.getNumChannels(),
+                                               buffer.getNumSamples());
+
         midi.addEvent(juce::MidiMessage::noteOn(1, plan.note, plan.velocity), 0);
-        engine.renderNextBlock(buffer, midi);
+        // IMPORTANTE: limpiar a traves de la VISTA, no del buffer JUCE. El motor
+        // suma en el buffer (addFrom) y escribe via la vista: si limpiamos con
+        // buffer.clear(), el flag isClear del buffer JUCE queda true tras el
+        // primer ciclo y los clear() siguientes son NO-OP (las escrituras por la
+        // vista no lo invalidan) => el bloque anterior se suma al siguiente.
+        // Limpiando por la vista, el flag y la memoria viven en el mismo objeto.
+        dspBufferView.clear();
+        engine.renderNextBlock(dspBufferView, midi);
 
         for (int b = 0; b < plan.sustainBlocks + plan.releaseBlocks; ++b)
         {
             midi.clear();
             if (b == plan.sustainBlocks - 1)
                 midi.addEvent(juce::MidiMessage::noteOff(1, plan.note, plan.velocity), 0);
-            buffer.clear();
-            engine.renderNextBlock(buffer, midi);
+            dspBufferView.clear();
+            engine.renderNextBlock(dspBufferView, midi);
         }
 
         outLeft.assign(buffer.getReadPointer(0), buffer.getReadPointer(0) + buffer.getNumSamples());
@@ -135,6 +149,7 @@ namespace
         std::cout << "NEURONiK DSP reference: peak=" << peak << " rms=" << rms << '\n';
         return peak > 1.0e-5f && rms > 1.0e-6;
     }
+
 }
 
 int main()
