@@ -2325,8 +2325,46 @@ bool operator!= (const AudioBuffer<Type>& a, const AudioBuffer<Type>& b)
 }
 
 //==============================================================================
-// Aliases enteros usados por el DSP (equivalente a los de juce_core).
+/** Ports literales de utilidades de juce_core/maths que consume el motor.
+    Los aliases enteros deben declararse ANTES de Random.
+*/
+using int32 = int32_t;
+using int64 = int64_t;
 using uint32 = uint32_t;
 using uint64 = uint64_t;
+
+//==============================================================================
+/** Port literal de juce::Random (juce_core/maths/juce_Random) reducido a la
+    superficie que consume el motor: setSeed + nextFloat. LCG idéntico
+    (multiplicador 0x5deece66d, máscara 48 bits, retorno seed>>16). Los
+    consumidores ya siembran con semillas deterministas (sin entropía de
+    reloj — filosofía WASM-safe del proyecto).
+*/
+class Random
+{
+public:
+    Random() = default;
+
+    void setSeed (int64 newSeed) noexcept
+    {
+        seed = newSeed;
+    }
+
+    int nextInt() noexcept
+    {
+        seed = (int64) (((((uint64) seed) * 0x5deece66dLL) + 11) & 0xffffffffffffLL);
+        return (int) (seed >> 16);
+    }
+
+    float nextFloat() noexcept
+    {
+        auto result = static_cast<float> (static_cast<uint32> (nextInt()))
+                      / (static_cast<float> (std::numeric_limits<uint32>::max()) + 1.0f);
+        return dsp::jmin (result, 1.0f - std::numeric_limits<float>::epsilon());
+    }
+
+private:
+    int64 seed = 1;
+};
 
 } // namespace dsp

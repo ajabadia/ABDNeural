@@ -72,7 +72,7 @@ private:
     double sampleRate_ = 48000.0;
     float phase_ = 0.0f;
     float phaseIncrement_ = 0.0f;
-    juce::Random random_;
+    dsp::Random random_;
     float lastRandomValue_ = 0.0f;
     float nextRandomValue_ = 0.0f;
     float randomInterpolationPhase_ = 0.0f;

@@ -80,7 +80,7 @@ private:
     float currentVelocity = 0.0f;
     float baseFreq = 440.0f;
 
-    juce::Random random;
+    dsp::Random random;
     
     // Excitation state
     float lastNoiseSample = 0.0f;

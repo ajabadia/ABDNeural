@@ -74,7 +74,11 @@ Resonator::Resonator() noexcept
     }
 
     // Seed the fast random generator
-    randomSeed = (uint32_t)juce::Time::getMillisecondCounter();
+    // Sin entropia de reloj (WASM-safe y reproducible entre sesiones): la
+    // semilla por defecto del header (1234567) es la fuente; el jitter solo
+    // es audible con entropy > 0 (no-default), y la via nativa puede
+    // re-sembrar desde el host si algun dia hace falta.
+    // ANTES: randomSeed = (uint32_t)juce::Time::getMillisecondCounter();
 
     for (int i = 0; i < 64; ++i)
         lnTable[i] = std::log(static_cast<float>(i + 1));
