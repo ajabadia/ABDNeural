@@ -188,6 +188,28 @@ namespace
         [[nodiscard]] juce::String getCurrentPreset() const override { return current; }
     };
 
+    /** @brief Spectral-model backend stub for the modelsState section. */
+    struct FakeModelController final : public NativeModelController
+    {
+        int numSlots = 4;
+        float amp0 = 0.5f;
+        float freq0 = 0.25f;
+        bool valid = true;
+
+        int getNumModelSlots() const override { return numSlots; }
+
+        void getCurrentModel (int, std::array<float, 64>& amplitudes,
+                              std::array<float, 64>& frequencyOffsets,
+                              bool& isValid) const override
+        {
+            amplitudes.fill (0.0f);
+            frequencyOffsets.fill (0.0f);
+            amplitudes[0] = amp0;
+            frequencyOffsets[0] = freq0;
+            isValid = valid;
+        }
+    };
+
     /** @brief `{ action: <name>, name: <preset> }`, the shape preset messages use. */
     juce::var jsPresetAction (const juce::String& action, const juce::String& presetName)
     {
@@ -557,6 +579,70 @@ int main()
                    && noBackend[0].getDynamicObject()->getProperty ("detail").toString()
                           .contains ("no preset backend"),
                "without a backend every preset action answers presetError");
+    }
+
+    // --- 9. Spectral models (additive to protocol v1) -----------------------------
+    std::cout << "\nSpectral models\n";
+
+    {
+        FakeModelController fakeModels;
+        bridge.setModelController (&fakeModels);
+        bridge.setSender (recorder.sender());
+        bridge.resetStats();
+        recorder.messages.clear();
+
+        bridge.handleJsEvent (jsAction (BridgeActions::requestState));
+
+        const auto models = recorder.withAction (BridgeActions::modelsState);
+        check (models.size() == 1, "a snapshot carries one modelsState (models piggyback on it)");
+        check (bridge.getStats().modelsSent == 1, "the modelsState emission is counted");
+
+        const auto* modelsObject = models.size() == 1 ? models[0].getDynamicObject() : nullptr;
+        const auto* slots = modelsObject != nullptr
+                                ? modelsObject->getProperty ("slots").getArray()
+                                : nullptr;
+        check (slots != nullptr && slots->size() == 4,
+               "modelsState carries the four model slots");
+
+        if (slots != nullptr && slots->size() == 4)
+            if (const auto* entry = (*slots)[0].getDynamicObject(); entry != nullptr)
+            {
+                const auto validVar = entry->getProperty ("isValid");
+                const auto* amps = entry->getProperty ("amplitudes").getArray();
+                const auto* freqs = entry->getProperty ("frequencyOffsets").getArray();
+
+                check ((int) entry->getProperty ("slot") == 0
+                           && validVar.isBool() && static_cast<bool> (validVar),
+                       "slot 0 is published as valid");
+                check (amps != nullptr && amps->size() == 64
+                           && static_cast<double> ((*amps)[0]) == static_cast<double> (fakeModels.amp0),
+                       "amplitudes travel as 64 doubles (slot 0 amplitude matches)");
+                check (freqs != nullptr && freqs->size() == 64
+                           && static_cast<double> ((*freqs)[0]) == static_cast<double> (fakeModels.freq0),
+                       "frequencyOffsets travel as 64 doubles (slot 0 offset matches)");
+            }
+
+        // A load rewrites the state AND the models: the snapshot hook fires and the
+        // loadPreset handler sends its own (independent, idempotent) modelsState.
+        FakePresetController fakePresets;
+        bridge.setPresetController (&fakePresets);
+        recorder.messages.clear();
+
+        bridge.handleJsEvent (jsPresetAction (BridgeActions::loadPreset, "Glass Bells"));
+
+        check (recorder.withAction (BridgeActions::modelsState).size() == 2,
+               "a loadPreset answers modelsState twice (snapshot hook + load hook)");
+
+        // Without a backend the message disappears entirely (additive degradation).
+        bridge.setPresetController (nullptr);
+        bridge.setModelController (nullptr);
+        bridge.resetStats();
+        recorder.messages.clear();
+
+        bridge.handleJsEvent (jsAction (BridgeActions::requestState));
+
+        check (recorder.withAction (BridgeActions::modelsState).empty(),
+               "without a model backend no modelsState is sent");
     }
 
     // ============================================================================

@@ -154,6 +154,18 @@ export function pushEngineToWorklet(index) {
   return true;
 }
 
+/**
+ * Push the spectral model slots (preset timbre data) to the worklet.
+ * `slots` mirrors the bridge's modelsState: [{ slot, isValid, amplitudes[64],
+ * frequencyOffsets[64] }, ...]. Models hang off the concrete engine, so the
+ * worklet re-applies them after every engine switch.
+ */
+export function pushModelsToWorklet(slots) {
+  if (!node) return false;
+  node.port.postMessage ({ type: 'neuronik:models', slots });
+  return true;
+}
+
 /** Forward one MIDI event (same shapes the bridge senders emit). */
 export function pushMidiToWorklet(message) {
   if (!node) return false;

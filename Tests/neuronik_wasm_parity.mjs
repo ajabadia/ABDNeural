@@ -2,7 +2,7 @@
  * Test de paridad WASM <-> nativo (Fase 5, hito 1/2).
  * Uso: node Tests/neuronik_wasm_parity.mjs build-wasm/neuronik_dsp.js [build-wasm/parity-native.json] [--strict]
  *
- * El test nativo NEURONiK_WasmParityTest ejecuta los MISMOS 4 escenarios sobre
+ * El test nativo NEURONiK_WasmParityTest ejecuta los MISMOS escenarios sobre
  * la misma frontera (DspEngineFacade) que consume el puente WASM y vuelca el
  * canal izquierdo a JSON. Este test instancia el módulo WASM real y compara
  * muestra a muestra.
@@ -33,7 +33,7 @@ if (!jsPathArg) {
 
 const MAX_DIFF_ABS = 1e-6;
 /** Presupuesto de ulps por escenario (ver cabecera): 0 = bit-exacta exigida. */
-const ULP_BUDGET = { A_neuronik_default: 0, B_neurotik_default: 0, C_fx_panico: 16, D_modmatrix: 0 };
+const ULP_BUDGET = { A_neuronik_default: 0, B_neurotik_default: 0, C_fx_panico: 16, D_modmatrix: 0, E_modelo_espectral: 0 };
 
 const jsPath = path.resolve(process.cwd(), jsPathArg);
 const jsonPath = path.resolve(process.cwd(), jsonPathArg ?? 'build-wasm/parity-native.json');
@@ -100,7 +100,26 @@ function buildScenarios() {
       events: [{ block: 0, note: 60, velocity: 100 / 127 }],
       blocks: 24, panicAtBlock: -1,
     },
+    {
+      // Modelo espectral en el slot 0 (camino neuronikLoadModel): el timbre
+      // que los presets publican por el puente cruza aquí bit a bit.
+      name: 'E_modelo_espectral', engineType: 0, loadModel: true,
+      params: defaultParams(),
+      events: [{ block: 0, note: 69, velocity: 1.0 }],
+      blocks: 24, panicAtBlock: -1,
+    },
   ];
+}
+
+/** Gemelo 1:1 de fillTestModel() en Tests/WasmParityTest.cpp: constantes
+ *  exactas (potencias de dos) y multiplicación por 2^-7 — idénticas bits en
+ *  float32 y double, sin doble redondeo posible entre MSVC y V8. */
+function fillTestModel(view) {
+  for (let i = 0; i < 64; ++i) {
+    const k = i % 4;
+    view[i] = k === 0 ? 1.0 : k === 1 ? 0.5 : k === 2 ? 0.25 : 0.125;
+    view[64 + i] = i * 0.0078125;
+  }
 }
 
 // --- Escritura de GlobalParams por offsets del propio módulo (nunca hardcoded)
@@ -158,6 +177,16 @@ function writeParams(p) {
 function runScenario(s) {
   Module._neuronikSetEngine(s.engineType);
   Module._neuronikInit(SAMPLE_RATE, BLOCK);
+
+  if (s.loadModel) {
+    // Mismo camino que el worklet (neuronik:models -> neuronikLoadModel):
+    // 128 floats — amplitudes[0..63] luego frequencyOffsets[0..63].
+    const modelPtr = Module._malloc(128 * 4);
+    fillTestModel(Module.HEAPF32.subarray(modelPtr >> 2, (modelPtr >> 2) + 128));
+    Module._neuronikLoadModel(0, s.engineType, modelPtr, 1);
+    Module._free(modelPtr);
+  }
+
   writeParams(s.params);
 
   const eventPtr = Module._malloc(EVENT_SIZE);
@@ -239,4 +268,4 @@ if (totalFailed > 0) {
   console.error('[parity] FALLO: escenario(s) fuera de su presupuesto de ulps.');
   process.exit(1);
 }
-console.log('[parity] OK: paridad WASM<->nativo — bit-exacta en el núcleo (A/B/D), cola C dentro del presupuesto de libm.');
+console.log('[parity] OK: paridad WASM<->nativo — bit-exacta en el núcleo (A/B/D/E), cola C dentro del presupuesto de libm.');

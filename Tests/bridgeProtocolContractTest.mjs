@@ -101,6 +101,7 @@ const transport = createBridgeTransport({
   onPresetList: (info) => received.push(['presetList', info]),
   onPresetError: (error) => received.push(['presetError', error]),
   onMidiState: (state) => received.push(['midiState', state]),
+  onModels: (slots) => received.push(['modelsState', slots]),
 });
 
 check(transport.available === true, 'el transporte se activa con window.__JUCE__ presente');
@@ -265,6 +266,27 @@ globalThis.window.__JUCE__.backend.deliver(contract.channels.nativeToJs.eventId,
 check(
   received.some(([kind, id]) => kind === 'changed' && id === 'morphY'),
   'un parameterChanged nativo llega al callback',
+);
+
+// Models: el slot 0 publicado cruza a onModels; lo malformado se ignora.
+check(
+  contract.channels.nativeToJs.eventId === 'event'
+    && Object.keys(contract.messages.nativeToJs).includes('modelsState'),
+  'el contrato declara modelsState nativo->JS',
+);
+
+globalThis.window.__JUCE__.backend.deliver(contract.channels.nativeToJs.eventId, {
+  action: 'modelsState',
+  slots: [{
+    slot: 0,
+    isValid: true,
+    amplitudes: new Array(64).fill(0),
+    frequencyOffsets: new Array(64).fill(0),
+  }],
+});
+check(
+  received.some(([kind, slots]) => kind === 'modelsState' && slots[0].slot === 0),
+  'un modelsState válido llega como onModels',
 );
 
 // Sin JUCE: modo local (el contrato lo documenta como comportamiento)

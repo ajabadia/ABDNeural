@@ -157,6 +157,36 @@ namespace
         NEURONiKProcessor& processor;
     };
 
+    /**
+     * @brief Adapts the plugin's spectral model slots to the bridge's
+     *        NativeModelController interface.
+     *
+     * A preset is APVTS state PLUS up to four SpectralModel slots the Resonator
+     * morphs between; the models never live in the APVTS, so the page would
+     * never learn about them. The adapter serves the file-backed mirror
+     * (modelPath<slot>) — the same source an engine switch reloads from — so
+     * the WASM path morphs between the SAME partials the plugin renders.
+     */
+    class EngineModelsAdapter final : public NEURONiK::WebUI::NativeModelController
+    {
+    public:
+        explicit EngineModelsAdapter (NEURONiKProcessor& processorToWrap)
+            : processor (processorToWrap) {}
+
+        int getNumModelSlots() const override { return 4; }
+
+        void getCurrentModel (int slot,
+                              std::array<float, 64>& amplitudes,
+                              std::array<float, 64>& frequencyOffsets,
+                              bool& isValid) const override
+        {
+            processor.getCurrentModel (slot, amplitudes, frequencyOffsets, isValid);
+        }
+
+    private:
+        NEURONiKProcessor& processor;
+    };
+
     /** @brief Process exit code decided by the selftest (-1 = no verdict yet).
      *  PilotComponent writes it when the selftest finishes; PilotApplication reads
      *  it on systemRequestedQuit so the process actually exits 0/1. Without this
@@ -510,6 +540,12 @@ namespace
             // bridge, so a bare pointer is safe (same rules as the preset adapter).
             midiAdapter = std::make_unique<MidiInjectionAdapter> (processor);
             bridge->setMidiController (midiAdapter.get());
+
+            // Spectral models for the page: the bridge publishes the engine's
+            // current slots (file-backed mirror) so the WASM path can morph
+            // between the SAME partials the plugin renders.
+            modelsAdapter = std::make_unique<EngineModelsAdapter> (processor);
+            bridge->setModelController (modelsAdapter.get());
 
             addAndMakeVisible (browser);
             nativePanel = std::make_unique<NEURONiK::UI::ParameterPanel> (processor);
@@ -999,6 +1035,7 @@ namespace
         // the component, before the processor's own members go away.
         std::unique_ptr<PresetManagerAdapter> presetAdapter;
         std::unique_ptr<MidiInjectionAdapter> midiAdapter;
+        std::unique_ptr<EngineModelsAdapter> modelsAdapter;
         std::unique_ptr<NEURONiK::WebUI::ParameterBridge> bridge;
 
         // Audio plumbing for the pilot: default device + the standard JUCE player

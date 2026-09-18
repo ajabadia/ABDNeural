@@ -40,6 +40,18 @@ public:
     void loadModel(const juce::File& file, int slot);
     void reloadModels();
 
+    /**
+     * Current spectral model slot as the WebUI bridge publishes it (message
+     * thread only). File-backed via modelPath<slot> — the same source an engine
+     * switch reloads from — so it mirrors what the audio thread renders.
+     * Returns false only for an out-of-range slot; an empty/invalid slot answers
+     * well-formed zeros with isValid = false.
+     */
+    bool getCurrentModel(int slot,
+                         std::array<float, 64>& amplitudes,
+                         std::array<float, 64>& frequencyOffsets,
+                         bool& isValid) const;
+
     // --- Patch Copy/Paste (State Access Only) ---
     juce::ValueTree getFullState() { return apvts.copyState(); }
     void setFullState(const juce::ValueTree& newState) { apvts.replaceState(newState); }

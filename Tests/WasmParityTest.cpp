@@ -22,6 +22,7 @@
 
 #include "../Source/DSP/Runtime/DspEngineFacade.h"
 #include "../Source/DSP/DspTypes.h"
+#include "../Source/Common/SpectralModel.h"
 #include "../Source/DSP/CoreModules/NeuronikEngine.h"
 #include "../Source/DSP/CoreModules/NeurotikEngine.h"
 
@@ -52,7 +53,23 @@ namespace
         std::vector<BlockEvent> events;
         int blocks;
         int panicAtBlock = -1;              // facade->allNotesOff() antes de renderizar este bloque
+        bool loadModel = false;             // carga el modelo espectral E en el slot 0
     };
+
+    /** Genera el modelo del escenario E. SOLO constantes exactas (potencias de
+     *  dos) y multiplicación por 2^-7: idénticas bits en float32 y en double,
+     *  así que MSVC y V8 construyen el mismo modelo sin doble redondeo posible
+     *  (una división 1/(1+a*i) en f32 vs f64-then-round PODRIA diferir en 1 ulp). */
+    void fillTestModel (NEURONiK::Common::SpectralModel& model)
+    {
+        for (int i = 0; i < 64; ++i)
+        {
+            const int k = i % 4;
+            model.amplitudes[(size_t) i] = k == 0 ? 1.0f : k == 1 ? 0.5f : k == 2 ? 0.25f : 0.125f;
+            model.frequencyOffsets[(size_t) i] = (float) i * 0.0078125f;   // 2^-7, exacto
+        }
+        model.isValid = true;
+    }
 
     Runtime::Event noteOn (int note, float velocity)
     {
@@ -127,6 +144,20 @@ namespace
             s.push_back (d);
         }
 
+        // E — modelo espectral cargado en el slot 0 (el timbre que los presets
+        //     publican por el puente, camino neuronikLoadModel): el Resonator
+        //     debe morphing entre los MISMOOS parciales en WASM y nativo.
+        {
+            Scenario e;
+            e.name = "E_modelo_espectral";
+            e.engineType = 0;
+            e.params = GlobalParams {};
+            e.loadModel = true;
+            e.events.push_back ({ 0, noteOn (69, 1.0f) });
+            e.blocks = 24;
+            s.push_back (e);
+        }
+
         return s;
     }
 }
@@ -157,6 +188,13 @@ int main (int argc, char** argv)
         Runtime::DspEngineFacade facade (*engine);
         facade.prepare (kSampleRate, kBlockSize);
         facade.setGlobalParams (sc.params);
+
+        if (sc.loadModel)
+        {
+            NEURONiK::Common::SpectralModel model;
+            fillTestModel (model);
+            engine->loadModel (model, 0);
+        }
 
         std::vector<float> samples;
         samples.reserve ((size_t) sc.blocks * kBlockSize);

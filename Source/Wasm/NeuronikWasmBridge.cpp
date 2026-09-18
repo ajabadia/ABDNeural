@@ -125,6 +125,35 @@ WASM_EXPORT int neuronikGlobalParamsSize()
 }
 
 /**
+ * Spectral model slots (preset timbre data). A preset is APVTS state PLUS up to
+ * four SpectralModel slots (64 partials each) the Resonator morphs between;
+ * they never live in GlobalParams, so they cross the boundary separately.
+ * data is 128 consecutive floats: amplitudes[0..63] then frequencyOffsets[0..63].
+ * engineType selects the active engine (0 = NEURONiK, 1 = Neurotik) because the
+ * models hang off the concrete engine, not the facade. loadModel fans the model
+ * out to every voice (whole-POD swap + rebuild latch, same as the native plugin).
+ */
+WASM_EXPORT void neuronikLoadModel (int slot, int engineType, const float* data, int isValid)
+{
+    if (data == nullptr || slot < 0 || slot >= 4)
+        return;
+
+    NEURONiK::Common::SpectralModel model;
+    std::memcpy (model.amplitudes.data(), data, 64 * sizeof (float));
+    std::memcpy (model.frequencyOffsets.data(), data + 64, 64 * sizeof (float));
+    model.isValid = isValid != 0;
+
+    auto& inst = instance();
+    if (inst.engine == nullptr)
+        return;
+
+    if (engineType == 1)
+        static_cast<NEURONiK::DSP::NeurotikEngine*> (inst.engine.get())->loadModel (model, slot);
+    else
+        static_cast<NEURONiK::DSP::NeuronikEngine*> (inst.engine.get())->loadModel (model, slot);
+}
+
+/**
  * Layout descriptor so JS writes the GlobalParams mirror without hardcoded
  * offsets: outOffsets points at an i32 array of numFields entries where the
  * bridge stores offsetof() of every field, in the documented field order

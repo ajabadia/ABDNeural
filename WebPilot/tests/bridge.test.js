@@ -173,7 +173,7 @@ describe('bridge transport', () => {
       window.__JUCE__ = { backend };
 
       const transport = createBridgeTransport({ onSnapshot, onParameterChanged });
-      expect(backend.listenerCount(NATIVE_TO_JS_EVENT_ID)).toBe(5);
+      expect(backend.listenerCount(NATIVE_TO_JS_EVENT_ID)).toBe(6);
 
       transport.dispose();
       expect(backend.listenerCount(NATIVE_TO_JS_EVENT_ID)).toBe(0);
@@ -233,6 +233,28 @@ describe('bridge transport', () => {
 
       expect(onMidiState).toHaveBeenCalledTimes(1);
       expect(onMidiState).toHaveBeenCalledWith({ held: [60, 64], pitchBend: -0.25, modWheel: 0.5 });
+    });
+
+    it('onModels receives the spectral model slots from modelsState', () => {
+      const onModels = vi.fn();
+      const backend = makeBackend();
+      window.__JUCE__ = { backend };
+
+      createBridgeTransport({ onModels });
+
+      const slots = [
+        { slot: 0, isValid: true,
+          amplitudes: new Array(64).fill(0), frequencyOffsets: new Array(64).fill(0) },
+      ];
+      slots[0].amplitudes[0] = 0.5;
+
+      backend.dispatchFromNative(NATIVE_TO_JS_EVENT_ID, { action: 'modelsState', slots });
+      backend.dispatchFromNative(NATIVE_TO_JS_EVENT_ID, {
+        action: 'modelsState', slots: 'not-an-array',
+      }); // malformed: ignored
+
+      expect(onModels).toHaveBeenCalledTimes(1);
+      expect(onModels).toHaveBeenCalledWith(slots);
     });
   });
 });

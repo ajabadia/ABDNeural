@@ -40,6 +40,9 @@ export function useParameterControls(ids = PILOT_PARAMETER_IDS) {
   const [presetState, setPresetState] = useState({ presets: [], current: '' });
   const [presetError, setPresetError] = useState(null);
   const [midiState, setMidiState] = useState({ held: [], pitchBend: 0, modWheel: 0 });
+  // Spectral model slots (bridge modelsState): [{ slot, isValid, amplitudes[64],
+  // frequencyOffsets[64] }, ...] — preset timbre data outside the APVTS.
+  const [models, setModels] = useState(null);
 
   const transportRef = useRef(null);
   const draggingIdRef = useRef(null);
@@ -87,6 +90,10 @@ export function useParameterControls(ids = PILOT_PARAMETER_IDS) {
 
       onMidiState(state) {
         setMidiState(state);
+      },
+
+      onModels(slots) {
+        setModels(Array.isArray(slots) ? slots : null);
       },
     });
 
@@ -201,6 +208,7 @@ export function useParameterControls(ids = PILOT_PARAMETER_IDS) {
     presetState,
     presetError,
     midiState,
+    models,
     pushParameter,
     handleChange,
     handleGesture,

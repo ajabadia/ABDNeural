@@ -1443,3 +1443,30 @@ transicional (casilla abierta a propósito en el roadmap, se ataca con la Fase 5
 - Integracion: `build_wasm.bat` pasa a 5 pasos (genera referencia nativa ->
   compila WASM -> paridad Node -> smoke). build.bat valida con exit 0.
 - Falta el wire-up de presets en la via web (ultimo pendiente de la Fase 5).
+
+## 2026-09-18 (c) — Wire-up de presets en la vía web (Fase 5, CIERRE)
+- Un preset es estado APVTS **más** hasta 4 slots de SpectralModel (64
+  parciales) entre los que morphea el Resonator; los modelos nunca viven en el
+  APVTS, así que el snapshot de parámetros no los llevaba. Camino completo:
+  - Puente WASM: `neuronikLoadModel(slot, engineType, ptr128floats, isValid)`
+    (el modelo cuelga del engine concreto, no de la fachada).
+  - Bridge nativo: interfaz `NativeModelController` + mensaje aditivo
+    `modelsState` que viaja pegado a cada `syncAllParams` y tras cada
+    `loadPreset`; el host adapta el processor con una vista file-backed
+    (`modelPath<slot>`, la misma fuente que recarga un cambio de engine).
+  - Página: `pushModelsToWorklet` + efecto que re-aplica los modelos tras cada
+    cambio de engine del worklet (el switch reconstruye el engine y los slots
+    vuelven a defaults hasta que la página los re-envía).
+- Worklet: mensaje `neuronik:models` (buffer heap compartido de 128 floats por
+  slot) + fix del `instantiateWasm` (method-shorthand + `.bind` nunca parseó:
+  el worklet no podía cargar; ahora arrow function con this léxico).
+- Paridad: nuevo escenario E (`E_modelo_espectral`, slot 0 con constantes
+  exactas 2^-k y offsets 2^-7 para evitar doble redondeo f32/f64 entre MSVC y
+  V8) — bit-exacto a 0 ulps. Presupuestos: A/B/D/E=0, C=16 (libm de la cola).
+- Validación: build.bat RESULTADO OK (11/11 ctest, selftest bidireccional OK),
+  vitest 56/56, contrato de protocolo en verde (gemelos C++ y JS),
+  build_wasm.bat 5 pasos con paridad incluida.
+- **FASE 5 CERRADA** — la vía web suena con el DSP real y consume presets
+  completos (parámetros + timbre). Siguiente en el roadmap: quitar juce_* del
+  motor interno y las decisiones abiertas (¿WASM con ambos motores?, formato
+  de preset común).

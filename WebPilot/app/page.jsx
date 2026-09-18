@@ -24,6 +24,7 @@ import {
   panicWorklet,
   pushEngineToWorklet,
   pushMidiToWorklet,
+  pushModelsToWorklet,
   pushParamsToWorklet,
   startAudioEngine,
 } from '../lib/audioWorkletEngine.js';
@@ -313,6 +314,7 @@ export default function HomePage() {
     presetState,
     presetError,
     midiState,
+    models,
     pushParameter,
     handleChange,
     handleGesture,
@@ -331,6 +333,9 @@ export default function HomePage() {
   // cuando cambia su índice.
   const lastEngineIndexRef = useRef(-1);
 
+  // Latest spectral models (bridge modelsState) for the worklet's initial push.
+  const modelsRef = useRef(null);
+
   useEffect(() => {
     if (audio.status !== 'ready') return;
 
@@ -340,10 +345,23 @@ export default function HomePage() {
     if (engineIndex !== lastEngineIndexRef.current) {
       lastEngineIndexRef.current = engineIndex;
       pushEngineToWorklet (engineIndex);
+
+      // Models hang off the concrete engine: the switch rebuilt it, so every
+      // slot reset to defaults until the page re-applies what the bridge sent.
+      if (modelsRef.current)
+        pushModelsToWorklet (modelsRef.current);
     }
 
     pushParamsToWorklet (parameters);
   }, [parameters, audio.status]);
+
+  useEffect(() => {
+    if (audio.status !== 'ready' || !models) return;
+
+    // First delivery after SOUND ON: the params effect above already ran, so
+    // nothing else would push the models until the next preset load.
+    pushModelsToWorklet (models);
+  }, [models, audio.status]);
 
   const bridgeControls = useMemo(
     () => hookControls.filter((control) => PILOT_PARAMETER_IDS.includes(control.id)),

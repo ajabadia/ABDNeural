@@ -566,6 +566,35 @@ void NEURONiKProcessor::processCommands()
     commandFifo.finishedRead(block1 + block2);
 }
 
+bool NEURONiKProcessor::getCurrentModel(int slot,
+                                        std::array<float, 64>& amplitudes,
+                                        std::array<float, 64>& frequencyOffsets,
+                                        bool& isValid) const
+{
+    if (slot < 0 || slot >= 4)
+        return false;
+
+    const juce::String path = apvts.state.getProperty("modelPath" + juce::String(slot)).toString();
+
+    if (path.isNotEmpty() && path != "EMPTY")
+    {
+        auto model = NEURONiK::Serialization::PresetManager::loadModelFromFile(juce::File(path));
+
+        if (model.isValid)
+        {
+            amplitudes = model.amplitudes;
+            frequencyOffsets = model.frequencyOffsets;
+            isValid = true;
+            return true;
+        }
+    }
+
+    amplitudes.fill(0.0f);
+    frequencyOffsets.fill(0.0f);
+    isValid = false;
+    return true;
+}
+
 void NEURONiKProcessor::reloadModels()
 {
     for (int i = 0; i < 4; ++i)

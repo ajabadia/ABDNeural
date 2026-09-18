@@ -71,6 +71,14 @@
           "pitchBend": "-1..+1, 0 = centre.",
           "modWheel": "0..1 (CC1 level)."
         }
+      },
+      "modelsState": {
+        "sentWhen": "With every syncAllParams and after every loadPreset: the engine's current spectral model slots. A preset is APVTS state PLUS up to four SpectralModel slots (64 partials each) the Resonator morphs between; the models never live in the APVTS, so they travel separately. Additive to protocol v1.",
+        "fields": {
+          "action": "'modelsState' (literal)",
+          "slots": "Array of { slot, isValid, amplitudes: [64 doubles], frequencyOffsets: [64 doubles] } — one entry per model slot (4)."
+        },
+        "consumer": "The page forwards the slots to the AudioWorklet (neuronik:models); the worklet fans each 128-float record out to every voice of the ACTIVE engine and re-applies them after every engine switch (the models hang off the concrete engine, not the facade)."
       }
     },
     "jsToNative": {

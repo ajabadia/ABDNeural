@@ -45,6 +45,16 @@
  *   The state message feeds the shared keyboard's host-driven feedback API, so
  *   hardware/DAW MIDI reaching the plugin is mirrored on the page wheels/keys.
  *
+ *   SPECTRAL MODELS (additive to protocol v1; see bridge-protocol.json)
+ *
+ *   native -> JS  { action: "modelsState", slots: [{ slot, isValid,
+ *                   amplitudes: [64], frequencyOffsets: [64] }, ...] }
+ *
+ *   A preset is APVTS state PLUS up to four SpectralModel slots (64 partials
+ *   each) the Resonator morphs between; they never live in the APVTS, so they
+ *   travel separately. Sent after every syncAllParams and loadPreset; the page
+ *   forwards them to the AudioWorklet (re-applying after every engine switch).
+ *
  * `value` is ALWAYS the normalised 0..1 value; `real` and `text` are display only.
  *
  * When `window.__JUCE__` is absent (a plain browser, `next dev` on its own) the
@@ -74,6 +84,8 @@ function backend() {
  *   a preset operation the host rejected or failed
  * @param {({ held: number[], pitchBend: number, modWheel: number }) => void} [handlers.onMidiState]
  *   the plugin's external MIDI view (held notes + wheel positions), ~6x per second
+ * @param {(slots: Array<{slot:number, isValid:boolean, amplitudes:number[], frequencyOffsets:number[]}>) => void} [handlers.onModels]
+ *   the engine's current spectral model slots (sent with every snapshot)
  * @returns {{ available: boolean, sendParameterChange: Function, sendRequestState: Function, announcePageLoaded: Function, sendListPresets: Function, sendLoadPreset: Function, sendSavePreset: Function, sendMidiNoteOn: Function, sendMidiNoteOff: Function, sendMidiPitchBend: Function, sendMidiModWheel: Function, sendMidiPanic: Function, dispose: Function }}
  */
 export function createBridgeTransport(handlers) {
@@ -154,6 +166,14 @@ export function createBridgeTransport(handlers) {
       });
   });
 
+  const removeModelsState = carrier.addEventListener(NATIVE_TO_JS_EVENT_ID, (message) => {
+    if (
+      message?.action === 'modelsState'
+      && Array.isArray(message.slots)
+    )
+      handlers.onModels?.(message.slots);
+  });
+
   return {
     available: true,
 
@@ -225,6 +245,7 @@ export function createBridgeTransport(handlers) {
       carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removePresetList]);
       carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removePresetError]);
       carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removeMidiState]);
+      carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removeModelsState]);
     },
   };
 }

@@ -141,6 +141,9 @@ int main()
     check (asString (property (parsed, "messages.nativeToJs.midiNoteState.fields.action"))
                .contains (NEURONiK::WebUI::BridgeActions::midiNoteState),
            "midiNoteState literal matches the compiled constant");
+    check (asString (property (parsed, "messages.nativeToJs.modelsState.fields.action"))
+               .contains (NEURONiK::WebUI::BridgeActions::modelsState),
+           "modelsState literal matches the compiled constant");
 
     // --- Actions: JS -> native -----------------------------------------------------
     check (asString (property (parsed, "messages.jsToNative.parameterChanged.fields.action"))

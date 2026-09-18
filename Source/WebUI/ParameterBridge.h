@@ -85,6 +85,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <array>
 #include <functional>
 #include <vector>
 
@@ -130,6 +131,9 @@ namespace BridgeActions
     inline constexpr const char* savePreset = "savePreset";
     inline constexpr const char* presetList = "presetList";
     inline constexpr const char* presetError = "presetError";
+
+    // Spectral models (additive to protocol v1; see bridge-protocol.json)
+    inline constexpr const char* modelsState = "modelsState";
 
     // MIDI (additive to protocol v1; see the header doc above).
     inline constexpr const char* midiNoteOn = "midiNoteOn";
@@ -184,6 +188,31 @@ public:
     virtual void allNotesOff() = 0;
 };
 
+/**
+ * @class NativeModelController
+ * @brief What the bridge needs to publish spectral models, and nothing more.
+ *
+ * A preset is APVTS state PLUS up to four SpectralModel slots (64 partials each)
+ * the Resonator morphs between. The models never live in the APVTS, so the
+ * bridge asks this backend for the engine's current view and serialises them.
+ * The call happens on the message thread while the audio thread only ever swaps
+ * whole 64+1-float POD models (Resonator::loadModel), so no extra locking is
+ * required for a telemetry-grade copy.
+ */
+class NativeModelController
+{
+public:
+    virtual ~NativeModelController() = default;
+
+    /** @brief Number of model slots the backend exposes (0 disables publishing). */
+    [[nodiscard]] virtual int getNumModelSlots() const = 0;
+
+    /** @brief Copies slot's model into out (amplitudes + frequencyOffsets). */
+    virtual void getCurrentModel (int slot, std::array<float, 64>& amplitudes,
+                                  std::array<float, 64>& frequencyOffsets,
+                                  bool& isValid) const = 0;
+};
+
 /** @brief Gesture phases a JS change can declare. */
 namespace BridgeGestures
 {
@@ -225,6 +254,7 @@ public:
         int presetErrors = 0;       //!< failed/rejected preset operations
         int midiForwarded = 0;      //!< MIDI actions accepted and forwarded
         int midiRejected = 0;       //!< MIDI actions with out-of-range fields
+        int modelsSent = 0;         //!< modelsState messages emitted
     };
 
     /** @brief Bridge `stateToBridge`, mirroring every parameter it contains. */
@@ -246,6 +276,9 @@ public:
      *        Must be called on the message thread, before the page loads.
      */
     void setMidiController (MidiController* newController) noexcept;
+
+    /** @brief Installs the spectral-model backend; nullptr disables modelsState. */
+    void setModelController (NativeModelController* newController) noexcept;
 
     /**
      * @brief Send one midiNoteState message (held notes + wheel positions)
@@ -328,6 +361,9 @@ private:
     void handleLoadPreset (const juce::DynamicObject& message);
     void handleSavePreset (const juce::DynamicObject& message);
 
+    /** @brief modelsState message from the controller's view of the world. */
+    void sendModelsState();
+
     /** @brief MIDI actions: validate ranges, forward to the controller. */
     void handleMidiAction (const juce::String& action, const juce::DynamicObject& message);
 
@@ -339,6 +375,7 @@ private:
     Sender sender;
     PresetController* presets = nullptr;   //!< not owned; the host outlives it
     MidiController* midi = nullptr;        //!< not owned; the host outlives it
+    NativeModelController* models = nullptr; //!< not owned; the host outlives it
     int snapshotVersion = 0;
     Stats stats;
 

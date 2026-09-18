@@ -84,6 +84,12 @@ void ParameterBridge::setMidiController (MidiController* newController) noexcept
     midi = newController;
 }
 
+void ParameterBridge::setModelController (NativeModelController* newController) noexcept
+{
+    jassert (juce::MessageManager::existsAndIsCurrentThread());
+    models = newController;
+}
+
 int ParameterBridge::getParameterCount() const noexcept
 {
     return static_cast<int> (entries.size());
@@ -177,6 +183,10 @@ void ParameterBridge::sendFullSnapshot()
         entry.lastReported = entry.parameter->getValue();
         entry.reported = true;
     }
+
+    // Models are not APVTS parameters: the page's params effect cannot see them.
+    // They piggyback on every snapshot (additive v1 message; no backend, no send).
+    sendModelsState();
 }
 
 int ParameterBridge::publishPendingChanges()
@@ -224,6 +234,51 @@ int ParameterBridge::closeOpenGestures()
     }
 
     return closed;
+}
+
+void ParameterBridge::sendModelsState()
+{
+    if (models == nullptr)
+        return;
+
+    const int numSlots = models->getNumModelSlots();
+    if (numSlots <= 0)
+        return;
+
+    // Flat array of { slot, isValid, amplitudes[64], frequencyOffsets[64] }.
+    juce::Array<juce::var> slots;
+
+    for (int slot = 0; slot < numSlots; ++slot)
+    {
+        std::array<float, 64> amplitudes;
+        std::array<float, 64> frequencyOffsets;
+        bool isValid = false;
+
+        models->getCurrentModel (slot, amplitudes, frequencyOffsets, isValid);
+
+        juce::Array<juce::var> amps;
+        juce::Array<juce::var> freqs;
+
+        for (int i = 0; i < 64; ++i)
+        {
+            amps.add (static_cast<double> (amplitudes[(size_t) i]));
+            freqs.add (static_cast<double> (frequencyOffsets[(size_t) i]));
+        }
+
+        juce::DynamicObject::Ptr entry = new juce::DynamicObject();
+        entry->setProperty ("slot", slot);
+        entry->setProperty ("isValid", isValid);
+        entry->setProperty ("amplitudes", juce::var (amps));
+        entry->setProperty ("frequencyOffsets", juce::var (freqs));
+        slots.add (juce::var (entry.get()));
+    }
+
+    juce::DynamicObject::Ptr message = new juce::DynamicObject();
+    message->setProperty ("action", BridgeActions::modelsState);
+    message->setProperty ("slots", juce::var (slots));
+
+    ++stats.modelsSent;
+    send (juce::var (message.get()), false);
 }
 
 //==============================================================================
@@ -297,6 +352,7 @@ void ParameterBridge::handleLoadPreset (const juce::DynamicObject& message)
     closeOpenGestures();
     sendFullSnapshot();
     sendPresetList();
+    sendModelsState();
 }
 
 void ParameterBridge::handleSavePreset (const juce::DynamicObject& message)

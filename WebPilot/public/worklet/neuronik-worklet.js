@@ -64,15 +64,16 @@ class NeuronikProcessor extends AudioWorkletProcessor {
   async initialize() {
     try {
       if (!this.wasmBinary)
-        throw new Error('no wasmBinary in processorOptions');
-
-      const Module = await createModule({
-        instantiateWasm (info, receiveInstance) {
+        throw new Error('no wasmBinary in processorOptions');      const Module = await createModule ({
+        // Arrow (not a method shorthand + .bind): a MethodDefinition cannot be
+        // a MemberExpression target, so `method(){}.bind(this)` never parses —
+        // the worklet module would fail to load. Lexical this = the processor.
+        instantiateWasm: (info, receiveInstance) => {
           WebAssembly.instantiate (new Uint8Array (this.wasmBinary), info)
             .then ((out) => receiveInstance (out.instance))
             .catch ((e) => { throw e; });
           return {};
-        }.bind(this),
+        },
       });
 
       this.module = Module;
@@ -162,6 +163,20 @@ class NeuronikProcessor extends AudioWorkletProcessor {
     if (Number.isInteger (f32Offset)) this.gpF32[f32Offset] = Number (value);
   }
 
+  /**
+   * Heap buffer for spectral model slots (preset timbre data). 128 floats per
+   * slot: amplitudes[0..63] then frequencyOffsets[0..63], laid out to match
+   * NeuronikWasmBridge.cpp::neuronikLoadModel(). Filled by 'neuronik:models'.
+   */
+  allocateModelsBuffer() {
+    const Module = this.module;
+    this.modelFloats = 128;                                   // 64 amps + 64 freqs
+    this.modelsPtr = Module._malloc (4 * this.modelFloats);
+    this.modelsView = Module.HEAPF32.subarray (
+      this.modelsPtr >> 2, (this.modelsPtr >> 2) + this.modelFloats);
+    this.engineType = 0;
+  }
+
   handleMessage(message) {
     switch (message.type) {
       case 'neuronik:params': {
@@ -173,10 +188,42 @@ class NeuronikProcessor extends AudioWorkletProcessor {
         break;
       }
 
-      case 'neuronik:engine': {
-        if (this.ready) this.module._neuronikSetEngine (message.index ?? 0);
+      case 'neuronik:models': {
+        // slots: [{ slot, isValid, amplitudes[64], frequencyOffsets[64] }, ...]
+        // (bridge modelsState). Written into one shared heap buffer and fanned
+        // out to every voice of the ACTIVE engine — the models hang off the
+        // concrete engine, not the facade, hence this.engineType.
+        if (!this.ready) return;
+        if (!this.modelsView) this.allocateModelsBuffer();
+
+        for (const slotEntry of message.slots ?? []) {
+          const slot = slotEntry.slot | 0;
+          if (slot < 0 || slot > 3) continue;
+
+          const amps = slotEntry.amplitudes;
+          const freqs = slotEntry.frequencyOffsets;
+          if (!Array.isArray (amps) || amps.length !== 64) continue;
+
+          this.modelsView.fill (0);
+          for (let i = 0; i < 64; ++i) this.modelsView[i] = amps[i];
+
+          const freqsOk = Array.isArray (freqs) && freqs.length === 64;
+          for (let i = 0; i < 64; ++i)
+            this.modelsView[64 + i] = freqsOk ? freqs[i] : 0;
+
+          this.module._neuronikLoadModel (
+            slot, this.engineType, this.modelsPtr, slotEntry.isValid ? 1 : 0);
+        }
         break;
       }
+
+      case 'neuronik:engine': {
+        if (this.ready) {
+          this.module._neuronikSetEngine (message.index ?? 0);
+          this.engineType = message.index ?? 0;
+        }
+        break;
+ }
 
       case 'neuronik:midi': {
         if (!this.ready) return;
