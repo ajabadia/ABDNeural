@@ -18,10 +18,20 @@ build-reference/
 *.exp
 *.ilk
 
-# Build logs / temp files in root
-build_output*.txt
+# Build logs / temp files in root (legacy session logs purged 2026-09-18)
+build_*.txt
+last_errors*.txt
+last_build_*.txt
+final_errors*.txt
+final_build_*.txt
+*_errors*.txt
+errors_*.txt
+compile_errors.txt
 compile_common.txt
-final_build_log*.txt
+current_build_log.txt
+disk_check.txt
+tree.txt
+progress_summary.txt
 agent_build_log.txt
 build_no.txt
 
