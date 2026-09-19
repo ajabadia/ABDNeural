@@ -67,6 +67,17 @@ La migración será incremental. No se sustituirá la interfaz JUCE ni se modifi
       `pnpm sync:wasm` tras cada build_wasm.bat. Validado: vitest 55/55, build
       Vite 4.1 s (306 KB JS), smoke Node del módulo servido (peak 0.53),
       selftest del host exit 0 con la página nueva.
+- [x] Matriz de paridad WASM<->nativo por sample rate y tamaño de bloque (Fase 5,
+      2026-09-19): `WasmParityTest` genera 9 casos (44.1/48/96 kHz x 64/128/512) con la
+      MISMA duración por escenario (los bloques se reescalan sobre una referencia de 128
+      muestras) y `neuronik_wasm_parity.mjs` recorre la matriz entera reinicializando el
+      módulo con cada pareja. **Y destapa un hallazgo:** con duración idéntica, el núcleo
+      (A, B, E) es bit-exacto en los tres tamaños de bloque, pero `C_fx_panico` y
+      `D_modmatrix` DEPENDEN del tamaño de bloque, porque dos rutas del motor son por
+      bloque a propósito (el LFO se mantiene por bloque en `applyGlobalFX`; los smoothers
+      de la reverb avanzan por bloque en `Effects/Reverb.h`). Importa porque el
+      AudioWorklet renderiza en cuantos de 128 y un host nativo puede ir a 512: para esos
+      dos caminos, web y nativo no darían la misma señal. Decisión abierta (ver Fase 5).
 - [ ] Validar de oído delay sync, chorus, reverb y curva de velocidad (Fase 2,
       requiere presets reales y tus oídos).
 
@@ -114,9 +125,25 @@ Objetivo: conservar el DSP actual, pero definir una API que pueda ser utilizada 
       presupuesto vuelve a 0 (los cinco escenarios quedan bit-exactos).
       Por el camino se corrigió un bug latente del port de `dsp::HeapBlock`
       (`clear`/`allocate` tomaban bytes y JUCE toma elementos).
-- [ ] Quedan dos dependencias deliberadas: `juce::Reverb` en `Effects/Reverb.h`
-      (paso 5/6, port a `dsp::Reverb`) y la rama nativa de `Utils/SIMDWrapper.h`
-      (`juce::dsp::SIMDRegister`, que es la implementación real y no un vestigio).
+- [ ] Queda una dependencia deliberada de JUCE en `Source/DSP/`: la rama nativa de
+      `Utils/SIMDWrapper.h` (`juce::dsp::SIMDRegister`, que es la implementación
+      real y no un vestigio). `juce::Reverb` ya no está: es `dsp::Reverb`
+      (DspEffects) desde el paso 5/6 y `Effects/Reverb.h` es el envoltorio.
+- [x] Mover chorus, delay y saturación a `ABDSharedCode::DspEffects` (2026-09-19,
+      continuación del paso 5/6): los tres efectos puros viven ya en el módulo
+      compartido y `Source/DSP/Effects/` queda como envoltorios de producto, con
+      paridad bit a bit (0 ulps) contra la referencia congelada de antes de la
+      migración (`NEURONiK_DspEffectsParityTest`).
+- [x] Renombrar `Source/DSP/DSPUtils.h` → `DspSafety.h` (2026-09-19): quitaba la
+      homonimia con `ABDSharedCode/SynthCore/DSPUtils.h` (otra cosa: constantes,
+      conversiones y waveshapers). No se unifica todavía — no hay código duplicado y
+      estos helpers dependen del sustrato; el motivo y las condiciones para hacerlo
+      quedan escritos en la cabecera del fichero. En el mismo paso se **borró**
+      `sanitizeAudioBuffer` (0 llamadas): su política —escribir 0 en el buffer de
+      salida— es la contraria a la del motor, que donde ve un NaN en un lazo de
+      realimentación **reinicia la voz** (`AdditiveVoice`/`NeurotikVoice`), porque
+      eso arregla el estado que diverge en vez de tapar el síntoma y no cuesta un
+      barrido `isfinite` por muestra en el hilo de audio.
 - [x] Añadir un adaptador JUCE sin cambiar el resultado sonoro (paridad BIT-EXACTA
       verificada: ruta directa vs ruta fachada, misma secuencia de notas, 0 tolerancia).
 - [x] Comparar el nuevo adaptador con el Standalone de referencia (automatizado en
@@ -277,14 +304,97 @@ quería despejar era exactamente el modo de fallo silencioso del canal.)
 - [x] Exponer una API C/ABI mínima y estable (`Source/Wasm/NeuronikWasmBridge.cpp`:
       init/setEngine/process/setGlobalParams/layouts por offsetof/allNotesOff/numActiveVoices/
       getLfo; static_asserts de layout de 24 bytes por evento).
-- [ ] Crear `AudioWorklet` para el renderizado (el módulo ya es ES6+MODULARIZE, apto para
-      worklet; falta el worklet JS + integración WebUI).
-- [ ] Comparar salida WASM con la salida nativa usando los mismos parámetros (el DSP es
-      determinista: paridad bit-exacta alcanzable; el smoke test Node ya es el ancla JS).
+- [x] Crear `AudioWorklet` para el renderizado (cerrado 2026-09-18: el processor
+      `neuronik-processor` vive en `WebPilot/public/worklet/` y el módulo se instancia por
+      `processorOptions` porque el scope del worklet no tiene `fetch`; la página le pasa
+      snapshot de parámetros, motor, notas/ruedas y panic, y lo arranca con SOUND ON.
+      Detalle del hito en "Estado actual").
+- [x] Comparar salida WASM con la salida nativa usando los mismos parámetros (cerrado: se
+      ejecuta en cada `build_wasm.bat` — `NEURONiK_WasmParityTest` vuelca la referencia
+      nativa y `neuronik_wasm_parity.mjs` la compara muestra a muestra. Presupuesto **0
+      ulps** y guard absoluto 1e-6; los cinco escenarios son bit-exactos).
 - [x] Añadir pruebas de audio no nulo, note-on/off y cambio de preset (smoke test Node:
       peak 0.53 finito, 1 voz activa, drain de release ~<2 s, allNotesOff OK; el preset
       vía setGlobalParams queda wire-up en UI).
-- [ ] Validar sample rates y tamaños de bloque.
+- [x] Validar sample rates y tamaños de bloque (hecho con la matriz: 3 sample rates x 3
+      tamaños de bloque, cada caso contra su propia referencia). **El resultado de esta
+      validación es el hallazgo de abajo.**
+- [x] **Resuelto (2026-09-19): las dos rutas que dependían del tamaño de bloque.** Las dos
+      están arregladas y la matriz queda **15/15 celdas bit-exactas**
+      (`blockSizeDependentScenarios` vacío). El diagnóstico que abrió el tema:
+      Medido en nativo con duración idéntica en 64/128/512 muestras:
+      - Núcleo (osciladores, resonador, envolventes, filtros, voz aditiva y Neurotik):
+        **bit-exacto** en los tres (A, B, E: 0 diferencias de 8192 y 6144 muestras).
+      - `D_modmatrix`: diverge desde el primer límite de bloque, porque
+        `BaseEngine::applyGlobalFX` llama a `lfo.processBlock(numSamples)`, que devuelve
+        **un** valor por bloque y lo mantiene: la modulación es una escalera de paso =
+        `blockSize`. **Arreglado el 2026-09-19:** hoy D da también 0/6144 diferencias (ver
+        el bloque de decisión de abajo).
+      - `C_fx_panico`: diverge desde que termina la primera rampa (~448 muestras a 44.1/48
+        kHz, ~960 a 96 kHz), porque `Effects/Reverb.h::processBlock` avanza sus smoothers
+        de 20 ms **una vez por bloque** (un `getNextValue()` por llamada, fuera del bucle
+        de muestras) y rearma la reverb con ese valor. **Arreglado el 2026-09-19:** hoy C
+        da 0/12288 diferencias en las nueve celdas (ver el bloque de decisión de abajo).
+
+      Por qué importa: el render web va en cuantos de 128 y un host nativo suele ir a 256
+      o 512, así que para esos dos caminos web y nativo no dan la misma señal. Arreglarlo
+      (LFO por muestra, smoothers de la reverb por muestra) **cambia el sonido** de los
+      presets con FX y de los que usan la matriz de modulación, de modo que es una
+      decisión de producto y no un refactor silencioso. Evidencia, reproducción y las dos
+      causas en `HANDOFF.md`.
+- [x] **HECHO (2026-09-19): las dos rutas se arreglan, en dos pasos separados.**
+      - **Reverb: ARREGLADA (2026-09-19). Era un DEFECTO, no una dependencia de bloque.**
+        `Effects/Reverb.h` avanzaba sus smoothers **una vez por bloque**, y esa rampa está
+        declarada como 20 ms (`reset(sampleRate, 0.02)` = 960 pasos a 48 kHz). Con una llamada
+        por bloque, la rampa NO dura 20 ms: dura 960 **bloques** — **~2,5 s con bloque 128 y
+        ~10 s con bloque 512** a 44,1 kHz. Es decir, al cargar un preset la reverb no llega a
+        su valor en 20 ms, se arrastra durante segundos, y el tiempo depende del buffer del
+        host. Es el único envoltorio con este patrón: chorus, delay y saturación avanzan por
+        muestra (verificado).
+        **Cómo quedó:** el parámetro se lee y se aplica **por muestra** (bucle de una muestra
+        contra `dsp::Reverb`, que solo expone API por bloque: `processStereo(l+i, r+i, 1)`),
+        con un camino rápido de bloque entero para cuando ninguno de los cuatro smoothers
+        está rampeando (mismo recorrido, una sola llamada). `setParameters()` se rearma solo
+        cuando el valor suavizado cambia de verdad (`updateDamping()` no se paga por muestra).
+        Con la reverb apagada el bloque se sigue saltando —equivalente: con wet 0 no toca la
+        señal— pero los smoothers avanzan con `skip(numSamples)`, así que encenderla después
+        arranca la rampa donde toca por tiempo.
+        **Verificación (matriz completa, 9 celdas, 0 avisos con `/W4`):** `C_fx_panico` da
+        **0/12288 diferencias y maxAbs 0,0** en los tres sample rates, así que
+        `blockSizeDependentScenarios` pasa a `["D_modmatrix"]`. Contra el volcado del código
+        anterior (48 kHz/128): A, B, D y E **bit-idénticos** (el camino de reverb apagada no
+        se tocó) y C distinto en todo el render (maxAbs 8,9e-2; peak 0,528966 → 0,519034),
+        que es el efecto buscado. Detalle en `HANDOFF.md`.
+      - **Modulación: ARREGLADA (2026-09-19). La tasa de control no debe depender del buffer del
+        host.** El valor del LFO se leía **una vez por bloque** (`applyGlobalFX` →
+        `lfo.processBlock` → `applyModulation()`), así que la matriz era una escalera de paso =
+        `blockSize`: 128 en la web y en un host de 128, 512 en uno de 512.
+        **Cómo quedó:** el motor se renderiza en tramos de `BaseEngine::kControlBlockSize`
+        (**64** muestras) mediante `renderVoicesWithControlRate()` — avanza los LFOs, aplica la
+        matriz y solo después renderiza las voces de ese tramo —, con el sobrante **encadenado
+        entre bloques del host** (`controlCarry`), de modo que la rejilla es de 64 muestras de
+        audio para cualquier troceado. 64 = dos sub-bloques de voz (las voces ya trabajan en
+        tramos de 32) y ~37 escalones por ciclo con el LFO a 20 Hz (frente a ~19 con 128).
+        El `LFO::processBlock` avanza la fase **por muestra** (multiplicarla de golpe redondea
+        distinto según el troceado; además desaparece la segunda implementación del S&H, que
+        avanzaba la interpolación dos veces por muestra y por tanto sonaba distinto según el
+        buffer del host). Las voces ya leían su snapshot de modulación una vez por llamada, así
+        que no cambian: solo se les llama más a menudo.
+        **Verificación:** los cinco escenarios dan 0 diferencias en las nueve celdas
+        (`blockSizeDependentScenarios` baja de `["C_fx_panico","D_modmatrix"]` a `[]`). Contra
+        el volcado anterior: A, B, C y E **bit-idénticos** y D distinto desde la muestra **64**
+        exacta (maxAbs 2,1e-3 a 48 kHz/128), que es la primera frontera de la rejilla nueva.
+        Detalle en `HANDOFF.md`.
+      Ninguno de los dos se cuela en un commit de otra cosa: van con su propia verificación
+      (la matriz de 9 casos debe quedarse sin escenarios dependientes, o con solo los que
+      queden justificados por escrito). Las dos cumplieron: `blockSizeDependentScenarios` está
+      **vacío** y las 15 celdas son bit-exactas. Queda pendiente el otro lado de esa moneda: el
+      `.wasm` trackeado en `WebPilot/public/worklet/` es de antes de los dos arreglos y hay que
+      regenerarlo con `build_wasm.bat` (el `.mjs` compara contra la referencia nativa nueva).
+      Nota aparte, sin tocar: el mapeo del envoltorio (`dryLevel = 1 - mix*0.2`) se aplica
+      sobre la escala interna del port (`dryScaleFactor = 2.0`, la misma que JUCE), así que
+      con la reverb activa la señal seca va de 1,6 a 2,0 (un boost, no la unidad). Es
+      anterior a este arreglo y es una decisión de producto, no un fallo del mismo.
 
 ### Fase 6 — Consolidación del framework
 
@@ -372,6 +482,168 @@ usuario:
 - [ ] Verificación visual: panel nativo real y página moviéndose mutuamente — queda la
       (a) RANDOM→morphX/Y + slider→VOLUME y la (c) XYPad nativo (ya integrado en el host
       como columna derecha); la (b) fallback embebido está hecha.
+
+### Fase 8 — Interfaz definitiva en WebView2 (2026-09-19)
+
+> **Decisión tomada (2026-09-19):** la interfaz de NEURONiK es la **web sobre WebView2**, y
+> los paneles JUCE nativos **se retiran**. Alcance: solo este proyecto (ABDMS2000 ya va por
+> ahí y no se toca). Plataforma: **Windows-only por ahora** — WebView2 directo, sin capa de
+> abstracción de host; si algún día se quiere macOS, el punto de entrada es
+> `juce::WebBrowserComponent` (WKWebView), y lo que hay que decidir entonces son los dos
+> caminos del bridge, no la UI.
+>
+> **Lo que ya está pagado:** el contrato de parámetros es SSOT (generado del APVTS), el
+> `ParameterBridge` y el protocolo del bridge tienen contrato propio y test
+> (`BridgeProtocolContractTest`, `webviewBridgeDirectionTest.mjs`), el host del piloto
+> (`Source/WebPilotHost.cpp`, 1128 líneas) **ya habla con el procesador real** —sus adaptadores
+> mueven el APVTS, los presets, los modelos y el MIDI en las dos direcciones— y la página ya
+> suena con el motor WASM en el AudioWorklet. O sea: falta la UI de verdad y retirar la nativa,
+> no la fontanería.
+
+**8.0 Inventario de paridad (función por función, 2026-09-19)**
+
+Base: `Source/Main/NEURONiKEditor.{h,cpp}` (667 líneas), `Source/UI/**` (paneles,
+visualizadores, LCD, browser, MIDI learner, tema) y `Source/Main/MidiMappingManager`.
+La UI nativa son **seis pestañas** (GENERAL, RESONATOR, FILTER/ENV, FX, LFO/MOD,
+BROWSER) bajo una cabecera estilo hardware (LCD 2 líneas + D-pad MENU/OK/‹ ›/^ v) y
+una barra de menú File/Edit/Help.
+
+| Función nativa | Dónde vive | ¿En la web hoy? | Destino en la web |
+|---|---|---|---|
+| Tab GENERAL | `UI/ParameterPanel.cpp` (276) | **Parcial** (la página copia esa pestaña) | 8.2: cerrar paridad con el contrato |
+| Tab RESONATOR | `UI/Panels/OscillatorPanel.cpp` (216) | No | 8.2 + **slots de modelo A–D** (`loadA..loadD`) y carga de modelo espectral |
+| Tab FILTER/ENV | `UI/Panels/FilterEnvPanel.cpp` (114) + `UI/EnvelopeVisualizer.h` | No | 8.2 + curva ADSR dibujada en la propia pestaña |
+| Tab FX | `UI/Panels/FXPanel.cpp` (169) | No | 8.2 |
+| Tab LFO/MOD | `UI/Panels/ModulationPanel.cpp` (189) | No | 8.2 (LFO 1/2 completos + 4 rutas de matriz) |
+| Tab BROWSER | `UI/Browser/PresetBrowser.{h,cpp}` + `PresetListModels.h` | **Solo una barra** select+save | 8.3: bancos/categorías, lista, búsqueda, **tags** con sugerencias, metadatos, LOAD/SAVE AS/DELETE, LOAD BANK/SAVE BANK |
+| Preset rápido (combo + SAVE + DEL) | `UI/Panels/PresetPanel.cpp` (124) | Parcial | Se subsume en el navegador (una sola superficie de presets) |
+| **MIDI Learn por control** (mouseUp sobre el control) + persistencia | `UI/MidiLearner.{h,cpp}` + `Main/MidiMappingManager` | No | 8.3: acción del bridge ("aprende el próximo CC", cancelar, borrar) y mapeo/guardado en el procesador |
+| **Menú MIDI del LCD** (8 destinos CC + RESET ALL) | `UI/LcdMenuManager.h` (`ItemType::MidiCC` / `Action`) | No | 8.3 con el LCD |
+| **LCD 2 líneas + D-pad** (estados Idle/Navigation/Edit) | `UI/LcdDisplay.{h,cpp}` (166) + `UI/LcdMenuManager.h` | No | 8.3: árbol GLOBAL/RESONATOR/FILTER/EFFECTS/MIDI CONTROL, con ítems que **dependen del `engineType`** |
+| Visualizador espectral (64 parciales) | `UI/SpectralVisualizer.{h,cpp}` (97) | No | 8.3 vía canal de lectura nativo→web (`IVisualizationSource`) |
+| XYPad (morph X/Y + nombres de modelo) | `UI/XYPad.{h,cpp}` (150) | No | 8.3, mismo canal |
+| **Feedback de modulación en cada control** (anillo/overlay del valor modulado) | `UI/CustomUIComponents.h` (`ModulatedSlider` + `Main/ModulationTargets.h`) | No | 8.2: es una función del **control compartido**, no del panel — hoy `@abdsynths/shared` no la tiene |
+| Barra de menú File/Edit/Help (cargar preset, zoom, specs MIDI, info RANDOM/FREEZE) | `NEURONiKEditor.cpp` (`getMenuBarNames`/`menuItemSelected`) | No | 8.3 como botones de cabecera o menú web; **los ítems de audio del Standalone no se migran** (los pone el wrapper de JUCE) |
+| Diálogo de ayuda + especificaciones MIDI de fábrica | `UI/HelpDialog.h` + `showMidiSpecifications()` | No | 8.3 como overlay |
+| Teclado en pantalla | `juce::MidiKeyboardComponent` + `MidiKeyboardState` | **Sí** (tab KEYS, teclado compartido) | Ya resuelto; decidir si vuelve a ser franja fija como en nativo |
+| Zoom del editor (base 800×600) | `setZoom()` | No | Se sustituye por editor redimensionable + escala del contenedor |
+| Tema por producto | `UI/ThemeManager.{h,cpp}` | No | Tokens de `@abdsynths/shared` (el mecanismo ya existe) |
+| Look&feel nativo (knobs, `GlassBox`, `CustomButton`, `LedIndicator`) | `UI/CustomUIComponents.{h,cpp}` | N/A | **No se migra**: muere con el código nativo; su sitio son los componentes compartidos + CSS |
+
+**Lo que decide si esto es una migración y no un rediseño:** tres funciones de esa tabla
+no son "poner knobs" y son las que se olvidan al estimar — el **navegador de presets con
+tags**, el **LCD con su máquina de estados y el menú de MIDI CC**, y el **feedback de
+modulación en cada control** (que no es UI nueva: es una capacidad que hoy no tiene el
+componente compartido, así que también toca a `@abdsynths/shared`).
+
+**Decisión de stack: JS vanilla + componentes compartidos (no React)**
+
+Evaluado el 2026-09-19, con el piloto React ya funcionando:
+
+- **Lo que ya es la SSOT es vanilla.** `@abdsynths/shared` exporta `./components`
+  (`components/index.js`), sin dependencia de ningún framework: sus widgets son clases DOM
+  con ciclo `update()`/`destroy()`. React no los reutiliza, los **envuelve** — que es
+  exactamente lo que hace `WebPilot/lib/controls.jsx` (un hook por tipo de widget). Esa capa
+  extra es superficie de bugs, no ahorro.
+- **La referencia que funciona es vanilla.** `ABDMS2000/WebUI/src` (`app.js`, `bridge/`,
+  `panels/`, `ui/`, `components/`, `contracts/`) es la UI WebView2 **enviada y con suite
+  vitest** del ecosistema, y está construida sobre los mismos componentes compartidos. Reusar
+  su arquitectura es más barato y más honesto que inventar una.
+- **El presupuesto de carga es de plugin, no de web.** El piloto React pesa 306 KB de JS
+  (89 KB gzip) para tres pantallas de demo; React aporta ~45 KB gzip de runtime más el
+  wrapper por widget, dentro de un plugin donde el bundle viaja embebido.
+- **Un solo stack de UI en el ecosistema.** Dos (React aquí, vanilla en MS2000) es la misma
+  clase de deuda que el inventario de homonimias de esta semana: dos formas de hacer lo
+  mismo, que divergen en silencio.
+- **Lo que NO se tira del piloto:** `lib/bridge.js`, `lib/paramValue.js`, `lib/audioParams.js`
+  y la lógica de `useParameterControls.js` son **JS sin framework** y se portan tal cual
+  (el contrato→`GlobalParams` para el worklet, el backend de JUCE con fallback a "LOCAL
+  MODE", la conversión de valores normalizados). Lo que muere es el armazón React
+  (`app/page.jsx` y `lib/controls.jsx`).
+- **Coste asumido, con su mitigación:** en vanilla el estado (70 parámetros + presets +
+  estado MIDI + LCD) se sincroniza a mano. Mitigación: la estructura de MS2000 (un módulo de
+  puente, uno de contrato, uno de UI) y **vitest desde el minuto uno** — el paquete del
+  piloto hoy no tiene script de test, el de MS2000 sí.
+- **`WebPilotVite` (React) queda como contra-piloto** hasta que 8.2 esté cerrada; después se
+  retira o se deja como banco de pruebas, pero **no** como segunda implementación de la UI.
+
+**8.1 El editor del plugin hospeda la página**
+- [ ] Mover a `NEURONiKEditor` lo que hoy vive en `WebPilotHost`: `WebBrowserComponent` +
+      `ResourceProvider` (disco en dev con hot-reload, embebido en release — mismo patrón que
+      ABDMS2000), y los tres adaptadores (`PresetManagerAdapter`, `MidiInjectionAdapter`,
+      `EngineModelsAdapter`). El host del piloto se queda como banco de pruebas hasta 8.4.
+- [ ] Decidir y fijar en código que **dentro del plugin el audio es nativo y la página solo
+      habla por el bridge** (APVTS). El motor WASM del worklet es para la página fuera del
+      plugin (navegador); activarlo dentro del plugin daría dos motores sonando.
+- [ ] Editor: tamaño/zoom del WebBrowserComponent, sin regresión en `resized()`.
+- **DoD:** Standalone y VST3 abren la página y el selftest de cuatro direcciones pasa igual
+  que en el host del piloto; cero rutas absolutas (el VST3 no carga desde el cwd del build).
+
+**8.2 Paridad de control (los 70 parámetros)**
+- [ ] Repartir la página con la misma agrupación que el panel nativo: GENERAL
+      (`ParameterPanel`), OSC (`OscillatorPanel`), FILTER+ENV (`FilterEnvPanel`), FX
+      (`FXPanel`), MOD (`ModulationPanel`).
+- [ ] Cubrir los parámetros que hoy solo existen en nativo — incluidos los que el piloto no
+      toca: matriz de modulación (4 slots con destino), LFO 1/2 completos, sync/división,
+      filtro y sus envolventes, delay sync/división, y los `uiOnly` (freeze ×3, random).
+- [ ] Nada de tablas de parámetros a mano: todo desde el contrato generado, y los que no
+      estén implementados se marcan (`dspStatus`), no se esconden.
+- **DoD:** un preset cargado se ve idéntico en web y en el panel nativo antes de retirarlo;
+  ningún control de la UI mueve un parámetro que el motor ignore en silencio.
+
+**8.3 Lo que no es "un parámetro"** (aquí está el grueso del trabajo)
+- [ ] **Presets**: navegador con lista/categorías, guardar, renombrar, borrar y estado del
+      preset actual (el `PresetBrowser` nativo, hoy reducido a una barra select+save).
+- [ ] **LCD + navegación tipo hardware**: `LcdDisplay` + `LcdMenuManager` + D-pad
+      (MENU/OK/flechas) y los botones de comando. Es lo que da carácter al instrumento; si se
+      simplifica, que sea una decisión escrita, no un olvido.
+- [ ] **Visualización en vivo**: `SpectralVisualizer`, scope flotante y `XYPad` (morph X/Y).
+      Requiere un canal de datos de solo lectura nativo→web a ~30-60 Hz, con presupuesto de
+      CPU medido y sin asignar en el hilo de audio (snapshot con `AudioThreadSnapshot`).
+- [ ] **MIDI Learn**: `MidiLearner` + `MidiMappingManager` (aprender, asignar, borrar,
+      persistir). El aprendizaje es UI (la web pide "aprende el próximo CC"); el mapeo y su
+      guardado siguen en el procesador.
+- [ ] **Diálogos y menú**: ayuda, especificaciones MIDI, y el zoom.
+- **DoD:** no queda ninguna función de la UI nativa sin equivalente web; la lista de arriba
+  está toda tachada o con su "no se migra porque…" escrito en este documento.
+
+**8.4 Retirada del panel nativo**
+- [ ] Borrar `Source/UI/**` (paneles, visualizadores, tema, LCD, browser, MIDI learner) y las
+      dependencias del editor (`MenuBarComponent`, `MidiKeyboardComponent`, `TabbedComponent`,
+      `FileChooser`, `Timer`, listener de `MidiKeyboardState`).
+- [ ] Limpiar `CMakeLists.txt` (fuentes y enlaces de juce_gui_basics/gui_extra que ya no hagan
+      falta), y decidir el destino de `Source/WebPilotHost.cpp` y su target: banco de pruebas
+      de desarrollo o borrado.
+- [ ] Adaptar los tests que hoy dependen de la UI nativa.
+- **DoD:** `grep -r "Source/UI"` en CMake no devuelve nada; el plugin compila sin paneles
+  nativos y el editor sigue siendo el mismo binario de antes (más pequeño).
+
+**8.5 Cierre**
+- [ ] **pluginval nivel 10** con la UI web (es el criterio de la Fase 0 y del ecosistema).
+- [ ] **Arranque del editor**: medido, no estimado. El dato que ya tenemos es ~7 s en frío en
+      el host del piloto (lo domina el arranque de WebView2): si al abrir el editor el hueco en
+      blanco es perceptible, hay que pintar algo nativo mientras carga, y eso se mide aquí.
+- [ ] **Dependencia de WebView2**: el runtime de Edge no está garantizado en toda máquina
+      Windows. Decidir qué hace el plugin si falta (aviso en el hueco del editor con enlace al
+      instalador; nunca un crash ni una ventana vacía).
+- [ ] **Tamaño del bundle**: el piloto va en 306 KB de JS + 89 KB de WASM; el objective es que
+      la UI real no lo duplique: un bundle, un motor de UI, sin copias de componentes
+      compartidos.
+- [ ] Revisar que la migración no revive homonimias: al retirar `Source/UI` desaparecen
+      `PresetBrowser.h`, `PresetManager` de UI y los `PluginEditor_ResourceProvider` propios del
+      inventario de `ABDSharedCode/docs/homonimias-cabeceras.md`.
+
+### Riesgos de la Fase 8
+
+| Riesgo | Mitigación |
+|---|---|
+| Se subestima 8.3: los visualizadores y el MIDI Learn no son "poner knobs" | Es la fase más larga y va después de la paridad de control, no mezclada con ella |
+| El hueco en blanco al abrir el editor (WebView2 frío) se percibe como que el plugin no carga | Medir en 8.5 y pintar un estado de carga nativo mientras el browser arranca |
+| Dos motores sonando si el worklet se activa dentro del plugin | Decidido en 8.1 y verificado en el selftest: dentro del plugin, audio nativo |
+| El hot-reload de dev funciona en el host del piloto y no en el editor del plugin (rutas relativas del VST3) | ResourceProvider con fallback embebido, probado en 8.1 en los dos formatos |
+| Retirar el nativo antes de tener paridad deja el plugin sin UI usable | El nativo no se borra hasta que 8.2 y 8.3 estén tachadas; durante la migración la página es la principal y el nativo el respaldo, y el borrado es el último paso con su propio commit |
+
+---
 
 ## Criterios de aceptación
 

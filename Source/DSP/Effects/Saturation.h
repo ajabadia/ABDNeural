@@ -3,7 +3,19 @@
 
     Saturation.h
     Created: 22 Jan 2026
-    Description: Soft-clipping saturation module for adding harmonic character.
+    Description: Envoltorio de producto de la saturacion por soft-clipping.
+
+    Separacion de responsabilidades (migracion de efectos, igual que la reverb
+    en la Fase 1 [5/6]): la forma pura del efecto vive en el modulo compartido
+    ABDSharedCode::DspEffects (DspEffects/DspSaturation.h, namespace abd::dsp),
+    que es una utilidad estatica sin estado. Aqui queda lo especifico de este
+    producto: el mapeo amount -> drive (1.0 + amount * 4.0), su suavizado de 20ms
+    y la puerta de "drive ~ 1.0 = bypass" (la forma no es la identidad en drive
+    = 1, asi que saltarse el calculo es una decision de producto, no un atajo
+    aritmetico).
+
+    La API publica no cambia: el motor (BaseEngine) sigue llamando a prepare(),
+    setDrive(), processSample(), processBlock() y resetState() igual.
 
   ==============================================================================
 */
@@ -11,8 +23,7 @@
 #pragma once
 
 #include "DspCore.h"
-
-#include <cmath>
+#include "DspEffects/DspSaturation.h"
 
 namespace NEURONiK::DSP::Effects {
 
@@ -52,9 +63,7 @@ public:
      */
     inline float processSample(float input) noexcept
     {
-        // Simple soft-clipping using atan or tanh approximation
-        float x = input * driveSmoother.getNextValue();
-        return std::atan(x) * 0.63661977236f; // 2/PI constant
+        return dsp::Saturation::processSample(input, driveSmoother.getNextValue());
     }
 
     /**
@@ -68,14 +77,14 @@ public:
         for (int s = 0; s < numSamples; ++s)
         {
             float currentDrive = driveSmoother.getNextValue();
-            
+
             // Optimization: if drive is approx 1.0, do nothing (1.0 is the baseline)
             if (currentDrive > 1.001f)
             {
                 for (int ch = 0; ch < numChannels; ++ch)
                 {
-                    float x = buffer.getSample(ch, s) * currentDrive;
-                    buffer.setSample(ch, s, std::atan(x) * 0.63661977236f);
+                    buffer.setSample(ch, s,
+                        dsp::Saturation::processSample(buffer.getSample(ch, s), currentDrive));
                 }
             }
         }

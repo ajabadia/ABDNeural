@@ -11,7 +11,7 @@
 #include "../DspDebug.h"
 #include "../DspMidiMessage.h"
 #include "AdditiveVoice.h"
-#include "../DSPUtils.h"
+#include "../DspSafety.h"
 #include <cmath>
 
 namespace NEURONiK::DSP::Synthesis {

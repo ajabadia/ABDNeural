@@ -10,7 +10,7 @@
 
 #include "DspCore.h"
 #include "LFO.h"
-#include "../DSPUtils.h"
+#include "../DspSafety.h"
 
 namespace NEURONiK::DSP::Core {
 
@@ -85,39 +85,18 @@ float LFO::processBlock(int numSamples) noexcept
 {
     if (numSamples <= 0) return 0.0f;
 
-    float out = processSample(); // This advances by 1 and returns value at current phase
+    // El avance de fase se hace POR MUESTRA, no de golpe: multiplicar la fase por
+    // (numSamples - 1) redondea distinto segun el troceado, y el motor consume
+    // bloques de control de tamano fijo (BaseEngine::kControlBlockSize), asi que dos
+    // troceados del mismo material darian fases (y por tanto LFO) distintas.
+    // De paso desaparece la segunda implementacion del Sample & Hold que vivia
+    // aqui: avanzaba la interpolacion dos veces por muestra (aqui y dentro de
+    // generateRandomSampleAndHold) y el doble avance dependia del numero de
+    // llamadas, o sea que el ruido del S&H cambiaba con el buffer del host.
+    float out = processSample();     // valor en la primera muestra del bloque
 
-    if (numSamples > 1)
-    {
-        float increment = phaseIncrement_;
-        const Waveform waveform = currentWaveform_.load(std::memory_order_relaxed);
-
-        if (waveform == Waveform::RandomSampleAndHold)
-        {
-            // For S&H, we need to check for ticks
-            for (int i = 1; i < numSamples; ++i)
-            {
-                phase_ += increment;
-                if (phase_ >= 1.0f)
-                {
-                    phase_ -= 1.0f;
-                    lastRandomValue_ = nextRandomValue_;
-                    nextRandomValue_ = random_.nextFloat() * 2.0f - 1.0f;
-                    randomInterpolationPhase_ = 0.0f;
-                }
-                
-                if (randomInterpolationPhase_ < 1.0f)
-                    randomInterpolationPhase_ += randomInterpolationSpeed_ * increment / 0.01f;
-            }
-        }
-        else
-        {
-            // For regular waveforms, just advance phase
-            phase_ += increment * (numSamples - 1);
-            while (phase_ >= 1.0f) phase_ -= 1.0f;
-            while (phase_ < 0.0f) phase_ += 1.0f;
-        }
-    }
+    for (int i = 1; i < numSamples; ++i)
+        (void) processSample();
 
     return out;
 }

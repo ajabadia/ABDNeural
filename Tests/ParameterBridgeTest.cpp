@@ -416,7 +416,7 @@ int main()
     bridge.resetStats();
     recorder.messages.clear();
 
-    moveFromNative (apvts, IDs::filterCutoff, 0.75);
+    moveFromNative (apvts, IDs::filterCutoff, 0.75f);
 
     check (bridge.publishPendingChanges() == 1,
            "a change made by the native side is published on the next poll");
@@ -435,8 +435,8 @@ int main()
     check (bridge.publishPendingChanges() == 0,
            "polling again with no movement sends nothing (no duplicate events)");
 
-    moveFromNative (apvts, IDs::masterLevel, 0.6);
-    moveFromNative (apvts, IDs::engineType, 1.0);
+    moveFromNative (apvts, IDs::masterLevel, 0.6f);
+    moveFromNative (apvts, IDs::engineType, 1.0f);
     recorder.messages.clear();
 
     check (bridge.publishPendingChanges() == 2,

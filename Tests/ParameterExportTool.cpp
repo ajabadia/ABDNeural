@@ -46,7 +46,11 @@ int main (int argc, char* argv[])
     std::cout << "NEURONiK parameter export\n";
     std::cout << "  output directory : " << directory.getFullPathName() << '\n';
     std::cout << "  parameters       : " << descriptorCount << '\n';
-    std::cout << "  unrouted ids     : " << unrouted.joinIntoString (", ") << '\n';
+    // Empty is the expected state since 2026-09-19 (no phantom IDs); print it as such
+    // instead of leaving a blank that reads like a failed query.
+    std::cout << "  unrouted ids     : "
+              << (unrouted.isEmpty() ? juce::String ("(none)")
+                                     : unrouted.joinIntoString (", ")) << '\n';
     std::cout << "  files            : "
               << NEURONiK::State::ParameterArtifacts::jsonFileName << ", "
               << NEURONiK::State::ParameterArtifacts::javaScriptFileName << ", "

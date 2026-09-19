@@ -1694,3 +1694,424 @@ nunca se activara y el test del port literal pasaba en falso—.
 host del piloto EXIT 0 con `--selftest` **4/4** direcciones (NATIVO↔JS, GENERAL,
 MIDI); `NEURONiK_WebPilotHost` compila con 0 avisos nuevos. `juce::Reverb` ya
 solo aparece en el test que lo usa como referencia.
+
+## Migración de los efectos a DspEffects — chorus, delay y saturación (2026-09-19)
+
+Continuación de la Fase 1 [5/6]: la reverb abrió el módulo compartido
+`ABDSharedCode::DspEffects` (`DspEffects/DspReverb.h`) y ahora se mueven los tres
+efectos que todavía vivían solo en el synth. La partición es la misma en los tres:
+**motor puro en el módulo compartido, política de producto en el envoltorio.**
+
+- `DspEffects/DspChorus.h` NUEVO: chorus estéreo de línea retardada modulada (LFO
+  de fase, 5ms..30ms, lectura interpolada lineal, mezcla wet/dry). API por
+  muestra: `processSample (canal, x, depth, mix)` + `advance (rateHz)`.
+- `DspEffects/DspDelay.h` NUEVO: retardo estéreo realimentado (buffer circular de
+  2 canales, lectura interpolada, escritura de `input + delayed * feedback`). API
+  por muestra: `processSample (canal, x, delayInSamples, feedback)` +
+  `advanceWritePosition()`.
+- `DspEffects/DspSaturation.h` NUEVO: la forma del soft-clipping
+  (`atan (x * drive) * 0.63661977236f`) como utilidad estática sin estado (su
+  "estado" en el producto era el smoother del drive, que es política).
+- `Source/DSP/Effects/{Chorus,Delay,Saturation}.h` pasan a ser envoltorios de
+  producto: suavizado de parámetros (20ms/50ms), mapeo (segundos -> muestras,
+  amount -> drive, recorte del feedback a 0.95), puerta de denormales y mezcla.
+  **La API pública no cambia**, así que `BaseEngine` no toca una línea.
+
+**Por qué por muestra y no por bloque (la decisión que sostiene la paridad).** Los
+smoothers de los tres efectos se leían *dentro* del bucle de muestras, así que un
+`processBlock` con parámetros por bloque habría movido rate/depth/mix/tiempo/
+feedback en cada muestra: otra salida. Por eso el motor compartido expone la
+muestra y el consumidor aporta la política, y no al revés. La contrapartida es un
+contrato de llamada explícito (recorrer los canales y luego avanzar una vez por
+muestra), documentado en la cabecera de cada motor junto al `channel % 2`
+heredado del original.
+
+**Nota (denormales).** El `ScopedNoDenormals` del delay lo sigue abriendo el
+consumidor: la API compartida es por muestra y no tiene nivel de bloque. El
+original lo abría en su `processBlock`, así que está exactamente en el mismo
+sitio.
+
+**Desviación documentada.** `dsp::Chorus::prepare()` pone el puntero de
+escritura a 0. El original no lo hacía: con un `prepare()` en caliente (cambio de
+sample rate) el puntero podía quedar por encima del buffer nuevo y la primera
+escritura se salía del rango. En el uso normal (un `prepare` antes de procesar) el
+puntero ya valía 0, de modo que no cambia ningún resultado definido. `reset()`, en
+cambio, sigue sin tocarlo (solo vacía el buffer), como el original.
+
+**Test nuevo:** `Tests/DspEffectsParityTest.cpp` -> `NEURONiK_DspEffectsParityTest`
+(registrado en `ctest` y en la lista de targets de `build.bat`). Aquí no hay
+implementación ajena contra la que comparar (esto no es un port de JUCE), así que
+el test lleva una **referencia congelada**: la copia literal de los tres efectos
+tal y como estaban antes de moverse. Mismo guion de parámetros por bloque, misma
+entrada determinista (LCG, sin reloj ni `rand`), y se exigen **0 ulps** muestra a
+muestra. Cubre: chorus estéreo/mono/3 canales (el `channel % 2` del motor), delay
+estéreo/mono, saturación por bloque (incluido el primer bloque con drive
+exactamente 1.0, que pasa por la puerta de bypass del producto) y por muestra,
+determinismo entre dos objetos nuevos, y una cola de 200 bloques de silencio con
+fb 0.95 sin NaN ni infinitos.
+
+**Medido** (48 kHz, 24 bloques de 512): **0 ulps en las 7 comparaciones** (147.456
+muestras) con MSVC x64 Release (`/O2 /W4`) y con MinGW g++ 10.3
+(`-O2 -DNDEBUG -Wall -Wextra`), **0 avisos** con los dos compiladores.
+
+**Verificación:** pendiente de la pasada completa de `build.bat` (los 17 targets
+de ctest, que ahora incluyen estos dos tests).
+
+## Sustrato: dsp::AudioBuffer contra juce::AudioBuffer (2026-09-19)
+
+`Tests/AudioBufferParityTest.cpp` -> `NEURONiK_AudioBufferParityTest` (ctest y
+lista de targets de `build.bat`). Cierra el hueco que dejó la corrección del
+helper: el port de `AudioBuffer` era el único consumidor del sustrato sin test
+contra su original (los otros dos ports, `MidiMessage`/`MidiBuffer`, ya estaban
+pinados en `MidiPortTest`, y la reverb tiene el suyo). La comparación vive aquí
+porque el módulo compartido es JUCE-free por contrato.
+
+- **Paridad de datos.** El mismo guion sobre los dos tipos (setSize con sus
+  banderas, clear por canal, setSample/addSample, applyGain, applyGainRamp,
+  addFrom/copyFrom y sus variantes con rampa, reverse, makeCopyOf, getMagnitude,
+  getRMSLevel) deja las mismas muestras bit a bit, la misma magnitud/RMS y la
+  misma bandera `hasBeenCleared()`.
+- **Estructura de punteros (el guard de la rama que estuvo muerta).** Barrido de 1
+  a 40 canales preguntando dónde vive el array de canales: dentro del objeto hasta
+  **31** y en el heap desde 32, igual que JUCE (`numChannels < 32`). Con el helper
+  devolviendo 1 la frontera medida era **0** en el port y 31 en JUCE: ese
+  desacuerdo es exactamente lo que delata el test.
+- **Memoria externa, movimiento y copia.** Un buffer que referencia canales del
+  que llama: tras moverse (constructor y asignación) sigue escribiendo en esos
+  canales y su array de punteros vive en el DESTINO; el constructor de copia
+  COMPARTE la memoria externa (documentado en JUCE) y `makeCopyOf()` en cambio se
+  queda con memoria propia. Los cuatro comportamientos se comparan con JUCE.
+
+**Medido** (MSVC x64 Release, JUCE 8.0.12 real, 2 canales x 512 muestras): 0 ulps
+en muestras, magnitud y RMS; frontera de `preallocatedChannelSpace` dsp=31
+juce=31; 0 avisos de compilación.
+
+**Control negativo del guard:** el `static_assert` de `DspCoreTests` con el
+helper **anterior** (parámetro por valor) no compila — comprobado a propósito en
+un fichero aparte —, así que la regresión no puede volver en silencio.
+
+## Renombrado: DSPUtils.h -> DspSafety.h, y las homonimias de la familia (2026-09-19)
+
+Al evaluar la homonimia entre el `DSPUtils.h` de este repo y el de
+`ABDSharedCode/SynthCore` (fruto del refactor DRY transversal), la conclusión fue
+**renombrar sí, unificar todavía no**. El motivo completo, y las tres condiciones
+para unificar, están escritos en la cabecera del fichero renombrado.
+
+- `Source/DSP/DSPUtils.h` -> `Source/DSP/DspSafety.h`: mismo contenido, mismo
+  namespace (`NEURONiK::DSP`), mismas firmas. El nombre nuevo describe lo que es
+  (validación de parámetros + saneo de NaN/Inf), encaja con la convención `Dsp*`
+  de los módulos compartidos (si algún día se muda, no vuelve a renombrarse) y
+  elimina el nombre que compartía con `SynthCore/DSPUtils.h`.
+- **8 ficheros** actualizan el include (todos los `.cpp` de `Source/DSP` que la
+  usaban): `CoreModules/{LFO,FilterBank,Resonator,ResonatorBank,NeuronikEngine,NeurotikEngine}.cpp`
+  y `Synthesis/{AdditiveVoice,NeurotikVoice}.cpp`.
+- **No se unifica** con SynthCore: no hay código duplicado (aquel no tiene
+  validación de parámetros ni saneo de buffers), y estos helpers se apoyan en el
+  sustrato (`AudioBuffer`, `dspDbg`, `dspAssert`, `jlimit`), así que mudarlos
+  obliga a meter utilidades de producto en DspCore o a que SynthCore dependa de
+  DspCore — dos módulos que hoy son independientes y que consume gente distinta.
+- `sanitizeAudioBuffer` tenía **0 llamadas** y se **borró**: su política es la que
+  el motor no usa (ver el bloque siguiente).
+
+**Verificado:** los 8 `.cpp` sintaxis-limpios con MSVC `/W4` (0 errores, 0 avisos;
+los que tiran de JUCE con los includes de módulo reales) y los dos que son
+JUCE-free también con GCC `-Wall -Wextra` (0 avisos). Cero referencias de código o
+build al nombre antiguo (`grep` en `*.h/*.cpp/*.txt/*.cmake/*.bat`).
+
+**Inventario de homonimias que queda.** Comparando nombres de fichero entre
+`ABDNeural/Source/DSP` y los módulos compartidos salen 7 coincidencias, y solo dos
+son problemas reales:
+
+| Coincidencia | ¿Problema? |
+|---|---|
+| `DspCore.h`, `DspDebug.h`, `DspLeakedObjectDetector.h`, `DspMidiBuffer.h`, `DspMidiMessage.h` | **No**: son los shims de este repo. Misma entidad con dos caminos, deliberado y documentado. |
+| `DSPUtils.h` | Sí, y queda **resuelto** con este renombrado. |
+| `LFO.h` | Sí, **abierto**: `CoreModules/LFO.h` (NEURONiK, `NEURONiK::DSP::Core`, ondas Sine/Triangle/SawUp/SawDown/Square/S&H con Free/TempoSync) y `SynthCore/LFO.h` (el de MS2000/ABDEep, `abd::synth`, ondas MS2000 con `syncNoteIdx` de la spec SysEx) son dos LFO distintos con el mismo nombre de fichero, y en ABDMS2000 hay un tercer `LFO.h` que es shim al de SynthCore. Misma clase de riesgo que el de DSPUtils; el renombrado de uno de los dos (o la convergencia real en un LFO parametrizable) es decisión aparte, porque las dos APIs no son un superconjunto la una de la otra. |
+
+**Y `sanitizeAudioBuffer` se borra, no se conecta (2026-09-19).** Estaba sin usar,
+pero el motivo de fondo es otro: **su política es la contraria a la que el motor ya
+aplica**. Donde el motor se topa con un NaN de verdad (los lazos de realimentación
+de las voces) la respuesta es *detectar y reiniciar la voz*:
+
+```cpp
+// AdditiveVoice.cpp / NeurotikVoice.cpp
+if (! isfinite (...)) { dspDbg ("NaN ... voice reset"); reset(); return false; }
+```
+
+Eso arregla el **estado** que diverge. `sanitizeAudioBuffer` solo escribía 0 en el
+buffer de salida: el lazo seguiría roto y produciendo NaN en las muestras
+siguientes (silencio sostenido y CPU gastada), además de tapar el síntoma. Ponerlo
+en `BaseEngine::applyGlobalFX` sería eso mismo pagando un barrido `isfinite` por
+muestra sobre el buffer maestro **en el hilo de audio**. El otro caso real, los
+denormales, ya lo cubre `dsp::ScopedNoDenormals` en los lazos. El razonamiento
+queda escrito en la cabecera de `DspSafety.h`, junto al de por qué el fichero no se
+unifica todavía con SynthCore. Se va con él el `#include <limits>`, que solo él
+usaba.
+
+**Verificado:** los 8 `.cpp` que incluyen `DspSafety.h` pasan `cl` `/W4 /O2`
+sintaxis-limpios (**0 errores, 0 avisos**), y la cabecera suelta más los dos TUs
+JUCE-free (`LFO.cpp`, `FilterBank.cpp`) también con GCC `-Wall -Wextra -Wpedantic`
+(**0 avisos**). `grep` de `sanitizeAudioBuffer` en el repo: solo la mención
+histórica de este documento.
+
+**De paso, un bug latente del sustrato compartido.** El aviso de GCC
+`-Wsizeof-pointer-div` que apareció al escribir el test venía de
+`dsp::numElementsInArray` (`DspCore.h`): el port tomaba el array POR VALOR, así que
+el array decaía a puntero en la llamada y la función devolvía
+`sizeof(Type*) / sizeof(Type)` — 1 en sus tres consumidores, que le pasan
+`preallocatedChannelSpace` (un `Type* [32]`). La comprobación `numChannels < 32` se
+evaluaba como `numChannels < 1`, de modo que la rama de la memoria PREASIGNADA de
+`AudioBuffer` era inalcanzable: `allocateChannels` hacía un `malloc` por buffer
+sobre memoria externa (exactamente el que JUCE evita ahí: "blow up things like
+Pro-Tools") y el constructor/asignación de movimiento iban siempre por la rama de
+aliasar en vez de copiar al hueco propio. Corregido a la forma de JUCE
+(`Type (&)[N]`, devuelve N), con ruta testigo en `DspCoreTests`
+(`testNumElementsInArray`, con un `static_assert` que no compila si el array vuelve
+a decaer). Verificado con MSVC `/W4` y GCC `-Wall -Wextra`: 55 comprobaciones OK y
+0 avisos en los dos (el aviso de GCC desaparece).
+
+**Efecto en ABDMS2000:** ninguno. Su `CMakeLists.txt` ya hace `add_subdirectory`
+de ABDSharedCode y `DspEffects` es INTERFACE (solo ruta de include), así que esto
+es aditivo; y el synth no usa hoy ningún efecto del módulo (ni reverb tiene).
+Cuando quiera reutilizarlos, `ABDShared::DspEffects` ya está en el grafo.
+
+---
+
+## Matriz de paridad WASM por sample rate y tamaño de bloque, y el hallazgo que destapa (2026-09-19)
+
+Cierra el último punto sin verificar de la Fase 5. Antes la paridad se medía en **una
+sola** pareja (48 kHz / 128), que no dice nada sobre los otros sample rates ni sobre
+el buffer que use el host.
+
+**Qué se hizo**
+
+- `Tests/WasmParityTest.cpp` pasa de un caso a una matriz de **9**: 44.1/48/96 kHz ×
+  64/128/512 muestras de bloque. La clave es que la duración de cada escenario es la
+  MISMA en los nueve — el número de bloques se reescala sobre una referencia de 128
+  (32 → 64 bloques con bloque 64, → 8 con bloque 512) y el pánico se reescala igual —
+  así que la comparación es de contenido musical y no de número de llamadas.
+- El JSON pasa a `{"referenceBlockSize":128, "cases":[{sampleRate, blockSize,
+  scenarios:[...]}], "blockSizeInvariance":[...], "blockSizeDependentScenarios":[...]}`.
+- `Tests/neuronik_wasm_parity.mjs` recorre la matriz entera: reinicializa el módulo con
+  cada pareja (`_neuronikInit(sampleRate, blockSize)`) y compara cada caso contra su
+  propia referencia. El calendario (`blocks`, `panicAtBlock`) **se lee de la
+  referencia**, no se duplica: era la forma más fácil de comparar dos cosas distintas
+  sin darse cuenta. 9 casos × 5 escenarios = 45 comparaciones / 184.320 muestras.
+
+**El hallazgo: la salida depende del tamaño de bloque en dos rutas**
+
+El test mide también, en nativo, si los tres tamaños de bloque dan la misma señal
+(misma duración ⇒ deberían ser bit-exactos si el DSP es por muestra):
+
+| Escenario | 44.1 kHz | 48 kHz | 96 kHz |
+|---|---|---|---|
+| A_neuronik_default | **bit-exacto** (0/8192) | **bit-exacto** | **bit-exacto** |
+| B_neurotik_default | **bit-exacto** (0/8192) | **bit-exacto** | **bit-exacto** |
+| E_modelo_espectral | **bit-exacto** (0/6144) | **bit-exacto** | **bit-exacto** |
+| C_fx_panico | depende (maxAbs 2.7e-1) | depende (3.0e-1) | depende (2.6e-1) |
+| D_modmatrix | depende (maxAbs 8.7e-3) | depende (8.7e-3) | depende (3.1e-3) |
+
+Las dos causas, localizadas:
+
+1. **Modulación por bloque** — `BaseEngine::applyGlobalFX` llama a
+   `lfo1.processBlock(numSamples)` / `lfo2.processBlock(numSamples)`, y
+   `LFO::processBlock` devuelve **un** valor por llamada (avanza la fase `increment *
+   (numSamples - 1)` y lo mantiene). La matriz de modulación es entonces una escalera
+   cuyo paso es el tamaño de bloque. Coherente con lo medido: en D la primera
+   diferencia cae EXACTAMENTE en el primer límite de bloque (índice 128 comparando
+   bloque 64 contra 128; índice 256 comparando 512 contra 128).
+2. **Smoothers de la reverb por bloque** — `Source/DSP/Effects/Reverb.h::processBlock`
+   hace `sizeSmoother.getNextValue()` **una vez por llamada**, fuera del bucle de
+   muestras, y con ese valor llama a `reverb.setParameters()`. Su rampa de 20 ms dura
+   20 ms *por bloque*, no 20 ms de audio. Coherente con lo medido: en C nada diverge
+   hasta ~448 muestras (44.1/48 kHz) o ~960 (96 kHz), o sea hasta que termina la
+   primera rampa. La rampa de la reverb se comporta así desde antes de la migración a
+   `DspEffects` (el comentario del fichero lo decía: "update parameters once per block")
+   — el test de paridad de la migración no podía verlo porque comparaba una sola
+   pareja de bloques.
+
+El **núcleo** (osciladores, resonador, envolventes, filtros, voz aditiva y Neurotik)
+es bit-exacto en los tres tamaños: eso es lo que hacía falta saber para la web, y sale
+bien.
+
+**Por qué importa para la web.** El `AudioWorklet` renderiza siempre en cuantos de
+128 muestras y un host nativo suele ir a 256/512/1024. Para C y D, web y nativo no dan
+la misma señal. Arreglarlo es pequeño (LFO por muestra manteniendo el valor del último
+bloque no sirve: hay que avanzar y devolver por muestra, y el wrapper de la reverb
+tiene que mover cada smoother dentro del bucle), pero **cambia la salida** de los
+presets con FX y de los que usan la matriz de modulación — es una decisión de producto,
+no un refactor. Queda como decisión abierta en `ROADMAP.md` (Fase 5) con esta misma
+evidencia. Nota para el que lo coja: `dsp::LinearSmoothedValue::setTargetValue` **sí**
+hace early-return con el mismo target (port fiel de JUCE), así que el problema NO es
+rearmar la rampa, es llamar a `getNextValue()` fuera del bucle de muestras.
+
+**Decisión sobre las dos rutas (2026-09-19): se arreglan las dos, y el motivo principal del
+primero no es el bloque.**
+
+- **Reverb → es un defecto.** Sus cuatro smoothers avanzan *una vez por bloque*, y la rampa
+  está declarada como 20 ms (`reset(sampleRate, 0.02)` = 882 pasos). Con una llamada por
+  bloque la rampa dura 882 **bloques**: ~2,5 s con bloque 128 y **~10 s con bloque 512** a
+  44,1 kHz. O sea que al cargar un preset la reverb no llega a su valor en 20 ms, se arrastra
+  segundos, y cuánto dura depende del buffer del host. Revisados los cuatro envoltorios:
+  chorus, delay y saturación avanzan por muestra; la reverb es **la única** con este patrón.
+  Arreglo: consumir `numSamples` pasos por bloque y rearmar `setParameters()` solo cuando el
+  valor suavizado cambie (durante la rampa), no en cada bloque con el mismo valor.
+- **Modulación → no es un defecto, es una tasa de control acoplada al host.** El LFO se lee
+  una vez por bloque (`applyGlobalFX` → `lfo.processBlock(numSamples)` → `applyModulation()`),
+  así que la matriz modula por bloque y su granularidad es la del host (128 en la web, 512 en
+  un host de 512). Arreglo: tasa de control **fija** (bloques internos de 64/128 muestras con
+  el resto encadenado), de modo que la modulación la defina el tiempo y no el troceado. Eso
+  cambia la modulación en hosts de bloque grande (menos escalón) y obliga a **re-basar** la
+  referencia de paridad.
+
+Los dos van en pasos separados, con la matriz de 9 casos como verificación: al final,
+`blockSizeDependentScenarios` debe quedar vacía o con una justificación escrita de lo que
+quede.
+
+**Reproducción** (no necesita emsdk, es el lado nativo):
+
+```
+cl /nologo /std:c++17 /O2 /W4 /EHsc /DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 \
+   /I Source /I Source/DSP /I Source/Common /I ../ABDSharedCode /I C:/JUCE/modules \
+   Tests/WasmParityTest.cpp <las 12 fuentes de DspSources.cmake> \
+   C:/JUCE/modules/juce_core/juce_core.cpp C:/JUCE/modules/juce_core/juce_core_CompilationTime.cpp \
+   shell32.lib ole32.lib oleaut32.lib shlwapi.lib user32.lib advapi32.lib
+neuronik_parity.exe parity-native.json      # imprime la matriz y el veredicto por rate
+```
+
+(El target CMake `NEURONiK_WasmParityTest` sigue siendo el camino oficial; esto es
+solo la vía corta para mirarlo sin compilar el plugin.) El generador **no falla** por
+la dependencia de bloque: la publica en el JSON y avisa por consola, porque es una
+propiedad del motor y no del puente WASM. El árbitro duro sigue siendo el 0 ulps por
+caso.
+
+**De paso (mismo día):**
+
+- `Tests/ParameterBridgeTest.cpp`: los literales `0.6` / `0.75` / `1.0` pasan a `f`.
+  El aviso `C4305` de MSVC solo saltaba con `0.6` (es el único de los tres que no es
+  exactamente representable en float, y MSVC calla cuando lo es), pero los tres son el
+  mismo caso y el fichero ya usaba `0.8f`/`0.5f` doscientas líneas más arriba.
+- `WasmParityTest.cpp` decía "4 escenarios" en su cabecera y hay cinco desde
+  `E_modelo_espectral`; corregido (y el comentario de CMake del target, igual).
+- **`oscPitchCoarse` retirado del namespace de IDs** (no implementado). Estaba
+  declarado desde el primer día pero nunca entró en el layout: no lo leía el motor, ni
+  el panel, ni ningún preset. Era una promesa del draft viejo `DOC/3`
+  (`oscPitchFine`, `oscPitchOctave`, `oscHarmonicCount`, ninguno adoptado tampoco).
+  Misma regla que `harmMix` en 2026-09-16. Lo que sí existe es el pitch por voz (MPE:
+  `EventType::PitchBend` → `IVoice::notePitchBend(semitonos)` → `pow(2, semis/12)`); un
+  coarse tune global sería otra cosa y, si se quiere, es una feature con su tarea (se
+  hace en el host transponiendo las notas, junto a `velocityCurve`/`midiChannel`, sin
+  tocar motor ni ABI WASM). Consecuencia: `getUnroutedParameterIds()` queda vacío,
+  `notInLayout` pasa a 0 en el contrato generado, y el test de regresión ahora exige
+  que la lista esté vacía (si alguien declara un ID fuera del layout, salta). El
+  mecanismo se queda: es lo que hace visible una divergencia nueva en vez de dejarla
+  invisible. Detalle en `DSP_PARAMETERS.md`.
+
+## Arreglo de la rampa de la reverb: duraba 960 BLOQUES, no 20 ms (2026-09-19)
+
+Primer paso de la decisión "las dos rutas por bloque se arreglan". El envoltorio
+`Source/DSP/Effects/Reverb.h` hacía `getNextValue()` **una vez por llamada**, fuera del
+bucle de muestras. Su rampa está declarada como 20 ms (`reset(sampleRate, 0.02)`, 960
+pasos a 48 kHz), así que en la práctica la subida no duraba 20 ms: duraba 960 **bloques**
+— ~2,5 s con bloque 128 y ~10 s con 512 — y el tiempo lo imponía el buffer del host. Al
+cargar un preset con reverb, el efecto se arrastraba durante segundos.
+
+**Qué se cambió** (un fichero, `Effects/Reverb.h::processBlock`):
+
+- El parámetro se lee y se aplica **por muestra**: bucle de una muestra contra
+  `dsp::Reverb` (`processStereo(left+i, right+i, 1)`), porque `dsp::Reverb` solo expone API
+  por bloque. Eso es lo que convierte la rampa en una función del tiempo y no del troceado.
+- **Camino rápido** (el habitual): si ninguno de los cuatro smoothers está rampeando
+  (`isSmoothing()` falso), se aplica el valor actual una vez y la reverb procesa el bloque
+  entero de un golpe. Es el mismo recorrido que el bucle (el port ya itera por muestra por
+  dentro), con una sola llamada: el modo por muestra se paga solo los ~20 ms siguientes a
+  un cambio de parámetro.
+- `applyParameters()` rearma `setParameters()` **solo si el valor cambió** (cuatro
+  comparaciones): `setParameters` llama a `updateDamping()` y no queremos eso por muestra.
+- Reverb apagada (target y valor actual ≤ 0,002): se sigue saltando el bloque —es
+  equivalente, con wet 0 la señal no se toca— pero los cuatro smoothers **avanzan**
+  (`skip(numSamples)`), así que encenderla más tarde arranca la rampa donde le toca por
+  tiempo, no donde se quedó el bloque anterior. Con objetivo > 0 nunca se salta: la reverb
+  procesa desde la primera muestra.
+
+**Verificación** (target `NEURONiK_WasmParityTest` en `build-reference`, `/W4`, 0 avisos):
+
+| Escenario | 64 vs 128 vs 512, a 44,1 / 48 / 96 kHz |
+|---|---|
+| A, B, E (núcleo) | bit-exacto (0/8192, 0/6144) — sin cambios |
+| **C_fx_panico** | **bit-exacto en las 9 celdas (0/12288, maxAbs 0,0)** |
+| D_modmatrix | sigue dependiendo (maxAbs 8,7e-3 a 44,1/48 kHz, 3,1e-3 a 96 kHz) |
+
+`blockSizeDependentScenarios` pasa de `["C_fx_panico", "D_modmatrix"]` a
+`["D_modmatrix"]`. Y contra el volcado del código anterior (mismo 48 kHz/128): A, B, D y E
+**bit-idénticos** — el camino de reverb apagada no se tocó — mientras C difiere en todas
+las muestras con maxAbs 8,9e-2 (peak 0,528966 → 0,519034). Diferir es el objetivo: al
+acabar el render anterior su wet seguía al ~5% del objetivo (48 de los 960 pasos de la
+rampa) y ahora llega a su valor en 20 ms, o sea que el preset con reverb suena como debe
+sonar desde el primer bloque.
+
+**De paso:** `WasmParityTest.cpp` usa `fopen`/`fprintf` (deliberado: volcados de MB con
+formato `%.9g` que tiene que coincidir con el parser del `.mjs`) y MSVC avisaba `C4996`.
+Se define `_CRT_SECURE_NO_WARNINGS` al principio del fichero con el motivo escrito: es un
+generador host-only, no entra en el módulo WASM.
+
+**Sigue abierto:** la modulación (`lfo.processBlock` una vez por bloque, escenario D). El
+arreglo acordado es la tasa de control fija de 64/128 muestras, y ese sí obliga a
+**re-basar** la referencia de paridad.
+
+**Nota de contexto, no tocada:** el mapeo del envoltorio (`wetLevel = mix*0.5`,
+`dryLevel = 1 - mix*0.2`) va sobre la escala interna del port, que es la de JUCE
+(`dryScaleFactor = 2.0`): ese `dryLevel` da una ganancia seca de **1,6 a 2,0**, o sea un
+boost de +4 a +6 dB de la señal seca cuando la reverb está activa (en esa escala, la
+unidad está en `dryLevel = 0,5`). Es anterior a este arreglo (lo que cambia es cuándo se
+aplica, no la fórmula) y decidir si se re-mapea es producto, no un bug del arreglo.
+
+## Tasa de control fija del motor: 64 muestras (2026-09-19)
+
+Segundo paso de la decisión sobre las dos rutas por bloque. El LFO se leía **una vez por
+bloque del host** y la matriz de modulación se aplicaba con ese único valor, así que la
+modulación era una escalera de paso = `blockSize`: 128 en el `AudioWorklet`, 512 en un
+host de 512. Ahora la rejilla la fija el tiempo, no el buffer.
+
+**Qué se cambió**
+
+- `BaseEngine::kControlBlockSize = 64` + `controlCarry`: el motor renderiza en tramos de 64
+  muestras DE AUDIO, con el sobrante **encadenado entre bloques del host** (un host de 96
+  da 64+32, y el bloque siguiente empieza cerrando los 32 que faltaban). Así la rejilla no
+  se desplaza según el troceado.
+- `BaseEngine::renderVoicesWithControlRate(buffer)`: por tramo → avanza los LFOs, aplica la
+  matriz (`applyModulation()`, ahora virtual pura en `BaseEngine`) y solo entonces renderiza
+  las voces de ese tramo. Los dos motores (`NeuronikEngine`, `NeurotikEngine`) lo llaman en
+  lugar de su bucle de voces, y `applyGlobalFX()` deja de leer los LFOs (sigue con FX y
+  master por bloque, que ya eran por muestra por dentro).
+- `LFO::processBlock` avanza la fase **por muestra** en vez de multiplicarla de golpe
+  (`phase_ += increment * (numSamples - 1)`): con troceado, multiplicar redondea distinto y
+  la fase del LFO dependería del troceado. De paso desaparece la segunda implementación del
+  Sample & Hold que vivía en `processBlock`: avanzaba la interpolación **dos veces por
+  muestra** (una en su propio bucle y otra dentro de `generateRandomSampleAndHold`), y el
+  doble avance dependía del número de llamadas, o sea que el ruido del S&H también cambiaba
+  con el buffer del host. Queda un solo camino, por muestra, y el S&H avanza una vez.
+- Por qué 64 y no 128: el LFO llega a 20 Hz (`lfo1RateHz`/`lfo2RateHz`) y a 48 kHz una
+  rejilla de 64 muestras son ~37 escalones por ciclo frente a ~19 con 128. Además 64 es
+  múltiplo del `kSubBlockSize = 32` de las voces, así que el troceado no crea fronteras
+  nuevas dentro de sus sub-bloques. Coste: la voz se llama 2 veces por cuanto en la web y 8
+  en un host de 512 (cada llamada reconfigura su resonador desde el modelo espectral, que
+  es el trabajo extra), y solo eso.
+
+**Verificación** (target `NEURONiK_WasmParityTest`, `/W4`, 0 avisos)
+
+| Escenario | 44,1 / 48 / 96 kHz × 64/128/512 |
+|---|---|
+| A, B, C, D, E | **bit-exacto en las 15 celdas** (0 diferencias) |
+
+`blockSizeDependentScenarios` pasa de `["D_modmatrix"]` a `[]`. Y para aislar el cambio,
+contra el volcado del paso anterior (reverb ya arreglada): A, B, C y E son **bit-idénticos**
+(el camino sin modulación activa no se toca) y D cambia desde la muestra **64** exacta
+(maxAbs 2,1e-3 a 48 kHz/128; peak 0,553536 → 0,555390), que es justo la primera frontera de
+la rejilla nueva.
+
+**Artefacto pendiente de regenerar:** el volcado `build-wasm/parity-native.json` lo regenera
+`build_wasm.bat` y no está en git, pero el `.wasm`/`.js` de `WebPilot/public/worklet/` **sí
+está trackeado** y es anterior a los dos arreglos (reverb y tasa de control). Hay que
+ejecutar `build_wasm.bat` para regenerarlo, o el test Node comparará un módulo viejo contra
+una referencia nativa nueva. No se ha hecho aquí porque necesita emsdk.

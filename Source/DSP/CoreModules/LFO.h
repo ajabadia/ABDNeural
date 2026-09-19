@@ -57,6 +57,10 @@ public:
 
     // --- Processing (Realtime Safe) ---
     float processSample() noexcept;
+
+    /** Avanza `numSamples` muestras y devuelve el valor en la PRIMERA de ellas.
+        Consume exactamente numSamples muestras de fase, sea cual sea el troceado
+        (el motor lo llama una vez por bloque de control, no por bloque del host). */
     float processBlock(int numSamples) noexcept;
 
 private:

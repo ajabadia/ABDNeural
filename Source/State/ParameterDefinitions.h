@@ -20,7 +20,14 @@ namespace IDs {
     // Oscillator / Neural Core
     static constexpr const char* engineType       = "engineType";
     static constexpr const char* oscLevel         = "oscLevel";
-    static constexpr const char* oscPitchCoarse   = "oscPitchCoarse";
+    // oscPitchCoarse was retired on 2026-09-19: declared here since day one but never added
+    // to the layout, so no engine, panel or preset ever read it. It only existed as a
+    // promise (a leftover of the old NexusParams draft, whose siblings oscPitchFine,
+    // oscPitchOctave and oscHarmonicCount were never adopted either). Coarse tuning would
+    // be a FEATURE, not pending wiring: the pitch path that does exist is the per-voice MPE
+    // bend (IVoice::notePitchBend, in semitones), and a global transpose would belong in
+    // the host next to velocityCurve/midiChannel — no engine or WASM ABI change needed.
+    // See DSP_PARAMETERS.md, "Parámetros sin consumidor".
     static constexpr const char* oscInharmonicity = "oscInharmonicity";
     static constexpr const char* oscRoughness     = "oscRoughness";
     // harmMix was retired on 2026-09-16: it was never read by any engine, so it only

@@ -10,7 +10,7 @@
 
 #include "../DspCore.h"
 #include "Resonator.h"
-#include "../DSPUtils.h"
+#include "../DspSafety.h"
 #include "../Utils/SIMDWrapper.h"
 #include <cmath>
 #include <numeric>

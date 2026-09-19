@@ -128,10 +128,11 @@ const ParameterDescriptor* findParameterDescriptor (const juce::String& id);
 
 /**
  * @brief IDs declared in the IDs namespace that are deliberately not part of
- *        the layout yet.
+ *        the layout yet. Empty since 2026-09-19 (oscPitchCoarse was retired).
  * @details Keeps the known divergences explicit and testable: the regression
  *          suite asserts every entry here is still absent from the layout, so
- *          wiring one up forces this list to be updated.
+ *          wiring one up forces this list to be updated, and a new entry is
+ *          exported to the contract as notInLayout instead of disappearing.
  */
 juce::StringArray getUnroutedParameterIds();
 

@@ -10,7 +10,7 @@
 
 #include "DspCore.h"
 #include "FilterBank.h"
-#include "../DSPUtils.h"
+#include "../DspSafety.h"
 #include <cmath>
 
 namespace NEURONiK::DSP::Core {

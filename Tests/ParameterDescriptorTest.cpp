@@ -133,7 +133,13 @@ int main()
     for (const auto& descriptor : descriptors)
         layoutIds.add (descriptor.id);
 
-    check (! getUnroutedParameterIds().isEmpty(), "the unrouted ID list is tracked explicitly");
+    // Empty since 2026-09-19: the last entry, oscPitchCoarse, was retired from IDs:: as
+    // well (nothing read it), so the contract has no phantom IDs left in either direction.
+    // The loop below stays: the moment a new ID is declared outside the layout, this is
+    // what forces it to be acknowledged here and in the generated contract.
+    check (getUnroutedParameterIds().isEmpty(),
+           "no ID is declared outside the layout (unexpected: "
+               + getUnroutedParameterIds().joinIntoString (", ") + ")");
 
     for (const auto& unrouted : getUnroutedParameterIds())
         check (! layoutIds.contains (unrouted),
@@ -246,6 +252,12 @@ int main()
     // contract must not offer it to any consumer.
     check (findParameterDescriptor ("harmMix") == nullptr,
            "the retired harmMix is no longer part of the contract");
+
+    // oscPitchCoarse was retired on 2026-09-19 by the same rule as harmMix: it was a
+    // promise nobody kept. Its pitch siblings in the old NexusParams draft were never
+    // adopted either, and the pitch path the engine does have is the per-voice MPE bend.
+    check (findParameterDescriptor ("oscPitchCoarse") == nullptr,
+           "the retired oscPitchCoarse is no longer part of the contract");
 
     check (! getNotRoutedParameterIds().contains (IDs::velocityCurve)
                && ! getNotRoutedParameterIds().contains (IDs::midiThru),

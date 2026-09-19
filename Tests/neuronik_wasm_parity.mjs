@@ -2,6 +2,23 @@
  * Test de paridad WASM <-> nativo (Fase 5, hito 1/2).
  * Uso: node Tests/neuronik_wasm_parity.mjs build-wasm/neuronik_dsp.js [build-wasm/parity-native.json] [--strict]
  *
+ * MATRIZ: la referencia nativa trae 3 sample rates x 3 tamaños de bloque (9
+ * casos) y aquí se recorre entera, reinicializando el módulo con cada
+ * (sampleRate, blockSize). Cada caso se compara contra su propia referencia:
+ * eso valida el sample rate y el tamaño de bloque de verdad, y no una sola
+ * pareja como antes.
+ *
+ * El calendario de cada caso (número de bloques y bloque de pánico) NO se
+ * duplica aquí: lo publica la referencia, que es quien reescala los escenarios
+ * manteniendo la duración. Duplicarlo sería la forma más fácil de comparar dos
+ * cosas distintas sin darse cuenta.
+ *
+ * Nota: la referencia incluye `blockSizeDependentScenarios`, que mide en
+ * NATIVO si la salida cambia con el tamaño de bloque. Hoy son dos (modulación
+ * por bloque y smoothers de la reverb por bloque). No se comprueba aquí porque
+ * no es una propiedad del puente WASM sino del motor; está documentado en
+ * ROADMAP.md (Fase 5) y en HANDOFF.md.
+ *
  * El test nativo NEURONiK_WasmParityTest ejecuta los MISMOS escenarios sobre
  * la misma frontera (DspEngineFacade) que consume el puente WASM y vuelca el
  * canal izquierdo a JSON. Este test instancia el módulo WASM real y compara
@@ -62,8 +79,6 @@ const Module = await createModule({
   },
 });
 
-const SAMPLE_RATE = reference.sampleRate;
-const BLOCK = reference.blockSize;
 
 // --- Runtime::Event: 24 bytes [i32 type, i32 channel, i32 note, i32 value14, f32 value, i32 sampleOffset]
 const EVENT_SIZE = 24;
@@ -88,12 +103,10 @@ function buildScenarios() {
     {
       name: 'A_neuronik_default', engineType: 0, params: defaultParams(),
       events: [{ block: 0, note: 60, velocity: 100 / 127 }],
-      blocks: 32, panicAtBlock: -1,
     },
     {
       name: 'B_neurotik_default', engineType: 1, params: defaultParams(),
       events: [{ block: 0, note: 48, velocity: 1.0 }],
-      blocks: 32, panicAtBlock: -1,
     },
     {
       // FX a mix no nulo (chorus 0.35, reverb 0.25) y pánico a mitad: el único
@@ -101,13 +114,11 @@ function buildScenarios() {
       name: 'C_fx_panico', engineType: 0, ulpBudget: ULP_BUDGET.C_fx_panico,
       params: { ...defaultParams(), masterLevel: 0.5, chorusRate: 0.8, chorusMix: 0.35, reverbSize: 0.7, reverbDamping: 0.6, reverbMix: 0.25 },
       events: [{ block: 0, note: 64, velocity: 100 / 127 }],
-      blocks: 48, panicAtBlock: 16,
     },
     {
       name: 'D_modmatrix', engineType: 0,
       params: { ...defaultParams(), modMatrix: [{ source: 1, destination: 4, amount: 0.5 }, { source: 0, destination: 0, amount: 0.0 }, { source: 0, destination: 0, amount: 0.0 }, { source: 0, destination: 0, amount: 0.0 }] },
       events: [{ block: 0, note: 60, velocity: 100 / 127 }],
-      blocks: 24, panicAtBlock: -1,
     },
     {
       // Modelo espectral en el slot 0 (camino neuronikLoadModel): el timbre
@@ -115,7 +126,6 @@ function buildScenarios() {
       name: 'E_modelo_espectral', engineType: 0, loadModel: true,
       params: defaultParams(),
       events: [{ block: 0, note: 69, velocity: 1.0 }],
-      blocks: 24, panicAtBlock: -1,
     },
   ];
 }
@@ -183,9 +193,9 @@ function writeParams(p) {
   Module._neuronikSetGlobalParams(gpPtr, gpSize);
 }
 
-function runScenario(s) {
+function runScenario(s, sampleRate, blockSize, blocks, panicAtBlock) {
   Module._neuronikSetEngine(s.engineType);
-  Module._neuronikInit(SAMPLE_RATE, BLOCK);
+  Module._neuronikInit(sampleRate, blockSize);
 
   if (s.loadModel) {
     // Mismo camino que el worklet (neuronik:models -> neuronikLoadModel):
@@ -199,13 +209,13 @@ function runScenario(s) {
   writeParams(s.params);
 
   const eventPtr = Module._malloc(EVENT_SIZE);
-  const blockBytes = BLOCK * 4;
+  const blockBytes = blockSize * 4;
   const leftPtr = Module._malloc(blockBytes);
   const rightPtr = Module._malloc(blockBytes);
 
-  const out = new Float32Array(s.blocks * BLOCK);
-  for (let b = 0; b < s.blocks; ++b) {
-    if (b === s.panicAtBlock) Module._neuronikAllNotesOff();
+  const out = new Float32Array(blocks * blockSize);
+  for (let b = 0; b < blocks; ++b) {
+    if (b === panicAtBlock) Module._neuronikAllNotesOff();
 
     const blockEvents = s.events.filter((e) => e.block === b);
     if (blockEvents.length > 0) {
@@ -218,10 +228,10 @@ function runScenario(s) {
       heapF32[(eventPtr >> 2) + 4] = e.velocity;
       heap32[(eventPtr >> 2) + 5] = 0;
     }
-    Module._neuronikProcess(leftPtr, rightPtr, BLOCK, blockEvents.length > 0 ? eventPtr : 0, blockEvents.length);
+    Module._neuronikProcess(leftPtr, rightPtr, blockSize, blockEvents.length > 0 ? eventPtr : 0, blockEvents.length);
 
-    const left = heapF32.subarray(leftPtr >> 2, (leftPtr >> 2) + BLOCK);
-    out.set(left, b * BLOCK);
+    const left = heapF32.subarray(leftPtr >> 2, (leftPtr >> 2) + blockSize);
+    out.set(left, b * blockSize);
   }
 
   Module._free(eventPtr);
@@ -241,40 +251,70 @@ function ulpDistance(a, b) {
 }
 
 let totalFailed = 0;
-for (const scenario of buildScenarios()) {
-  const ref = reference.scenarios.find((r) => r.name === scenario.name);
-  if (!ref) { console.error(`[parity] FALLO: la referencia no contiene '${scenario.name}'`); ++totalFailed; continue; }
+let totalCompared = 0;
+let totalCases = 0;
 
-  const got = runScenario(scenario);
-  let maxUlp = 0, maxDiff = 0, worstIdx = -1, mismatches = 0;
+// Un caso = una pareja (sample rate, tamaño de bloque). La matriz entera se
+// recorre: cada caso tiene su propia referencia nativa, así que esto valida de
+// verdad sample rate y block size, no una sola pareja.
+for (const c of reference.cases) {
+  ++totalCases;
+  const label = `${String(c.sampleRate).padStart(5)} Hz / bloque ${String(c.blockSize).padStart(3)}`;
+  let caseFailed = 0;
+  let caseMaxUlp = 0;
 
-  if (got.length !== ref.samples.length) {
-    console.error(`[parity] ${scenario.name}: longitud ${got.length} != referencia ${ref.samples.length}`);
-    ++totalFailed;
-    continue;
+  for (const scenario of buildScenarios()) {
+    const ref = c.scenarios.find((r) => r.name === scenario.name);
+    if (!ref) { console.error(`[parity] FALLO: el caso ${label} no contiene '${scenario.name}'`); ++caseFailed; ++totalFailed; continue; }
+
+    const got = runScenario(scenario, c.sampleRate, c.blockSize, ref.blocks, ref.panicAtBlock);
+    let maxUlp = 0, maxDiff = 0, worstIdx = -1, mismatches = 0;
+
+    if (got.length !== ref.samples.length) {
+      console.error(`[parity] ${label} ${scenario.name}: longitud ${got.length} != referencia ${ref.samples.length}`);
+      ++caseFailed; ++totalFailed;
+      continue;
+    }
+
+    const budget = scenario.ulpBudget ?? 0;
+    for (let i = 0; i < got.length; ++i) {
+      const d = ulpDistance(got[i], ref.samples[i]);
+      const diff = Math.abs(got[i] - ref.samples[i]);
+      if (d > maxUlp) { maxUlp = d; worstIdx = i; }
+      if (diff > maxDiff) maxDiff = diff;
+      if (d > budget || diff > MAX_DIFF_ABS) ++mismatches;
+    }
+
+    totalCompared += got.length;
+    if (maxUlp > caseMaxUlp) caseMaxUlp = maxUlp;
+
+    if (mismatches !== 0) {
+      ++caseFailed;
+      ++totalFailed;
+      console.error(
+        `[parity] ${label} ${scenario.name.padEnd(20)} FALLO  maxUlp=${maxUlp}${budget > 0 ? ` (budget ${budget})` : ' (bit-exacta)'}  maxDiff=${maxDiff.toExponential(3)}  mismatched=${mismatches}/${got.length}`
+        + `  (peor muestra #${worstIdx}: wasm=${got[worstIdx]} nativo=${ref.samples[worstIdx]})`
+      );
+    }
   }
 
-  const budget = scenario.ulpBudget ?? 0;
-  for (let i = 0; i < got.length; ++i) {
-    const d = ulpDistance(got[i], ref.samples[i]);
-    const diff = Math.abs(got[i] - ref.samples[i]);
-    if (d > maxUlp) { maxUlp = d; worstIdx = i; }
-    if (diff > maxDiff) maxDiff = diff;
-    if (d > budget || diff > MAX_DIFF_ABS) ++mismatches;
-  }
-
-  const ok = mismatches === 0;
+  const ok = caseFailed === 0;
   if (!ok) ++totalFailed;
-  console.log(
-    `[parity] ${scenario.name.padEnd(20)} ${ok ? 'OK ' : 'FALLO'}  maxUlp=${maxUlp}${budget > 0 ? ` (budget ${budget})` : ' (bit-exacta)'}  maxDiff=${maxDiff.toExponential(3)}  mismatched=${mismatches}/${got.length}`
-    + (ok ? '' : `  (peor muestra #${worstIdx}: wasm=${got[worstIdx]} nativo=${ref.samples[worstIdx]})`)
-  );
+  console.log(`[parity] ${label}  ${ok ? 'OK   ' : 'FALLO'} ${buildScenarios().length - caseFailed}/${buildScenarios().length} escenarios  maxUlp=${caseMaxUlp}`);
 }
 
 Module._free(gpPtr); Module._free(layoutPtr); Module._free(modPtr);
 
 if (totalFailed > 0) {
-  console.error('[parity] FALLO: escenario(s) fuera de su presupuesto de ulps.');
+  console.error(`[parity] FALLO: ${totalFailed} comparacion(es) fuera de su presupuesto de ulps.`);
   process.exit(1);
 }
-console.log('[parity] OK: paridad WASM<->nativo — bit-exacta en los cinco escenarios (núcleo y cola de FX).');
+console.log(`[parity] OK: paridad WASM<->nativo bit-exacta en ${totalCases} caso(s) de la matriz (${totalCompared} muestras comparadas).`);
+
+// La dependencia del tamaño de bloque se mide en nativo (ver la cabecera): aquí
+// solo se informa, porque no es una propiedad del puente.
+const dependent = Array.isArray(reference.blockSizeDependentScenarios) ? reference.blockSizeDependentScenarios : [];
+if (dependent.length > 0) {
+  console.log(`[parity] NOTA: en nativo, ${dependent.join(', ')} dependen del tamaño de bloque `
+    + "(LFO por bloque y smoothers de la reverb por bloque; no es del puente WASM — ver ROADMAP Fase 5).");
+}

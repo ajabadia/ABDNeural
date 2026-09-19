@@ -43,6 +43,50 @@ else()
 endif()
 
 # ============================================================================
+# ABDSHAREDCODE — substrato DSP compartido del motor (Fase 1 [5/6])
+# ============================================================================
+# DRY transversal: el sustrato que hasta ahora vivia en Source/DSP (AudioBuffer,
+# HeapBlock, SmoothedValue, FloatVectorOperations, ScopedNoDenormals, Random,
+# Maths, los puertos MIDI, dspDbg y el leak detector) vive en
+# ABDSharedCode::DspCore (namespace abd::dsp). Los ficheros de Source/DSP/ son
+# shims que lo re-exportan con el nombre antiguo (`namespace dsp = abd::dsp;`),
+# de modo que el motor no cambia una sola linea.
+#
+# DEBE ir despues de JUCE: los modulos de ABDSharedCode que NEURONiK no usa
+# (AutoUpdater, HardwareDrivers) enlazan juce_core/juce_audio_basics.
+set(ABDSHARED_CODE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../ABDSharedCode")
+
+# Se apagan los modulos y los tests que no se consumen. Los tests de DspCore SI
+# se construyen: son 2 s (header-only, sin JUCE) y son el guard de regresion del
+# sustrato compartido (incluido el bug de HeapBlock que descubrio el port de la
+# reverb); se registran en ctest unas lineas mas abajo.
+set(ABDSHAREDCODE_BUILD_SYNTHCORE_TESTS OFF)
+set(ABDSHAREDCODE_BUILD_AUTOUPDATER OFF)
+set(ABDSHAREDCODE_BUILD_HARDWAREDRIVERS OFF)
+set(ABDSHAREDCODE_BUILD_HARDWAREMIDIDETECT OFF)
+
+if(EXISTS "${ABDSHARED_CODE_DIR}/CMakeLists.txt")
+    message(STATUS "ABDSharedCode: usando el local en ${ABDSHARED_CODE_DIR}")
+    add_subdirectory("${ABDSHARED_CODE_DIR}" "${CMAKE_BINARY_DIR}/ABDSharedCode")
+else()
+    include(FetchContent)
+    FetchContent_Declare(
+      ABDSharedCode
+      GIT_REPOSITORY https://github.com/ajabadia/ABDSharedCode.git
+      GIT_TAG        master
+    )
+    FetchContent_MakeAvailable(ABDSharedCode)
+endif()
+
+# DspCore y DspEffects son INTERFACE (todo inline/template): no hay nada que
+# enlazar, solo la ruta de include. Se pone a nivel de directorio a proposito:
+# los shims de Source/DSP la necesitan desde CUALQUIER consumidor —el plugin, el
+# host del piloto, ModelMaker y cada test— y asi un target nuevo no puede
+# olvidarse de propagarla. (Diferencia con ABDEep, que si enlaza
+# ABDShared::SynthCore target a target: aquel modulo tiene .cpp que enlazar.)
+include_directories("${ABDSHARED_CODE_DIR}")
+
+# ============================================================================
 # ADD SOURCE FILES (DSP CORE)
 # ============================================================================
 
@@ -233,6 +277,11 @@ target_link_libraries(NEURONiK PRIVATE
     juce::juce_gui_basics
     juce::juce_gui_extra
     NEURONiK_Common
+    # Substrato y efectos compartidos (INTERFACE: solo aportan includes). La
+    # ruta ya llega por el include_directories del bloque de ABDSharedCode; el
+    # enlace explicito deja la dependencia visible en el grafo del producto.
+    ABDShared::DspCore
+    ABDShared::DspEffects
 )
 
 # Add include directories for source files
@@ -250,6 +299,14 @@ target_include_directories(NEURONiK PRIVATE
 # ============================================================================
 
 enable_testing()
+
+# Guard de regresion del sustrato compartido (ABDSharedCode::DspCore): corre el
+# test del modulo dentro de esta suite porque es aqui donde se consume. El target
+# solo existe si ABDSHAREDCODE_BUILD_DSPCORE_TESTS esta ON (lo esta unas lineas
+# mas arriba); con OFF la suite no lo exige.
+if(TARGET ABDShared_DspCore_Tests)
+    add_test(NAME ABDShared_DspCore_Tests COMMAND ABDShared_DspCore_Tests)
+endif()
 
 add_executable(NEURONiK_DSPReferenceTest
     Tests/DSPReferenceTest.cpp
@@ -275,10 +332,14 @@ add_test(NAME NEURONiK_DSPReferenceTest COMMAND NEURONiK_DSPReferenceTest)
 # ============================================================================
 # WASM PARITY REFERENCE (Fase 5)
 # ============================================================================
-# Genera build-wasm/parity-native.json: la referencia nativa de los 4
-# escenarios que Tests/neuronik_wasm_parity.mjs re-ejecuta sobre el módulo
-# WASM real y compara muestra a muestra. No entra en ctest: es un generador,
-# el árbitro final es el test Node (paso 4 de build_wasm.bat).
+# Genera build-wasm/parity-native.json: la referencia nativa de los 5
+# escenarios x 9 casos (44.1/48/96 kHz x 64/128/512 muestras de bloque) que
+# Tests/neuronik_wasm_parity.mjs re-ejecuta sobre el módulo WASM real y compara
+# muestra a muestra. La duración de cada escenario es la misma en todos los
+# casos (los bloques se reescalan sobre 128): eso es lo que convierte la matriz
+# en una validación de sample rate y block size, y de paso mide en nativo si la
+# salida depende del tamaño de bloque. No entra en ctest: es un generador, el
+# árbitro final es el test Node (paso 4 de build_wasm.bat).
 add_executable(NEURONiK_WasmParityTest
     Tests/WasmParityTest.cpp
     ${NEURONIK_DSP_SOURCES}
@@ -403,6 +464,50 @@ target_link_libraries(NEURONiK_DspReverbJucePolicyTest PRIVATE
 )
 
 add_test(NAME NEURONiK_DspReverbJucePolicyTest COMMAND NEURONiK_DspReverbJucePolicyTest)
+
+# Efectos migrados a ABDSharedCode::DspEffects (continuacion de la Fase 1
+# [5/6], que movio la reverb): chorus, delay y saturacion son ahora motores
+# compartidos y Source/DSP/Effects/ son envoltorios de producto. Este test fija
+# que la migracion no cambio la salida: compara el envoltorio contra una
+# REFERENCIA CONGELADA del efecto de antes, 0 ulps, muestra a muestra.
+#
+# No enlaza JUCE: el modulo compartido (DspCore + DspEffects) es JUCE-free, que
+# es justo el punto de la migracion. Solo necesita la ruta de include de
+# ABDSharedCode, que ya llega a nivel de directorio.
+add_executable(NEURONiK_DspEffectsParityTest
+    Tests/DspEffectsParityTest.cpp
+)
+
+target_include_directories(NEURONiK_DspEffectsParityTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+)
+
+add_test(NAME NEURONiK_DspEffectsParityTest COMMAND NEURONiK_DspEffectsParityTest)
+
+# Sustrato compartido (ABDSharedCode::DspCore) contra su original: el port de
+# dsp::AudioBuffer se compara con juce::AudioBuffer (misma secuencia de
+# operaciones = mismas muestras bit a bit) y, sobre todo, la ESTRUCTURA de
+# punteros: donde vive el array de canales (la rama de preallocatedChannelSpace,
+# que estuvo muerta mientras numElementsInArray devolvia 1) y que pasa al mover o
+# al copiar un buffer que referencia memoria externa. La comparacion tiene que
+# estar en un consumidor con JUCE: el modulo compartido es JUCE-free por
+# contrato.
+add_executable(NEURONiK_AudioBufferParityTest
+    Tests/AudioBufferParityTest.cpp
+)
+
+target_include_directories(NEURONiK_AudioBufferParityTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+)
+
+target_link_libraries(NEURONiK_AudioBufferParityTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_core
+)
+
+add_test(NAME NEURONiK_AudioBufferParityTest COMMAND NEURONiK_AudioBufferParityTest)
 
 # Velocity curve: pure MIDI shaping, no plugin dependencies needed.
 add_executable(NEURONiK_VelocityCurveTest

@@ -3,7 +3,17 @@
 
     Delay.h
     Created: 22 Jan 2026
-    Description: Stereo feedback delay with circular buffer and smoothing.
+    Description: Envoltorio de producto del retardo estereo realimentado.
+
+    Separacion de responsabilidades (migracion de efectos, igual que la reverb
+    en la Fase 1 [5/6]): la maquina del retardo vive en el modulo compartido
+    ABDSharedCode::DspEffects (DspEffects/DspDelay.h, namespace abd::dsp). Aqui
+    queda lo especifico de este producto: la conversion segundos -> muestras, el
+    suavizado del tiempo (50ms) y del feedback (20ms), el recorte del feedback a
+    0.95, la puerta de denormales y la mezcla (wet 0.5 sumado al dry).
+
+    La API publica no cambia: el motor (BaseEngine) sigue llamando a prepare(),
+    setParameters(), processBlock() y reset() exactamente igual.
 
   ==============================================================================
 */
@@ -11,8 +21,7 @@
 #pragma once
 
 #include "DspCore.h"
-
-#include <vector>
+#include "DspEffects/DspDelay.h"
 
 namespace NEURONiK::DSP::Effects {
 
@@ -24,17 +33,12 @@ namespace NEURONiK::DSP::Effects {
 class Delay
 {
 public:
-    Delay() : delayBuffer(2, 96000) // Default 2s @ 48kHz
-    {
-        delayBuffer.clear();
-    }
+    Delay() = default;
 
     void prepare(double sampleRate, int maxDelaySamples)
     {
         currentSampleRate = sampleRate;
-        delayBuffer.setSize(2, maxDelaySamples + 1024);
-        delayBuffer.clear();
-        writePos = 0;
+        delay.prepare(sampleRate, maxDelaySamples);
 
         timeSmoother.reset(sampleRate, 0.05); // 50ms ramp for delay time to avoid pitch jumps
         feedbackSmoother.reset(sampleRate, 0.02); // 20ms ramp
@@ -52,49 +56,38 @@ public:
         dsp::ScopedNoDenormals noDenormals;
         const int numChannels = buffer.getNumChannels();
         const int numSamples = buffer.getNumSamples();
-        const int bufferSize = delayBuffer.getNumSamples();
 
         for (int sample = 0; sample < numSamples; ++sample)
         {
-            float currentDelay = timeSmoother.getNextValue();
-            float currentFB = feedbackSmoother.getNextValue();
+            const float currentDelay = timeSmoother.getNextValue();
+            const float currentFB = feedbackSmoother.getNextValue();
 
             for (int channel = 0; channel < numChannels; ++channel)
             {
-                float inputSample = buffer.getReadPointer(channel)[sample];
+                const float inputSample = buffer.getReadPointer(channel)[sample];
 
-                // Read from delay buffer (Linear Interpolation)
-                float readPos = static_cast<float>(writePos) - currentDelay;
-                if (readPos < 0) readPos += static_cast<float>(bufferSize);
-
-                int index1 = static_cast<int>(readPos);
-                int index2 = (index1 + 1) % bufferSize;
-                float fraction = readPos - static_cast<float>(index1);
-
-                float delayedSample = (1.0f - fraction) * delayBuffer.getSample(channel % 2, index1) +
-                                      fraction * delayBuffer.getSample(channel % 2, index2);
-
-                // Write to delay buffer (Input + Feedback)
-                delayBuffer.setSample(channel % 2, writePos, inputSample + (delayedSample * currentFB));
+                // El motor lee la posicion interpolada y escribe input + delayed * feedback.
+                const float delayedSample =
+                    delay.processSample(channel, inputSample, currentDelay, currentFB);
 
                 // Mix
                 buffer.getWritePointer(channel)[sample] += delayedSample * 0.5f;
             }
 
-            if (++writePos >= bufferSize) writePos = 0;
+            // El puntero de escritura es por muestra, no por canal.
+            delay.advanceWritePosition();
         }
     }
 
     void reset()
     {
-        delayBuffer.clear();
+        delay.reset();
         timeSmoother.setCurrentAndTargetValue(timeSmoother.getTargetValue());
         feedbackSmoother.setCurrentAndTargetValue(feedbackSmoother.getTargetValue());
     }
 
 private:
-    dsp::AudioBuffer<float> delayBuffer;
-    int writePos = 0;
+    dsp::Delay delay;
     double currentSampleRate = 44100.0;
 
     dsp::LinearSmoothedValue<float> timeSmoother;

@@ -2,7 +2,8 @@
   ==============================================================================
 
     DspReverbParityTest.cpp
-    Fase 1 [5/6]: dsp::Reverb (Effects/DspReverb.h) contra juce::Reverb.
+    Fase 1 [5/6]: dsp::Reverb (ABDSharedCode::DspEffects, DspEffects/DspReverb.h)
+    contra juce::Reverb.
 
     Que fija este test:
 
@@ -42,7 +43,11 @@
   ==============================================================================
 */
 
-#include "Effects/DspReverb.h"
+#include "DspEffects/DspReverb.h"
+
+// Este test ejercita el modulo compartido por su nombre canonico (abd::dsp). El
+// alias corto `dsp::` que usa el motor vive en los shims de Source/DSP/ y lo
+// cubre Tests/MidiPortTest.cpp.
 
 #include <juce_audio_basics/juce_audio_basics.h>
 
@@ -126,10 +131,10 @@ struct SharedParams
 /** Render estereo del port. Devuelve [canal izq | canal der]. */
 std::vector<float> renderPort (const Input& in, const SharedParams& p, int channels, bool resetBefore)
 {
-    dsp::Reverb reverb;
+    abd::dsp::Reverb reverb;
     reverb.setSampleRate (kSampleRate);
 
-    dsp::Reverb::Parameters params;
+    abd::dsp::Reverb::Parameters params;
     params.roomSize = p.roomSize; params.damping = p.damping; params.wetLevel = p.wetLevel;
     params.dryLevel = p.dryLevel; params.width = p.width;     params.freezeMode = p.freezeMode;
     reverb.setParameters (params);
@@ -264,10 +269,10 @@ void checkDeterminism()
     realimentacion de los comb filters con error). */
 void checkTailIsFinite()
 {
-    dsp::Reverb reverb;
+    abd::dsp::Reverb reverb;
     reverb.setSampleRate (kSampleRate);
 
-    dsp::Reverb::Parameters params;
+    abd::dsp::Reverb::Parameters params;
     params.roomSize = 0.9f; params.damping = 0.1f; params.wetLevel = 0.5f;
     params.dryLevel = 0.0f; params.width = 0.5f;   params.freezeMode = 0.0f;
     reverb.setParameters (params);

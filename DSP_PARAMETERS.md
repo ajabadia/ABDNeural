@@ -44,7 +44,6 @@ Será la referencia inicial para el adaptador web y el futuro piloto Next.js. Lo
 | ID | Tipo | Rango | Default | Uso DSP actual |
 |---|---|---:|---:|---|
 | `oscLevel` | float | `0..1` | `1` | Nivel de voz |
-| `oscPitchCoarse` | float | Pendiente de confirmar | Pendiente | Definido como ID; no aparece en la sincronización actual |
 | `oscInharmonicity` | float | `0..1` | `0` | Stretching/inharmonicidad |
 | `oscRoughness` | float | `0..0.5` | `0` | Entropía/roughness |
 | `morphX` | float | `0..1` | `0` | Morphing espectral X |
@@ -140,7 +139,9 @@ El motor actual sincroniza source, destination y amount para los cuatro slots. L
   size/damping/width.
 - **Retirado del layout**: `harmMix` (nadie lo leía; los presets antiguos que lo llevan se
   migran al cargar, ver más abajo).
-- **Pendiente de DSP**: `oscPitchCoarse` (declarado fuera del layout).
+- **Retirado del namespace de IDs**: `oscPitchCoarse` (2026-09-19). Estaba declarado en `IDs::`
+  desde el primer día pero nunca entró en el layout, así que no lo leía el motor, ni el panel,
+  ni ningún preset: era una promesa, no un cableado pendiente. Ver la sección de abajo.
 - **Retirado de la UI**: `unisonEnabled` (el motor no lo lee).
 - **Solo panel**: `randomStrength` y los tres `freeze*`.
 - **Pendiente de oído**: la validación auditiva de los parámetros recién conectados y las
@@ -221,7 +222,7 @@ resto de referencias del código, no por suposición:
 implemented   65   leídos por el procesador y enviados al motor (o transforman el MIDI)
 uiOnly         4   solo accionan un panel; el motor no los ve
 notRouted      1   está en el APVTS pero no lo lee nadie fuera de su definición
-notInLayout    1   oscPitchCoarse
+notInLayout    0   (ninguno: oscPitchCoarse se retiró de IDs:: el 2026-09-19)
 ```
 
 > Historial (2026-09-16): la primera versión de esta tabla marcaba 54/5/12 porque los cuatro
@@ -232,7 +233,9 @@ notInLayout    1   oscPitchCoarse
 > Después se conectaron el filtrado de canal, el tempo y los efectos completos (63/4/4), y en la
 > pasada de "sin consumidor" se conectaron la curva de velocidad y el MIDI thru (65/4/2) y,
 > por último, `harmMix` se retiró del layout, con lo que la tabla queda en 65/4/1 y el total baja
-> de 71 a 70 parámetros.
+> de 71 a 70 parámetros (este total es el del layout, que no cambia al retirar el ID: los 71
+> contaban también el `notInLayout`). Último cambio (2026-09-19): `oscPitchCoarse` se retira
+> del namespace de IDs y `notInLayout` pasa a 0 — el contrato ya no tiene ningún fantasma.
 
 - `engines` indica dónde se consume: `both` (DSP compartido), `neuronik`, `neurotik`,
   `host` (procesador/capa MIDI) o `none`.
@@ -303,9 +306,18 @@ La UI web puede consultar esto en `generated/parameters.generated.js` (`dspStatu
 
 ## Divergencias conocidas y su seguimiento
 
-`oscPitchCoarse` está declarado en el namespace de IDs pero nunca se añade al layout. En lugar
-de documentarlo solo aquí, ahora está en `getUnroutedParameterIds()` y el test verifica que
-sigue ausente: si algún día se conecta, la prueba falla y obliga a sacarlo de la lista.
+**No hay ninguna abierta (2026-09-19).** El mecanismo sigue en pie y vacío a propósito:
+`getUnroutedParameterIds()` devuelve la lista de IDs declarados en `IDs::` que no están en el
+layout, el exportador los publica como `notInLayout` en el contrato y la suite de regresión
+falla en cuanto la lista cambia en cualquier dirección. Así, el día que alguien declare un
+parámetro fuera del layout, aparece en el contrato y en el test en vez de quedarse invisible.
+
+El histórico de lo que pasó por aquí:
+
+| ID | Qué se hizo |
+|---|---|
+| `harmMix` (2026-09-16) | Retirado del layout: nadie lo leía y no existe un "harmonic mix" en la voz aditiva |
+| `oscPitchCoarse` (2026-09-19) | Retirado del namespace de IDs: ver la sección siguiente |
 
 ## Parámetros sin consumidor: decisión tomada (2026-09-16)
 
@@ -318,6 +330,7 @@ fue el mismo: **no cambiar el sonido de ningún preset existente sin decirlo**.
 | `midiThru` | **Conectado, opt-in** | El control decía una cosa y el plugin hacía otra (ecoaba siempre). Ahora manda el parámetro: con él apagado no se emite MIDI |
 | `unisonEnabled` | **Control retirado de la UI** | Conectarlo como puerta habría silenciado el unison de todos los presets existentes (su default es off). La cantidad ya la gobiernan detune y spread, así que el toggle solo prometía algo que no hacía |
 | `harmMix` | **Retirado del layout** | Nadie lo leía y no existe un "harmonic mix" en la voz aditiva: implementarlo sería diseñar sonido sin encargo. Mantener un parámetro muerto "por compatibilidad" solo tiene sentido si alguien lo lee. Ver *Migración de presets* |
+| `oscPitchCoarse` | **Retirado del namespace de IDs** | No estaba en el layout, así que no lo leía el motor, ni el panel, ni ningún preset: retirarlo no cambia ni el sonido ni el layout (70 parámetros, los mismos), solo borra la promesa. Ver el detalle abajo |
 
 ### Detalles de implementación
 
@@ -333,10 +346,20 @@ fue el mismo: **no cambiar el sonido de ningún preset existente sin decirlo**.
   **cambio de comportamiento** respecto al eco accidental anterior, y está documentado como tal.
 - `unisonEnabled` — el parámetro se conserva en el APVTS (compatibilidad de presets) pero ya no
   hay control: se retiró de `ParameterPanel` junto con su attachment.
+- `oscPitchCoarse` — **retirado del namespace de IDs (2026-09-19)**, y el motivo no es el ahorro
+  de trabajo sino que el encargo no existe: no hay spec vigente, ni control en el panel, ni un
+  preset que lo lleve, y el draft del que salió (`DOC/3 - ParameterDefinitions.h`, con
+  `oscPitchFine`, `oscPitchOctave` y `oscHarmonicCount`, ninguno adoptado) no se sigue. Lo que
+  **sí** existe es el camino de pitch por voz (MPE: `EventType::PitchBend` cruza la frontera, el
+  procesador inyecta el bend de 14 bits y `IVoice::notePitchBend(semitones)` recalcula
+  `pow(2, semis/12)` en cada voz) — un *coarse tune* global es otra cosa. Si algún día se quiere,
+  es una feature con su tarea: se implementa en el host como transposición de las notas
+  entrantes, junto a `velocityCurve` y `midiChannel`, sin tocar motor ni ABI WASM.
 
 No queda ningún parámetro muerto en el layout: los dos que había se han resuelto en direcciones
 distintas, por motivos distintos (uno se conectó porque su default era neutro; el otro se retiró
-porque conectarlo habría cambiado el sonido de todos los presets).
+porque conectarlo habría cambiado el sonido de todos los presets). Y desde el 2026-09-19 tampoco
+queda ningún ID declarado fuera del layout: los fantasmas se han ido por los dos lados.
 
 ## Migración de presets (retirada de `harmMix`)
 

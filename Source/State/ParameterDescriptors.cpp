@@ -268,9 +268,10 @@ juce::String dspNoteFor (const juce::String& id)
 
 juce::String dspNoteForUnroutedId (const juce::String& id)
 {
-    if (id == IDs::oscPitchCoarse)
-        return "Declared in the IDs namespace but absent from the layout";
-
+    // There are no unrouted IDs today: harmMix (2026-09-16) and oscPitchCoarse (2026-09-19)
+    // were retired from IDs:: instead of being kept as promises, so the list is empty and
+    // any id reaching this function is a new divergence that needs its own note here.
+    juce::ignoreUnused (id);
     return {};
 }
 
@@ -328,9 +329,13 @@ const ParameterDescriptor* findParameterDescriptor (const juce::String& id)
 
 juce::StringArray getUnroutedParameterIds()
 {
-    // Declared in IDs:: but never added to createParameterLayout().
-    // See DSP_PARAMETERS.md for the behaviour notes behind each entry.
-    return { IDs::oscPitchCoarse };
+    // Declared in IDs:: but never added to createParameterLayout(). Empty on purpose since
+    // 2026-09-19: oscPitchCoarse was the last entry and it was retired from IDs:: as well,
+    // so there are no phantom parameters left in either direction (declared-but-absent or
+    // present-but-unread). The mechanism stays because it is what makes a NEW divergence
+    // visible in the generated contract (notInLayout) instead of staying invisible, and
+    // the regression suite fails the moment this list changes. See DSP_PARAMETERS.md.
+    return {};
 }
 
 LayoutApvts createLayoutApvts()

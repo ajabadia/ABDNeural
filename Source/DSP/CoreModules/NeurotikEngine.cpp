@@ -11,7 +11,7 @@
 #include "DspCore.h"
 #include "NeurotikEngine.h"
 #include "../Synthesis/NeurotikVoice.h"
-#include "../DSPUtils.h"
+#include "../DspSafety.h"
 
 namespace NEURONiK::DSP {
 
@@ -29,9 +29,7 @@ void NeurotikEngine::prepare(double sampleRate, int samplesPerBlock)
 
 void NeurotikEngine::renderNextBlock(dsp::AudioBuffer<float>& buffer, dsp::MidiBuffer& midiMessages)
 {
-    const int numSamples = buffer.getNumSamples();
-    
-    // 1. Update LFOs and Global Parameters
+    // 1. Parametros del bloque (config de LFO, FX y params de voz)
     updateParameters();
 
     // 2. Process MIDI events
@@ -39,14 +37,11 @@ void NeurotikEngine::renderNextBlock(dsp::AudioBuffer<float>& buffer, dsp::MidiB
 
     buffer.clear();
 
-    // 3. Render Voices
-    for (auto& v : voices)
-    {
-        if (v->isActive())
-            v->renderNextBlock(buffer, 0, numSamples);
-    }
+    // 3. Voces + modulacion, en tramos de tasa de control fija: el LFO se lee y la
+    //    matriz se aplica cada kControlBlockSize muestras, no cada bloque del host.
+    renderVoicesWithControlRate(buffer);
 
-    // 4. Global FX & LFO Sampling
+    // 4. Global FX
     applyGlobalFX(buffer);
 }
 
@@ -60,7 +55,9 @@ void NeurotikEngine::updateParameters()
     }
 
     BaseEngine::updateParameters();
-    applyModulation();
+    // La modulacion NO se aplica aqui: la aplica renderVoicesWithControlRate() en la
+    // rejilla de control, con el valor de LFO de cada tramo (antes se aplicaba una vez
+    // por bloque del host y con el valor del bloque anterior).
 }
 
 void NeurotikEngine::applyModulation()

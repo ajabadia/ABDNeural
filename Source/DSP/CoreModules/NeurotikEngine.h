@@ -40,7 +40,7 @@ public:
 
 private:
     void handleMidiEvent(const dsp::MidiMessage& m) override;
-    void applyModulation();
+    void applyModulation() override;
 
     ::NEURONiK::DSP::Synthesis::NeurotikVoice::Params pendingVoiceParams;
     std::array<float, 64> lastModulations { 0.0f };

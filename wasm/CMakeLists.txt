@@ -42,6 +42,24 @@ message(STATUS "NEURONiK WASM: JUCE en ${JUCE_PATH}")
 # source dir ES este fichero; JUCE entra con nombre de binario dedicado.
 add_subdirectory("${JUCE_PATH}" "${CMAKE_BINARY_DIR}/JUCE")
 
+# ============================================================================
+# ABDSHAREDCODE - substrato DSP compartido (Fase 1 [5/6])
+# ============================================================================
+# El sustrato del motor (dsp::AudioBuffer, HeapBlock, SmoothedValue, puertos
+# MIDI...) vive en ABDSharedCode::DspCore; los ficheros de Source/DSP/ son shims
+# que lo re-exportan. Aqui solo hace falta la RUTA DE INCLUDE: DspCore y
+# DspEffects son INTERFACE (todo inline/template), no hay nada que enlazar.
+# A proposito NO se hace add_subdirectory(ABDSharedCode): seria cross-compilar
+# con em++ targets de este repo que no tienen nada que ver con el motor
+# (AutoUpdater, HardwareMidiDetect + sus assets embebidos) a cambio de nada.
+set(ABDSHARED_CODE_DIR "${NEURONIK_ROOT}/../ABDSharedCode")
+if(NOT EXISTS "${ABDSHARED_CODE_DIR}/CMakeLists.txt")
+    message(FATAL_ERROR
+        "ABDSharedCode no encontrado en ${ABDSHARED_CODE_DIR}: el motor toma de ahi "
+        "el sustrato DSP (DspCore). Clona ABDSharedCode como hermano de ABDNeural.")
+endif()
+message(STATUS "NEURONiK WASM: ABDSharedCode en ${ABDSHARED_CODE_DIR}")
+
 # Lista DSP compartida con el raiz (single-source, anti-drift). El puente
 # wasm es el unico fichero exclusivo de este build.
 include("${NEURONIK_ROOT}/DspSources.cmake")
@@ -69,6 +87,7 @@ target_include_directories(neuronik_dsp PRIVATE
     "${NEURONIK_ROOT}/Source"
     "${NEURONIK_ROOT}/Source/DSP"
     "${NEURONIK_ROOT}/Source/Common"
+    "${ABDSHARED_CODE_DIR}"
 )
 
 # juce_SystemStats_wasm.cpp de JUCE 8.0.12 usa emscripten_get_now() sin

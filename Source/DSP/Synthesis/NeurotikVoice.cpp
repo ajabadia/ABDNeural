@@ -12,7 +12,7 @@
 #include "../DspDebug.h"
 #include "../DspMidiMessage.h"
 #include "NeurotikVoice.h"
-#include "../DSPUtils.h"
+#include "../DspSafety.h"
 #include <algorithm>
 #include <array>
 

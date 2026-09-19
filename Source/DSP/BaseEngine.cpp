@@ -22,6 +22,7 @@ void BaseEngine::prepare(double sampleRate, int samplesPerBlock)
 {
     currentSampleRate = sampleRate;
     currentSamplesPerBlock = samplesPerBlock;
+    controlCarry = 0;
 
     saturation.prepare(sampleRate);
     delay.prepare(sampleRate, static_cast<int>(sampleRate * 2.0)); // 2s max
@@ -85,9 +86,10 @@ void BaseEngine::reset()
     delay.reset();
     chorus.reset();
     reverb.reset();
-    
+
     lfo1.reset();
     lfo2.reset();
+    controlCarry = 0;   // el reset tambien reinicia la rejilla de control
     
     for (auto& voice : voices)
     {
@@ -142,15 +144,46 @@ void BaseEngine::processMidiBuffer(dsp::MidiBuffer& midiMessages)
     }
 }
 
+void BaseEngine::renderVoicesWithControlRate(dsp::AudioBuffer<float>& buffer)
+{
+    const int numSamples = buffer.getNumSamples();
+    int offset = 0;
+
+    while (offset < numSamples)
+    {
+        // Se completa el tramo de control en curso antes de abrir otro: la rejilla es
+        // de kControlBlockSize muestras DE AUDIO, no de "bloques del host", asi que un
+        // host de 96 muestras (o de 1024) no la desplaza.
+        const int chunk = dsp::jmin(kControlBlockSize - controlCarry, numSamples - offset);
+
+        // 1. LFOs: el valor se lee una vez por tramo y se mantiene en todo el tramo.
+        lfo1Value.store(lfo1.processBlock(chunk));
+        lfo2Value.store(lfo2.processBlock(chunk));
+
+        // 2. Matriz de modulacion con el valor recien leido.
+        applyModulation();
+
+        // 3. Voces: configuran su resonator con ese snapshot y suman en el buffer.
+        for (auto& voice : voices)
+        {
+            if (voice != nullptr && voice->isActive())
+                voice->renderNextBlock(buffer, offset, chunk);
+        }
+
+        offset += chunk;
+        controlCarry = (controlCarry + chunk) % kControlBlockSize;
+    }
+}
+
 void BaseEngine::applyGlobalFX(dsp::AudioBuffer<float>& buffer)
 {
     const int numSamples = buffer.getNumSamples();
 
-    // 1. Process LFOs
-    lfo1Value.store(lfo1.processBlock(numSamples));
-    lfo2Value.store(lfo2.processBlock(numSamples));
+    // Los LFOs NO se leen aqui: los consume renderVoicesWithControlRate() en la rejilla
+    // de control, junto con la modulacion (antes se leian una vez por bloque del host y
+    // la matriz de modulacion heredaba el tamano de bloque).
 
-    // 2. Global Effects
+    // Global Effects
     saturation.processBlock(buffer);
     chorus.processBlock(buffer);
     delay.processBlock(buffer);
