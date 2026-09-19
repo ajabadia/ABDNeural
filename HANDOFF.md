@@ -2227,3 +2227,53 @@ Learn ni los visualizadores: eso es 8.2 y 8.3, y la lista está en el inventario
 **Dentro del plugin el audio es nativo** (8.1): la página habla por el bridge (APVTS) y el
 motor WASM del worklet (`src/wasm/`, ya cubierto por `neuronik_wasm_parity.mjs`) es para la
 página **fuera** del plugin. Dos motores sonando no es un caso soportado.
+
+---
+
+## Shell vainilla de la UI (base de 8.2, 2026-09-19) — hecha antes de 8.1 a propósito
+
+Sobre el andamiaje anterior se montó la primera UI de verdad, **sin cablear a nada**: el
+host, `build.bat`, `start.bat` y CMake siguen sirviendo el piloto React (`WebPilot/out`).
+Esta shell compila a `WebUI/dist`, que hoy no consume nadie.
+
+**Por qué en este orden (y qué me faltó a mí).** Empecé cableando la bancada del piloto
+(`NEURONiK Web Pilot.exe`) a la UI nueva y el usuario lo paró con razón: **8.1 es "el
+*editor del plugin* hospeda la página"**, y su DoD son Standalone y VST3 con el selftest de
+4 direcciones — nada de eso se toca moviendo el *host del piloto* de carpeta. Y la pantalla
+que estaba montando es 8.2 (paridad de control), que estaba ajustando a los selectores del
+selftest en vez de al panel nativo. Se cerró la shell primero porque es **agnóstica de quién
+la hospeda** (hospedar la página es ResourceProvider + adaptadores, los mismos con cualquier
+página), así que no se tira: **8.1 es el siguiente paso**.
+
+**Qué hay ahora en `WebUI/src/`:**
+
+| Fichero | Qué es |
+|---|---|
+| `contracts/screens.js` | Los ids de cada pantalla, como datos (BRIDGE, GENERAL, KEYS), todos del contrato generado. |
+| `ui/panel.js` | Shell: pestañas, el **control base** (`masterLevel`) y GENERAL con los 11 ids y su valor real. **Sin widgets** (los de la familia compartida son 8.2); la propia UI lo dice. |
+| `ui/keyboard.js` | El teclado compartido (`@abdsynths/midi-keyb`) con la API de feedback del host (vía silenciosa: `setModWheel`/`setPitchBend` no re-disparan callbacks de usuario). |
+| `app.js` | Arranque. El orden importa: el panel se monta **antes** de `store.start()` (el host mide "panel in DOM" y "page ready" por separado). |
+
+**El contrato con el host, pinchado en tests** (esto es lo que evita que el E2E falle solo
+dentro de WebView2, minutos después):
+
+| Selector / handle | Lo lee | Test |
+|---|---|---|
+| el PRIMER `input[type=range]` = `#masterLevel` | NATIVE→JS y JS→NATIVE | `panel.test.js`, `keyboard.test.js` |
+| `footer.panel-footer code` (JSON normalizado) | GENERAL (11 ids) | `panel.test.js` |
+| `[data-tab="keys"]`, `#mod-wheel-container .kbd-wheel-slider` | MIDI | `keyboard.test.js` |
+| `window.__pilotReady`, `window.__pilotSendMidi` | métricas y MIDI | `paramStore.test.js` |
+
+El frágil es el primero: **el teclado también monta inputs `type=range`** (las ruedas), así
+que el orden de las pantallas (BRIDGE antes que KEYS) es lo que mantiene el slider del
+control base en cabeza. Reordenar las pestañas rompe el selftest, y hay test.
+
+**Suite: 81 tests en 9 ficheros** (`cd WebUI && pnpm test`), incluidos los que montan el
+teclado compartido en jsdom de verdad (no una maqueta) y comprueban que `setMidiState`
+mueve la rueda a 64 sin devolver el eco como input de usuario. Bundle: **62,4 KB de JS
+(15,6 KB gzip)**.
+
+**Lo que NO se hizo, para que no se confunda con hecho:** la paridad de 8.2 (widgets de la
+familia compartida, reparto por las seis pestañas del panel nativo, envolvente dibujada,
+matriz de modulación, `dspStatus` visible) y por supuesto 8.1. La lista completa sigue en el
+inventario 8.0.

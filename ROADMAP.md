@@ -601,6 +601,33 @@ Nace `ABDNeural/WebUI/` — proyecto Vite vainilla **propio** (no se comparte c�
   (lo que embebe el host del piloto y sirve `start.bat`). Esta carpeta compila a `WebUI/dist` y
   no entra ahí: cambiar el motor de UI es un paso deliberado de 8.2, no un efecto colateral.
 
+**8.2 (arranque) La shell vainilla — hecho 2026-09-19, a propósito ANTES de 8.1**
+
+La base de 8.2, escrita y verde, **sin cablear a nada**: el host, `build.bat`, `start.bat`
+y CMake siguen sirviendo el piloto React. Se hace antes de 8.1 porque la shell es
+agnóstica de quién la hospeda (hospedar la página es ResourceProvider + adaptadores, los
+mismos con cualquier página), así que tenerla verde no se tira y permite A/B contra el
+piloto. **8.1 sigue pendiente y es el siguiente paso.**
+
+- [x] `src/contracts/screens.js`: los ids de cada pantalla como datos (BRIDGE, GENERAL,
+      KEYS), todos del contrato generado. La agrupación definitiva (GENERAL, RESONATOR,
+      FILTER/ENV, FX, LFO/MOD, BROWSER, como el panel nativo) es 8.2 de verdad.
+- [x] `src/ui/panel.js`: shell con pestañas, el **control base** (`masterLevel`) y la
+      pantalla GENERAL con los 11 ids y su valor real leído del contrato. **Sin widgets**:
+      los knobs/sliders/toggles de la familia compartida son 8.2 (se dice en la propia UI,
+      no se disfraza).
+- [x] `src/ui/keyboard.js`: el teclado compartido (`@abdsynths/midi-keyb`) con la API de
+      feedback del host (`setPitchBend`/`setModWheel`, la vía silenciosa).
+- [x] Los selectores que el `--selftest` del host lee quedan **pinchados en tests** (primer
+      `input[type=range]` = `masterLevel`, `footer.panel-footer code` como JSON,
+      `[data-tab="keys"]` y `#mod-wheel-container .kbd-wheel-slider`): así no se rompen en
+      silencio dentro de WebView2. Detalle en `WebUI/README.md`.
+- [x] Suite: **81 tests** en 9 ficheros (`cd WebUI && pnpm test`). Bundle: 62,4 KB de JS
+      (15,6 KB gzip) frente a los 306 KB (89 KB) del piloto React.
+- **Fuera de circuito:** `WebUI/dist` no lo consume nadie todavía. El cableado del host es
+      un paso deliberado y va con 8.1 (en el **editor del plugin**, no en la bancada del
+      piloto).
+
 **8.1 El editor del plugin hospeda la página**
 - [ ] Mover a `NEURONiKEditor` lo que hoy vive en `WebPilotHost`: `WebBrowserComponent` +
       `ResourceProvider` (disco en dev con hot-reload, embebido en release — mismo patrón que

@@ -11,6 +11,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@abdsynths/midi-keyb": "workspace:*",
     "@abdsynths/shared": "workspace:*"
   },
   "devDependencies": {
