@@ -53,13 +53,28 @@ describe('WebUI entry contract', () => {
     expect(app).toContain('createParameterStore({ ids: SCREEN_PARAMETER_IDS })');
   });
 
-  it('mounts the shared keyboard with the MIDI senders of the store', () => {
+  it('mounts the shared keyboard with the DUAL MIDI path (bridge + worklet)', () => {
     expect(app).toContain("import { mountKeyboard } from './ui/keyboard.js'");
-    expect(app).toContain('onNoteOn: store.sendMidiNoteOn');
-    expect(app).toContain('onNoteOff: store.sendMidiNoteOff');
-    expect(app).toContain('onPitchBend: store.sendMidiPitchBend');
+    expect(app).toContain('store.sendMidiNoteOn(note, velocity)');
+    expect(app).toContain('pushMidiToWorklet({ kind: \'noteOn\', note, velocity })');
+    expect(app).toContain('store.sendMidiNoteOff(note)');
+    expect(app).toContain('pushMidiToWorklet({ kind: \'noteOff\', note })');
+    expect(app).toContain('store.sendMidiPitchBend(value)');
+    expect(app).toContain('pushMidiToWorklet({ kind: \'pitchBend\', value })');
     expect(app).toContain('onModWheel: store.sendMidiModWheel');
-    expect(app).toContain('onPanic: store.sendMidiPanic');
+  });
+
+  it('wires the audio policy: owner from the bridge state, worklet behind a button', () => {
+    expect(app).toContain("import { audioOwnerFor } from './audio/policy.js'");
+    expect(app).toContain('owner = audioOwnerFor(state.bridgeAvailable)');
+    expect(app).toContain('panel.paintAudio({ owner, ...engineSnapshot })');
+    expect(app).toContain('startAudioEngine()');
+  });
+
+  it('syncs state to the worklet through ONE path (page edits and native snapshots)', () => {
+    expect(app).toContain('if (!isAudioEngineReady()) return;');
+    expect(app).toContain('pushParamsToWorklet(state.parameters)');
+    expect(app).toContain('pushEngineToWorklet(index)');
   });
 
   it('feeds controls normalised values and pushes normalised edits back', () => {

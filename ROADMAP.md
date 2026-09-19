@@ -633,9 +633,16 @@ piloto. **8.1 sigue pendiente y es el siguiente paso.**
       `ResourceProvider` (disco en dev con hot-reload, embebido en release — mismo patrón que
       ABDMS2000), y los tres adaptadores (`PresetManagerAdapter`, `MidiInjectionAdapter`,
       `EngineModelsAdapter`). El host del piloto se queda como banco de pruebas hasta 8.4.
-- [ ] Decidir y fijar en código que **dentro del plugin el audio es nativo y la página solo
-      habla por el bridge** (APVTS). El motor WASM del worklet es para la página fuera del
-      plugin (navegador); activarlo dentro del plugin daría dos motores sonando.
+- [x] **Decidido y fijado en código (2026-09-19):** dentro del plugin el audio es nativo y la
+      página solo habla por el bridge (APVTS). Una sola señal — `window.__JUCE__`, la MISMA que
+      usa el puente, vía `nativeBackend()` — decide quién posee el audio: `WebUI/src/audio/policy.js`.
+      El motor del worklet (`WebUI/src/audio/audioWorkletEngine.js`, portado del piloto) **no
+      arranca** dentro de un host: devuelve `blocked` y ni siquiera construye un `AudioContext`
+      (hay test que lo vigila espiando el constructor). La página que el host sirve **hoy** (el
+      piloto) lleva la misma guarda: dentro del host no pinta SOUND ON ni arranca nada.
+      - Pendiente de este bullet: la comprobación **E2E**. El `--selftest` corre hoy contra el
+        *host del piloto*, no contra el plugin, así que la política está probada en unitario y
+        no en WebView2 real. Se cierra en 8.1, cuando el editor hospede la página.
 - [ ] Editor: tamaño/zoom del WebBrowserComponent, sin regresión en `resized()`.
 - **DoD:** Standalone y VST3 abren la página y el selftest de cuatro direcciones pasa igual
   que en el host del piloto; cero rutas absolutas (el VST3 no carga desde el cwd del build).
@@ -700,7 +707,7 @@ piloto. **8.1 sigue pendiente y es el siguiente paso.**
 |---|---|
 | Se subestima 8.3: los visualizadores y el MIDI Learn no son "poner knobs" | Es la fase más larga y va después de la paridad de control, no mezclada con ella |
 | El hueco en blanco al abrir el editor (WebView2 frío) se percibe como que el plugin no carga | Medir en 8.5 y pintar un estado de carga nativo mientras el browser arranca |
-| Dos motores sonando si el worklet se activa dentro del plugin | Decidido en 8.1 y verificado en el selftest: dentro del plugin, audio nativo |
+| Dos motores sonando si el worklet se activa dentro del plugin | Fijado en código (2026-09-19): `WebUI/src/audio/policy.js` decide por `window.__JUCE__` y el motor del worklet se niega a arrancar dentro de un host; la misma guarda en la página del piloto. Falta la comprobación E2E, que cae en 8.1 con el selftest del editor |
 | El hot-reload de dev funciona en el host del piloto y no en el editor del plugin (rutas relativas del VST3) | ResourceProvider con fallback embebido, probado en 8.1 en los dos formatos |
 | Retirar el nativo antes de tener paridad deja el plugin sin UI usable | El nativo no se borra hasta que 8.2 y 8.3 estén tachadas; durante la migración la página es la principal y el nativo el respaldo, y el borrado es el último paso con su propio commit |
 

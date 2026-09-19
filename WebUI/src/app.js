@@ -3,15 +3,21 @@
  *
  * JS vainilla sobre WebView2: store (contrato + bridge) + panel DOM + teclado
  * compartido. No hay framework, y el armazón del piloto React (que sí lo tenía)
- * no se porta: lo que se porta es su lógica, ya en src/contracts y src/bridge.
+ * no se porta: lo que se porta es su lógica, ya en src/contracts, src/bridge,
+ * src/wasm y src/audio.
  *
  * El orden de arranque importa y está fijado por dos consumidores externos:
  *
  *   1. el panel se monta ANTES de `store.start()`, porque el host mide
- *      "panel in DOM" y "react ready" por separado (`window.__pilotReady`);
+ *      "panel in DOM" y "page ready" (`window.__pilotReady`) por separado;
  *   2. el teclado se monta DESPUÉS de `start()`, cuando ya se sabe si hay host
  *      (de eso depende su etiqueta LIVE/LOCAL), y con los contenedores ya en el
  *      documento — `createKeyboard` los busca con `getElementById`.
+ *
+ * Audio: la página puede sonar de dos maneras y NUNCA a la vez (ver
+ * src/audio/policy.js). Dentro de un host el audio es del plugin y aquí no hay
+ * control de audio; en un navegador, SOUND ON arranca el motor WASM y el estado
+ * se empuja al worklet por un solo camino.
  */
 
 // Tema y widgets de la SSOT compartida, más el CSS de esta carpeta.
@@ -20,10 +26,22 @@ import '@abdsynths/shared/styles/components/widgets.css';
 import './styles/main.css';
 
 import { createParameterStore } from './contracts/paramStore.js';
-import { describeControl } from './contracts/parameters.js';
+import { describeControl, getDescriptor } from './contracts/parameters.js';
 import { GENERAL_PARAMETER_IDS, SCREEN_PARAMETER_IDS } from './contracts/screens.js';
 import { createPanel } from './ui/panel.js';
 import { mountKeyboard } from './ui/keyboard.js';
+import { audioOwnerFor } from './audio/policy.js';
+import {
+  isAudioEngineReady,
+  onAudioEngineChange,
+  panicWorklet,
+  pushEngineToWorklet,
+  pushMidiToWorklet,
+  pushModelsToWorklet,
+  pushParamsToWorklet,
+  startAudioEngine,
+} from './audio/audioWorkletEngine.js';
+import { engineIndexFromNormalized } from './wasm/audioParams.js';
 
 /**
  * The baseline parameter keeps a native range input ON PURPOSE: the host's
@@ -36,13 +54,30 @@ const root = document.getElementById('app');
 const store = createParameterStore({ ids: SCREEN_PARAMETER_IDS });
 
 let paint = () => {};
+let engineSnapshot = { status: 'idle', error: null, sampleRate: 0, voices: 0 };
 
 if (root) {
   const panel = createPanel({
     bridgeControls: [describeControl(BASELINE_PARAMETER_ID)].filter(Boolean),
     generalControls: GENERAL_PARAMETER_IDS.map(describeControl).filter(Boolean),
-    handlers: { onPanic: () => store.sendMidiPanic() },
+    handlers: {
+      // PANIC stops everything the plugin sounds; in local mode the worklet has
+      // no panic path of its own in the host, and here it is a no-op without engine.
+      onPanic: () => {
+        store.sendMidiPanic();
+        panicWorklet();
+      },
+      onStartSound: () => {
+        // Refuses by itself inside a host: see src/audio/policy.js.
+        startAudioEngine();
+      },
+    },
   });
+
+  let owner = audioOwnerFor(false);
+  let lastEngineIndex = -1;
+
+  const renderAudio = () => panel.paintAudio({ owner, ...engineSnapshot });
 
   root.append(panel.element);
 
@@ -56,18 +91,67 @@ if (root) {
     root: panel.keysRoot,
     bridgeAvailable: store.getState().bridgeAvailable,
     callbacks: {
-      onNoteOn: store.sendMidiNoteOn,
-      onNoteOff: store.sendMidiNoteOff,
-      onPitchBend: store.sendMidiPitchBend,
+      // Dual path: the bridge when there is a plugin, the worklet when the page
+      // is on its own. Only one of the two can be live (audio policy).
+      onNoteOn: (note, velocity) => {
+        store.sendMidiNoteOn(note, velocity);
+        pushMidiToWorklet({ kind: 'noteOn', note, velocity });
+      },
+      onNoteOff: (note) => {
+        store.sendMidiNoteOff(note);
+        pushMidiToWorklet({ kind: 'noteOff', note });
+      },
+      onPitchBend: (value) => {
+        store.sendMidiPitchBend(value);
+        pushMidiToWorklet({ kind: 'pitchBend', value });
+      },
       onModWheel: store.sendMidiModWheel,
-      onPanic: store.sendMidiPanic,
+      onPanic: () => {
+        store.sendMidiPanic();
+        panicWorklet();
+      },
     },
   });
 
+  // The engine reports on its own channel: its state changes outside store
+  // updates (loading, ready, sample rate). Fires immediately with the current one.
+  onAudioEngineChange((engine) => {
+    engineSnapshot = engine;
+    renderAudio();
+  });
+
+  /**
+   * Page -> worklet sync. ONE path for both page edits and native snapshots, so
+   * a preset load or a natively moved parameter reaches the WASM engine too.
+   * The engine is pushed separately because switching it rebuilds the DSP
+   * (expensive) and only matters when the index actually changes.
+   */
+  function syncEngine(state) {
+    if (!isAudioEngineReady()) return;
+
+    const index = engineIndexFromNormalized(
+      state.parameters.engineType ?? 0, getDescriptor('engineType'));
+
+    if (index !== lastEngineIndex) {
+      lastEngineIndex = index;
+      pushEngineToWorklet(index);
+
+      // Models hang off the concrete engine: the switch rebuilt it, so re-apply
+      // what the bridge sent.
+      if (state.models) pushModelsToWorklet(state.models);
+    }
+
+    pushParamsToWorklet(state.parameters);
+  }
+
   paint = (state) => {
+    owner = audioOwnerFor(state.bridgeAvailable);
+
     panel.paint(state);
     // Host-driven feedback: the plugin's external MIDI view moves the wheels.
     keyboard.setMidiState(state.midiState);
+    renderAudio();
+    syncEngine(state);
   };
 }
 

@@ -11,6 +11,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { AUDIO_OWNER } from '../src/audio/policy.js';
 import { describeControl } from '../src/contracts/parameters.js';
 import { GENERAL_PARAMETER_IDS, SCREEN_PARAMETER_IDS } from '../src/contracts/screens.js';
 import { createPanel } from '../src/ui/panel.js';
@@ -117,6 +118,41 @@ describe('panel / host selftest contract', () => {
 
     panel.paint(makeState({ contractErrors: ['"masterLevel" out of normalised range: 1.5'] }));
     expect(document.querySelector('.panel-footer span').textContent).toContain('contract errors');
+  });
+});
+
+describe('panel / audio ownership (policy)', () => {
+  it('inside a host it is a READOUT: there is no SOUND ON to press', () => {
+    const panel = mountPanel();
+
+    panel.paintAudio({ owner: AUDIO_OWNER.NATIVE });
+
+    const button = document.querySelector('.audio-start');
+
+    expect(button.hidden).toBe(true);
+    expect(document.querySelector('.audio-mode__label').textContent).toContain('nativo');
+  });
+
+  it('in local mode it offers SOUND ON and reports the engine', () => {
+    const onStartSound = vi.fn();
+    const panel = mountPanel({ onStartSound });
+
+    panel.paintAudio({ owner: AUDIO_OWNER.WORKLET });
+
+    const button = document.querySelector('.audio-start');
+
+    expect(button.hidden).toBe(false);
+    button.click();
+    expect(onStartSound).toHaveBeenCalledTimes(1);
+
+    panel.paintAudio({ owner: AUDIO_OWNER.WORKLET, status: 'ready', sampleRate: 48000 });
+    expect(document.querySelector('.audio-mode__detail').textContent).toContain('48.0 kHz');
+    expect(button.hidden).toBe(true);
+
+    panel.paintAudio({ owner: AUDIO_OWNER.WORKLET, status: 'error', error: 'sin device' });
+    expect(button.hidden).toBe(false);
+    expect(button.textContent).toBe('REINTENTAR');
+    expect(document.querySelector('.audio-mode__detail').textContent).toContain('sin device');
   });
 });
 

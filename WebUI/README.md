@@ -42,6 +42,8 @@ funciona, pero ningún envío sale al plugin ni se pinta estado nativo.
 | `src/contracts/screens.js` | nuevo | Qué ids tiene cada pantalla, como datos (BRIDGE + GENERAL + el teclado). |
 | `src/bridge/bridgeCore.js` | `WebPilot/lib/bridge.js` | Transporte del bridge WebView2 (contrapartida JS de `WebPilot/contracts/bridge-protocol.json`). |
 | `src/wasm/audioParams.js` | `WebPilot/lib/audioParams.js` | Contrato → índices de `GlobalParams` del motor WASM (página **fuera** del plugin). |
+| `src/audio/audioWorkletEngine.js` | `WebPilot/lib/audioWorkletEngine.js` | Ciclo de vida del `AudioContext` + worklet y los mensajes al DSP, **con la guarda de la política de audio**. |
+| `src/audio/policy.js` | nuevo | Quién posee el audio (regla de 8.1): nativo dentro de un host, worklet en el navegador. |
 | `src/ui/panel.js` | nuevo | Shell: pestañas, control base, filas de GENERAL y el footer con el estado. |
 | `src/ui/keyboard.js` | nuevo | El teclado compartido (`@abdsynths/midi-keyb`) y su API de feedback desde el host. |
 | `src/app.js` | nuevo | Arranque: monta panel y teclado, conecta el store. |
@@ -67,6 +69,22 @@ El caso más frágil es el primero: **el teclado también monta inputs `type=ran
 ruedas), así que el orden de las pantallas (BRIDGE antes que KEYS) es lo que mantiene al
 slider del control base en cabeza. Si alguien reordena las pestañas, el selftest falla.
 
+## Política de audio (8.1) — una sola señal, dos consumidores
+
+NEURONiK embarca el mismo DSP dos veces: el motor **nativo** del plugin y el módulo **WASM**
+que corre en un AudioWorklet. Los dos a la vez no es un caso soportado (voces dobles, FX con
+fase rara), así que la regla queda escrita en un sitio:
+
+| Dónde corre la página | Quién pone el audio | Cómo se ve |
+|---|---|---|
+| Dentro de un host JUCE (editor del plugin, bancada del piloto) | El **plugin** | Solo un letrero: `AUDIO: motor nativo del plugin`. Sin botón. |
+| Navegador (sin `window.__JUCE__`) | La **página** | Botón `SOUND ON` → AudioWorklet con el WASM. |
+
+La señal es `window.__JUCE__` —la misma que usa el puente para saber si hay host, leída una
+sola vez en `bridgeCore.js::nativeBackend()`—, así que la política **no puede** discrepar del
+estado del bridge. `startAudioEngine()` consulta la guarda antes de nada: dentro de un host
+devuelve estado `blocked` y no llega a construir un `AudioContext`.
+
 ## Qué NO está cableado (a propósito)
 
 - **`build.bat` sigue construyendo el piloto React.** El paso 5/9 exporta `WebPilotVite`
@@ -75,6 +93,7 @@ slider del control base en cabeza. Si alguien reordena las pestañas, el selftes
 - **La paridad de 8.2 no está hecha**: la pantalla GENERAL lista los 11 ids con su valor
   real (leído del contrato), pero **sin widgets** — los knobs/sliders/toggles de la familia
   compartida son el trabajo de 8.2, igual que el reparto por pestañas del panel nativo.
-- **Dentro del plugin el audio es NATIVO** (8.1): la página habla por el bridge (APVTS) y
-  el motor WASM del worklet es para la página en el navegador. Dos motores sonando a la vez
-  no es un caso soportado.
+- **La comprobación E2E de la política de audio**: está probada en unitario (incluido que no
+  se construye un `AudioContext` dentro de un host) y la página que sirve el host hoy lleva la
+  misma guarda, pero el `--selftest` corre contra la bancada del piloto, no contra el plugin.
+  Ese cierre es 8.1.

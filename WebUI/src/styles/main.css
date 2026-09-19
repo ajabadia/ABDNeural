@@ -39,6 +39,42 @@ body {
   line-height: 1.45;
 }
 
+/* --- audio owner (policy: one engine at a time) ---------------------------- */
+
+.audio-mode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.audio-mode__label {
+  letter-spacing: 0.06em;
+  opacity: 0.8;
+}
+
+.audio-mode__detail {
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+}
+
+.audio-start {
+  appearance: none;
+  border: 1px solid rgb(255 255 255 / 25%);
+  background: rgb(255 255 255 / 8%);
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  padding: 3px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.audio-start:hover {
+  background: rgb(255 255 255 / 14%);
+}
+
 /* --- tabs ----------------------------------------------------------------- */
 
 .tabs {

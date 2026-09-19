@@ -2277,3 +2277,50 @@ mueve la rueda a 64 sin devolver el eco como input de usuario. Bundle: **62,4 KB
 familia compartida, reparto por las seis pestañas del panel nativo, envolvente dibujada,
 matriz de modulación, `dspStatus` visible) y por supuesto 8.1. La lista completa sigue en el
 inventario 8.0.
+
+---
+
+## Politica de audio fijada en codigo + motor del worklet portado (8.1, 2026-09-19)
+
+Primer bullet de 8.1 cerrado; los otros dos (el editor hospeda la pagina, tamano/zoom) siguen
+abiertos, asi que **8.1 no esta terminada**.
+
+**La regla.** NEURONiK embarca el mismo DSP dos veces: el motor nativo del plugin y el modulo
+WASM que corre en un AudioWorklet. Los dos sonando a la vez no es un caso soportado (voces
+dobles, FX con fase rara) y nada en el protocolo lo impedia. Ahora:
+
+- **Una sola senal**: `window.__JUCE__`, la MISMA que usa el puente. `bridgeCore.js` exporta
+  `nativeBackend()` y `WebUI/src/audio/policy.js` lo consume; dos detecciones distintas habrian
+  sido dos formas de equivocarse. La politica no puede discrepar del estado del bridge.
+- **Una sola puerta**: `startAudioEngine()` (el motor portado) consulta la guarda ANTES de
+  nada. Dentro de un host devuelve estado `blocked` con el motivo y **no llega a construir un
+  `AudioContext`**; hay test que lo vigila espiando el constructor, que es la unica forma de
+  estar seguro de que no hay segundo motor.
+- **La pagina que el host sirve HOY tambien la cumple.** El piloto React es el que esta al otro
+  lado del WebView2 mientras 8.1 no este, asi que su `audioControl()` recibe `bridgeAvailable`:
+  dentro del host pinta `AUDIO: NATIVO` y no ofrece SOUND ON. Esa guarda desaparece con el
+  piloto (8.4); el espejo definitivo es `WebUI/src/audio/policy.js`.
+
+**El motor portado** (`WebUI/src/audio/audioWorkletEngine.js`, port de
+`WebPilot/lib/audioWorkletEngine.js`) es el mismo ciclo de vida — AudioContext, worklet node,
+handshake `neuronik:ready`, mensajes `params`/`engine`/`models`/`midi`/`panic`, teardown —
+con dos cambios: la guarda de politica y un estado `blocked` propio (no es un error: es una
+respuesta). El `.wasm` cruza por `processorOptions` (el unico canal que funciona desde un
+export estatico) y los artefactos ya viajan solos: `publicDir` de Vite apunta a
+`WebPilot/public`, asi que `dist/worklet/` sale con el procesador y el `.wasm`.
+
+En la shell, la linea de audio es **letrero o control, nunca las dos**: dentro del host no hay
+boton que pulsar, y en el navegador `SOUND ON` arranca el motor y el estado se empuja al
+worklet por UN camino (`syncEngine`), el mismo para ediciones de la pagina y snapshots nativos.
+Los mensajes MIDI del teclado van por las dos vias (bridge y worklet) porque solo una puede
+estar viva segun la politica.
+
+**Tests:** WebUI **96 en 11 ficheros** (nuevos: `policy.test.js`, `audioEngine.test.js`, y el
+control de audio en `panel.test.js`), piloto **57 en 6** (con el nuevo guardian de fuente en
+`pageContract.test.js`). Bundle: 68,0 KB de JS (17,7 KB gzip).
+
+**Lo que queda abierto de este bullet:** la comprobacion **E2E**. El `--selftest` corre contra
+el *host del piloto*, no contra el plugin, asi que la politica esta probada en unitario y en
+la pagina, pero no dentro del WebView2 del plugin. Se cierra en 8.1 cuando el editor hospede
+la pagina (la via barata entonces: que el selftest del editor lea un handle de la pagina, como
+ya hace con `__pilotReady` y `__pilotSendMidi`).

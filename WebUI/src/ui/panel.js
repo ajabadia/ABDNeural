@@ -15,6 +15,7 @@
  *      host parses it to check that a screen's ids really are on the page.
  */
 
+import { AUDIO_OWNER, audioOwnerLabel } from '../audio/policy.js';
 import { displayText, realFromNormalized } from '../contracts/paramValue.js';
 import { TABS } from '../contracts/screens.js';
 
@@ -23,8 +24,9 @@ import { TABS } from '../contracts/screens.js';
  * @param {object[]} options.bridgeControls   view-models of the BRIDGE screen
  * @param {object[]} options.generalControls  view-models of the GENERAL screen
  * @param {object} [options.handlers]
- * @param {() => void} [options.handlers.onPanic]  KEYS toolbar PANIC button
- * @returns {{ element: HTMLElement, keysRoot: HTMLElement, paint: Function, selectTab: Function, destroy: Function }}
+ * @param {() => void} [options.handlers.onPanic]       KEYS toolbar PANIC button
+ * @param {() => void} [options.handlers.onStartSound]  SOUND ON (local mode only)
+ * @returns {{ element: HTMLElement, keysRoot: HTMLElement, paint: Function, paintAudio: Function, selectTab: Function, destroy: Function }}
  */
 export function createPanel({ bridgeControls, generalControls, handlers = {} }) {
   const baseline = bridgeControls[0] ?? null;
@@ -45,6 +47,27 @@ export function createPanel({ bridgeControls, generalControls, handlers = {} }) 
 
   const contractLine = document.createElement('p');
   contractLine.className = 'contract-line';
+
+  // Audio ownership (policy of src/audio/policy.js). In a host this is a
+  // READOUT, not a control: the plugin owns the audio and the page cannot start
+  // a second engine, so there is no button to press.
+  const audioRow = document.createElement('div');
+  audioRow.className = 'audio-mode';
+
+  const audioLabel = document.createElement('span');
+  audioLabel.className = 'audio-mode__label';
+
+  const audioDetail = document.createElement('span');
+  audioDetail.className = 'audio-mode__detail';
+
+  const audioButton = document.createElement('button');
+  audioButton.type = 'button';
+  audioButton.className = 'audio-start';
+  audioButton.textContent = 'SOUND ON';
+  audioButton.hidden = true;
+  audioButton.addEventListener('click', () => handlers.onStartSound?.());
+
+  audioRow.append(audioLabel, audioDetail, audioButton);
 
   const tabBar = document.createElement('div');
   tabBar.className = 'tabs';
@@ -146,7 +169,7 @@ export function createPanel({ bridgeControls, generalControls, handlers = {} }) 
 
   footer.append(footerText, footerState);
 
-  element.append(title, status, contractLine, tabBar, ...screens.values(), footer);
+  element.append(title, audioRow, status, contractLine, tabBar, ...screens.values(), footer);
 
   let activeTab = TABS[0].id;
 
@@ -207,11 +230,53 @@ export function createPanel({ bridgeControls, generalControls, handlers = {} }) 
     footerState.textContent = JSON.stringify(parameters);
   }
 
+  /**
+   * Audio line: who owns the engine, and (only in local mode) how to start it.
+   * Fed by app.js from the policy + the engine's own state broadcast.
+   */
+  function paintAudio({ owner, status = 'idle', sampleRate = 0, error = null }) {
+    audioLabel.textContent = audioOwnerLabel(owner);
+
+    const localMode = owner === AUDIO_OWNER.WORKLET;
+
+    if (!localMode) {
+      audioDetail.textContent = '· sin control en la página';
+      audioButton.hidden = true;
+      return;
+    }
+
+    switch (status) {
+      case 'ready':
+        audioDetail.textContent = `· ON · ${(sampleRate / 1000).toFixed(1)} kHz`;
+        audioButton.hidden = true;
+        break;
+      case 'loading':
+        audioDetail.textContent = '· arrancando…';
+        audioButton.hidden = true;
+        break;
+      case 'error':
+        audioDetail.textContent = `· ERROR${error ? `: ${error}` : ''}`;
+        audioButton.textContent = 'REINTENTAR';
+        audioButton.hidden = false;
+        break;
+      case 'unsupported':
+      case 'blocked':
+        audioDetail.textContent = `· ${error ?? status}`;
+        audioButton.hidden = true;
+        break;
+      default:
+        audioDetail.textContent = '· sin arrancar';
+        audioButton.textContent = 'SOUND ON';
+        audioButton.hidden = false;
+        break;
+    }
+  }
+
   function destroy() {
     element.textContent = '';
   }
 
-  return { element, keysRoot, paint, selectTab, destroy, getActiveTab: () => activeTab };
+  return { element, keysRoot, paint, paintAudio, selectTab, destroy, getActiveTab: () => activeTab };
 }
 
 /** Baseline control: a native range input, normalised 0..1 on the wire. */

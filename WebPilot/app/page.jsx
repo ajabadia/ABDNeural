@@ -276,11 +276,30 @@ export default function HomePage() {
     return () => { active = false; };
   }, []);
 
-  async function handleStartSound() {
+  /**
+   * Audio policy (ROADMAP Fase 8 / ticket 8.1): inside a JUCE host the PLUGIN
+   * owns the audio and the page is only a remote control for it. Starting the
+   * worklet here would leave two engines over the same parameters, which is not
+   * a supported case (doubled voices, phase-y FX). The vanilla mirror of this
+   * rule lives in WebUI/src/audio/policy.js; this guard dies with the pilot.
+   */
+  async function handleStartSound(insideHost) {
+    if (insideHost) return;
+
     await startAudioEngine();
   }
 
-  function audioControl() {
+  function audioControl(insideHost) {
+    if (insideHost)
+      return (
+        <span
+          className="status"
+          title="Lo que suena es el motor del plugin; la página no arranca el worklet."
+        >
+          AUDIO: NATIVO
+        </span>
+      );
+
     if (audio.status === 'ready')
       return (
         <span className="status">
@@ -295,7 +314,7 @@ export default function HomePage() {
       <button
         type="button"
         className="keys-panic"
-        onClick={handleStartSound}
+        onClick={() => handleStartSound(insideHost)}
         title={audio.error ?? 'Arranca el motor DSP real en el navegador (AudioWorklet)'}
       >
         {audio.status === 'error' ? 'AUDIO ERROR — REINTENTAR' : 'SOUND ON'}
@@ -508,7 +527,7 @@ export default function HomePage() {
             <h1>Parameter bridge</h1>
           </div>
           <span className="status">{bridgeAvailable ? 'BRIDGE LIVE' : 'LOCAL MODE'}</span>
-          {audioControl()}
+          {audioControl(bridgeAvailable)}
         </header>
 
         <p className="intro">

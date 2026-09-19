@@ -76,6 +76,18 @@ function backend() {
 }
 
 /**
+ * The JUCE-injected backend, or null in a plain browser.
+ *
+ * Exported because "is there a host on the other side?" is a question more than
+ * one module has to answer (the audio policy of src/audio/policy.js does), and
+ * there must be ONE detection: two copies of this check would be two ways of
+ * being wrong.
+ */
+export function nativeBackend() {
+  return backend();
+}
+
+/**
  * Create a bridge transport bound to one set of callbacks.
  *
  * @param {object} handlers

@@ -36,6 +36,15 @@ describe('pilot page contract', () => {
     expect(page).toContain('ParamChoice');
   });
 
+  it('does NOT start the worklet inside a host (audio policy of 8.1)', () => {
+    // Inside the plugin the audio is the plugin's; the page must not spin up a
+    // second engine. The mirror of this rule for the vanilla UI lives in
+    // WebUI/src/audio/policy.js.
+    expect(page).toContain('AUDIO: NATIVO');
+    expect(page).toContain('if (insideHost) return;');
+    expect(page).toContain('audioControl(bridgeAvailable)');
+  });
+
   it('feeds wrappers normalised state and pushes normalised changes', () => {
     // The state value goes straight into the wrapper; edits come back the same way.
     expect(page).toContain('value={normalized}');
