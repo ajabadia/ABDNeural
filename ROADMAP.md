@@ -641,10 +641,33 @@ piloto. **8.1 sigue pendiente y es el siguiente paso.**
         para que el editor use los MISMOS tres en vez de una copia por superficie. El host
         del piloto los incluye con `using` y no cambia de comportamiento.
         *Pendiente: compilar.*
-      - [ ] **Paso 2:** el `WebBrowserComponent` dentro de `NEURONiKEditor` (con su
-        `resized()`/zoom, sin regresión) y el selftest de cuatro direcciones corriendo contra
-        **Standalone y VST3** (hoy ese arnés solo existe en la bancada del piloto).
-      - [ ] **Paso 2b — decidido (2026-09-19): el proveedor de recursos del plugin NO se
+      - [x] **Paso 2 (2026-09-19): la página ES el editor.** Dos decisiones tomadas aquí:
+        la página **sustituye** ya al panel nativo (no conviven), y lo que embebe el plugin es
+        `WebUI/dist` (la shell vainilla), no el piloto React. Detalle:
+        - `Source/WebUI/NeuronikWebView.h`: subclase de la base compartida
+          `abd::webview2::JuceWebView2Component` (backend webview2, native integration,
+          `resized()` que ajusta el navegador a sus bounds, tema y hook `pageLoaded`) con el
+          `ParameterBridge` y los **tres adaptadores de `BridgeAdapters.h`** enchufados — los
+          mismos que usa la bancada, no una copia. El `resized()` no lleva lógica propia: la
+          base ya ajusta el navegador, así que no había regresión que introducir.
+        - `NEURONiKEditor` pasa a ser el editor de la página: barra de menú **provisional**
+          (preset, canal MIDI, voces, zoom, opciones de audio del Standalone, ayuda MIDI — se
+          la lleva 8.3), `paint()` con el color del chasis para el hueco de arranque de
+          WebView2 (8.5 lo mide), y el poll del puente (cambios de parámetro cada ticket,
+          estado MIDI externo cada ~180 ms). Se dejan de montar los paneles nativos.
+        - **Zoom = zoom del contenido** (zoom CSS del documento), no un `setTransform()`: los
+          knobs de JUCE que escalaba el editor nativo ya no existen, y así el zoom no depende
+          del tamaño que dé el host en cada DAW.
+        - **`NEURONIK_HAS_WEBUI_VIEW`**: lo define el CMake de los targets que montan la
+          página (Standalone y VST3). El target de tests que **copia** `NEURONIK_SOURCES`
+          (`StatePersistenceTest`) no lo define y compila el editor en su variante sin
+          interfaz: copiar las fuentes no obliga a embeber 68 KB de UI en un ejecutable de
+          pruebas, y el `#else` es honesto (un aviso en pantalla), no un fallo de enlace.
+      - [ ] **Paso 2c:** el arnés del selftest de cuatro direcciones, portado de
+        `Source/WebPilotHost.cpp` a algo que abra **Standalone y VST3** (hoy ese arnés solo
+        existe en la bancada). Es la última conclusión del piloto sin integrar, y la puerta
+        para retirarlo — ver "Retirada del piloto".
+      - [x] **Paso 2b — hecho (2026-09-19): el proveedor de recursos del plugin NO se
         escribe aquí.** `ABDSharedCode/WebView2Bridge/WebView2ResourceProvider.*`
         (`abd::webview2`) ya implementa el pipeline entero — `normalizeResourcePath`,
         `getMimeTypeForFilename`, `resolveEmbeddedAsset` (con `BinaryAssetsCatalog`, que se
@@ -658,6 +681,25 @@ piloto. **8.1 sigue pendiente y es el siguiente paso.**
         - Escribir un `PluginEditor_ResourceProvider` propio de NEURONiK sería añadir una
           homonimia que `ABDSharedCode/docs/homonimias-cabeceras.md` lista como deuda en su
           prioridad P5 — y 8.5 cuenta esas homonimias entre lo que la migración NO debe revivir.
+        - **Hecho:** `ABDSharedCode` ahora **define** `ABDShared::WebView2Bridge` (INTERFACE,
+          con `WebView2ResourceProvider.cpp` propagado y `juce_gui_extra`). Hasta ahora
+          ninguna de las superficies que lo sondeaban lo encontraba, así que **nadie compilaba
+          el proveedor**: el `.cpp` estaba en el repo y en ningún binario. Va bajo
+          `if(NOT EMSCRIPTEN)` porque el bridge es `juce_gui_extra`, que no existe en los
+          builds WASM. `NeuronikWebView.h` lo alimenta con el catálogo del
+          `juce_add_binary_data` (`NEURONiK_WebUIAssets`, con `HEADER_NAME`/`NAMESPACE`
+          explícitos para no nacer como un segundo `BinaryData::`, que es el nombre genérico
+          que usa la bancada).
+        - **Sin prefijos de `ABDSharedAssets`:** la página IMPORTA los estilos compartidos
+          (`@abdsynths/shared/styles/...`) y Vite los empaqueta en su bundle, así que en
+          tiempo de ejecución el plugin no necesita el disco para pintar su interfaz. El
+          fallback compartido existe pero no se pide.
+        - **Disco solo como override de desarrollo:** `NEURONIK_WEBUI_DEV_DIR` apuntando a
+          `WebUI/dist` sirve la página desde disco (iterar la UI en segundos en vez de
+          recompilar el plugin). Apagado por defecto y **sin ninguna ruta grabada en el
+          binario**, así que el DoD de "cero rutas absolutas" se mantiene: es una decisión de
+          arranque, no una dependencia del build. Es la única función que tenía la bancada del
+          piloto, y por eso se trae antes de retirarla.
 - [x] **Decidido y fijado en código (2026-09-19):** dentro del plugin el audio es nativo y la
       página solo habla por el bridge (APVTS). Una sola señal — `window.__JUCE__`, la MISMA que
       usa el puente, vía `nativeBackend()` — decide quién posee el audio: `WebUI/src/audio/policy.js`.
@@ -668,9 +710,50 @@ piloto. **8.1 sigue pendiente y es el siguiente paso.**
       - Pendiente de este bullet: la comprobación **E2E**. El `--selftest` corre hoy contra el
         *host del piloto*, no contra el plugin, así que la política está probada en unitario y
         no en WebView2 real. Se cierra en 8.1, cuando el editor hospede la página.
-- [ ] Editor: tamaño/zoom del WebBrowserComponent, sin regresión en `resized()`.
+- [x] Editor: tamaño (1100×720 base, redimensionable con límites) y zoom del contenido; el
+      `resized()` no lleva lógica propia porque la base compartida ajusta el navegador.
+- [x] **`build.bat` reordenado a WASM → WebUI → plugin** (antes el plugin iba primero y
+      embebería el bundle de la pasada anterior): el `.wasm` llega a `WebUI/dist/worklet` por
+      el `publicDir`, y el plugin embebe `WebUI/dist`. Con guard: si el worklet embebido no
+      coincide con el recién compilado, aborta. Numeración 1/10…10/10.
 - **DoD:** Standalone y VST3 abren la página y el selftest de cuatro direcciones pasa igual
   que en el host del piloto; cero rutas absolutas (el VST3 no carga desde el cwd del build).
+
+**Retirada del piloto (decidido 2026-09-19; va JUSTO DESPUÉS de 8.1, no en 8.4)**
+
+Decisión: el piloto se retira en cuanto el paso 2c esté hecho, porque ya no tiene ninguna
+función propia. Pero **"el piloto" son tres cosas distintas** y solo una es el piloto:
+
+1. **El arnés React** (`WebPilotVite/`, `WebPilot/app/`, `WebPilot/lib/`, `WebPilot/out/`,
+   `WebPilot/tests/`). Sus conclusiones están **integradas**: `bridge.js`, `paramValue.js`,
+   `audioParams.js`, `parameters.js`, la lógica de `useParameterControls.js` y
+   `audioWorkletEngine.js` están portados verbatim a `WebUI/src/`, y el armazón React
+   (`app/page.jsx`, `lib/controls.jsx`) muere por decisión (8.0). Sus 57 tests están cubiertos
+   por los 96 de `WebUI`. → **Se puede borrar.**
+2. **La bancada** (`Source/WebPilotHost.cpp` + su target). Su única función era el
+   disco-primero con hot-reload, y eso ya vive en el plugin como `NEURONIK_WEBUI_DEV_DIR`
+   (paso 2b). **Antes de borrarla hay que portar su selftest de cuatro direcciones** (paso 2c),
+   que es la única implementación que existe. → **Se borra tras 2c.**
+3. **Tres artefactos que NO son del piloto**, aunque vivan en su carpeta. Son la SSOT de
+   cosas que siguen siendo ciertas, y **se mudan, no se borran**:
+
+| Artefacto | Quién lo consume hoy | Destino |
+|---|---|---|
+| `WebPilot/generated/` (contrato de parámetros) | `WebUI/src/contracts/parameters.js` (import), `CMakeLists.txt` (`NEURONIK_PARAMETER_ARTIFACTS_DIR` → `ParameterDescriptorTest`), `build.bat` paso 2/10, `Tests/ParameterExportTool.cpp` | `WebUI/generated/` (o `contracts/generated/`), con los 4 consumidores repuntados |
+| `WebPilot/contracts/bridge-protocol.json` (protocolo del bridge, versionado) | `CMakeLists.txt` (`NEURONIK_BRIDGE_PROTOCOL_JSON`), `Tests/BridgeProtocolContractTest.cpp`, `Tests/bridgeProtocolContractTest.mjs` | `WebUI/contracts/` o `Source/WebUI/contracts/` |
+| `WebPilot/public/` (**es el `publicDir` de la WebUI**) | `WebUI/vite.config.js`, `build_wasm.bat` (`sync-wasm.mjs` escribe ahí el `.wasm`), y de ahí sale `WebUI/dist/worklet/` | `WebUI/public/`, con `vite.config.js`, `sync-wasm.mjs` y los guards de staleness repuntados |
+
+Además, dos consumidores leen **rutas del piloto como fuente**:
+`Tests/bridgeProtocolContractTest.mjs` lee `WebPilot/lib/bridge.js` (ya portado a
+`WebUI/src/bridge/bridgeCore.js`) y `Tests/webviewBridgeDirectionTest.mjs` declara
+`emitters: ['WebPilotHost.cpp']` (el emisor pasa a ser el componente web del editor). Los dos
+hay que repuntarlos **en el mismo commit** que borra los ficheros, o la suite rompe.
+
+- **Orden:** 2c (selftest al plugin) → commit de retirada (mudar las 3 SSOT + repuntar los 4
+  consumidores + borrar React/bancada) → 8.2 con el campo libre.
+- **DoD:** `grep -rn "WebPilot"` fuera del histórico de git y de comentarios que citan el
+  traslado no devuelve dependencias vivas; `build.bat` llega a 9 pasos (sin la exportación React
+  ni el host); la suite completa sigue verde y el selftest corre contra el plugin.
 
 **8.2 Paridad de control (los 70 parámetros)**
 - [ ] Repartir la página con la misma agrupación que el panel nativo: GENERAL

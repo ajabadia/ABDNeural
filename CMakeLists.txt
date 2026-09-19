@@ -215,6 +215,12 @@ juce_add_plugin(NEURONiK
     # to be declared even though the default is off.
     NEEDS_MIDI_OUTPUT TRUE
     IS_MIDI_EFFECT FALSE
+    # La interfaz del plugin es una pagina servida en WebView2 (Fase 8, ticket
+    # 8.1): NEEDS_WEB_BROWSER trae WebBrowserComponent y NEEDS_WEBVIEW2 el loader
+    # del runtime de Edge, para TODOS los formatos (Standalone y VST3). La bancada
+    # del piloto ya lo pedia; el plugin no lo pedia porque no hospedaba pagina.
+    NEEDS_WEB_BROWSER TRUE
+    NEEDS_WEBVIEW2 TRUE
     SOURCES ${NEURONIK_SOURCES}
 )
 
@@ -293,6 +299,77 @@ target_include_directories(NEURONiK PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/Source/State"
     "${CMAKE_CURRENT_SOURCE_DIR}/Source/Serialization"
 )
+
+# ============================================================================
+# WEBUI (interfaz definitiva del plugin, Fase 8)
+# ============================================================================
+
+# El plugin sirve `WebUI/dist` desde una copia EMBEBIDA en el binario: asi el
+# VST3 funciona copiado a cualquier sitio, sin depender del cwd del build ni de
+# ninguna ruta absoluta (DoD de 8.1). Fallar aqui en alto es mejor que compilar
+# un plugin sin interfaz, que es un binario que abre en blanco.
+set(NEURONIK_WEBUI_DIST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/WebUI/dist")
+
+file(GLOB_RECURSE NEURONIK_WEBUI_ASSETS CONFIGURE_DEPENDS
+    "${NEURONIK_WEBUI_DIST_DIR}/*")
+
+if(NEURONIK_WEBUI_ASSETS)
+    # El proveedor compartido existe ya en ABDSharedCode y es el que usan
+    # HardwareMidiDetect y ABDScope: el plugin lo adopta en vez de escribir otro.
+    if(NOT TARGET ABDShared::WebView2Bridge)
+        message(FATAL_ERROR
+            "ABDShared::WebView2Bridge is missing: this plugin serves its WebUI through "
+            "the shared provider (abd::webview2), it does not ship its own copy.")
+    endif()
+
+    # HEADER_NAME + NAMESPACE explicitos: el generico `BinaryData` es justo el
+    # nombre que usa la bancada del piloto, y dos `BinaryData::` en el mismo arbol
+    # de build es la clase de homonimia que el inventario de ABDSharedCode marca
+    # como deuda.
+    juce_add_binary_data(NEURONiK_WebUIAssets
+        HEADER_NAME "NeuronikWebUIAssets.h"
+        NAMESPACE "NeuronikWebUIAssets"
+        SOURCES ${NEURONIK_WEBUI_ASSETS}
+    )
+
+    # Los dos formatos compilan el editor, asi que los dos montan la pagina. El
+    # target de tests que COPIA NEURONIK_SOURCES (StatePersistenceTest) no hereda
+    # nada de esto: compila el editor sin interfaz, que es lo que su guard mira.
+    foreach(_neuronik_ui_target NEURONiK NEURONiK_Standalone)
+        if(TARGET ${_neuronik_ui_target})
+            target_sources(${_neuronik_ui_target} PRIVATE
+                Source/WebUI/NeuronikWebView.h
+            )
+
+            target_include_directories(${_neuronik_ui_target} PRIVATE
+                "${CMAKE_CURRENT_SOURCE_DIR}/Source/WebUI"
+            )
+
+            target_link_libraries(${_neuronik_ui_target} PRIVATE
+                NEURONiK_WebUIAssets
+                ABDShared::WebView2Bridge
+            )
+
+            target_compile_definitions(${_neuronik_ui_target} PRIVATE
+                JUCE_USE_WIN_WEBVIEW2=1
+                JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1
+                # Montar la pagina. Sin esto NEURONiKEditor compila la variante sin
+                # interfaz (un aviso en pantalla), que es lo honesto cuando no hay
+                # pagina que servir.
+                NEURONIK_HAS_WEBUI_VIEW=1
+            )
+        endif()
+    endforeach()
+else()
+    # No es FATAL_ERROR a proposito: la configuracion tiene que poder hacerse en
+    # un arbol recien clonado, y quien construye `WebUI/dist` es build.bat (o el
+    # desarrollador con `pnpm build`). El plugin compila sin interfaz y AVISA; el
+    # guard de build.bat impide que ese binario se de por bueno.
+    message(WARNING
+        "WebUI/dist is empty: the plugin will build WITHOUT the web interface. "
+        "Run 'pnpm install && pnpm build' inside ${CMAKE_CURRENT_SOURCE_DIR}/WebUI "
+        "(build.bat does it automatically).")
+endif()
 
 # ============================================================================
 # DSP REFERENCE TESTS

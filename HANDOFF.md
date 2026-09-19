@@ -401,8 +401,8 @@ WebView2 (mismo recorrido que una prueba manual con el ratón):
   (0.7500 exacto).
 - `--selftest` implica `--auto-quit`; el exit code (0/1) es el veredicto. En este modo el selftest
   es quien cierra la ventana, no el sondeo de arranque.
-- **`build.bat` lo ejecuta como paso 9/9** (tras la suite de tests; era 8/8 antes de que el WASM
-  entrara como 4/9), solo si el host compiló y
+- **`build.bat` lo ejecuta como paso 10/10** (tras la suite de tests; era 8/8 antes de que el WASM
+  entrara como 3/10 y la WebUI del plugin como 4/10), solo si el host compiló y
   existe `WebPilot\out`. Un fallo del selftest marca el build como CON ERRORES. Se omite con
   `build.bat noselftest`. La ventana del piloto parpadea unos 3 segundos: es el selftest.
 - **Verificación manual del usuario (misma sesión): confirmada.** Captura del host con la página
@@ -578,7 +578,7 @@ degraja a un `--selftest` normal.
 **Fix de revisión (2026-09-16, por compilar): el exit code del selftest nunca salía del exe.**
 `selftestPassed` moría en el `PilotComponent`: ni `finish()` ni `systemRequestedQuit()` lo
 publicaban, así que el proceso salía SIEMPRE con 0 y la puerta del paso 8/8 de `build.bat`
-(hoy es el 9/9: el WASM entró después como 4/9, ver "Procedimiento de build")
+(hoy es el 10/10: el WASM entró después como 3/10 y la WebUI del plugin como 4/10, ver "Procedimiento de build")
 (`if !ERRORLEVEL! neq 0`) era decorativa — un selftest FAIL se habría celebrado como
 `[OK] Bridge verificado`. Arreglado en `Source/WebPilotHost.cpp`: `g_selftestExitCode`
 (atómico, -1 = sin veredicto) lo escribe `selftestFinish()` y `PilotApplication::
@@ -1094,12 +1094,12 @@ Un solo comando hace el ciclo completo y **termina siempre con pausa**, tanto si
 falla, para poder copiar la salida:
 
 ```bat
-build.bat                    :: 9 pasos: contrato + plugin + WASM + WebUI + host + tests + selftest
+build.bat                    :: 10 pasos: contrato + WASM + WebUI del plugin + plugin + piloto + tests + selftest
 build.bat build              :: lo mismo, en un directorio de build limpio
 build.bat modelmaker         :: además compila ModelMaker (incrementa Source\ModelMaker\Version.h)
 build.bat build modelmaker   :: build limpio incluyendo ModelMaker
 build.bat tests              :: modo rápido: solo contrato + suite (ni plugin ni WebUI)
-build.bat noselftest         :: omite el E2E del bridge (paso 9)
+build.bat noselftest         :: omite el E2E del bridge (paso 10)
 build.bat nowasm             :: omite el WASM del worklet (por defecto, si falla, aborta el build)
 build.bat nextui             :: WebUI del piloto con Next en vez de Vite (referencia)
 ```
@@ -1107,50 +1107,73 @@ build.bat nextui             :: WebUI del piloto con Next en vez de Vite (refere
 Pasos que ejecuta, en orden:
 
 ```text
-1/9  cmake -S . -B <dir> -DCMAKE_BUILD_TYPE=Release
-2/9  NEURONiK_ParameterExport + regeneracion de WebPilot\generated
-3/9  NEURONiK_Standalone + NEURONiK_VST3
-4/9  build_wasm.bat: WASM + paridad + smoke + sync del worklet (aborta el build si falla)
-5/9  WebPilot: pnpm build            (se omite si no hay node_modules)
-6/9  NEURONiK_WebPilotHost           (si falla, solo avisa; embebe WebPilot\out)
-7/9  NEURONiK_ModelMaker             (solo con 'modelmaker', ver abajo)
-8/9  compilacion de los 17 tests + ctest --output-on-failure
-9/9  selftest del bridge del piloto  (se omite con 'noselftest'; ver arriba)
+1/10  cmake -S . -B <dir> -DCMAKE_BUILD_TYPE=Release
+2/10  NEURONiK_ParameterExport + regeneracion de WebPilot\generated
+3/10  build_wasm.bat: WASM + paridad + smoke + sync del worklet (aborta el build si falla)
+4/10  WebUI: pnpm build              -> WebUI\dist  (la interfaz QUE EMBIBE EL PLUGIN)
+5/10  NEURONiK_Standalone + NEURONiK_VST3   (embeben WebUI\dist en el enlace)
+6/10  WebPilot: pnpm build            -> WebPilot\out (el piloto; se omite si no hay node_modules)
+7/10  NEURONiK_WebPilotHost           (si falla, solo avisa; embebe WebPilot\out)
+8/10  NEURONiK_ModelMaker             (solo con 'modelmaker', ver abajo)
+9/10  compilacion de los 17 tests + ctest --output-on-failure
+10/10 selftest del bridge del piloto  (se omite con 'noselftest'; ver arriba)
 ```
 
-El orden de 4/9 y 5/9 no es casual: el WASM y la WebUI van **antes** que el host, que embebe
-`WebPilot\out` en el enlace. Al reves, el exe se quedaba con el bundle y el DSP de la pasada
-anterior (sintoma mudo: suena "el de antes"). El paso 4/9 trae ademas un guard que aborta si el
-`.wasm` de `out\worklet` no coincide con el recien compilado.
+**El orden es la dependencia, no un gusto:** el `.wasm` lo produce 3/10, la WebUI lo copia a su
+`dist` por el `publicDir` en 4/10, y el **plugin lo embebe en el enlace** en 5/10
+(`juce_add_binary_data` sobre `WebUI\dist\*`). Con el plugin antes, se quedaba dentro el bundle y
+el DSP de la pasada anterior (sintoma mudo: suena "el de antes"). Lo mismo vale para el host del
+piloto, que embebe `WebPilot\out`.
+
+Dos guards de staleness por la misma razon, y los dos abortan:
+
+- 3/10/4/10: si `WebUI\dist\worklet\neuronik_dsp.wasm` falta o **no coincide** con
+  `build-wasm\neuronik_dsp.wasm`, el plugin sonaria con un DSP viejo.
+- 6/10/7/10: el mismo chequeo sobre `WebPilot\out\worklet` para la bancada del piloto.
 
 Artefactos:
 
 ```text
-<dir>\NEURONiK_artefacts\Release\Standalone\NEURONiK.exe
-<dir>\NEURONiK_artefacts\Release\VST3\NEURONiK.vst3
+<dir>\NEURONiK_artefacts\Release\Standalone\NEURONiK.exe      (con WebUI\dist embebida)
+<dir>\NEURONiK_artefacts\Release\VST3\NEURONiK.vst3            (con WebUI\dist embebida)
 <dir>\NEURONiK_WebPilotHost_artefacts\Release\NEURONiK Web Pilot.exe
 <dir>\Release\NEURONiK_ModelMaker.exe                  (solo con 'modelmaker')
 ```
 
-### La UI nueva (`WebUI/`) no la construye `build.bat`
+### La interfaz del plugin (`WebUI/`): la construye `build.bat` y la sirve el plugin
 
-A proposito: `build.bat` sigue exportando el **piloto React** a `WebPilot\out`, que es lo que
-embebe el host del piloto y lo que sirve `start.bat`. La UI vainilla de la Fase 8 vive en
-`ABDNeural/WebUI/`, compila a su propia carpeta y **hoy no la consume nadie**: cambiar el motor
-de UI es un paso deliberado (8.1 la hospeda, 8.2 cierra la paridad), asi que no entra en el
-build general hasta que el host tenga que servirla.
+**Desde 8.1 (2026-09-19) la pagina ES la interfaz del plugin**: `NEURONiKEditor` monta
+`Source/WebUI/NeuronikWebView.h`, que sirve `WebUI/dist` desde una copia **embebida** en el
+binario. Por eso `build.bat` la construye en 4/10, antes de compilar el plugin, y por eso
+`WebUI/dist` ya no es "una carpeta que no consume nadie".
+
+El piloto React (`WebPilot/out`, 6/10 y 7/10) sigue vivo **solo mientras 8.1 no cierre el paso
+2c**, porque su bancada es la unica implementacion del selftest de cuatro direcciones. Despues se
+retira (ver `ROADMAP.md`, "Retirada del piloto").
 
 ```bash
 cd ABDNeural/WebPilot && pnpm install   # WebUI es miembro del workspace anidado de WebPilot
 cd ../WebUI && pnpm test                # 96 tests (vitest + jsdom)
-cd ../WebUI && pnpm dev                 # navegador, modo local (sin host)
-cd ../WebUI && pnpm build               # -> WebUI/dist
+cd ../WebUI && pnpm dev                 # navegador, modo local (sin host) — el bucle de iteracion
+cd ../WebUI && pnpm build               # -> WebUI/dist  (lo mismo que hace el paso 4/10)
 ```
 
 Los assets compartidos y el worklet no se duplican: el `publicDir` de Vite apunta a
 `WebPilot/public`, asi que `dist\worklet\` sale con el procesador y el `.wasm` que acaba de
-compilar el paso 4/9. Los selectores que el `--selftest` del host lee de la pagina estan
-documentados y probados en `WebUI/README.md` (y en `WebUI/tests/`).
+compilar el paso 3/10; y los estilos de `@abdsynths/shared` los **empaqueta Vite en el bundle**
+(no se piden al disco en tiempo de ejecucion). Los selectores que el `--selftest` lee de la
+pagina estan documentados y probados en `WebUI/README.md` (y en `WebUI/tests/`).
+
+**Iterar la interfaz sin recompilar el plugin** (override de desarrollo, apagado por defecto):
+
+```bat
+set NEURONIK_WEBUI_DEV_DIR=D:\desarrollos\ABDSynths\ABDNeural\WebUI\dist
+```
+
+Con esa variable puesta, el plugin sirve la pagina desde disco: `pnpm build` (menos de un
+segundo) y recargar, en vez de recompilar el plugin entero por cada retoque de CSS. Sin la
+variable, el binario sirve su copia embebida y **no toca el disco** (cero rutas grabadas: el
+VST3 funciona copiado a cualquier sitio).
 
 El paso lento es el plugin: varios minutos la primera vez (compila JUCE y las dos variantes,
 Standalone y VST3) y

@@ -79,9 +79,9 @@ REM Reconfigurar solo la primera vez: cmake -S -B cuesta ~4s y no hace falta
 REM en cada pasada (los cambios en CMakeLists.txt los detecta MSBuild solo,
 REM via ZERO_CHECK). Borrar build\CMakeCache.txt fuerza una reconfiguracion.
 if exist "%BUILD_DIR%\CMakeCache.txt" (
-    echo [1/9] CMake ya configurado ^(se omite la reconfiguracion^)...
+    echo [1/10] CMake ya configurado ^(se omite la reconfiguracion^)...
 ) else (
-    echo [1/9] Configurando CMake...
+    echo [1/10] Configurando CMake...
     cmake -S . -B "%BUILD_DIR%" -DCMAKE_BUILD_TYPE=Release
     if !ERRORLEVEL! neq 0 (
         echo.
@@ -92,7 +92,7 @@ if exist "%BUILD_DIR%\CMakeCache.txt" (
 )
 
 echo.
-echo [2/9] Generando el contrato de parametros (WebPilot\generated)...
+echo [2/10] Generando el contrato de parametros (WebPilot\generated)...
 cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_ParameterExport
 if !ERRORLEVEL! neq 0 (
     echo.
@@ -111,26 +111,12 @@ if !ERRORLEVEL! neq 0 (
 
 if "%TESTS_ONLY%"=="1" goto :tests
 
+REM El orden IMPORTA, y ahora va de abajo arriba: el .wasm lo produce la WASM,
+REM la WebUI lo copia a su dist (publicDir = WebPilot\public) y el PLUGIN lo
+REM EMBIBE (juce_add_binary_data sobre WebUI\dist/*). Compilar el plugin antes
+REM dejaba dentro el bundle de la pasada ANTERIOR.
 echo.
-echo [3/9] Compilando Standalone y VST3...
-cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_Standalone NEURONiK_VST3
-if !ERRORLEVEL! neq 0 (
-    echo.
-    echo [ERROR] Fallo en la compilacion del plugin.
-    set "EXIT_CODE=1"
-    goto :finish
-)
-
-echo.
-REM El orden IMPORTA: la WebUI (out/) va ANTES que el host. El host EMBIBE el
-REM snapshot de out/ en el enlace (juce_add_binary_data sobre WebPilot/out/*);
-REM compilar el host antes dejaba dentro el bundle de la pasada ANTERIOR.
-REM
-REM Motor por defecto: Vite (A/B de la Fase 6: -45%% de bundle, build 4x mas
-REM rapido, misma pagina y mismo selftest). Next queda detras de `nextui`.
-REM Ambos motores VACIAN out/ al empezar: no se mezclan restos de motor.
-echo.
-echo [4/9] Compilando el DSP a WebAssembly (worklet + paridad + smoke)...
+echo [3/10] Compilando el DSP a WebAssembly (worklet + paridad + smoke)...
 if "%WITH_WASM%"=="0" goto :no_wasm
 REM build_wasm.bat compila el DSP a WASM, valida la paridad nativo<->WASM, corre
 REM el smoke y SINCRONIZA WebPilot\public\worklet (que la exportacion de la WebUI
@@ -152,7 +138,67 @@ goto :wasm_done
 echo [INFO] Omitido por flag nowasm: el worklet puede quedar desactualizado.
 
 :wasm_done
-echo [5/9] Exportando la WebUI del piloto...
+REM La interfaz del plugin es WebUI\dist y va EMBEBIDA en el binario, asi que su
+REM exportacion tiene que ir ANTES de compilar el plugin (y DESPUES de la WASM:
+REM el publicDir de la WebUI es WebPilot\public, donde sync-wasm deja el .wasm).
+echo [4/10] Exportando la WebUI del plugin (WebUI\dist)...
+if not exist "WebUI\node_modules" goto :no_plugin_webui
+
+pushd WebUI
+call pnpm build
+if !ERRORLEVEL! neq 0 (
+    popd
+    echo [ERROR] Fallo la exportacion de la WebUI del plugin. Sin WebUI\dist nueva
+    echo         el plugin embebiria la ANTERIOR, o ninguna.
+    set "EXIT_CODE=1"
+    goto :finish
+)
+popd
+echo [OK] WebUI del plugin exportada en WebUI\dist.
+goto :plugin_webui_done
+
+:no_plugin_webui
+echo [ERROR] WebUI\node_modules no existe: el plugin necesita su interfaz.
+echo         Ejecuta: cd WebUI ^&^& pnpm install
+set "EXIT_CODE=1"
+goto :finish
+
+:plugin_webui_done
+REM Guard: la pagina embebida tiene que llevar el worklet RECIEN compilado. Si el
+REM publicDir de la WebUI no lo copio, el plugin sonaria con un DSP VIEJO y el
+REM sintoma es mudo (misma clase de fallo que cubre el guard de WebPilot\out).
+if "%WITH_WASM%"=="1" if not exist "WebUI\dist\worklet\neuronik_dsp.wasm" (
+    echo [ERROR] WebUI\dist\worklet\neuronik_dsp.wasm no existe: la interfaz
+    echo         embebida no traeria worklet. Revisa el publicDir de la WebUI.
+    set "EXIT_CODE=1"
+    goto :finish
+)
+if "%WITH_WASM%"=="1" if exist "build-wasm\neuronik_dsp.wasm" if exist "WebUI\dist\worklet\neuronik_dsp.wasm" (
+    for %%F in ("build-wasm\neuronik_dsp.wasm") do set "WSRC_SIZE=%%~zF"
+    for %%F in ("WebUI\dist\worklet\neuronik_dsp.wasm") do set "WDST_SIZE=%%~zF"
+    if not "!WSRC_SIZE!"=="!WDST_SIZE!" (
+        echo [ERROR] WebUI\dist\worklet\neuronik_dsp.wasm no coincide con build-wasm:
+        echo         el worklet embebido seria un DSP VIEJO.
+        set "EXIT_CODE=1"
+        goto :finish
+    )
+)
+
+echo.
+echo [5/10] Compilando Standalone y VST3 (embiben la WebUI recien exportada)...
+cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_Standalone NEURONiK_VST3
+if !ERRORLEVEL! neq 0 (
+    echo.
+    echo [ERROR] Fallo en la compilacion del plugin.
+    set "EXIT_CODE=1"
+    goto :finish
+)
+
+REM Motor por defecto: Vite (A/B de la Fase 6: -45%% de bundle, build 4x mas
+REM rapido, misma pagina y mismo selftest). Next queda detras de `nextui`.
+REM Ambos motores VACIAN out/ al empezar: no se mezclan restos de motor.
+echo.
+echo [6/10] Exportando la WebUI del piloto...
 if not exist "WebPilot\node_modules" goto :no_webui
 
 pushd WebPilot
@@ -208,7 +254,7 @@ if "%WITH_WASM%"=="1" if exist "build-wasm\neuronik_dsp.wasm" if exist "WebPilot
     )
 )
 echo.
-echo [6/9] Compilando el host del piloto WebPilot (embibe la WebUI recien exportada)...
+echo [7/10] Compilando el host del piloto WebPilot (embibe la WebUI recien exportada)...
 cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_WebPilotHost
 if !ERRORLEVEL! neq 0 (
     echo [AVISO] No se pudo compilar el host del piloto. El plugin sigue siendo valido.
@@ -217,7 +263,7 @@ if !ERRORLEVEL! neq 0 (
 
 :modelmaker
 echo.
-echo [7/9] Herramienta ModelMaker...
+echo [8/10] Herramienta ModelMaker...
 if "%WITH_MODELMAKER%"=="0" goto :no_modelmaker
 
 cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_ModelMaker
@@ -240,7 +286,7 @@ echo        Para incluirlo: build.bat modelmaker
 
 :tests
 echo.
-echo [8/9] Compilando y ejecutando la suite de pruebas...
+echo [9/10] Compilando y ejecutando la suite de pruebas...
 REM La lista debe cubrir TODOS los tests registrados en ctest: si falta uno,
 REM ctest falla al no encontrar el ejecutable (no se construye solo).
 cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_DSPReferenceTest NEURONiK_MidiPortTest NEURONiK_MidiChannelFilterTest NEURONiK_VelocityCurveTest NEURONiK_LfoSyncTest NEURONiK_ParameterDescriptorTest NEURONiK_PresetRoundTripTest NEURONiK_StatePersistenceTest NEURONiK_ParameterBridgeTest NEURONiK_BridgeProtocolContractTest NEURONiK_DspReverbParityTest NEURONiK_DspReverbJucePolicyTest NEURONiK_DspEffectsParityTest NEURONiK_AudioBufferParityTest ABDShared_DspCore_Tests
@@ -261,7 +307,7 @@ if !ERRORLEVEL! neq 0 (
 
 echo.
 if "%WITH_SELFTEST%"=="0" goto :finish
-echo [9/9] Selftest bidireccional del bridge del piloto...
+echo [10/10] Selftest bidireccional del bridge del piloto...
 REM Solo si el host compilo y la WebUI existe: sin pagina que cargar no hay E2E.
 set "PILOT_HOST=%BUILD_DIR%\NEURONiK_WebPilotHost_artefacts\Release\NEURONiK Web Pilot.exe"
 if "!HOST_BUILD_FAILED!"=="1" (
@@ -301,6 +347,7 @@ echo =======================================================
 echo  Standalone:        %BUILD_DIR%\NEURONiK_artefacts\Release\Standalone\NEURONiK.exe
 echo  VST3:              %BUILD_DIR%\NEURONiK_artefacts\Release\VST3\NEURONiK.vst3
 echo  Host del piloto:   %BUILD_DIR%\NEURONiK_WebPilotHost_artefacts\Release\NEURONiK Web Pilot.exe
+echo  WebUI embebida:    WebUI\dist  ^(dentro del Standalone y del VST3^)
 if "%WITH_MODELMAKER%"=="1" echo  ModelMaker:        %BUILD_DIR%\Release\NEURONiK_ModelMaker.exe
 echo.
 echo  Copia de seguridad de builds anteriores: "Versiones compiladas"

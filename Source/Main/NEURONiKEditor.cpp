@@ -1,6 +1,5 @@
 #include "NEURONiKEditor.h"
-#include "../UI/ThemeManager.h"
-#include "NEURONiKProcessor.h"
+
 #include "Core/BuildVersion.h"
 #include "State/ParameterDefinitions.h"
 
@@ -10,397 +9,80 @@
 
 using namespace NEURONiK::State;
 
-NEURONiKEditor::NEURONiKEditor(NEURONiKProcessor& p)
-    : AudioProcessorEditor(p),
-      processor(p),
-      menuBar(this),
-      keyboardComponent(keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard),
-      visualizer(p),
-      generalPanel(p),
-      oscPanel(p),
-      filterEnvPanel(p),
-      fxPanel(p),
-      modulationPanel(p),
-      presetBrowser(p)
+NEURONiKEditor::NEURONiKEditor (NEURONiKProcessor& p)
+    : AudioProcessorEditor (p),
+      processor (p)
 {
-    keyboardState.addListener(this);
-    // --- Header ---
-    addAndMakeVisible(lcdDisplay);
-    addAndMakeVisible(menuBtn);
-    addAndMakeVisible(okBtn);
-    
-    // Add D-Pad
-    addAndMakeVisible(leftBtn);
-    addAndMakeVisible(rightBtn);
-    addAndMakeVisible(upBtn);
-    addAndMakeVisible(downBtn);
-    
-    // Setup Listeners
-    for (auto* b : { &menuBtn, &okBtn, &leftBtn, &rightBtn, &upBtn, &downBtn }) {
-        b->onStateChange = [this, b] { buttonStateChanged(b); };
-    }
+   #if defined(NEURONIK_HAS_WEBUI_VIEW)
+    // La pagina ES la interfaz: el componente trae su proveedor de recursos
+    // (embebido), el puente de parametros y los tres adaptadores del procesador.
+    webView = std::make_unique<NEURONiK::WebUI::NeuronikWebView> (p);
+    addAndMakeVisible (*webView);
+   #else
+    noWebUiNotice.setText ("NEURONiK: compilado sin interfaz web (NEURONIK_HAS_WEBUI_VIEW off).",
+                           juce::dontSendNotification);
+    noWebUiNotice.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (noWebUiNotice);
+   #endif
 
-    menuBtn.onClick = [this] { 
-        menuManager.onMenuPress(); 
-        updateLcdDefault();
-    };
-    
-    okBtn.onClick = [this] { 
-        menuManager.onOkPress(); 
-        updateLcdDefault();
-    };
+    addAndMakeVisible (menuBar);
 
-    if (auto* engineParam = p.getAPVTS().getRawParameterValue(IDs::engineType))
-        menuManager.setupMenu(static_cast<int>(engineParam->load()));
+    setResizable (true, true);
+    setResizeLimits (baseWidth / 2, baseHeight / 2, baseWidth * 3, baseHeight * 3);
+    setSize (baseWidth, baseHeight);
 
-    updateLcdDefault();
-    
-    // Listen to ALL parameters
-    for (auto* param : p.getAPVTS().processor.getParameters())
-    {
-        if (auto* pSafe = dynamic_cast<juce::AudioProcessorParameterWithID*>(param))
-            p.getAPVTS().addParameterListener(pSafe->getParameterID(), this);
-    }
-    addAndMakeVisible(menuBar);
-    addAndMakeVisible(keyboardComponent);
-    addAndMakeVisible(mainTabs);
-    addAndMakeVisible(visualizer);
-
-    const auto& theme = NEURONiK::UI::ThemeManager::getCurrentTheme();
-
-    mainTabs.addTab("GENERAL",    juce::Colours::transparentBlack, &generalPanel, false);
-    mainTabs.addTab("RESONATOR",  juce::Colours::transparentBlack, &oscPanel, false);
-    mainTabs.addTab("FILTER/ENV", juce::Colours::transparentBlack, &filterEnvPanel, false);
-    mainTabs.addTab("FX",         juce::Colours::transparentBlack, &fxPanel, false);
-    mainTabs.addTab("LFO/MOD",    juce::Colours::transparentBlack, &modulationPanel, false);
-    mainTabs.addTab("BROWSER",    juce::Colours::transparentBlack, &presetBrowser, false);
-    
-    for (int i = 0; i < mainTabs.getNumTabs(); ++i)
-        mainTabs.setTabBackgroundColour(i, theme.surface);
-
-    keyboardComponent.setAvailableRange(24, 96);
-
-    setWantsKeyboardFocus(true);
-    setResizable(true, true);
-    setResizeLimits(400, 300, 4000, 3000);
-    setSize(800, 600);
+    // El poll del puente. Hacia la pagina van dos cosas de cadencia distinta: los
+    // cambios de parametro en cada tick, y el estado MIDI externo (notas
+    // retenidas + ruedas) cada ~180 ms, que es lo que hace que el teclado de la
+    // pagina refleje el MIDI del DAW. Misma cadencia que la bancada del piloto.
+    startTimerHz (33);
 }
 
 NEURONiKEditor::~NEURONiKEditor()
 {
-    keyboardState.removeListener(this);
-    // Unregister listeners
-    for (auto* param : processor.getAPVTS().processor.getParameters())
-    {
-        if (auto* pSafe = dynamic_cast<juce::AudioProcessorParameterWithID*>(param))
-            processor.getAPVTS().removeParameterListener(pSafe->getParameterID(), this);
-    }
+    stopTimer();
 }
 
-void NEURONiKEditor::parameterChanged(const juce::String& parameterID, float newValue)
+void NEURONiKEditor::paint (juce::Graphics& g)
 {
-    auto* param = processor.getAPVTS().getParameter(parameterID);
-    if (!param) return;
-
-    juce::String name = param->getName(16);
-    juce::String valStr = param->getCurrentValueAsText();
-    
-    // Move to UI thread
-    juce::MessageManager::callAsync([this, parameterID, name, valStr, newValue] {
-        if (parameterID == IDs::engineType)
-        {
-            menuManager.setupMenu(static_cast<int>(newValue));
-            updateLcdDefault();
-        }
-        lcdDisplay.showParameterPreview(name, valStr);
-    });
-
-    juce::ignoreUnused(newValue);
-}
-
-void NEURONiKEditor::handleNoteOn(juce::MidiKeyboardState*, int midiChannel, int midiNoteNumber, float velocity)
-{
-    processor.injectNoteOn(midiChannel, midiNoteNumber, velocity);
-}
-
-void NEURONiKEditor::handleNoteOff(juce::MidiKeyboardState*, int midiChannel, int midiNoteNumber, float velocity)
-{
-    processor.injectNoteOff(midiChannel, midiNoteNumber, velocity);
-}
-
-void NEURONiKEditor::updateLcdDefault()
-{
-    juce::String l1 = menuManager.getLine1();
-    juce::String l2 = menuManager.getLine2();
-
-    if (menuManager.getState() == NEURONiK::UI::LcdMenuManager::State::Idle)
-    {
-        l1 = "PATCH: " + processor.getPresetManager().getCurrentPreset().toUpperCase();
-        l2 = "NEURONiK READY";
-    }
-    else if (menuManager.isEditing())
-    {
-        auto item = menuManager.getCurrentItem();
-        auto paramID = item.paramID;
-
-        if (item.type == NEURONiK::UI::LcdMenuManager::ItemType::MidiCC)
-        {
-            int cc = processor.getMidiMappingManager().getCCForParam(paramID);
-            juce::String ccStr = (cc < 0) ? "---" : juce::String(cc);
-            
-            // Check for potential conflict if we were to move?
-            // (The setMapping logic resolves them, but we display the current)
-            l2 = "> " + item.label + ": CC " + ccStr;
-            
-            // Add 'L' if it has a mapping? Wait, user says 'L' for MIDI Learn active?
-            // Usually 'L' means it's learned. 
-            if (cc >= 0) l2 += " [L]";
-        }
-        else if (auto* param = processor.getAPVTS().getParameter(paramID))
-        {
-            float val = param->getValue();
-            juce::String valStr;
-            
-            if (param->isDiscrete())
-                valStr = param->getCurrentValueAsText();
-            else
-                valStr = juce::String(param->convertFrom0to1(val), 3);
-                
-            l2 = "> " + menuManager.getLine2() + ": " + valStr;
-        }
-    }
-
-    lcdDisplay.setDefaultText(l1, l2);
-}
-
-// --- Button Logic ---
-void NEURONiKEditor::timerCallback()
-{
-    if (activeHoldButton && activeHoldButton->isDown())
-    {
-        holdCounter++;
-        handleButtonAction(activeHoldButton, true);
-    }
-    else
-    {
-        stopTimer();
-        activeHoldButton = nullptr;
-        holdCounter = 0;
-    }
-}
-
-void NEURONiKEditor::buttonStateChanged(juce::Button* b)
-{
-    if (b->isDown())
-    {
-        // Only D-Pad buttons use the repeat logic.
-        // Command buttons (MENU/OK) use standard onClick.
-        if (b == &leftBtn || b == &rightBtn || b == &upBtn || b == &downBtn)
-        {
-            holdCounter = 0;
-            activeHoldButton = b;
-            handleButtonAction(b, false); // First trigger
-            startTimer(200);
-        }
-    }
-    else if (activeHoldButton == b)
-    {
-        stopTimer();
-        activeHoldButton = nullptr;
-        holdCounter = 0;
-    }
-}
-
-void NEURONiKEditor::updateModelNames()
-{
-    const auto& names = processor.getModelNames();
-    for (int i = 0; i < 4; ++i)
-        oscPanel.setModelName(i, names[i]);
-}
-
-// We need to implement the timer callback for the hold timer. 
-// Since NEURONiKEditor doesn't inherit Timer (parameterPanel does), we need to add inheritance or use a helper.
-// Recommendation: Add "private juce::Timer" inheritance to NEURONiKEditor in the previous step (header).
-// We'll assume I missed adding the inheritance in the header edit, so I will add the logic to a NEW method 
-// and handle the inheritance fix in the header/source if needed.
-// WAIT: I declared `juce::Timer holdTimer` member in older edit? 
-// No, I declared `juce::Timer holdTimer;` which is WRONG because Timer is an interface (mostly) or needs virtual callback.
-// JUCE Timer is a mixin class usually. One cannot instantiate `juce::Timer` directly unless it has a callback assigned (not standard JUCE).
-// Standard JUCE: Inherit from Timer.
-// FIX: I will use a simple logical fix: I will remove the member `juce::Timer holdTimer` and instead make NEURONiKEditor inherit from Timer 
-// or use `juce::Time::waitForMillisecondCounter` (blocking, bad).
-// Okay, let's use the `callById` parameter of `startTimer` if available, or just implement `timerCallback` in Editor.
-// Editor ALREADY inherits `AudioProcessorValueTreeState::Listener`. 
-// I will add `private juce::Timer` to inheritance in the next fix if needed.
-// FOR NOW: I'll assume I can add the logic to `handleButtonAction`.
-
-void NEURONiKEditor::handleButtonAction(juce::Button* b, bool isRepeat)
-{
-    if (!b) return;
-    
-    // We only process D-Pad buttons here. MENU/OK are handled by onClick.
-    if (b != &leftBtn && b != &rightBtn && b != &upBtn && b != &downBtn)
-        return;
-
-    int direction = (b == &rightBtn || b == &upBtn) ? 1 : -1;
-    
-    // Acceleration Logic
-    float paramDelta = 0.01f;
-    if (isRepeat && holdCounter > 8) { // > 1.6s @ 200ms
-        paramDelta = 0.05f;
-    }
-
-    // LEFT / RIGHT: Menu Navigation
-    if (b == &leftBtn || b == &rightBtn)
-    {
-        if (!menuManager.isEditing())
-        {
-            menuManager.onEncoderRotate(direction);
-        }
-    }
-    // UP / DOWN: Value adjustment (or Preset navigation in Idle)
-    else if (b == &upBtn || b == &downBtn)
-    {
-        auto state = menuManager.getState();
-        
-        if (state == NEURONiK::UI::LcdMenuManager::State::Idle)
-        {
-            if (direction > 0) processor.getPresetManager().loadNextPreset();
-            else processor.getPresetManager().loadPreviousPreset();
-        }
-        else
-        {
-            auto item = menuManager.getCurrentItem();
-            auto paramID = item.paramID;
-
-            if (item.type == NEURONiK::UI::LcdMenuManager::ItemType::MidiCC)
-            {
-                if (paramID.isNotEmpty())
-                {
-                    int currentCC = processor.getMidiMappingManager().getCCForParam(paramID);
-                    int newCC = juce::jlimit(-1, 127, currentCC + direction);
-                    processor.getMidiMappingManager().setMapping(paramID, newCC);
-                    
-                    if (!menuManager.isEditing())
-                        menuManager.onOkPress();
-                }
-            }
-            else if (item.type == NEURONiK::UI::LcdMenuManager::ItemType::Action)
-            {
-                if (paramID == "RESET_MIDI")
-                {
-                    processor.getMidiMappingManager().resetToDefaults();
-                }
-            }
-            else if (paramID.isNotEmpty())
-            {
-                // ... existing parameter edit logic ...
-                if (auto* param = processor.getAPVTS().getParameter(paramID))
-                {
-                    // Discrete logic
-                    if (param->isDiscrete())
-                    {
-                        float steps = (float)param->getNumSteps();
-                        if (steps > 1) paramDelta = 1.0f / (steps - 1.0f);
-                        else paramDelta = 1.0f;
-                    }
-                    
-                    float currentVal = param->getValue();
-                    float newVal = juce::jlimit(0.0f, 1.0f, currentVal + (paramDelta * direction));
-                    
-                    if (newVal != currentVal)
-                        param->setValueNotifyingHost(newVal);
-                    
-                    if (!menuManager.isEditing())
-                        menuManager.onOkPress();
-                }
-            }
-        }
-    }
-    
-    updateLcdDefault();
-}
-
-void NEURONiKEditor::paint(juce::Graphics& g)
-{
-    const auto& theme = NEURONiK::UI::ThemeManager::getCurrentTheme();
-    g.setColour(juce::Colours::black.withAlpha(0.8f));
-    auto area = getLocalBounds();
-    auto headerArea = area.removeFromTop(105);
-    g.fillRect(headerArea);
-
-    // Gradient border
-    juce::ColourGradient gradient(
-        theme.accent.withAlpha(0.6f), 0.0f, static_cast<float>(headerArea.getY()),
-        theme.accent.withAlpha(0.0f), 0.0f, static_cast<float>(headerArea.getBottom()),
-        false
-    );
-    g.setGradientFill(gradient);
-    g.fillRect(headerArea);
-
-    g.setColour(theme.accent.withAlpha(0.3f));
-    g.fillRect(headerArea.withY(headerArea.getBottom() - 1).withHeight(1));
+    // El hueco hasta que WebView2 pinta su primera pagina. Se rellena con el
+    // color del chasis en vez de dejar el fondo del host: 8.5 mide ese arranque
+    // (~7 s en frio en la bancada, que es lo que domina la apertura del editor).
+    g.fillAll (juce::Colour (0xff12161c));
 }
 
 void NEURONiKEditor::resized()
 {
     auto area = getLocalBounds();
 
-    menuBar.setBounds(area.removeFromTop(25));
+    menuBar.setBounds (area.removeFromTop (menuBarHeight));
 
-    auto headerArea = area.removeFromTop(80);
-    auto lcdArea = headerArea.removeFromLeft(static_cast<int>(headerArea.getWidth() * 0.6f)).reduced(10, 5);
-    auto visualizerArea = headerArea;
-
-    // Split LCD area to include hardware controls
-    auto hardwareArea = lcdArea.removeFromRight(110);
-    lcdDisplay.setBounds(lcdArea);
-    
-    // Layout:
-    // Left Col: MENU / OK
-    // Right Grid: < > (Row 1), ^ v (Row 2)
-    
-    auto cmdCol = hardwareArea.removeFromLeft(50);
-    menuBtn.setBounds(cmdCol.removeFromTop(cmdCol.getHeight() / 2).reduced(2));
-    okBtn.setBounds(cmdCol.reduced(2));
-
-    auto padArea = hardwareArea.reduced(2);
-    auto row1 = padArea.removeFromTop(padArea.getHeight() / 2);
-    auto row2 = padArea;
-    
-    leftBtn.setBounds(row1.removeFromLeft(row1.getWidth()/2).reduced(2));
-    rightBtn.setBounds(row1.reduced(2));
-    
-    upBtn.setBounds(row2.removeFromLeft(row2.getWidth()/2).reduced(2));
-    downBtn.setBounds(row2.reduced(2));
-
-    visualizer.setBounds(visualizerArea.reduced(5));
-
-    auto keyboardArea = area.removeFromBottom(100);
-    keyboardComponent.setBounds(keyboardArea);
-
-    float numWhiteKeys = 43.0f;
-    keyboardComponent.setKeyWidth(static_cast<float>(keyboardArea.getWidth()) / numWhiteKeys);
-
-    mainTabs.setBounds(area.reduced(10));
+   #if defined(NEURONIK_HAS_WEBUI_VIEW)
+    // La base compartida ajusta el navegador a SUS bounds, asi que el webview solo
+    // necesita saber que area es suya: sigue cada resize sin logica propia. Es el
+    // "sin regresion en resized()" del ticket.
+    webView->setBounds (area);
+   #else
+    noWebUiNotice.setBounds (area);
+   #endif
 }
 
-void NEURONiKEditor::setZoom(float scale)
+void NEURONiKEditor::timerCallback()
 {
-    zoomScale = scale;
-    
-    // Base size is 800x600
-    int newWidth = juce::roundToInt(800.0f * zoomScale);
-    int newHeight = juce::roundToInt(600.0f * zoomScale);
-    
-    // If we are in a wrapper (plugin), we might need to notify the host.
-    // AudioProcessorEditor::setSize will do this.
-    setSize(newWidth, newHeight);
-    
-    // Apply affine transform if we want a "real" visual zoom 
-    // but JUCE's setSize + resized logic is usually cleaner for plugins.
-    // However, for advanced scaling, using AffineTransform on the top level is smoother.
-    setTransform(juce::AffineTransform::scale(zoomScale));
+   #if defined(NEURONIK_HAS_WEBUI_VIEW)
+    webView->poll();
+   #endif
+}
+
+void NEURONiKEditor::setZoom (float scale)
+{
+    zoomScale = juce::jlimit (0.5f, 3.0f, scale);
+
+   #if defined(NEURONIK_HAS_WEBUI_VIEW)
+    webView->setPageZoom (zoomScale);
+   #else
+    juce::ignoreUnused (zoomScale);
+   #endif
 }
 
 juce::StringArray NEURONiKEditor::getMenuBarNames()
@@ -408,114 +90,113 @@ juce::StringArray NEURONiKEditor::getMenuBarNames()
     return { "File", "Edit", "Help" };
 }
 
-juce::PopupMenu NEURONiKEditor::getMenuForIndex(int, const juce::String& menuName)
+juce::PopupMenu NEURONiKEditor::getMenuForIndex (int, const juce::String& menuName)
 {
     juce::PopupMenu menu;
 
     if (menuName == "File")
     {
-        menu.addItem(10, "New Session"); // Placeholder for future
-#if JucePlugin_Build_Standalone
+        menu.addItem (10, "New Session"); // Placeholder for future
+       #if JucePlugin_Build_Standalone
         menu.addSeparator();
-        menu.addItem(999, "Exit");
-#endif
+        menu.addItem (999, "Exit");
+       #endif
     }
     else if (menuName == "Edit")
     {
-        menu.addItem(1, "Load Preset...");
-        menu.addItem(2, "Save Preset...");
+        menu.addItem (1, "Load Preset...");
+        menu.addItem (2, "Save Preset...");
         menu.addSeparator();
-        menu.addItem(60, "Copy Patch");
-        menu.addItem(61, "Paste Patch");
+        menu.addItem (60, "Copy Patch");
+        menu.addItem (61, "Paste Patch");
         menu.addSeparator();
 
         juce::PopupMenu midiChannelMenu;
-        auto* choiceParam = processor.getAPVTS().getParameter(IDs::midiChannel);
-        int currentChoice = static_cast<int>(choiceParam->getValue() * (choiceParam->getNumSteps() - 1));
+        auto* choiceParam = processor.getAPVTS().getParameter (IDs::midiChannel);
+        int currentChoice = static_cast<int> (choiceParam->getValue() * (choiceParam->getNumSteps() - 1));
 
         for (int i = 0; i < 17; ++i)
-        {
-            midiChannelMenu.addItem(20 + i, (i == 0) ? "Omni" : "Channel " + juce::String(i), true, i == currentChoice);
-        }
-        menu.addSubMenu("MIDI Channel", midiChannelMenu);
+            midiChannelMenu.addItem (20 + i, (i == 0) ? "Omni" : "Channel " + juce::String (i), true, i == currentChoice);
+
+        menu.addSubMenu ("MIDI Channel", midiChannelMenu);
         menu.addSeparator();
 
         juce::PopupMenu voicesMenu;
         int currentVoices = processor.getPolyphony();
-        voicesMenu.addItem(50, "Mono (1 Voice)", true, currentVoices == 1);
-        voicesMenu.addItem(51, "2 Voices", true, currentVoices == 2);
-        voicesMenu.addItem(52, "3 Voices", true, currentVoices == 3);
-        voicesMenu.addItem(53, "4 Voices", true, currentVoices == 4);
-        voicesMenu.addItem(54, "6 Voices", true, currentVoices == 6);
-        voicesMenu.addItem(55, "8 Voices", true, currentVoices == 8);
+        voicesMenu.addItem (50, "Mono (1 Voice)", true, currentVoices == 1);
+        voicesMenu.addItem (51, "2 Voices", true, currentVoices == 2);
+        voicesMenu.addItem (52, "3 Voices", true, currentVoices == 3);
+        voicesMenu.addItem (53, "4 Voices", true, currentVoices == 4);
+        voicesMenu.addItem (54, "6 Voices", true, currentVoices == 6);
+        voicesMenu.addItem (55, "8 Voices", true, currentVoices == 8);
 
-        menu.addSubMenu("Voices", voicesMenu);
+        menu.addSubMenu ("Voices", voicesMenu);
         menu.addSeparator();
 
         juce::PopupMenu zoomMenu;
-        zoomMenu.addItem(300, "0.5x", true, zoomScale == 0.5f);
-        zoomMenu.addItem(301, "1x (Normal)", true, zoomScale == 1.0f);
-        zoomMenu.addItem(302, "1.25x", true, zoomScale == 1.25f);
-        zoomMenu.addItem(303, "1.5x", true, zoomScale == 1.5f);
-        zoomMenu.addItem(304, "2x", true, zoomScale == 2.0f);
-        zoomMenu.addItem(305, "3x", true, zoomScale == 3.0f);
-        menu.addSubMenu("Zoom", zoomMenu);
+        zoomMenu.addItem (300, "0.5x", true, zoomScale == 0.5f);
+        zoomMenu.addItem (301, "1x (Normal)", true, zoomScale == 1.0f);
+        zoomMenu.addItem (302, "1.25x", true, zoomScale == 1.25f);
+        zoomMenu.addItem (303, "1.5x", true, zoomScale == 1.5f);
+        zoomMenu.addItem (304, "2x", true, zoomScale == 2.0f);
+        zoomMenu.addItem (305, "3x", true, zoomScale == 3.0f);
+        menu.addSubMenu ("Zoom", zoomMenu);
 
         menu.addSeparator();
-        menu.addItem(14, "Options...");
+        menu.addItem (14, "Options...");
     }
     else if (menuName == "Help")
     {
-        menu.addItem(103, "Random Parameters...");
-        menu.addItem(102, "MIDI Specifications...");
+        menu.addItem (103, "Random Parameters...");
+        menu.addItem (102, "MIDI Specifications...");
         menu.addSeparator();
-        menu.addItem(101, "About...");
+        menu.addItem (101, "About...");
     }
 
     return menu;
 }
 
-void NEURONiKEditor::menuItemSelected(int menuItemID, int)
+void NEURONiKEditor::menuItemSelected (int menuItemID, int)
 {
     if (menuItemID == 1) // Load Preset
     {
         auto fileChooserFlags = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles;
-        
-        chooser = std::make_unique<juce::FileChooser>("Select a preset to load...",
+
+        chooser = std::make_unique<juce::FileChooser> ("Select a preset to load...",
             processor.getPresetManager().getPresetsDirectory(),
             "*.neuronikpreset");
 
-        chooser->launchAsync(fileChooserFlags, [this](const juce::FileChooser& fc)
+        chooser->launchAsync (fileChooserFlags, [this] (const juce::FileChooser& fc)
         {
             auto file = fc.getResult();
             if (file.existsAsFile())
-                processor.getPresetManager().loadPresetFromFile(file);
+                processor.getPresetManager().loadPresetFromFile (file);
         });
     }
     else if (menuItemID == 2) // Save Preset
     {
         auto fileChooserFlags = juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles;
 
-        chooser = std::make_unique<juce::FileChooser>("Save current preset...",
+        chooser = std::make_unique<juce::FileChooser> ("Save current preset...",
             processor.getPresetManager().getPresetsDirectory(),
             "*.neuronikpreset");
 
-        chooser->launchAsync(fileChooserFlags, [this](const juce::FileChooser& fc)
+        chooser->launchAsync (fileChooserFlags, [this] (const juce::FileChooser& fc)
         {
             auto file = fc.getResult();
             if (file != juce::File())
-                processor.getPresetManager().savePresetToFile(file);
+                processor.getPresetManager().savePresetToFile (file);
         });
     }
     else if (menuItemID >= 20 && menuItemID < 37)
     {
-        auto* param = processor.getAPVTS().getParameter(IDs::midiChannel);
-        param->setValueNotifyingHost(param->getNormalisableRange().convertTo0to1(static_cast<float>(menuItemID - 20)));
+        auto* param = processor.getAPVTS().getParameter (IDs::midiChannel);
+        param->setValueNotifyingHost (param->getNormalisableRange().convertTo0to1 (static_cast<float> (menuItemID - 20)));
     }
     else if (menuItemID >= 50 && menuItemID <= 55)
     {
         int voices = 1;
-        switch(menuItemID)
+        switch (menuItemID)
         {
             case 50: voices = 1; break;
             case 51: voices = 2; break;
@@ -523,45 +204,46 @@ void NEURONiKEditor::menuItemSelected(int menuItemID, int)
             case 53: voices = 4; break;
             case 54: voices = 6; break;
             case 55: voices = 8; break;
+            default: break;
         }
-        processor.setPolyphony(voices);
+        processor.setPolyphony (voices);
     }
     else if (menuItemID == 60)
     {
         auto xml = processor.getFullState().createXml();
-        if (xml != nullptr) juce::SystemClipboard::copyTextToClipboard(xml->toString());
+        if (xml != nullptr) juce::SystemClipboard::copyTextToClipboard (xml->toString());
     }
     else if (menuItemID == 61)
     {
         auto xmlString = juce::SystemClipboard::getTextFromClipboard();
-        auto xml = juce::parseXML(xmlString);
+        auto xml = juce::parseXML (xmlString);
         if (xml != nullptr)
-            processor.setFullState(juce::ValueTree::fromXml(*xml));
+            processor.setFullState (juce::ValueTree::fromXml (*xml));
     }
     else if (menuItemID == 14)
     {
-#if JucePlugin_Build_Standalone
+       #if JucePlugin_Build_Standalone
         if (auto* holder = juce::StandalonePluginHolder::getInstance())
         {
             holder->showAudioSettingsDialog();
             return;
         }
-#endif
+       #endif
 
-        juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,
-            "AXIONiK Options",
+        juce::AlertWindow::showMessageBoxAsync (juce::AlertWindow::InfoIcon,
+            "NEURONiK Options",
             "Audio/MIDI settings are managed by your DAW/Host when running as a plugin.",
             "OK");
     }
     else if (menuItemID == 101)
     {
-        juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,
-            "About AXIONiK",
-            "AXIONiK Synthesizer\n"
+        juce::AlertWindow::showMessageBoxAsync (juce::AlertWindow::InfoIcon,
+            "About NEURONiK",
+            "NEURONiK Synthesizer\n"
             "Hybrid Spectral Morphing Synthesizer\n\n"
             "Dual Engine Architecture:\n"
-            "• NEURONiK: Advanced Additive Engine\n"
-            "• Neurotik: Physical Modeling Resonator\n\n"
+            "\xe2\x80\xa2 NEURONiK: Advanced Additive Engine\n"
+            "\xe2\x80\xa2 Neurotik: Physical Modeling Resonator\n\n"
             "Developed by ABD.",
             "OK");
     }
@@ -574,34 +256,12 @@ void NEURONiKEditor::menuItemSelected(int menuItemID, int)
         juce::String info = "RANDOM BUTTON - FREEZE CONTROLS\n"
                             "================================\n\n"
                             "The RANDOM button randomizes parameters within musical ranges.\n"
-                            "Use FREEZE buttons to protect specific sections:\n\n"
-                            
-                            "FREEZE RESONATOR:\n"
-                            "  • Morph X/Y\n"
-                            "  • Inharmonicity\n"
-                            "  • Roughness\n"
-                            "  • Odd/Even Balance (Parity)\n"
-                            "  • Spectral Shift\n"
-                            "  • Harmonic Roll-off\n"
-                            "  • Spectral Detune/Spread\n"
-                            "  • Neurotik: Excite Noise, Color, Impulse Mix, Resonance\n\n"
-                            
-                            "FREEZE FILTER/FX:\n"
-                            "  • Filter Cutoff\n"
-                            "  • Filter Resonance\n"
-                            "  • Filter Envelope Amount\n"
-                            "  • Saturation\n"
-                            "  • Delay Time/Feedback\n"
-                            "  • Chorus Mix\n"
-                            "  • Reverb Mix\n\n"
-                            
-                            "FREEZE ENVELOPES:\n"
-                            "  • Amp ADSR (Attack, Decay, Sustain, Release)\n"
-                            "  • Filter ADSR\n\n"
-                            
-                            "TIP: Combine freeze buttons to create controlled variations!";
-        
-        juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,
+                            "Use FREEZE buttons to protect specific sections.\n\n"
+                            "Las ayudas por seccion (RESONATOR / FILTER-FX / ENVELOPES) viven\n"
+                            "en la interfaz web: esto es el resto provisional que el ticket\n"
+                            "8.3 se lleva a la pagina.";
+
+        juce::AlertWindow::showMessageBoxAsync (juce::AlertWindow::InfoIcon,
             "Random Parameters Help",
             info,
             "OK");
@@ -609,23 +269,26 @@ void NEURONiKEditor::menuItemSelected(int menuItemID, int)
     else if (menuItemID >= 300 && menuItemID <= 305)
     {
         float scale = 1.0f;
-        switch(menuItemID) {
+        switch (menuItemID)
+        {
             case 300: scale = 0.5f; break;
             case 301: scale = 1.0f; break;
             case 302: scale = 1.25f; break;
             case 303: scale = 1.5f; break;
             case 304: scale = 2.0f; break;
             case 305: scale = 3.0f; break;
+            default: break;
         }
-        setZoom(scale);
+        setZoom (scale);
     }
     else if (menuItemID == 999)
     {
-#if JucePlugin_Build_Standalone
+       #if JucePlugin_Build_Standalone
         juce::JUCEApplication::quit();
-#endif
+       #endif
     }
 }
+
 void NEURONiKEditor::showMidiSpecifications()
 {
     juce::String specs = "FACTORY MIDI CC MAPPINGS\n"
@@ -654,13 +317,13 @@ void NEURONiKEditor::showMidiSpecifications()
     specs << "21: Noise Color\n";
     specs << "22: Impulse Mix\n";
     specs << "23: Resonator Resonance\n\n";
-    
+
     specs << "OTHER CONTROLS:\n";
     specs << "Pitch Bend: Global Pitch\n";
     specs << "Mod Wheel: Routable (Mod Matrix)\n";
     specs << "Aftertouch: Routable (Mod Matrix)\n";
 
-    juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,
+    juce::AlertWindow::showMessageBoxAsync (juce::AlertWindow::InfoIcon,
         "MIDI Specifications",
         specs,
         "OK");

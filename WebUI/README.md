@@ -16,11 +16,15 @@ su propia carpeta.
 - **Política de audio (8.1)**: una sola señal decide quién suena; dentro de un host el motor
   del worklet no arranca. Incluye el motor portado (ciclo de vida del `AudioContext`).
 - Suite en verde: **96 tests en 11 ficheros**.
-- **Nada de esto está cableado todavía.** El host (`NEURONiK Web Pilot.exe`), `build.bat`,
-  `start.bat` y CMake siguen sirviendo **el piloto React** (`WebPilot/out`). Cambiar quién
-  hospeda la página es el ticket **8.1** (en el editor del plugin, no en la bancada del
-  piloto) y eso va **antes** de cerrar 8.2. Esta carpeta compila a `WebUI/dist`, que hoy no
-  consume nadie.
+- **Cableado (8.1, 2026-09-19): esta carpeta ES la interfaz del plugin.** `NEURONiKEditor`
+  monta `Source/WebUI/NeuronikWebView.h`, que sirve `WebUI/dist` desde una copia **embebida**
+  en el binario (`juce_add_binary_data` → `NEURONiK_WebUIAssets`). `build.bat` la construye en
+  su paso 4/10, antes de compilar el plugin (que la embebe en el enlace). El panel nativo de
+  JUCE ya no se monta: la página lo sustituye, y `Source/UI/**` se borra en 8.4.
+- **El piloto React sigue vivo solo mientras 8.1 no cierre su paso 2c** (el selftest de cuatro
+  direcciones vive en su bancada y hay que portarlo). Después se retira, con la mudanza de las
+  tres SSOT que hoy viven en `WebPilot/` (contrato generado, `bridge-protocol.json` y
+  `public/`). Ver `ROADMAP.md`, «Retirada del piloto».
 
 ## Cómo se ejecuta
 
@@ -52,8 +56,8 @@ funciona, pero ningún envío sale al plugin ni se pinta estado nativo.
 
 El **contrato generado** no se copia: `src/contracts/parameters.js` importa
 `WebPilot/generated/parameters.generated.js`, que sigue siendo la única copia (la escribe
-`NEURONiK_ParameterExport` en el paso 2/9 de `build.bat`). Cuando el piloto se retire
-(8.4), ese directorio se muda aquí y el import es de una línea.
+`NEURONiK_ParameterExport` en el paso 2/10 de `build.bat`). Cuando el piloto se retire, ese
+directorio se muda aquí y el import es de una línea.
 
 ## El contrato con el host (no "simplificar")
 
@@ -87,15 +91,29 @@ sola vez en `bridgeCore.js::nativeBackend()`—, así que la política **no pued
 estado del bridge. `startAudioEngine()` consulta la guarda antes de nada: dentro de un host
 devuelve estado `blocked` y no llega a construir un `AudioContext`.
 
-## Qué NO está cableado (a propósito)
+## Servir la página desde disco mientras se itera (dev)
 
-- **`build.bat` sigue construyendo el piloto React.** El paso 5/9 exporta `WebPilotVite`
-  a `WebPilot/out`, que es lo que embebe el host y lo que sirve `start.bat`. Esta carpeta
-  compila a `WebUI/dist` e **no** entra en ese circuito.
-- **La paridad de 8.2 no está hecha**: la pantalla GENERAL lista los 11 ids con su valor
-  real (leído del contrato), pero **sin widgets** — los knobs/sliders/toggles de la familia
-  compartida son el trabajo de 8.2, igual que el reparto por pestañas del panel nativo.
-- **La comprobación E2E de la política de audio**: está probada en unitario (incluido que no
-  se construye un `AudioContext` dentro de un host) y la página que sirve el host hoy lleva la
-  misma guarda, pero el `--selftest` corre contra la bancada del piloto, no contra el plugin.
-  Ese cierre es 8.1.
+El plugin embebe `WebUI/dist`, así que sin nada más cada retoque de CSS pediría recompilar el
+plugin. Para el bucle rápido (y para lo que queda de 8.2) está el override de desarrollo,
+apagado por defecto:
+
+```bat
+set NEURONIK_WEBUI_DEV_DIR=D:\desarrollos\ABDSynths\ABDNeural\WebUI\dist
+```
+
+Con esa variable, el plugin sirve del disco y lo que no encuentre cae a la copia embebida; sin
+ella no toca el disco. Ninguna ruta va grabada en el binario (el VST3 funciona copiado a
+cualquier sitio), así que el «cero rutas absolutas» del DoD se mantiene: es una decisión de
+arranque, no una dependencia del build.
+
+## Qué NO está hecho (a propósito)
+
+- **La paridad de 8.2**: la pantalla GENERAL lista los 11 ids con su valor real (leído del
+  contrato), pero **sin widgets** — los knobs/sliders/toggles de la familia compartida son el
+  trabajo de 8.2, igual que el reparto por pestañas del panel nativo.
+- **El arnés del selftest de cuatro direcciones** sigue en la bancada del piloto
+  (`Source/WebPilotHost.cpp`). Portarlo a algo que abra Standalone y VST3 es el paso 2c, y es
+  lo que cierra el E2E de la política de audio (hoy probada en unitario, no dentro de WebView2
+  en el plugin).
+- **La barra de menú del editor es provisional** (preset, canal MIDI, voces, zoom, ayuda): se
+  la lleva 8.3 a la propia página.
