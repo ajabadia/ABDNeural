@@ -577,6 +577,30 @@ Evaluado el 2026-09-19, con el piloto React ya funcionando:
 - **`WebPilotVite` (React) queda como contra-piloto** hasta que 8.2 esté cerrada; después se
   retira o se deja como banco de pruebas, pero **no** como segunda implementación de la UI.
 
+**8.0.1 El andamiaje vainilla (hecho, 2026-09-19)**
+
+Nace `ABDNeural/WebUI/` — proyecto Vite vainilla **propio** (no se comparte código con
+`ABDMS2000/WebUI`, que es solo referencia de arquitectura).
+
+- [x] `src/bridge/bridgeCore.js` <- `WebPilot/lib/bridge.js` (transporte WebView2, protocolo
+      versionado: el mismo que ya prueban `ParameterBridgeTest` y `BridgeProtocolContractTest`).
+- [x] `src/contracts/parameters.js` <- `WebPilot/lib/parameters.js` (adaptador del contrato
+      generado; sigue importando la **copia única** de `WebPilot/generated/`, no se duplica).
+- [x] `src/contracts/paramValue.js` <- `WebPilot/lib/paramValue.js`.
+- [x] `src/wasm/audioParams.js` <- `WebPilot/lib/audioParams.js` (contrato → `GlobalParams`).
+- [x] `src/contracts/paramStore.js`: la lógica de `useParameterControls.js` convertida en store
+      vainilla (`getState()` / `subscribe()`), con gestos, presets, MIDI y modelos. Sustituye
+      el `useState`/`useMemo`/`useRef` por un objeto de estado y una lista de oyentes.
+- [x] `src/app.js`: arranque vainilla (store + estado del bridge + resumen del contrato) y el
+      `<input type="range">` base de `masterLevel` que el `--selftest` del host necesita.
+- [x] Suite portada: **61 tests** en 6 ficheros (`pnpm test`), incluido el guardián del control
+      base y un guardián explícito de "cero framework".
+- [x] Medición, para el objetivo de bundle de 8.5: **32,4 KB de JS (6,3 KB gzip)** frente a los
+      306 KB (89 KB gzip) del piloto React, con las mismas dependencias compartidas.
+- **Fuera de circuito a propósito:** `build.bat` sigue exportando `WebPilotVite` a `WebPilot/out`
+  (lo que embebe el host del piloto y sirve `start.bat`). Esta carpeta compila a `WebUI/dist` y
+  no entra ahí: cambiar el motor de UI es un paso deliberado de 8.2, no un efecto colateral.
+
 **8.1 El editor del plugin hospeda la página**
 - [ ] Mover a `NEURONiKEditor` lo que hoy vive en `WebPilotHost`: `WebBrowserComponent` +
       `ResourceProvider` (disco en dev con hot-reload, embebido en release — mismo patrón que

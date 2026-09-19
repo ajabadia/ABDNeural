@@ -2167,3 +2167,63 @@ con `build-wasm\neuronik_dsp.wasm` antes de compilar el host: si Vite no copió 
 así que el build aborta. (La copia `build-wasm` -> `public/worklet` la hace `sync-wasm.mjs`,
 paso 6/6 de `build_wasm.bat`; es la misma pieza que en ABDMS2000 copia el `.wasm` a las
 carpetas de la versión web.)
+
+---
+
+## Andamiaje vainilla de la WebUI (Fase 8, 2026-09-19)
+
+Se ejecuta la decisión de stack que quedó escrita en `ROADMAP.md` (Fase 8): la interfaz de
+NEURONiK es **web sobre WebView2 con JS vainilla**, no React. Nace `ABDNeural/WebUI/`.
+
+**Carpeta propia.** `ABDMS2000/WebUI` se usa solo como referencia de arquitectura (un módulo
+de puente, uno de contrato, uno de UI); no se comparte código con ese proyecto.
+
+**Portado del piloto, sin cambios de comportamiento** (es JS sin framework; lo que muere con
+el piloto es su armazón React `app/page.jsx` + `lib/controls.jsx`):
+
+| WebUI | Origen |
+|---|---|
+| `src/bridge/bridgeCore.js` | `WebPilot/lib/bridge.js` — transporte del bridge WebView2 |
+| `src/contracts/parameters.js` | `WebPilot/lib/parameters.js` — adaptador del contrato generado |
+| `src/contracts/paramValue.js` | `WebPilot/lib/paramValue.js` — normalizado ↔ unidades reales |
+| `src/wasm/audioParams.js` | `WebPilot/lib/audioParams.js` — contrato → `GlobalParams` del worklet |
+| `src/contracts/paramStore.js` | `WebPilot/lib/useParameterControls.js` — el pegamento del hook, ahora store vainilla |
+
+`paramStore.js` es el único port con traducción: el hook guardaba el estado en `useState` y
+devolvía handlers memoizados; el store expone un objeto de estado inmutable, `getState()`,
+`subscribe()` (llama al oyente de inmediato y en cada cambio, y devuelve un `unsubscribe`) y los
+mismos handlers (`pushParameter`, `handleChange`, `handleGesture`, presets, MIDI, modelos).
+Mantiene a propósito los handles que el host ya usa: `window.__pilotReady` y
+`window.__pilotSendMidi`.
+
+**El contrato no se copia.** `src/contracts/parameters.js` importa
+`WebPilot/generated/parameters.generated.js`, que sigue siendo la única copia (la escribe
+`NEURONiK_ParameterExport`, paso 2/9 de `build.bat`). Cuando el piloto se retire (8.4) ese
+directorio se muda a `WebUI/` y el import es de una línea. El `vite.config.js` abre su
+`server.fs.allow` para poder leerlo (igual que el piloto hace con `ABDSharedAssets/tests`).
+
+**Suite propia: 61 tests en 6 ficheros** (`cd WebUI && pnpm test`): los cuatro del piloto
+portados (`bridgeCore`, `paramValue`, `parametersState`, `audioParams`), los de integración del
+ex-hook (`paramStore`, incluidos gestos, snapshot, presets, MIDI y `subscribe`) y
+`appContract.test.js`, que vigila contra el código fuente que el control base siga siendo un
+`<input type="range">` de `masterLevel` (lo que conduce el `--selftest` del host) y que no haya
+React en la entrada. El piloto sigue en **56/56**.
+
+**Bundle, para el objetivo de 8.5:** `WebUI/dist` sale en **32,4 KB de JS (6,3 KB gzip)** frente
+a los 306 KB (89 KB gzip) del piloto React, con las mismas dependencias compartidas. Es la
+medición que sostiene "un bundle, un motor de UI".
+
+**Workspace:** `WebUI` es miembro del workspace pnpm anidado de `WebPilot`
+(`ABDNeural/WebPilot/pnpm-workspace.yaml`), como ya lo era `WebPilotVite` — así
+`@abdsynths/shared` se resuelve zero-copy y un solo `pnpm install` cubre las tres piezas.
+
+**Lo que NO se toca (a propósito):** `build.bat` sigue exportando `WebPilotVite` a
+`WebPilot/out`, que es lo que embebe el host del piloto y lo que sirve `start.bat`. `WebUI`
+compila a `WebUI/dist` y queda **fuera de ese circuito**: cambiar el motor de UI es un paso
+deliberado de 8.2 (paridad de control), no un efecto colateral de crear la carpeta. Tampoco se
+migran todavía las pestañas nativas, el LCD/D-pad, el navegador de presets con tags, el MIDI
+Learn ni los visualizadores: eso es 8.2 y 8.3, y la lista está en el inventario 8.0 del ROADMAP.
+
+**Dentro del plugin el audio es nativo** (8.1): la página habla por el bridge (APVTS) y el
+motor WASM del worklet (`src/wasm/`, ya cubierto por `neuronik_wasm_parity.mjs`) es para la
+página **fuera** del plugin. Dos motores sonando no es un caso soportado.

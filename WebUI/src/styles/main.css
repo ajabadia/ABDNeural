@@ -1,0 +1,69 @@
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--abd-surface, #14161a);
+  color: var(--abd-text, #e8eaed);
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+#app {
+  padding: 16px 20px;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.webui-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.webui-header h1 {
+  font-size: 16px;
+  margin: 0;
+  letter-spacing: 0.08em;
+}
+
+.webui-status {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.webui-card {
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+  max-width: 420px;
+}
+
+.webui-card h2 {
+  font-size: 13px;
+  margin: 0;
+  letter-spacing: 0.06em;
+  opacity: 0.8;
+}
+
+.webui-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.webui-readout {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+.webui-note {
+  font-size: 12px;
+  opacity: 0.65;
+  max-width: 420px;
+}

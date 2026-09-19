@@ -10,5 +10,6 @@
 packages:
   - '.'
   - '../WebPilotVite'
+  - '../WebUI'
   - '../../ABDSharedAssets'
   - '../../ABDSharedCode/MidiKeyboard'

@@ -1,0 +1,21 @@
+{
+  "name": "neuronik-webui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "NEURONiK WebUI — interfaz definitiva (JS vainilla sobre WebView2, sin framework) del plugin NEURONiK.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@abdsynths/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "jsdom": "^24.0.0",
+    "vite": "^5.4.21",
+    "vitest": "^1.6.0"
+  }
+}
