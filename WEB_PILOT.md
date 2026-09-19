@@ -86,7 +86,34 @@ Abandonar Next.js en este punto no invalida los componentes React ni el contrato
 - [x] Crear un host JUCE/WebView2 mínimo separado.
 - [x] Ejecutar el host y verificar visualmente la carga de `out/`.
 - [x] Conectar el bridge de parámetros real (APVTS <-> WebView2) con tira nativa de comparación.
-- [ ] Registrar la decisión final en `ROADMAP.md` y `HANDOFF.md`.
+- [x] Registrar la decisión final en `ROADMAP.md` y `HANDOFF.md` (2026-09-19).
+
+### Estado del piloto (2026-09-19): contra-piloto
+
+El piloto **ya no es la UI que se va a enviar**. La decisión de stack de la Fase 8 (ROADMAP)
+son **JS vainilla + componentes compartidos, sin framework**, y su implementación vive en
+`ABDNeural/WebUI/`. El piloto se queda como contra-piloto —referencia y banco de pruebas de la
+página que el host sirve hoy— hasta que 8.2 cierre la paridad de control; después se retira o se
+deja como banco (8.4).
+
+Lo que sigue siendo suyo y **no** se tira: el puente (`lib/bridge.js`), el adaptador del
+contrato (`lib/parameters.js`), la plomería de valores (`lib/paramValue.js`), el mapeo al
+worklet (`lib/audioParams.js`) y la lógica del hook (`lib/useParameterControls.js`). Todo eso
+está **portado tal cual** a `WebUI/src/`. Lo que muere es el armazón React (`app/page.jsx`,
+`lib/controls.jsx`).
+
+Y una guarda que el piloto ganó en 8.1: dentro del host **no arranca el AudioWorklet**. Con
+`bridgeAvailable` su control de audio pinta `AUDIO: NATIVO` en vez de ofrecer SOUND ON, porque
+el audio lo pone el motor del plugin. La regla canónica está en
+`WebUI/src/audio/policy.js`; la de aquí es su gemelo mientras el piloto siga sirviéndose.
+
+### Documentos vecinos
+
+| Documento | Para qué |
+|---|---|
+| `ROADMAP.md` (Fase 8) | La decisión de stack, el inventario de paridad 8.0 y el plan 8.1–8.5. |
+| `HANDOFF.md` | El detalle de ejecución: qué se hizo, con qué medición y qué falta. |
+| `WebUI/README.md` | La UI nueva: arquitectura, contrato con el host y cómo se prueba. |
 
 ## Resultado de la verificación manual (2026-09-16)
 

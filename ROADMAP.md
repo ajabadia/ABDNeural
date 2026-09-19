@@ -295,8 +295,9 @@ quería despejar era exactamente el modo de fallo silencioso del canal.)
 - [x] Embebido de recursos y rutas relativas (VALIDADO 2026-09-17: snapshot sin rutas de
       error, `[embedded fallback: 8]` con el E2E del bridge en verde sobre la WebUI embebida).
 - [x] Rebuild del EXE en cada cambio del bundle (HECHO 2026-09-17: `build.bat` reordenado —
-      la WebUI (paso 4) va ANTES del host (paso 5), que EMBIBE `out/` en el enlace;
-      compilar el host antes dejaba dentro el bundle de la pasada anterior).
+      la WebUI va ANTES del host, que EMBIBE `out/` en el enlace; compilar el host antes dejaba
+      dentro el bundle de la pasada anterior. Con el WASM dentro del build los pasos son hoy
+      4/9 (WASM), 5/9 (WebUI) y 6/9 (host), en ese orden y por el mismo motivo).
 
 ### Fase 5 — WASM
 
@@ -505,7 +506,8 @@ usuario:
 > **Lo que ya está pagado:** el contrato de parámetros es SSOT (generado del APVTS), el
 > `ParameterBridge` y el protocolo del bridge tienen contrato propio y test
 > (`BridgeProtocolContractTest`, `webviewBridgeDirectionTest.mjs`), el host del piloto
-> (`Source/WebPilotHost.cpp`, 1128 líneas) **ya habla con el procesador real** —sus adaptadores
+> (`Source/WebPilotHost.cpp`, ~1000 líneas tras sacar los adaptadores a
+> `Source/WebUI/BridgeAdapters.h`) **ya habla con el procesador real** —sus adaptadores
 > mueven el APVTS, los presets, los modelos y el MIDI en las dos direcciones— y la página ya
 > suena con el motor WASM en el AudioWorklet. O sea: falta la UI de verdad y retirar la nativa,
 > no la fontanería.
@@ -622,7 +624,8 @@ piloto. **8.1 sigue pendiente y es el siguiente paso.**
       `input[type=range]` = `masterLevel`, `footer.panel-footer code` como JSON,
       `[data-tab="keys"]` y `#mod-wheel-container .kbd-wheel-slider`): así no se rompen en
       silencio dentro de WebView2. Detalle en `WebUI/README.md`.
-- [x] Suite: **81 tests** en 9 ficheros (`cd WebUI && pnpm test`). Bundle: 62,4 KB de JS
+- [x] Suite: **81 tests** en 9 ficheros, 96 tras el trabajo de 8.1 sobre la política de audio
+      (`cd WebUI && pnpm test`). Bundle: 62,4 KB de JS
       (15,6 KB gzip) frente a los 306 KB (89 KB) del piloto React.
 - **Fuera de circuito:** `WebUI/dist` no lo consume nadie todavía. El cableado del host es
       un paso deliberado y va con 8.1 (en el **editor del plugin**, no en la bancada del
@@ -633,6 +636,28 @@ piloto. **8.1 sigue pendiente y es el siguiente paso.**
       `ResourceProvider` (disco en dev con hot-reload, embebido en release — mismo patrón que
       ABDMS2000), y los tres adaptadores (`PresetManagerAdapter`, `MidiInjectionAdapter`,
       `EngineModelsAdapter`). El host del piloto se queda como banco de pruebas hasta 8.4.
+      - [x] **Paso 1 (2026-09-19):** los tres adaptadores salen de `WebPilotHost.cpp` a
+        `Source/WebUI/BridgeAdapters.h` (header-only: no añade fuentes ni entradas en CMake),
+        para que el editor use los MISMOS tres en vez de una copia por superficie. El host
+        del piloto los incluye con `using` y no cambia de comportamiento.
+        *Pendiente: compilar.*
+      - [ ] **Paso 2:** el `WebBrowserComponent` dentro de `NEURONiKEditor` (con su
+        `resized()`/zoom, sin regresión) y el selftest de cuatro direcciones corriendo contra
+        **Standalone y VST3** (hoy ese arnés solo existe en la bancada del piloto).
+      - [ ] **Paso 2b — decidido (2026-09-19): el proveedor de recursos del plugin NO se
+        escribe aquí.** `ABDSharedCode/WebView2Bridge/WebView2ResourceProvider.*`
+        (`abd::webview2`) ya implementa el pipeline entero — `normalizeResourcePath`,
+        `getMimeTypeForFilename`, `resolveEmbeddedAsset` (con `BinaryAssetsCatalog`, que se
+        rellena desde el `BinaryData` generado) y el fallback de assets compartidos — y ya lo
+        consumen `HardwareMidiDetect` y ABDScope. El plugin **adopta el compartido**, que es
+        justo lo que el DoD pide: embebido primero y **cero rutas absolutas** (el VST3 no carga
+        desde el cwd del build).
+        - La bancada del piloto **sí** conserva su proveedor propio, y por un solo motivo: hace
+          *disco primero* con hot-reload para el desarrollo, que el compartido no ofrece. Esa
+          diferencia vive solo en la bancada, cuyo destino decide 8.4.
+        - Escribir un `PluginEditor_ResourceProvider` propio de NEURONiK sería añadir una
+          homonimia que `ABDSharedCode/docs/homonimias-cabeceras.md` lista como deuda en su
+          prioridad P5 — y 8.5 cuenta esas homonimias entre lo que la migración NO debe revivir.
 - [x] **Decidido y fijado en código (2026-09-19):** dentro del plugin el audio es nativo y la
       página solo habla por el bridge (APVTS). Una sola señal — `window.__JUCE__`, la MISMA que
       usa el puente, vía `nativeBackend()` — decide quién posee el audio: `WebUI/src/audio/policy.js`.

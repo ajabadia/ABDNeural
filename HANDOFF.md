@@ -401,7 +401,8 @@ WebView2 (mismo recorrido que una prueba manual con el ratón):
   (0.7500 exacto).
 - `--selftest` implica `--auto-quit`; el exit code (0/1) es el veredicto. En este modo el selftest
   es quien cierra la ventana, no el sondeo de arranque.
-- **`build.bat` lo ejecuta como paso 8/8** (tras la suite de tests), solo si el host compiló y
+- **`build.bat` lo ejecuta como paso 9/9** (tras la suite de tests; era 8/8 antes de que el WASM
+  entrara como 4/9), solo si el host compiló y
   existe `WebPilot\out`. Un fallo del selftest marca el build como CON ERRORES. Se omite con
   `build.bat noselftest`. La ventana del piloto parpadea unos 3 segundos: es el selftest.
 - **Verificación manual del usuario (misma sesión): confirmada.** Captura del host con la página
@@ -577,6 +578,7 @@ degraja a un `--selftest` normal.
 **Fix de revisión (2026-09-16, por compilar): el exit code del selftest nunca salía del exe.**
 `selftestPassed` moría en el `PilotComponent`: ni `finish()` ni `systemRequestedQuit()` lo
 publicaban, así que el proceso salía SIEMPRE con 0 y la puerta del paso 8/8 de `build.bat`
+(hoy es el 9/9: el WASM entró después como 4/9, ver "Procedimiento de build")
 (`if !ERRORLEVEL! neq 0`) era decorativa — un selftest FAIL se habría celebrado como
 `[OK] Bridge verificado`. Arreglado en `Source/WebPilotHost.cpp`: `g_selftestExitCode`
 (atómico, -1 = sin veredicto) lo escribe `selftestFinish()` y `PilotApplication::
@@ -1092,25 +1094,34 @@ Un solo comando hace el ciclo completo y **termina siempre con pausa**, tanto si
 falla, para poder copiar la salida:
 
 ```bat
-build.bat                    :: plugin + contrato + WebUI + tests + selftest (usa build-reference)
+build.bat                    :: 9 pasos: contrato + plugin + WASM + WebUI + host + tests + selftest
 build.bat build              :: lo mismo, en un directorio de build limpio
-build.bat modelmaker         :: además compila la herramienta ModelMaker
+build.bat modelmaker         :: además compila ModelMaker (incrementa Source\ModelMaker\Version.h)
 build.bat build modelmaker   :: build limpio incluyendo ModelMaker
-build.bat noselftest         :: omite el E2E del bridge (paso 8)
+build.bat tests              :: modo rápido: solo contrato + suite (ni plugin ni WebUI)
+build.bat noselftest         :: omite el E2E del bridge (paso 9)
+build.bat nowasm             :: omite el WASM del worklet (por defecto, si falla, aborta el build)
+build.bat nextui             :: WebUI del piloto con Next en vez de Vite (referencia)
 ```
 
 Pasos que ejecuta, en orden:
 
 ```text
-1/8  cmake -S . -B <dir> -DCMAKE_BUILD_TYPE=Release
-2/8  NEURONiK_ParameterExport + regeneracion de WebPilot\generated
-3/8  NEURONiK_Standalone + NEURONiK_VST3
-4/8  NEURONiK_WebPilotHost            (si falla, solo avisa)
-5/8  WebPilot: pnpm build            (se omite si no hay node_modules)
-6/8  NEURONiK_ModelMaker             (solo con 'modelmaker', ver abajo)
-7/8  compilacion de los 8 tests + ctest --output-on-failure
-8/8  selftest del bridge del piloto  (se omite con 'noselftest'; ver arriba)
+1/9  cmake -S . -B <dir> -DCMAKE_BUILD_TYPE=Release
+2/9  NEURONiK_ParameterExport + regeneracion de WebPilot\generated
+3/9  NEURONiK_Standalone + NEURONiK_VST3
+4/9  build_wasm.bat: WASM + paridad + smoke + sync del worklet (aborta el build si falla)
+5/9  WebPilot: pnpm build            (se omite si no hay node_modules)
+6/9  NEURONiK_WebPilotHost           (si falla, solo avisa; embebe WebPilot\out)
+7/9  NEURONiK_ModelMaker             (solo con 'modelmaker', ver abajo)
+8/9  compilacion de los 17 tests + ctest --output-on-failure
+9/9  selftest del bridge del piloto  (se omite con 'noselftest'; ver arriba)
 ```
+
+El orden de 4/9 y 5/9 no es casual: el WASM y la WebUI van **antes** que el host, que embebe
+`WebPilot\out` en el enlace. Al reves, el exe se quedaba con el bundle y el DSP de la pasada
+anterior (sintoma mudo: suena "el de antes"). El paso 4/9 trae ademas un guard que aborta si el
+`.wasm` de `out\worklet` no coincide con el recien compilado.
 
 Artefactos:
 
@@ -1120,6 +1131,26 @@ Artefactos:
 <dir>\NEURONiK_WebPilotHost_artefacts\Release\NEURONiK Web Pilot.exe
 <dir>\Release\NEURONiK_ModelMaker.exe                  (solo con 'modelmaker')
 ```
+
+### La UI nueva (`WebUI/`) no la construye `build.bat`
+
+A proposito: `build.bat` sigue exportando el **piloto React** a `WebPilot\out`, que es lo que
+embebe el host del piloto y lo que sirve `start.bat`. La UI vainilla de la Fase 8 vive en
+`ABDNeural/WebUI/`, compila a su propia carpeta y **hoy no la consume nadie**: cambiar el motor
+de UI es un paso deliberado (8.1 la hospeda, 8.2 cierra la paridad), asi que no entra en el
+build general hasta que el host tenga que servirla.
+
+```bash
+cd ABDNeural/WebPilot && pnpm install   # WebUI es miembro del workspace anidado de WebPilot
+cd ../WebUI && pnpm test                # 96 tests (vitest + jsdom)
+cd ../WebUI && pnpm dev                 # navegador, modo local (sin host)
+cd ../WebUI && pnpm build               # -> WebUI/dist
+```
+
+Los assets compartidos y el worklet no se duplican: el `publicDir` de Vite apunta a
+`WebPilot/public`, asi que `dist\worklet\` sale con el procesador y el `.wasm` que acaba de
+compilar el paso 4/9. Los selectores que el `--selftest` del host lee de la pagina estan
+documentados y probados en `WebUI/README.md` (y en `WebUI/tests/`).
 
 El paso lento es el plugin: varios minutos la primera vez (compila JUCE y las dos variantes,
 Standalone y VST3) y
@@ -1243,7 +1274,8 @@ sesión del DAW (los presets no estaban afectados: `saveToValueTree` solo lo lla
 `getStateInformation`). Fix: `removeChild` + `appendChild`, con comentario explicando la
 trampa para que nadie "simplifique" de vuelta.
 
-**Pipeline:** `build.bat` reordenado — la WebUI (paso 4) ANTES del host (paso 5), porque el
+**Pipeline:** `build.bat` reordenado — la WebUI ANTES del host (hoy 5/9 y 6/9; eran 4 y 5 cuando
+el WASM todavía iba fuera del build), porque el
 host embebe `WebPilot/out` en el enlace (`juce_add_binary_data`); compilar el host antes
 dejaraba dentro el bundle de la pasada anterior. El test nuevo (`NEURONiK_StatePersistenceTest`)
 entró en el paso 7.
@@ -1331,7 +1363,7 @@ dejar Next solo como referencia, o mantener ambos). El piloto quedó funcional e
 
 ## 2026-09-17 (d): Switch del paso 4 a Vite — Next queda como referencia
 
-- `build.bat` (paso 4) ahora construye con **Vite** por defecto:
+- `build.bat` (paso 4 entonces, **5/9 hoy**) ahora construye con **Vite** por defecto:
   `pnpm --filter @abdsynths/web-pilot-vite build`, salida DIRECTA a `WebPilot/out`
   (la ruta que consumen el snapshot embebido y el selftest — nada cambia de sitio).
   `emptyOutDir` deja `out/` solo con ficheros del motor activo: no se mezclan restos.
@@ -2268,7 +2300,7 @@ El frágil es el primero: **el teclado también monta inputs `type=range`** (las
 que el orden de las pantallas (BRIDGE antes que KEYS) es lo que mantiene el slider del
 control base en cabeza. Reordenar las pestañas rompe el selftest, y hay test.
 
-**Suite: 81 tests en 9 ficheros** (`cd WebUI && pnpm test`), incluidos los que montan el
+**Suite: 81 tests en 9 ficheros** (96 hoy, con la política de audio de 8.1) (`cd WebUI && pnpm test`), incluidos los que montan el
 teclado compartido en jsdom de verdad (no una maqueta) y comprueban que `setMidiState`
 mueve la rueda a 64 sin devolver el eco como input de usuario. Bundle: **62,4 KB de JS
 (15,6 KB gzip)**.
@@ -2324,3 +2356,33 @@ el *host del piloto*, no contra el plugin, asi que la politica esta probada en u
 la pagina, pero no dentro del WebView2 del plugin. Se cierra en 8.1 cuando el editor hospede
 la pagina (la via barata entonces: que el selftest del editor lea un handle de la pagina, como
 ya hace con `__pilotReady` y `__pilotSendMidi`).
+
+---
+
+## 8.1, paso 1: los adaptadores del bridge dejan de ser del banco de pruebas (2026-09-19)
+
+Los tres adaptadores (`PresetManagerAdapter`, `MidiInjectionAdapter`, `EngineModelsAdapter`)
+vivian dentro de `Source/WebPilotHost.cpp` — y **ese era el motivo real de que solo la bancada
+del piloto pudiera hablar con la pagina**: no habia forma de reutilizarlos sin copiarlos.
+
+Ahora estan en `Source/WebUI/BridgeAdapters.h`, en `namespace NEURONiK::WebUI`:
+
+- **Header-only a proposito**: no llevan mas estado que una referencia al procesador (que
+  sobrevive al bridge en cualquier host), asi que no necesitan `.cpp` ni fuente nueva en ningun
+  target. Se incluyen y ya.
+- El host del piloto pasa a `#include "WebUI/BridgeAdapters.h"` + tres `using`, y **ningun uso
+  cambia** (los 9 sitios: `make_unique`, miembros y declaraciones se quedan igual).
+- Comprobado a mano contra `WebUI/ParameterBridge.h`: las tres interfaces se implementan
+  literalmente (`PresetController`: list/load/save/current; `MidiController`: noteOn/noteOff/
+  pitchBend/modWheel/allNotesOff; `NativeModelController`: getNumModelSlots/getCurrentModel).
+- El movimiento es **verbatim**: unico cambio, quitar la calificacion `NEURONiK::WebUI::` de
+  los nombres base, que ahora son locales al namespace.
+
+**Sin cambio de comportamiento esperado**: la bancada sigue sirviendo la pagina y el selftest
+igual que antes; lo unico que cambia es donde vive el codigo. **Pendiente de compilar** (este
+paso no lo he podido verificar yo).
+
+Paso 2 de 8.1, que es el que falta: `ResourceProvider` compartido (disco en dev + snapshot
+embebido), el `WebBrowserComponent` dentro de `NEURONiKEditor` (tamano/zoom sin romper
+`resized()`), y llevar el selftest de cuatro direcciones a **Standalone y VST3** — hoy ese
+arnes solo existe en `WebPilotHost.cpp`.

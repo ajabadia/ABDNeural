@@ -12,8 +12,10 @@ su propia carpeta.
 
 - **Portado del piloto React** (sin cambios de comportamiento): el puente, el adaptador del
   contrato, la plomería de valores, el mapeo al worklet y el store que sustituye al hook.
-- **Shell de la UI**: pestañas, control base, pantalla GENERAL y teclado compartido, con la
-  suite en verde (**81 tests**).
+- **Shell de la UI**: pestañas, control base, pantalla GENERAL y teclado compartido.
+- **Política de audio (8.1)**: una sola señal decide quién suena; dentro de un host el motor
+  del worklet no arranca. Incluye el motor portado (ciclo de vida del `AudioContext`).
+- Suite en verde: **96 tests en 11 ficheros**.
 - **Nada de esto está cableado todavía.** El host (`NEURONiK Web Pilot.exe`), `build.bat`,
   `start.bat` y CMake siguen sirviendo **el piloto React** (`WebPilot/out`). Cambiar quién
   hospeda la página es el ticket **8.1** (en el editor del plugin, no en la bancada del
