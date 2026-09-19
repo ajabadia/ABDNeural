@@ -27,8 +27,22 @@ if not exist "%HOST_EXE%" (
 if not exist "%WEBUI_DIR%\index.html" (
     echo [ERROR] No existe la WebUI exportada:
     echo         %WEBUI_DIR%\index.html
-    echo         Compila primero con build.bat ^(paso 5^)
+    echo         Compila primero con build.bat ^(genera WebPilot\out^)
     goto :fin
+)
+
+REM --- Aviso de staleness del worklet (evita "sonar a la pasada anterior") ---
+REM build.bat deja build-wasm\neuronik_dsp.wasm recien compilado y Vite copia
+REM WebPilot\public\worklet a out/. Si aqui no coinciden, la pagina sonaria con
+REM un DSP viejo (o no sonaria si falta), que es el sintoma mudo de siempre.
+if not exist "build-wasm\neuronik_dsp.wasm" (
+    echo [AVISO] Falta build-wasm\neuronik_dsp.wasm: compila con build_wasm.bat.
+) else if not exist "%WEBUI_DIR%\worklet\neuronik_dsp.wasm" (
+    echo [AVISO] Falta %WEBUI_DIR%\worklet\neuronik_dsp.wasm: el worklet no sonara.
+) else (
+    for %%F in ("build-wasm\neuronik_dsp.wasm") do set "WSRC=%%~zF"
+    for %%F in ("%WEBUI_DIR%\worklet\neuronik_dsp.wasm") do set "WDST=%%~zF"
+    if not "!WSRC!"=="!WDST!" echo [AVISO] El worklet de la WebUI no coincide con build-wasm ^(posible DSP viejo^): recompila con build.bat.
 )
 
 echo.

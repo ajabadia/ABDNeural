@@ -95,6 +95,12 @@ target_include_directories(neuronik_dsp PRIVATE
 # para el resto de TUs.
 target_compile_options(neuronik_dsp PRIVATE "-includeemscripten.h")
 
+# Sin contraccion FMA: clang puede fusionar a*b+c en fmaf (libcall correctamente
+# redondeada) mientras MSVC /O2 no contrae. La matematica determinista del
+# sustrato (DspCore/DspMath.h) exige que las dos plataformas evaluen el mismo
+# polinomio con el mismo redondeo; sin esta bandera no lo garantiza.
+target_compile_options(neuronik_dsp PRIVATE "-ffp-contract=off")
+
 target_link_libraries(neuronik_dsp PRIVATE
     juce::juce_core
     juce::juce_audio_basics

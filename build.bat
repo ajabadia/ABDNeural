@@ -8,15 +8,16 @@ REM  Uso:  build.bat                    -> plugin + contrato + WebUI + tests + s
 REM        build.bat <directorio>       -> usa otro directorio de build
 REM        build.bat modelmaker         -> incluye la herramienta ModelMaker
 REM        build.bat build modelmaker   -> build limpio incluyendo ModelMaker
-REM        build.bat noselftest         -> omite el E2E del bridge (paso 8)
+REM        build.bat noselftest         -> omite el E2E del bridge (paso 9)
 REM        build.bat tests              -> modo rapido: solo contrato + suite de pruebas
 REM        build.bat nextui             -> WebUI con Next.js en vez de Vite (referencia)
+REM        build.bat nowasm             -> omite el WASM del worklet (puede quedar viejo)
 REM
 REM  ModelMaker queda fuera por defecto a proposito: su target arrastra
 REM  'UpdateVersion', que incrementa Source\ModelMaker\Version.h (fichero
 REM  versionado) en cada compilacion.
 REM
-REM  El paso 8 abre brevemente la ventana del host del piloto y ejecuta el
+REM  El paso 9 abre brevemente la ventana del host del piloto y ejecuta el
 REM  selftest bidireccional del bridge (nativo->JS y JS->nativo, sobre el
 REM  canal real de WebView2). Exit code != 0 si alguna direccion no se mueve.
 REM
@@ -36,6 +37,7 @@ set "WITH_MODELMAKER=0"
 set "WITH_SELFTEST=1"
 set "TESTS_ONLY=0"
 set "WITH_NEXTUI=0"
+set "WITH_WASM=1"
 
 for %%A in (%*) do (
     if /I "%%A"=="--internal-log" (
@@ -49,6 +51,8 @@ for %%A in (%*) do (
         set "WITH_SELFTEST=0"
     ) else if /I "%%A"=="nextui" (
         set "WITH_NEXTUI=1"
+    ) else if /I "%%A"=="nowasm" (
+        set "WITH_WASM=0"
     ) else (
         set "BUILD_DIR=%%A"
     )
@@ -75,9 +79,9 @@ REM Reconfigurar solo la primera vez: cmake -S -B cuesta ~4s y no hace falta
 REM en cada pasada (los cambios en CMakeLists.txt los detecta MSBuild solo,
 REM via ZERO_CHECK). Borrar build\CMakeCache.txt fuerza una reconfiguracion.
 if exist "%BUILD_DIR%\CMakeCache.txt" (
-    echo [1/8] CMake ya configurado ^(se omite la reconfiguracion^)...
+    echo [1/9] CMake ya configurado ^(se omite la reconfiguracion^)...
 ) else (
-    echo [1/8] Configurando CMake...
+    echo [1/9] Configurando CMake...
     cmake -S . -B "%BUILD_DIR%" -DCMAKE_BUILD_TYPE=Release
     if !ERRORLEVEL! neq 0 (
         echo.
@@ -88,7 +92,7 @@ if exist "%BUILD_DIR%\CMakeCache.txt" (
 )
 
 echo.
-echo [2/8] Generando el contrato de parametros (WebPilot\generated)...
+echo [2/9] Generando el contrato de parametros (WebPilot\generated)...
 cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_ParameterExport
 if !ERRORLEVEL! neq 0 (
     echo.
@@ -108,7 +112,7 @@ if !ERRORLEVEL! neq 0 (
 if "%TESTS_ONLY%"=="1" goto :tests
 
 echo.
-echo [3/8] Compilando Standalone y VST3...
+echo [3/9] Compilando Standalone y VST3...
 cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_Standalone NEURONiK_VST3
 if !ERRORLEVEL! neq 0 (
     echo.
@@ -126,7 +130,29 @@ REM Motor por defecto: Vite (A/B de la Fase 6: -45%% de bundle, build 4x mas
 REM rapido, misma pagina y mismo selftest). Next queda detras de `nextui`.
 REM Ambos motores VACIAN out/ al empezar: no se mezclan restos de motor.
 echo.
-echo [4/8] Exportando la WebUI del piloto...
+echo [4/9] Compilando el DSP a WebAssembly (worklet + paridad + smoke)...
+if "%WITH_WASM%"=="0" goto :no_wasm
+REM build_wasm.bat compila el DSP a WASM, valida la paridad nativo<->WASM, corre
+REM el smoke y SINCRONIZA WebPilot\public\worklet (que la exportacion de la WebUI
+REM copia a out/ y el host embebe). Se le pasa --internal-log nopause para no
+REM anidar su tee (va al log de esta pasada) ni quedarse en su pausa final.
+call "%~dp0build_wasm.bat" --internal-log nopause
+if !ERRORLEVEL! neq 0 (
+    echo.
+    echo [ERROR] Fallo la compilacion/validacion WASM. El worklet de la WebUI
+    echo         quedaria DESACTUALIZADO, asi que se aborta. Para omitirlo a
+    echo         proposito: build.bat nowasm
+    set "EXIT_CODE=1"
+    goto :finish
+)
+echo [OK] WASM compilado, validado y sincronizado en WebPilot\public\worklet.
+goto :wasm_done
+
+:no_wasm
+echo [INFO] Omitido por flag nowasm: el worklet puede quedar desactualizado.
+
+:wasm_done
+echo [5/9] Exportando la WebUI del piloto...
 if not exist "WebPilot\node_modules" goto :no_webui
 
 pushd WebPilot
@@ -166,8 +192,23 @@ echo [INFO] WebPilot\node_modules no existe, se omite la exportacion.
 echo        Para habilitarla: cd WebPilot ^&^& pnpm install --ignore-workspace
 
 :pilot_host
+REM Guard de staleness del worklet: el .wasm embebido debe ser EXACTAMENTE el
+REM recien compilado. sync-wasm.mjs lo dejo en WebPilot\public\worklet y Vite lo
+REM copia a out/ (publicDir apunta a WebPilot/public). Si esa copia falla, la
+REM WebUI sonaria con un DSP VIEJO y el sintoma es mudo. Comparacion por tamano.
+if "%WITH_WASM%"=="1" if exist "build-wasm\neuronik_dsp.wasm" if exist "WebPilot\out\worklet\neuronik_dsp.wasm" (
+    for %%F in ("build-wasm\neuronik_dsp.wasm") do set "WSRC_SIZE=%%~zF"
+    for %%F in ("WebPilot\out\worklet\neuronik_dsp.wasm") do set "WDST_SIZE=%%~zF"
+    if not "!WSRC_SIZE!"=="!WDST_SIZE!" (
+        echo [ERROR] WebPilot\out\worklet\neuronik_dsp.wasm no coincide con build-wasm:
+        echo         el worklet embebido seria un DSP VIEJO. Revisa el publicDir de
+        echo         Vite y la exportacion de la WebUI.
+        set "EXIT_CODE=1"
+        goto :finish
+    )
+)
 echo.
-echo [5/8] Compilando el host del piloto WebPilot (embibe la WebUI recien exportada)...
+echo [6/9] Compilando el host del piloto WebPilot (embibe la WebUI recien exportada)...
 cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_WebPilotHost
 if !ERRORLEVEL! neq 0 (
     echo [AVISO] No se pudo compilar el host del piloto. El plugin sigue siendo valido.
@@ -176,7 +217,7 @@ if !ERRORLEVEL! neq 0 (
 
 :modelmaker
 echo.
-echo [6/8] Herramienta ModelMaker...
+echo [7/9] Herramienta ModelMaker...
 if "%WITH_MODELMAKER%"=="0" goto :no_modelmaker
 
 cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_ModelMaker
@@ -199,7 +240,7 @@ echo        Para incluirlo: build.bat modelmaker
 
 :tests
 echo.
-echo [7/8] Compilando y ejecutando la suite de pruebas...
+echo [8/9] Compilando y ejecutando la suite de pruebas...
 REM La lista debe cubrir TODOS los tests registrados en ctest: si falta uno,
 REM ctest falla al no encontrar el ejecutable (no se construye solo).
 cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_DSPReferenceTest NEURONiK_MidiPortTest NEURONiK_MidiChannelFilterTest NEURONiK_VelocityCurveTest NEURONiK_LfoSyncTest NEURONiK_ParameterDescriptorTest NEURONiK_PresetRoundTripTest NEURONiK_StatePersistenceTest NEURONiK_ParameterBridgeTest NEURONiK_BridgeProtocolContractTest NEURONiK_DspReverbParityTest NEURONiK_DspReverbJucePolicyTest NEURONiK_DspEffectsParityTest NEURONiK_AudioBufferParityTest ABDShared_DspCore_Tests
@@ -220,7 +261,7 @@ if !ERRORLEVEL! neq 0 (
 
 echo.
 if "%WITH_SELFTEST%"=="0" goto :finish
-echo [8/8] Selftest bidireccional del bridge del piloto...
+echo [9/9] Selftest bidireccional del bridge del piloto...
 REM Solo si el host compilo y la WebUI existe: sin pagina que cargar no hay E2E.
 set "PILOT_HOST=%BUILD_DIR%\NEURONiK_WebPilotHost_artefacts\Release\NEURONiK Web Pilot.exe"
 if "!HOST_BUILD_FAILED!"=="1" (

@@ -2115,3 +2115,55 @@ la rejilla nueva.
 está trackeado** y es anterior a los dos arreglos (reverb y tasa de control). Hay que
 ejecutar `build_wasm.bat` para regenerarlo, o el test Node comparará un módulo viejo contra
 una referencia nativa nueva. No se ha hecho aquí porque necesita emsdk.
+
+## Matematica determinista en el sustrato: sin/atan sin libm (2026-09-19)
+
+Al regenerar el `.wasm` pendiente, la matriz de paridad destapó una diferencia de **10 ulp
+en UNA muestra** del escenario C a 44,1 kHz (1/6144; `maxDiff` 2,98e-7, por debajo del guard
+absoluto de 1e-6), igual en los tres tamaños de bloque. 48 y 96 kHz seguían bit-exactos, y
+nativo y WASM eran cada uno invariante al tamaño de bloque: la diferencia era de toolchain,
+no del motor.
+
+**Causa, medida (no supuesta).** Mismo binario compilado con MSVC y con em++ sobre un barrido
+de 400.000 argumentos: `sinf` difiere en 611/400.000 valores (1 ulp) y `atanf` en
+24.694/400.000. En el lazo del chorus/delay ese 1 ulp se amplifica por encima del presupuesto
+de 0 ulps. Se descartó la contracción FMA: `-ffp-contract=off` a solas no cambiaba el
+resultado.
+
+**Decisión (canónica, la misma que se tomó con `JUCE_UNDENORMALISE`):** uniformar la
+aritmética en vez de relajar el gate. Nuevo `ABDSharedCode/DspCore/DspMath.h` (módulo
+DspCore): `abd::dsp::sin/cos/atan` calculados SOLO con operaciones IEEE básicas (+ - * /),
+idénticos en los dos toolchains. `DspChorus` y `DspSaturation` los usan. El target WASM
+compila con `-ffp-contract=off` (clang podría fusionar `a*b+c` en `fmaf`; MSVC `/O2` no
+contrae): es parte del contrato de determinismo del módulo, no un extra.
+
+- Precisión: ~6 ulp de `sin` y ~3 de `atan` frente a la libm (5,2e-7 / 1,8e-7 absolutos),
+  inaudible para un LFO y una saturación.
+- Determinismo verificado en aislamiento: el mismo barrido compilado con MSVC y con em++ da
+  salidas **idénticas bit a bit** (800.001 valores).
+- **Aviso:** los valores NO son los de la libm, así que es un cambio de sonido deliberado (el
+  motor es pre-1.0). `DspEffectsParityTest` actualiza sus `Reference*` a la misma matemática;
+  ese test sigue probando el envoltorio de producto y el determinismo, no el cambio de libm
+  (sería circular).
+- Tests: `DspCoreTests` gana un bloque de DspMath (valores conocidos + precisión vs libm).
+
+Verificación de esta pasada: `build_wasm.bat` (paridad 15/15 esperada) y `build.bat` (suite).
+
+**Integración en el build general (2026-09-19).** El WASM vivía fuera de `build.bat`, así que el
+worklet de `WebPilot/public/worklet/` podía quedarse en una pasada anterior (drift invisible:
+los `.js`/`.wasm` se versionan y solo se nota como audio viejo). Ahora `build.bat` lo compila
+como **paso [4/9]**, ANTES de exportar la WebUI (que copia `public/` -> `out/`) y de compilar el
+host (que embebe `out/`): `call build_wasm.bat --internal-log nopause` (sin anidar su tee ni
+quedarse en su pausa). Un fallo de compilación/paridad WASM **aborta el build**; se omite a
+propósito con `build.bat nowasm` (y en el modo rápido `build.bat tests`).
+
+`build_wasm.bat` gana además lo que ya tenía `build.bat`: **log espejo `wasm-last-run.log`** y
+**pausa final** (saltable con `build_wasm.bat nopause`), para poder leer el resultado sin
+prisa y para que el log quede en disco.
+
+También `build.bat` comprueba por tamaño que `WebPilot\out\worklet\neuronik_dsp.wasm` coincide
+con `build-wasm\neuronik_dsp.wasm` antes de compilar el host: si Vite no copió `public/` a
+`out/`, el worklet embebido sería un DSP viejo y sonaría a la pasada anterior (síntoma mudo),
+así que el build aborta. (La copia `build-wasm` -> `public/worklet` la hace `sync-wasm.mjs`,
+paso 6/6 de `build_wasm.bat`; es la misma pieza que en ABDMS2000 copia el `.wasm` a las
+carpetas de la versión web.)

@@ -1413,11 +1413,10 @@ export const PARAMETERS_BY_ID = Object.freeze (
 );
 
 /** IDs declared in the C++ IDs namespace but not routed to the layout yet. */
-export const UNROUTED_PARAMETER_IDS = ["oscPitchCoarse"];
+export const UNROUTED_PARAMETER_IDS = [];
 
 /** Same entries with an explanation of why they are not in the layout. */
 export const UNROUTED_PARAMETERS = [
-  { id: "oscPitchCoarse", dspStatus: 'notInLayout', dspNote: "Declared in the IDs namespace but absent from the layout" },
 ];
 
 /** Contract health, so a screen never has to hard code it. */
@@ -1426,5 +1425,5 @@ export const CONTRACT_SUMMARY = Object.freeze ({
   implemented: 65,
   uiOnly: 4,
   notRouted: 1,
-  notInLayout: 1,
+  notInLayout: 0,
 });

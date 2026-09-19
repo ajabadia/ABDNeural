@@ -40,6 +40,11 @@
  *
  * Presupuesto 0 = alarma inmediata ante CUALQUIER cambio de algoritmo,
  * determinismo o política de coma flotante, en cualquier escenario.
+ *
+ * Las trascendentes del chorus y la saturación NO son la libm de la plataforma:
+ * son abd::dsp::sin/atan (DspCore/DspMath.h), deterministas en ambos toolchains.
+ * De ahí que la paridad se sostenga también a 44,1 kHz (la libm del sistema
+ * difería 1 ulp y el lazo del chorus lo amplificaba). Ver HANDOFF.md.
  * Guard absoluto adicional: maxDiffAbs <= 1e-6 en todos los escenarios.
  *
  * Si cambias un escenario aquí, cambia su gemelo en Tests/WasmParityTest.cpp.

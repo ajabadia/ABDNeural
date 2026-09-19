@@ -16,6 +16,15 @@
          bloque, dos renders, y se comparan muestra a muestra TODOS los canales:
          se exige 0 ulps.
 
+         NOTA (2026-09-19, matematica determinista): las Reference* llaman ahora a
+         abd::dsp::sin/atan (DspCore/DspMath.h) en vez de std::sin/atan. Sustituir
+         la libm de la plataforma por una implementacion determinista es un cambio
+         de sonido DELIBERADO (el motor es pre-1.0) y es lo que cierra la paridad
+         bit a bit nativo <-> WASM del escenario C de WasmParityTest. Este test ya
+         no prueba ESE cambio (seria circular): sigue probando que el envoltorio de
+         producto y el motor compartido dan la misma salida bit a bit (suavizado,
+         mapeo y orden incluidos) y que la cola no diverge.
+
          Aqui el margen no es negociable, al contrario que en el port de la
          reverb: no hay una implementacion ajena contra la que comparar (no es un
          port de JUCE), asi que la unica prueba de que el sonido no cambio es que
@@ -161,7 +170,7 @@ public:
             float phaseInc = dsp::MathConstants<float>::twoPi * currentRate / static_cast<float>(currentSampleRate);
 
             // Modulation: LFO between 5ms and 30ms
-            float mod = (std::sin(phase) + 1.0f) * 0.5f; // 0 to 1
+            float mod = (abd::dsp::sin(phase) + 1.0f) * 0.5f; // 0 to 1
             float delaySamples = (0.005f + mod * 0.025f * currentDepth) * static_cast<float>(currentSampleRate);
 
             for (int channel = 0; channel < numChannels; ++channel)
@@ -315,7 +324,7 @@ public:
     inline float processSample(float input) noexcept
     {
         float x = input * driveSmoother.getNextValue();
-        return std::atan(x) * 0.63661977236f; // 2/PI constant
+        return abd::dsp::atan(x) * 0.63661977236f; // 2/PI constant
     }
 
     void processBlock(dsp::AudioBuffer<float>& buffer) noexcept
@@ -333,7 +342,7 @@ public:
                 for (int ch = 0; ch < numChannels; ++ch)
                 {
                     float x = buffer.getSample(ch, s) * currentDrive;
-                    buffer.setSample(ch, s, std::atan(x) * 0.63661977236f);
+                    buffer.setSample(ch, s, abd::dsp::atan(x) * 0.63661977236f);
                 }
             }
         }

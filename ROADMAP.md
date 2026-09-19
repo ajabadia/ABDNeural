@@ -39,7 +39,10 @@ La migración será incremental. No se sustituirá la interfaz JUCE ni se modifi
 - [x] Siembra determinista de `juce::Random` (LFO, NeurotikVoice, panel RANDOM) — la
       mina enterrada de la Fase 5 (WASM) ya está desactivada.
 - [x] Pipeline de build: /MP, sin reconfiguración redundante de CMake, modo rápido
-      `build.bat tests` (~19 s en caliente) y log espejo `build-last-run.log`.
+      `build.bat tests` (~19 s en caliente) y log espejo `build-last-run.log`. El WASM
+      del worklet ya no queda fuera: `build.bat` lo compila como paso 4/9 antes de
+      exportar la WebUI (aborta si falla; se omite con `nowasm`), y `build_wasm.bat`
+      tiene su propio log espejo `wasm-last-run.log` y pausa final.
 - [x] Separar progresivamente el núcleo DSP de las abstracciones JUCE (Fase 1,
       cerrada 2026-09-17: `DspEngineFacade` sin JUCE + paridad bit-exacta en `DSPReferenceTest`).
 - [x] Crear wrapper WASM (Fase 5, primer hito cerrado 2026-09-17: módulo real de 89 KB
@@ -388,9 +391,16 @@ quería despejar era exactamente el modo de fallo silencioso del canal.)
       Ninguno de los dos se cuela en un commit de otra cosa: van con su propia verificación
       (la matriz de 9 casos debe quedarse sin escenarios dependientes, o con solo los que
       queden justificados por escrito). Las dos cumplieron: `blockSizeDependentScenarios` está
-      **vacío** y las 15 celdas son bit-exactas. Queda pendiente el otro lado de esa moneda: el
-      `.wasm` trackeado en `WebPilot/public/worklet/` es de antes de los dos arreglos y hay que
-      regenerarlo con `build_wasm.bat` (el `.mjs` compara contra la referencia nativa nueva).
+      **      vacío** y las 15 celdas son bit-exactas.
+      El otro lado de esa moneda (regenerar el `.wasm` trackeado en
+      `WebPilot/public/worklet/`, que era anterior a los arreglos) **destapó una diferencia de
+      10 ulp en una muestra del escenario C a 44,1 kHz**: la libm del sistema (MSVC vs
+      musl/emscripten) difiere 1 ulp en `sinf`/`atanf`, y el lazo del chorus la amplifica.
+      **Resuelto de forma canónica (2026-09-19):** matemática determinista en el sustrato
+      compartido (`ABDSharedCode/DspCore/DspMath.h`, `abd::dsp::sin/cos/atan` sin libm, usados
+      por `DspChorus`/`DspSaturation`), con `-ffp-contract=off` en el build WASM. Misma
+      decisión que con `JUCE_UNDENORMALISE`: uniformar la aritmética en vez de relajar el gate
+      de 0 ulps. Detalle, evidencia y aviso de cambio de sonido en `HANDOFF.md`.
       Nota aparte, sin tocar: el mapeo del envoltorio (`dryLevel = 1 - mix*0.2`) se aplica
       sobre la escala interna del port (`dryScaleFactor = 2.0`, la misma que JUCE), así que
       con la reverb activa la señal seca va de 1,6 a 2,0 (un boost, no la unidad). Es

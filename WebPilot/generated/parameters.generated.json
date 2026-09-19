@@ -1402,19 +1402,14 @@
       "dspNote": ""
     }
   ],
-  "unroutedParameterIds": ["oscPitchCoarse"],
+  "unroutedParameterIds": [],
   "unroutedParameters": [
-    {
-      "id": "oscPitchCoarse",
-      "dspStatus": "notInLayout",
-      "dspNote": "Declared in the IDs namespace but absent from the layout"
-    }
   ],
   "summary": {
     "total": 70,
     "implemented": 65,
     "uiOnly": 4,
     "notRouted": 1,
-    "notInLayout": 1
+    "notInLayout": 0
   }
 }
