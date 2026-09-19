@@ -2,11 +2,10 @@
  * Adapter between the generated NEURONiK parameter contract and the WebUI.
  *
  * PORTADO de `WebPilot/lib/parameters.js` (el piloto React) SIN cambios de
- * comportamiento: es JS sin framework. Sólo cambia la ruta del import del
- * contrato, porque en la WebUI el contrato sigue viviendo una sola vez en
- * `WebPilot/generated/` (lo escribe NEURONiK_ParameterExport, paso 2/9 de
- * build.bat) y no se copia aquí. Cuando el piloto se retire (ticket 8.4), ese
- * directorio se muda a esta carpeta y este import es de una línea.
+ * comportamiento: es JS sin framework. El contrato vive una sola vez en
+ * `WebUI/generated/` (lo escribe NEURONiK_ParameterExport, paso 2/9 de build.bat)
+ * y no se copia aquí: la retirada del piloto (ticket 8.4) mudó ese directorio a la
+ * WebUI, de modo que el import apunta al contrato que esta propia carpeta sirve.
  *
  * The descriptors in `generated/parameters.generated.js` are emitted from the
  * real APVTS layout by the C++ tool `NEURONiK_ParameterExport`, so IDs, ranges,
@@ -26,7 +25,7 @@ import {
   PARAMETERS_BY_ID,
   UNROUTED_PARAMETER_IDS,
   UNROUTED_PARAMETERS,
-} from '../../../WebPilot/generated/parameters.generated.js';
+} from '../../generated/parameters.generated.js';
 
 export {
   CONTRACT_SUMMARY,
@@ -145,6 +144,12 @@ export function describeControl(id) {
     unit: descriptor.unit,
     options: descriptor.kind === 'float' ? [] : descriptor.choices,
     defaultValue: descriptor.kind === 'float' ? descriptor.defaultValue : descriptor.defaultChoiceIndex,
+    // Gating por motor, tal cual viene del contrato (vacío cuando la lista no
+    // depende del motor, que es el caso común). El adaptador NO decide nada con
+    // esto: lo entrega para que la celda pueda deshabilitar opciones, y quien
+    // consume `optionEngines` sin `engineParameter` (o al revés) está mal.
+    optionEngines: descriptor.optionEngines ?? [],
+    engineParameter: descriptor.engineParameter ?? '',
   };
 }
 

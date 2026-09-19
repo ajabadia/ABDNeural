@@ -175,9 +175,9 @@ El contrato ya no es solo orientativo: se genera desde el propio APVTS.
 ```text
 Source/State/ParameterDefinitions.h  (createParameterLayout)
         ↓  NEURONiK_ParameterExport
-WebPilot/generated/parameters.generated.json
-WebPilot/generated/parameters.generated.js
-WebPilot/generated/parameters.generated.d.ts
+WebUI/generated/parameters.generated.json
+WebUI/generated/parameters.generated.js
+WebUI/generated/parameters.generated.d.ts
 ```
 
 Características:
@@ -198,7 +198,7 @@ Regeneración:
 ```bash
 cd ABDNeural
 cmake --build build-reference --config Release --target NEURONiK_ParameterExport
-./build-reference/Release/NEURONiK_ParameterExport.exe WebPilot/generated
+./build-reference/Release/NEURONiK_ParameterExport.exe WebUI/generated
 ```
 
 Validación:

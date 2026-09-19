@@ -3,11 +3,78 @@
 #include "Core/BuildVersion.h"
 #include "State/ParameterDefinitions.h"
 
+// `juce_StandaloneFilterWindow.h` NO incluye sus propias dependencias: usa los tipos
+// de `juce_audio_devices` (AudioDeviceManager, AudioIODeviceCallback, MidiInput) y
+// `AudioProcessorPlayer` de `juce_audio_utils` confiando en el `JuceHeader.h` del
+// wrapper. Aqui se incluyen explicitas porque antes llegaban de rebote por
+// `juce_audio_utils`, retirado del editor en 8.1 paso 2: sin ellas el editor no
+// compila, y falla con un centenar de errores dentro de JUCE, no en codigo propio.
 #if JucePlugin_Build_Standalone
+ #include <juce_audio_devices/juce_audio_devices.h>
+ #include <juce_audio_utils/juce_audio_utils.h>
  #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
 #endif
 
+#include <iostream>
+
 using namespace NEURONiK::State;
+
+#if defined(NEURONIK_HAS_WEBUI_VIEW)
+namespace
+{
+    /**
+     * @brief Quien pidio el selftest del puente en este arranque.
+     *
+     * Dos vias, y la segunda no es un capricho: el VST3 se lanza desde el DAW y
+     * no recibe linea de comandos, asi que la variable de entorno es su UNICO
+     * disparo posible (con ella puesta, el arnes corre igual dentro de pluginval
+     * o del DAW que abra el editor). El Standalone, que si es un proceso con argv,
+     * usa `--selftest` para que build.bat no tenga que exportar nada.
+     */
+    bool selftestRequested()
+    {
+        if (juce::SystemStats::getEnvironmentVariable ("NEURONIK_SELFTEST", {}) == "1")
+            return true;
+
+       #if JucePlugin_Build_Standalone
+        return juce::JUCEApplicationBase::getCommandLineParameterArray().contains ("--selftest");
+       #else
+        return false;
+       #endif
+    }
+
+    /**
+     * @brief Donde queda el transcript del selftest.
+     * @details `NEURONIK_SELFTEST_LOG` manda si esta puesta. Por defecto NO se
+     *          escribe junto al ejecutable: dentro de un DAW ese ejecutable es el
+     *          del host (y su carpeta es de otro), asi que el sitio honesto son
+     *          los datos de usuario del sistema.
+     */
+    juce::File selftestLogFile()
+    {
+        const auto fromEnvironment = juce::SystemStats::getEnvironmentVariable ("NEURONIK_SELFTEST_LOG", {});
+
+        if (fromEnvironment.isNotEmpty())
+            return juce::File (fromEnvironment);
+
+        return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+                   .getChildFile ("NEURONiK")
+                   .getChildFile ("neuronik-selftest.log");
+    }
+
+    /** @brief Una linea al stdout del host y al log, con marca de tiempo en el log. */
+    void logSelftestLine (const juce::String& line)
+    {
+        std::cout << line << std::endl;
+
+        const auto file = selftestLogFile();
+
+        file.getParentDirectory().createDirectory();
+        file.appendText (juce::Time::getCurrentTime().toString (true, true) + "  " + line + juce::newLine,
+                         false, false, nullptr);
+    }
+} // namespace
+#endif
 
 NEURONiKEditor::NEURONiKEditor (NEURONiKProcessor& p)
     : AudioProcessorEditor (p),
@@ -36,6 +103,10 @@ NEURONiKEditor::NEURONiKEditor (NEURONiKProcessor& p)
     // retenidas + ruedas) cada ~180 ms, que es lo que hace que el teclado de la
     // pagina refleje el MIDI del DAW. Misma cadencia que la bancada del piloto.
     startTimerHz (33);
+
+   #if defined(NEURONIK_HAS_WEBUI_VIEW)
+    startSelftestIfRequested();
+   #endif
 }
 
 NEURONiKEditor::~NEURONiKEditor()
@@ -71,8 +142,73 @@ void NEURONiKEditor::timerCallback()
 {
    #if defined(NEURONIK_HAS_WEBUI_VIEW)
     webView->poll();
+
+    if (selftest != nullptr && ! selftest->hasFinished())
+    {
+        // La pagina lista es la senal que el arnes espera; el propio arnes lleva el
+        // resto (y su timeout, para que un hop perdido no deje un editor colgado).
+        if (webView->isPageLoaded())
+            selftest->notifyPageReady();
+
+        selftest->tick();
+    }
    #endif
 }
+
+#if defined(NEURONIK_HAS_WEBUI_VIEW)
+
+void NEURONiKEditor::startSelftestIfRequested()
+{
+    if (! selftestRequested())
+        return;
+
+    logSelftestLine ("[selftest] pedido (--selftest o NEURONIK_SELFTEST=1); log: "
+                     + selftestLogFile().getFullPathName());
+
+    // Sin `PageCapabilities`: el defecto del arnes es la capacidad COMPLETA, y este es
+    // el dueno que la tiene entera — esta pagina SI publica la ficha MODELOS A-D, asi
+    // que las cinco direcciones son obligatorias aqui. Declarar el omitido esta
+    // reservado a la bancada del piloto (que sirve la pagina retirada), y
+    // Tests/webuiSelftestContractTest.mjs impide que se extienda a otra superficie.
+    selftest = std::make_unique<NEURONiK::WebUI::BridgeSelftest> (
+        processor,
+        [this] (const juce::String& script, std::function<void (const juce::String&)> onResult)
+        {
+            // `webView` ya existe (se crea antes en el constructor). El arnes le
+            // pasa el script y recibe el resultado como texto: ni el arnes ni el
+            // editor saben como habla el navegador por dentro.
+            if (webView != nullptr)
+                webView->evaluate (script, std::move (onResult));
+        },
+        [] (const juce::String& line) { logSelftestLine (line); },
+        [this] (bool passed) { selftestFinished (passed); });
+
+    selftest->start();
+}
+
+void NEURONiKEditor::selftestFinished (bool passed)
+{
+    logSelftestLine (juce::String ("[selftest] veredicto: ") + (passed ? "OK" : "FAIL")
+                     + "  (log: " + selftestLogFile().getFullPathName() + ")");
+
+   #if JucePlugin_Build_Standalone
+    // El Standalone es un proceso propio: el veredicto es su codigo de salida, que
+    // es lo que lee build.bat (y por eso el arnes se pide con --selftest).
+    if (auto* app = juce::JUCEApplicationBase::getInstance())
+    {
+        app->setApplicationReturnValue (passed ? 0 : 1);
+        app->systemRequestedQuit();
+    }
+    else
+    {
+        logSelftestLine ("[selftest] sin JUCEApplicationBase: no hay codigo de salida que devolver.");
+    }
+   #endif
+    // En el VST3 no hay proceso que cerrar: el veredicto queda en el log y en el
+    // stdout del host (y el editor sigue abierto, como cualquier plugin).
+}
+
+#endif // NEURONIK_HAS_WEBUI_VIEW
 
 void NEURONiKEditor::setZoom (float scale)
 {

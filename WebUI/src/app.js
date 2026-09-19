@@ -27,8 +27,10 @@ import './styles/main.css';
 
 import { createParameterStore } from './contracts/paramStore.js';
 import { describeControl, getDescriptor } from './contracts/parameters.js';
-import { GENERAL_PARAMETER_IDS, SCREEN_PARAMETER_IDS } from './contracts/screens.js';
+import { SCREEN_PARAMETER_IDS } from './contracts/screens.js';
+import { BANDS, SECTION_ACTIONS, SECTION_VISUALS } from './contracts/sections.js';
 import { createPanel } from './ui/panel.js';
+import { createVisual } from './ui/visuals.js';
 import { mountKeyboard } from './ui/keyboard.js';
 import { audioOwnerFor } from './audio/policy.js';
 import {
@@ -53,14 +55,57 @@ const BASELINE_PARAMETER_ID = 'masterLevel';
 const root = document.getElementById('app');
 const store = createParameterStore({ ids: SCREEN_PARAMETER_IDS });
 
+/**
+ * Las bandas del lienzo con sus controles ya resueltos contra el contrato. El
+ * reparto (qué ids van en cada ficha) es de `contracts/sections.js`; aquí solo se
+ * convierte en view-models. Un id que no esté en el contrato se descarta en vez
+ * de pintar un control con límites inventados (el store lo reporta como error).
+ */
+const bands = BANDS.map((band) => band.map((section) => {
+  const controls = section.ids.map(describeControl).filter(Boolean);
+  // La vista pide SUS parámetros, no todos los de la ficha (y avisa si el catálogo
+  // y el contrato se separan: se pinta con lo que haya, pero se nota en consola).
+  const visualSpec = section.visual ? SECTION_VISUALS[section.visual] : null;
+  const visualControls = visualSpec
+    ? visualSpec.parameterIds.map(describeControl).filter(Boolean)
+    : [];
+
+  if (visualSpec && visualControls.length !== visualSpec.parameterIds.length)
+    console.warn(`visual "${visualSpec.id}": el catalogo pide id(s) que el contrato no tiene`);
+
+  return {
+    ...section,
+    controls,
+    // Las acciones de la ficha tambien se resuelven aqui, contra su catalogo, para
+    // que el panel reciba el boton ya masticado (mismo trato que los controles).
+    action: section.action ? SECTION_ACTIONS[section.action] ?? null : null,
+    // Y una vista puede necesitar algo que NO es un parametro: las ranuras de modelo
+    // A-D piden al host cargar un fichero (la pagina no tiene sistema de ficheros).
+    // El handler viaja por aqui para que el panel siga sin saber que dibuja cada una.
+    visual: visualSpec
+      ? createVisual(visualSpec.id, visualControls, {
+        onLoad: (slot) => store.loadModel(slot),
+      })
+      : null,
+  };
+}));
+
 let paint = () => {};
 let engineSnapshot = { status: 'idle', error: null, sampleRate: 0, voices: 0 };
 
 if (root) {
   const panel = createPanel({
-    bridgeControls: [describeControl(BASELINE_PARAMETER_ID)].filter(Boolean),
-    generalControls: GENERAL_PARAMETER_IDS.map(describeControl).filter(Boolean),
+    bands,
+    baselineId: BASELINE_PARAMETER_ID,
     handlers: {
+      // Un edit de cualquier celda, en NORMALIZADO (el store cierra la fase: ver
+      // el contrato de gestos en src/ui/controls.js).
+      onChange: (id, normalized) => store.handleChange(id, normalized),
+      onGesture: (id, phase) => store.handleGesture(id, phase),
+      // Acciones de ficha: hoy solo RANDOM (el sorteo lo hace el procesador).
+      onAction: (id) => {
+        if (id === 'randomize') store.randomize();
+      },
       // PANIC stops everything the plugin sounds; in local mode the worklet has
       // no panic path of its own in the host, and here it is a no-op without engine.
       onPanic: () => {

@@ -90,6 +90,12 @@ void ParameterBridge::setModelController (NativeModelController* newController) 
     models = newController;
 }
 
+void ParameterBridge::setRandomizeController (RandomizeController* newController) noexcept
+{
+    jassert (juce::MessageManager::existsAndIsCurrentThread());
+    randomizer = newController;
+}
+
 int ParameterBridge::getParameterCount() const noexcept
 {
     return static_cast<int> (entries.size());
@@ -245,7 +251,7 @@ void ParameterBridge::sendModelsState()
     if (numSlots <= 0)
         return;
 
-    // Flat array of { slot, isValid, amplitudes[64], frequencyOffsets[64] }.
+    // Flat array of { slot, name, isValid, amplitudes[64], frequencyOffsets[64] }.
     juce::Array<juce::var> slots;
 
     for (int slot = 0; slot < numSlots; ++slot)
@@ -267,6 +273,10 @@ void ParameterBridge::sendModelsState()
 
         juce::DynamicObject::Ptr entry = new juce::DynamicObject();
         entry->setProperty ("slot", slot);
+        // The display name travels so the page shows the SAME slot list the plugin
+        // has: it cannot read the model directory (and the native panel drew these
+        // names at the XY pad corners, so they were never a parameter either).
+        entry->setProperty ("name", models->getModelName (slot));
         entry->setProperty ("isValid", isValid);
         entry->setProperty ("amplitudes", juce::var (amps));
         entry->setProperty ("frequencyOffsets", juce::var (freqs));
@@ -279,6 +289,62 @@ void ParameterBridge::sendModelsState()
 
     ++stats.modelsSent;
     send (juce::var (message.get()), false);
+}
+
+void ParameterBridge::sendModelError (int slot, const juce::String& detail)
+{
+    juce::DynamicObject::Ptr message = new juce::DynamicObject();
+    message->setProperty ("action", BridgeActions::modelError);
+    message->setProperty ("slot", slot);
+    message->setProperty ("detail", detail);
+
+    ++stats.modelErrors;
+    send (juce::var (message.get()), false);
+}
+
+/**
+ * LOAD MODEL: validate the slot on the native side (the wire is untrusted) and
+ * hand the request to the backend, which owns the file dialog. The answer is
+ * ASYNCHRONOUS and comes back through sendModelsState()/sendModelError(): this
+ * method cannot know yet whether a file was chosen.
+ */
+void ParameterBridge::handleLoadModel (const juce::DynamicObject& message)
+{
+    const auto slotProperty = message.getProperty ("slot");
+    const bool numeric = slotProperty.isDouble() || slotProperty.isInt() || slotProperty.isInt64();
+
+    if (! numeric)
+    {
+        sendModelError (-1, "loadModel without a numeric slot");
+        return;
+    }
+
+    const auto requested = static_cast<double> (slotProperty);
+    const auto slot = static_cast<int> (requested);
+
+    if (models == nullptr)
+    {
+        sendModelError (slot, "no model backend installed");
+        return;
+    }
+
+    // Fractional slots are rejected explicitly instead of truncated: a page that
+    // sends 1.5 meant something this side does not offer, and silently loading
+    // into slot 1 would look like it worked.
+    if (static_cast<double> (slot) != requested)
+    {
+        sendModelError (slot, "slot must be an integer: " + juce::String (requested, 3));
+        return;
+    }
+
+    if (slot < 0 || slot >= models->getNumModelSlots())
+    {
+        sendModelError (slot, "slot out of range: " + juce::String (slot));
+        return;
+    }
+
+    ++stats.modelLoads;
+    models->loadModel (slot);
 }
 
 //==============================================================================
@@ -520,6 +586,12 @@ void ParameterBridge::handleJsEvent (const juce::var& message)
         return;
     }
 
+    if (action == BridgeActions::randomize)
+    {
+        handleRandomize();
+        return;
+    }
+
     if (action == BridgeActions::listPresets)
     {
         handleListPresets();
@@ -538,6 +610,12 @@ void ParameterBridge::handleJsEvent (const juce::var& message)
         return;
     }
 
+    if (action == BridgeActions::loadModel)
+    {
+        handleLoadModel (*object);
+        return;
+    }
+
     if (action == BridgeActions::midiNoteOn
      || action == BridgeActions::midiNoteOff
      || action == BridgeActions::midiPitchBend
@@ -549,6 +627,22 @@ void ParameterBridge::handleJsEvent (const juce::var& message)
     }
 
     ++stats.rejectedMessages;
+}
+
+/**
+ * RANDOMIZE: no fields, no answer. The backend writes the APVTS with
+ * setValueNotifyingHost(), so the page learns about every moved parameter through
+ * the normal `publishPendingChanges()` path — no extra message to keep in sync.
+ * Without a backend it still counts as accepted, exactly like MIDI in silent mode.
+ */
+void ParameterBridge::handleRandomize()
+{
+    ++stats.randomized;
+
+    if (randomizer == nullptr)
+        return;
+
+    stats.randomizedParameters += randomizer->randomize();
 }
 
 void ParameterBridge::applyParameterChange (const juce::DynamicObject& message)

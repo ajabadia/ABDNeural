@@ -23,6 +23,46 @@ Common::SpectralModel PresetManager::loadModelFromFile(const juce::File& file)
 
     if (!file.existsAsFile()) return model;
 
+    // 1. JSON — el dialecto que ESCRIBE la propia herramienta
+    //    (`Source/ModelMaker/MainComponent.cpp::exportModel`: amplitudes[64] +
+    //    frequencyOffsets[64] + name + description). Era el unico que este lector no
+    //    entendia, asi que un modelo salido del Model Maker se rechazaba en silencio:
+    //    la ranura se quedaba EMPTY y no sonaba, y el plugin parecia roto sin decir
+    //    por que. Si algun dia cambia el escritor, cambia AQUI, no en dos sitios.
+    // OJO con el temporal: `var` es un puntero con contador, y `getDynamicObject()`
+    // devuelve el objeto CRUDO. Encadenar `JSON::parse(texto).getDynamicObject()` deja el
+    // puntero apuntando a un objeto ya liberado en cuanto muere el temporal de la
+    // sentencia — se lee basura y el modelo se rechaza como si el fichero estuviera mal.
+    // El `var` vive en una local hasta que se termina de leer.
+    const auto parsedJson = juce::JSON::parse (file.loadFileAsString());
+    const auto* modelObject = parsedJson.getDynamicObject();
+
+    if (modelObject != nullptr)
+    {
+        const auto* amplitudes = modelObject->getProperty ("amplitudes").getArray();
+        const auto* offsets = modelObject->getProperty ("frequencyOffsets").getArray();
+
+        // Un modelo recortado no es un modelo: 64 parciales o nada (leer los que
+        // hubiera dejaria una ranura a medias que suena a otra cosa).
+        if (amplitudes != nullptr && offsets != nullptr
+                && amplitudes->size() >= 64 && offsets->size() >= 64)
+        {
+            for (int i = 0; i < 64; ++i)
+            {
+                model.amplitudes[static_cast<size_t> (i)] =
+                    static_cast<float> (static_cast<double> ((*amplitudes)[i]));
+                model.frequencyOffsets[static_cast<size_t> (i)] =
+                    static_cast<float> (static_cast<double> ((*offsets)[i]));
+            }
+
+            model.isValid = true;
+            return model;
+        }
+    }
+
+    // 2. XML legacy (`<NEURONIK_MODEL amplitudes="." offsets="."/>`), el dialecto que
+    //    este lector esperaba antes de que existiera el Model Maker. Sigue cargando:
+    //    hay modelos de esa era en discos y presets.
     auto xml = juce::parseXML(file);
     if (xml != nullptr && xml->hasTagName("NEURONIK_MODEL"))
     {
@@ -42,7 +82,7 @@ Common::SpectralModel PresetManager::loadModelFromFile(const juce::File& file)
         }
         model.isValid = true;
     }
-    // Fallback: If not XML, maybe it's binary? (Skip for now, just return model)
+
     return model;
 }
 

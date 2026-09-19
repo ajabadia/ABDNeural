@@ -17,6 +17,11 @@
  * Lifecycle: `start()` connects to the host (pageLoaded + requestState +
  * listPresets), `dispose()` removes every listener. Without a host the store
  * works in LOCAL MODE: `available: false` and every send is a no-op.
+ *
+ * State actions that the PAGE cannot perform (randomize, model loading) say so in
+ * their return value — false in local mode — instead of pretending: the work belongs
+ * to the processor (it has the ranges and the freeze flags) or to the host (only it
+ * can open a file dialog).
  */
 
 import { createBridgeTransport } from '../bridge/bridgeCore.js';
@@ -51,9 +56,14 @@ export function createParameterStore({ ids = PILOT_PARAMETER_IDS, scope = global
     presetState: { presets: [], current: '' },
     presetError: null,
     midiState: { held: [], pitchBend: 0, modWheel: 0 },
-    // Spectral model slots (bridge modelsState): [{ slot, isValid, amplitudes[64],
-    // frequencyOffsets[64] }, ...] — preset timbre data outside the APVTS.
+    // Spectral model slots (bridge modelsState): [{ slot, name, isValid,
+    // amplitudes[64], frequencyOffsets[64] }, ...] — preset timbre data outside
+    // the APVTS. `name` is what the page shows next to A..D (it cannot read the
+    // model directory).
     models: null,
+    // Last model load that did NOT happen (bridge modelError), or null. The view
+    // shows it instead of letting a click fail in silence.
+    modelError: null,
   };
 
   let transport = null;
@@ -128,6 +138,36 @@ export function createParameterStore({ ids = PILOT_PARAMETER_IDS, scope = global
 
   function savePreset(name) {
     transport?.sendSavePreset(name);
+  }
+
+  // ---- Acciones de estado (el backend las ejecuta sobre el APVTS) -----------
+
+  /**
+   * RANDOM: sortea el timbre en el procesador. En modo local (sin host) no hay
+   * APVTS que sortear, asi que no se inventa un estado distinto al del plugin:
+   * devuelve false y la pagina no finge que ha pasado algo.
+   */
+  function randomize() {
+    if (!state.bridgeAvailable) return false;
+
+    transport?.sendRandomize();
+    return true;
+  }
+
+  /**
+   * Carga un modelo en la ranura `slot` (0..3 = A..D). El dialogo lo abre el HOST
+   * (la pagina no tiene sistema de ficheros), asi que esto solo PIDE: la respuesta
+   * llega por el cable como `models` nuevo o como `modelError`. En modo local no hay
+   * a quien pedirselo, asi que no se finge una carga: devuelve false.
+   */
+  function loadModel(slot) {
+    if (!state.bridgeAvailable) return false;
+
+    // El error anterior es de OTRO intento: abrir el dialogo lo deja obsoleto, y
+    // dejar ahi el mensaje viejo mientras el usuario elige un fichero miente.
+    setState({ modelError: null });
+    transport?.sendLoadModel(slot);
+    return true;
   }
 
   // ---- MIDI (page keyboard/wheels -> plugin; see bridge/bridgeCore.js) -------
@@ -209,7 +249,13 @@ export function createParameterStore({ ids = PILOT_PARAMETER_IDS, scope = global
       },
 
       onModels(slots) {
-        setState({ models: Array.isArray(slots) ? slots : null });
+        // Los slots frescos limpian el ultimo error: el host acaba de responder con
+        // lo que hay en el motor, que es lo que la vista pinta.
+        setState({ models: Array.isArray(slots) ? slots : null, modelError: null });
+      },
+
+      onModelError(modelError) {
+        setState({ modelError });
       },
     });
 
@@ -253,6 +299,8 @@ export function createParameterStore({ ids = PILOT_PARAMETER_IDS, scope = global
     listPresets,
     loadPreset,
     savePreset,
+    randomize,
+    loadModel,
     sendMidiNoteOn,
     sendMidiNoteOff,
     sendMidiPitchBend,

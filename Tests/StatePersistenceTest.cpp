@@ -20,7 +20,7 @@
 
                  Constructing NEURONiKProcessor has one side effect: the
                  PresetManager creates Documents/NEURONiK/Presets if missing
-                 (same as the WebPilot host does on every run).
+                 (same as the WebView2 bench does on every run).
 
   ==============================================================================
 */

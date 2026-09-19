@@ -8,9 +8,10 @@
 
                    NEURONiK_ParameterExport [outputDirectory]
 
-                 Default output directory is WebPilot/generated, resolved
-                 relative to the current working directory when the argument is
-                 not absolute.
+                 Default output directory is WebUI/generated (the contract moved
+                 there with the pilot retirement, ticket 8.4), resolved relative
+                 to the current working directory when the argument is not
+                 absolute.
 
   ==============================================================================
 */
@@ -27,7 +28,7 @@ int main (int argc, char* argv[])
     const juce::ScopedJuceInitialiser_GUI juceInitialiser;
 
     const juce::String targetArgument = argc > 1 ? juce::String (argv[1])
-                                                 : juce::String ("WebPilot/generated");
+                                                 : juce::String ("WebUI/generated");
 
     const auto directory = juce::File::isAbsolutePath (targetArgument)
                                ? juce::File (targetArgument)

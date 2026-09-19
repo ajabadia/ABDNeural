@@ -38,6 +38,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -94,7 +95,7 @@ public:
                 browser.emitEventIfBrowserIsVisible (BridgeEventIds::nativeToJs, message);
         });
 
-        // Los tres adaptadores: el puente manda el cable, el procesador la
+        // Los cuatro adaptadores: el puente manda el cable, el procesador la
         // conducta. El procesador sobrevive al puente, asi que el puntero pelado
         // es seguro (mismas reglas que en la bancada del piloto).
         presetAdapter = std::make_unique<PresetManagerAdapter> (processor);
@@ -103,8 +104,23 @@ public:
         midiAdapter = std::make_unique<MidiInjectionAdapter> (processor);
         bridge->setMidiController (midiAdapter.get());
 
-        modelsAdapter = std::make_unique<EngineModelsAdapter> (processor);
+        // El adaptador de modelos tambien CARGA (los slots A..D de la pagina: los
+        // loadA..loadD del panel nativo). El dialogo es asincrono, asi que la
+        // respuesta sale de sus dos callbacks y no del acto de pedirla: el cable lo
+        // sigue teniendo el puente. Orden de miembros: los adaptadores se declaran
+        // DESPUES del puente, asi que mueren ANTES que el, y el FileChooser suelta
+        // su callback pendiente al destruirse — una respuesta tardia no encuentra
+        // ni un puente muerto ni un navegador a medio apagar.
+        modelsAdapter = std::make_unique<EngineModelsAdapter> (
+            processor,
+            [this] (int) { bridge->sendModelsState(); },
+            [this] (int slot, const juce::String& detail) { bridge->sendModelError (slot, detail); });
         bridge->setModelController (modelsAdapter.get());
+
+        // El RANDOMIZE dejo de ser un boton del panel nativo (se retira): la pagina
+        // pide la accion y el procesador sortea, con los mismos congelados.
+        randomizeAdapter = std::make_unique<RandomizerAdapter> (processor);
+        bridge->setRandomizeController (randomizeAdapter.get());
     }
 
     ~NeuronikWebView() override
@@ -157,8 +173,41 @@ public:
 
     [[nodiscard]] float getPageZoom() const noexcept { return pageZoom; }
 
-    /** @brief El puente, para diagnosico y para el selftest del editor. */
+    /** @brief El puente, para diagnostico y para el selftest del editor. */
     [[nodiscard]] ParameterBridge* getBridge() noexcept { return bridge.get(); }
+
+    /**
+     * @brief Corre un script en la pagina y devuelve su resultado como texto.
+     * @details Es el camino que usa el selftest del puente (ticket 8.1 paso 2c):
+     *          el MISMO `evaluateJavascript` del navegador, con el resultado ya
+     *          aplanado a texto (`NO_RESULT` explicito en vez de puntero nulo),
+     *          para que el arnes compartido no sepa nada de JUCE ni del backend.
+     *
+     *          Se llama directo (sin `callAsync`, a diferencia del zoom): quien lo
+     *          pide es siempre un timer, nunca el callback de carga del navegador,
+     *          asi que no hay reentrada que evitar — y una `callAsync` extra solo
+     *          anadiria una ventana en la que el componente ya no esta.
+     */
+    void evaluate (const juce::String& script, std::function<void (const juce::String&)> onResult)
+    {
+        getWebBrowser().evaluateJavascript (
+            script,
+            [onResult] (juce::WebBrowserComponent::EvaluationResult result)
+            {
+                if (onResult == nullptr)
+                    return;
+
+                onResult (result.getResult() != nullptr ? result.getResult()->toString()
+                                                        : juce::String ("NO_RESULT"));
+            });
+    }
+
+    /**
+     * @brief La pagina ya aviso (`pageLoaded`).
+     * @details Es la senal de "listo" que el selftest espera antes de empujar:
+     *          antes de este momento no hay documento al que preguntar nada.
+     */
+    [[nodiscard]] bool isPageLoaded() const noexcept { return pageLoaded; }
 
 protected:
     /**
@@ -169,6 +218,8 @@ protected:
     void onPageLoaded() override
     {
         abd::webview2::JuceWebView2Component::onPageLoaded();   // reaplica el tema
+
+        pageLoaded = true;
 
         applyPageZoom();
 
@@ -290,9 +341,11 @@ private:
     std::unique_ptr<PresetManagerAdapter> presetAdapter;
     std::unique_ptr<MidiInjectionAdapter> midiAdapter;
     std::unique_ptr<EngineModelsAdapter> modelsAdapter;
+    std::unique_ptr<RandomizerAdapter> randomizeAdapter;
 
     float pageZoom = 1.0f;
     int midiStateTick = 0;
+    bool pageLoaded = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NeuronikWebView)
 };

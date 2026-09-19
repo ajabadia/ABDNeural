@@ -2,9 +2,9 @@
  * Transport between the NEURONiK page and the JUCE host over the WebView2 channel.
  *
  * PORTADO de `WebPilot/lib/bridge.js` SIN cambios de comportamiento: es JS puro
- * (la contrapartida JS del protocolo versionado `WebPilot/contracts/bridge-protocol.json`,
- * que ya tiene test propio en C++ y en JS). El armazón React del piloto muere;
- * esto no.
+ * (la contrapartida JS del protocolo versionado `WebUI/contracts/bridge-protocol.json`,
+ * que ya tiene test propio en C++ y en JS). El armazón React del piloto murió en el
+ * ticket 8.4; esto no.
  *
  * Directions (JUCE 8), the same ones the shared guard in
  * `ABDSharedCode/WebView2Bridge/testing/webviewBridgeDirection.js` enforces on C++:
@@ -52,13 +52,19 @@
  *
  *   SPECTRAL MODELS (additive to protocol v1; see bridge-protocol.json)
  *
- *   native -> JS  { action: "modelsState", slots: [{ slot, isValid,
+ *   native -> JS  { action: "modelsState", slots: [{ slot, name, isValid,
  *                   amplitudes: [64], frequencyOffsets: [64] }, ...] }
+ *                 { action: "modelError", slot, detail }
+ *
+ *   JS -> native  { action: "loadModel", slot: 0..3 }
  *
  *   A preset is APVTS state PLUS up to four SpectralModel slots (64 partials
  *   each) the Resonator morphs between; they never live in the APVTS, so they
  *   travel separately. Sent after every syncAllParams and loadPreset; the page
  *   forwards them to the AudioWorklet (re-applying after every engine switch).
+ *   `name` is the slot's display name (the page cannot read the disk), and
+ *   sendLoadModel is the page ASKING THE HOST for a file dialog: it is the only
+ *   request whose answer arrives later, as a fresh modelsState or as modelError.
  *
  * `value` is ALWAYS the normalised 0..1 value; `real` and `text` are display only.
  *
@@ -101,9 +107,11 @@ export function nativeBackend() {
  *   a preset operation the host rejected or failed
  * @param {({ held: number[], pitchBend: number, modWheel: number }) => void} [handlers.onMidiState]
  *   the plugin's external MIDI view (held notes + wheel positions), ~6x per second
- * @param {(slots: Array<{slot:number, isValid:boolean, amplitudes:number[], frequencyOffsets:number[]}>) => void} [handlers.onModels]
+ * @param {(slots: Array<{slot:number, name:string, isValid:boolean, amplitudes:number[], frequencyOffsets:number[]}>) => void} [handlers.onModels]
  *   the engine's current spectral model slots (sent with every snapshot)
- * @returns {{ available: boolean, sendParameterChange: Function, sendRequestState: Function, announcePageLoaded: Function, sendListPresets: Function, sendLoadPreset: Function, sendSavePreset: Function, sendMidiNoteOn: Function, sendMidiNoteOff: Function, sendMidiPitchBend: Function, sendMidiModWheel: Function, sendMidiPanic: Function, dispose: Function }}
+ * @param {({ slot: number, detail: string }) => void} [handlers.onModelError]
+ *   a model load that did NOT happen (cancelled dialog, unusable file, bad slot)
+ * @returns {{ available: boolean, sendParameterChange: Function, sendRequestState: Function, announcePageLoaded: Function, sendListPresets: Function, sendLoadPreset: Function, sendSavePreset: Function, sendRandomize: Function, sendLoadModel: Function, sendMidiNoteOn: Function, sendMidiNoteOff: Function, sendMidiPitchBend: Function, sendMidiModWheel: Function, sendMidiPanic: Function, dispose: Function }}
  */
 export function createBridgeTransport(handlers) {
   const carrier = backend();
@@ -118,6 +126,8 @@ export function createBridgeTransport(handlers) {
       sendListPresets: () => {},
       sendLoadPreset: () => {},
       sendSavePreset: () => {},
+      sendRandomize: () => {},
+      sendLoadModel: () => {},
       sendMidiNoteOn: () => {},
       sendMidiNoteOff: () => {},
       sendMidiPitchBend: () => {},
@@ -191,6 +201,14 @@ export function createBridgeTransport(handlers) {
       handlers.onModels?.(message.slots);
   });
 
+  const removeModelError = carrier.addEventListener(NATIVE_TO_JS_EVENT_ID, (message) => {
+    if (
+      message?.action === 'modelError'
+      && typeof message.detail === 'string'
+    )
+      handlers.onModelError?.({ slot: Number(message.slot ?? -1), detail: message.detail });
+  });
+
   return {
     available: true,
 
@@ -256,6 +274,25 @@ export function createBridgeTransport(handlers) {
       emit({ action: 'midiPanic' });
     },
 
+    /**
+     * Page RANDOM: a STATE action, not a parameter edit. The processor randomises
+     * its own APVTS (strength = the randomStrength parameter, freeze flags
+     * honoured) and the page learns every moved value through the normal
+     * parameterChanged path, so nothing extra has to be kept in sync.
+     */
+    sendRandomize() {
+      emit({ action: 'randomize' });
+    },
+
+    /**
+     * Page -> host: load a model file into slot 0..3 (A..D). The host opens the
+     * file dialog, so the page sends no bytes and no path; the answer arrives
+     * later as modelsState (slot filled) or as modelError (nothing loaded).
+     */
+    sendLoadModel(slot) {
+      emit({ action: 'loadModel', slot });
+    },
+
     dispose() {
       carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removeSnapshot]);
       carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removeChange]);
@@ -263,6 +300,7 @@ export function createBridgeTransport(handlers) {
       carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removePresetError]);
       carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removeMidiState]);
       carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removeModelsState]);
+      carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removeModelError]);
     },
   };
 }

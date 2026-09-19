@@ -121,6 +121,82 @@ namespace IDs {
     static constexpr const char* mod4Amount = "mod4Amount";
 }
 
+/**
+ * @brief One modulation destination: the label a mod slot stores, and the
+ *        parameter that destination drives (nullptr for "Off").
+ *
+ * @details THIS ORDER IS PRESET STATE. A mod destination is stored as its INDEX
+ *          (`mod1Destination` = 20 is what an old preset means by "Odd/Even
+ *          Bal"), so entries may be APPENDED but never reordered or removed.
+ *          That is why the labels and the ids live in the same table instead of
+ *          being matched by hand in two files.
+ *
+ *          Which ENGINE can use a destination is deliberately NOT here: it is
+ *          derived from `engineCoverageFor (parameterId)` in
+ *          ParameterDescriptors.h, so a destination can never claim a different
+ *          engine than the parameter it actually drives.
+ */
+struct ModDestination
+{
+    const char* label;
+    const char* parameterId;   //!< nullptr for "Off" (drives nothing)
+};
+
+/** @brief Modulation destinations in preset-index order (see ModDestination). */
+inline const std::vector<ModDestination>& getModDestinationTable()
+{
+    static const std::vector<ModDestination> table
+    {
+        { "Off",            nullptr },
+        { "Osc Level",      IDs::oscLevel },
+        { "Inharmonicity",  IDs::oscInharmonicity },
+        { "Roughness",      IDs::oscRoughness },
+        { "Morph X",        IDs::morphX },
+        { "Morph Y",        IDs::morphY },
+        { "Amp Attack",     IDs::envAttack },
+        { "Amp Decay",      IDs::envDecay },
+        { "Amp Sustain",    IDs::envSustain },
+        { "Amp Release",    IDs::envRelease },
+        { "Filter Cutoff",  IDs::filterCutoff },
+        { "Filter Res",     IDs::filterRes },
+        { "Filter Env Amt", IDs::filterEnvAmount },
+        { "Flt Attack",     IDs::filterAttack },
+        { "Flt Decay",      IDs::filterDecay },
+        { "Flt Sustain",    IDs::filterSustain },
+        { "Flt Release",    IDs::filterRelease },
+        { "Saturation",     IDs::fxSaturation },
+        { "Delay Time",     IDs::fxDelayTime },
+        { "Delay FB",       IDs::fxDelayFeedback },
+        { "Odd/Even Bal",   IDs::resonatorParity },
+        { "Spectral Shift", IDs::resonatorShift },
+        { "Harm Roll-off",  IDs::resonatorRolloff },
+        { "Excite Noise",   IDs::oscExciteNoise },
+        { "Excite Color",   IDs::excitationColor },
+        { "Impulse Mix",    IDs::impulseMix },
+        { "Res Bank Res",   IDs::resonatorRes },
+        { "Unison Detune",  IDs::unisonDetune },
+    };
+
+    return table;
+}
+
+/** @brief Engine selector labels, in APVTS index order (also preset state). */
+inline juce::StringArray getEngineChoiceLabels()
+{
+    return { "NEURONiK", "Neurotik" };
+}
+
+/** @brief Destination labels in index order, derived from the table above. */
+inline juce::StringArray getModDestinations()
+{
+    juce::StringArray labels;
+
+    for (const auto& destination : getModDestinationTable())
+        labels.add (destination.label);
+
+    return labels;
+}
+
 inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
@@ -128,7 +204,7 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::masterLevel, "Master Level", juce::NormalisableRange<float>(0.0f, 1.0f), 0.8f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::masterBPM, "Master BPM", juce::NormalisableRange<float>(20.0f, 400.0f), 120.0f));
     
-    juce::StringArray engines = { "NEURONiK", "Neurotik" };
+    const auto engines = getEngineChoiceLabels();
     params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::engineType, "Engine Type", engines, 0));
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::oscLevel, "Osc Level", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f));
@@ -203,14 +279,9 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::lfo2RhythmicDivision, "LFO 2 Div", rhythmicDivisions, 2));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::lfo2Depth, "LFO 2 Depth", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f));
 
-    juce::StringArray modDestinations = { 
-        "Off", "Osc Level", "Inharmonicity", "Roughness", "Morph X", "Morph Y", 
-        "Amp Attack", "Amp Decay", "Amp Sustain", "Amp Release", 
-        "Filter Cutoff", "Filter Res", "Filter Env Amt",
-        "Flt Attack", "Flt Decay", "Flt Sustain", "Flt Release",
-        "Saturation", "Delay Time", "Delay FB",
-        "Odd/Even Bal", "Spectral Shift", "Harm Roll-off",
-        "Excite Noise", "Excite Color", "Impulse Mix", "Res Bank Res", "Unison Detune" };
+    // Derived from the one table (getModDestinationTable), never re-typed here: a
+    // destination added there shows up in every mod slot, in the same order.
+    const auto modDestinations = getModDestinations();
     juce::StringArray modSources = { "Off", "LFO 1", "LFO 2", "Pitch Bend", "Mod Wheel", "Aftertouch" };
 
     params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::mod1Source, "Mod 1 Source", modSources, 0));
@@ -235,18 +306,6 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
 inline juce::StringArray getModSources()
 {
     return { "Off", "LFO 1", "LFO 2", "Pitch Bend", "Mod Wheel", "Aftertouch" };
-}
-
-inline juce::StringArray getModDestinations()
-{
-    return { 
-        "Off", "Osc Level", "Inharmonicity", "Roughness", "Morph X", "Morph Y", 
-        "Amp Attack", "Amp Decay", "Amp Sustain", "Amp Release", 
-        "Filter Cutoff", "Filter Res", "Filter Env Amt",
-        "Flt Attack", "Flt Decay", "Flt Sustain", "Flt Release",
-        "Saturation", "Delay Time", "Delay FB",
-        "Odd/Even Bal", "Spectral Shift", "Harm Roll-off",
-        "Excite Noise", "Excite Color", "Impulse Mix", "Res Bank Res", "Unison Detune" };
 }
 
 } // namespace NEURONiK::State

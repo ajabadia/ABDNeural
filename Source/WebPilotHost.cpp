@@ -1,9 +1,10 @@
 /**
  * @file WebPilotHost.cpp
- * @brief JUCE/WebView2 host for the Next.js pilot: startup metrics PLUS the real
- *        parameter bridge.
- * @details Loads `WebPilot/out` through a WebBrowserComponent resource provider and
- *          now also mirrors a real APVTS both ways over the WebView2 channel:
+ * @brief Bancada WebView2 de la WebUI del plugin: metricas de arranque MAS el puente
+ *        de parametros real.
+ * @details Sirve `WebUI/dist` —la pagina que el plugin embebe y envia— por un
+ *          WebBrowserComponent resource provider, y espeja un APVTS real en los dos
+ *          sentidos del canal WebView2:
  *
  *            - the APVTS is `State::createLayoutApvts()`, the exact parameter layout
  *              the plugin ships, so what the page shows cannot drift from the plugin;
@@ -21,6 +22,19 @@
  *          Measurements are appended to `pilot-startup.log` next to the executable
  *          and summarised in the window title. Pass `--auto-quit` to close the host
  *          automatically once the panel reports ready.
+ *
+ *          POR QUE SIGUE EXISTIENDO, ya retirado el piloto (ticket 8.4). La pagina no
+ *          es suya (la sirve la WebUI del plugin, desde disco), pero esta bancada es
+ *          la UNICA superficie que monta el panel nativo (`ParameterPanel`) y el
+ *          `XYPad` de morph, y la unica que mide el arranque de la pagina
+ *          (`--auto-quit` -> `pilot-startup.log`). Eso se queda; lo que se fue con el
+ *          piloto es su exportacion React (`WebPilot/out`), la bandera `--pilot-page`
+ *          y el snapshot que esta exe llevaba embebido de ella: ahora la unica pagina
+ *          es `WebUI/dist`, se sirve SIEMPRE desde disco, y un fallo de disco da la
+ *          pagina de diagnostico (que dice donde la busco y como arreglarlo) en vez de
+ *          contestar con otra pagina. Corre las MISMAS seis direcciones del selftest
+ *          que el plugin, sin omitidos: desde 8.4 no hay una segunda pagina a la que
+ *          rebajar el liston.
  */
 
 #include <juce_gui_extra/juce_gui_extra.h>
@@ -36,11 +50,8 @@
 #include "UI/ParameterPanel.h"
 #include "UI/XYPad.h"
 #include "WebUI/BridgeAdapters.h"
+#include "WebUI/BridgeSelftest.h"
 #include "WebUI/ParameterBridge.h"
-
-#ifdef NEURONIK_HAS_PILOT_ASSETS
- #include "BinaryData.h"   // juce_add_binary_data(NEURONiK_WebPilotAssets): embedded WebUI snapshot
-#endif
 
 #include <atomic>
 #include <iostream>
@@ -54,6 +65,7 @@ namespace
     using NEURONiK::WebUI::EngineModelsAdapter;
     using NEURONiK::WebUI::MidiInjectionAdapter;
     using NEURONiK::WebUI::PresetManagerAdapter;
+    using NEURONiK::WebUI::RandomizerAdapter;
 
     //==============================================================================
     // Measurement state
@@ -66,8 +78,8 @@ namespace
     {
         double optionsBuiltMs = -1.0;   // JUCE WebBrowserComponent constructed
         double documentMs = -1.0;       // document.readyState reached "interactive"
-        double panelMs = -1.0;          // the pilot panel exists in the DOM
-        double reactReadyMs = -1.0;     // window.__pilotReady set by the React effect
+        double panelMs = -1.0;          // el panel de la pagina existe en el DOM
+        double reactReadyMs = -1.0;     // window.__pilotReady, que publica la pagina
     };
 
     StartupMetrics metrics;
@@ -83,11 +95,11 @@ namespace
     std::atomic<int> servedCount { 0 };
     std::atomic<long long> servedBytes { 0 };
     std::atomic<int> missedCount { 0 };
-    std::atomic<int> embeddedServed { 0 };   // served from the exe's embedded snapshot
 
     /** @brief Paths the provider could not resolve, kept for the report. */
     juce::CriticalSection missedPathsLock;
     juce::StringArray missedPaths;
+
 
     double nowMs()
     {
@@ -100,51 +112,102 @@ namespace
     }
 
     //==============================================================================
+    // Which page this bench hosts
+
+    /**
+     * @brief La unica pagina que sirve esta bancada: `WebUI/dist`, la MISMA que
+     *        embebe el plugin que se envia.
+     *
+     * Hasta el ticket 8.4 habia una segunda (`WebPilot/out`, con `--pilot-page`), y
+     * elegir una u otra NO era un detalle de transporte: decidia que direcciones del
+     * selftest eran aplicables. Con el piloto fuera queda una sola pagina, asi que la
+     * eleccion (y la capacidad que la declaraba al arnes) desaparece.
+     */
+    juce::String pageSourceName()
+    {
+        return "WebUI/dist (la pagina del plugin)";
+    }
+
+    //==============================================================================
     // Asset location
 
-    /** @brief Locate the directory holding the Next.js static export (`WebPilot/out`).
-     *  Tries the compile-time path first, then walks up from the executable and the
-     *  current working directory. Returns an invalid file when nothing is found.
+    /**
+     * @brief Locate a page root on disk. Tries the compile-time path first, then
+     *        walks up from the executable and the current working directory.
+     * @param repositoryRelative path from a repository root, e.g. "WebUI/dist".
+     * @param compiledInPath     path baked in at configure time, or nullptr.
+     * @returns an invalid file when nothing was found.
      */
-    juce::File findPilotRoot()
+    juce::File locateRoot (const char* repositoryRelative, const char* compiledInPath)
     {
-       #if defined(NEURONiK_WEBPILOT_OUT_DIR)
-        const juce::File compiledIn(NEURONiK_WEBPILOT_OUT_DIR);
-        if (compiledIn.getChildFile("index.html").existsAsFile())
-            return compiledIn;
-       #endif
+        if (compiledInPath != nullptr)
+        {
+            const juce::File compiledIn (compiledInPath);
 
-        auto walkUp = [] (juce::File dir)
+            if (compiledIn.getChildFile ("index.html").existsAsFile())
+                return compiledIn;
+        }
+
+        auto walkUp = [repositoryRelative] (juce::File dir)
         {
             for (int i = 0; i < 8 && dir.isDirectory(); ++i)
             {
-                const auto candidate = dir.getChildFile("WebPilot").getChildFile("out");
-                if (candidate.getChildFile("index.html").existsAsFile())
+                const auto candidate = dir.getChildFile (juce::String (repositoryRelative));
+
+                if (candidate.getChildFile ("index.html").existsAsFile())
                     return candidate;
 
                 const auto parent = dir.getParentDirectory();
+
                 if (parent == dir)
                     break;
+
                 dir = parent;
             }
+
             return juce::File{};
         };
 
-        if (auto found = walkUp(juce::File::getSpecialLocation(juce::File::currentExecutableFile)
-                                    .getParentDirectory());
+        if (auto found = walkUp (juce::File::getSpecialLocation (juce::File::currentExecutableFile)
+                                     .getParentDirectory());
             found.isDirectory())
             return found;
 
-        if (auto found = walkUp(juce::File::getCurrentWorkingDirectory()); found.isDirectory())
+        if (auto found = walkUp (juce::File::getCurrentWorkingDirectory()); found.isDirectory())
             return found;
 
         return {};
     }
 
-    const juce::File& pilotRoot()
+    /**
+     * @brief `WebUI/dist`, la pagina del plugin, con el MISMO override de desarrollo
+     *        que el plugin (`NeuronikWebView.h`): apuntar `NEURONIK_WEBUI_DEV_DIR` a
+     *        la exportacion y recargar itera la UI en segundos. Vacio por defecto.
+     */
+    juce::File findWebUiRoot()
     {
-        static const juce::File root = findPilotRoot();
+        const juce::File devDir (juce::SystemStats::getEnvironmentVariable ("NEURONIK_WEBUI_DEV_DIR", {}));
+
+        if (devDir.isDirectory() && devDir.getChildFile ("index.html").existsAsFile())
+            return devDir;
+
+       #if defined(NEURONiK_WEBUI_DIR)
+        return locateRoot ("WebUI/dist", NEURONiK_WEBUI_DIR);
+       #else
+        return locateRoot ("WebUI/dist", nullptr);
+       #endif
+    }
+
+    const juce::File& webUiRoot()
+    {
+        static const juce::File root = findWebUiRoot();
         return root;
+    }
+
+    /** @brief El root de la pagina que esta bancada sirve (la unica: `WebUI/dist`). */
+    const juce::File& servedRoot()
+    {
+        return webUiRoot();
     }
 
     //==============================================================================
@@ -211,35 +274,33 @@ namespace
     }
 
     /** @brief Readable failure page: a missing export should never render as a blank window. */
-    juce::WebBrowserComponent::Resource diagnosticPage([[maybe_unused]] const juce::String& requestedPath)
+    juce::WebBrowserComponent::Resource diagnosticPage (const juce::String& requestedPath)
     {
-        const auto root = pilotRoot();
+        const auto root = servedRoot();
         const auto rootText = root.isDirectory() ? root.getFullPathName() : juce::String("<not found>");
+        const auto fix = juce::String ("<p>Fix: run <code>pnpm build</code> inside <code>ABDNeural/WebUI</code> "
+                                        "(or point <code>NEURONIK_WEBUI_DEV_DIR</code> at it), then rebuild this host.</p>");
 
         const juce::String html =
-            "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>NEURONiK Web Pilot</title>"
+            "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>NEURONiK WebUI bench</title>"
             "<style>body{background:#12161c;color:#e6edf3;font-family:system-ui,Segoe UI,sans-serif;padding:32px}"
             "code{background:#1f2630;padding:2px 6px;border-radius:4px}"
             ".card{border:1px solid #2c3542;border-radius:10px;padding:20px;max-width:760px}"
             "h1{font-size:18px;margin:0 0 12px}p{line-height:1.5}li{margin:4px 0}</style></head><body>"
-            "<div class=\"card\"><h1>Web pilot assets not found</h1>"
-            "<p>The host could not serve <code>/\" + requestedPath + \"</code> from the Next.js static export.</p>"
-            "<p>Resolved export root: <code>" + rootText + "</code></p>"
+            "<div class=\"card\"><h1>Page assets not found</h1>"
+            "<p>This bench could not serve <code>/" + requestedPath + "</code> from "
+            + pageSourceName() + ".</p>"
+            "<p>Resolved page root: <code>" + rootText + "</code></p>"
             "<p>Expected layout:</p><ul>"
-            "<li><code>ABDNeural/WebPilot/out/index.html</code></li>"
-            "<li><code>ABDNeural/WebPilot/out/_next/static/chunks/*.js</code></li></ul>"
-            "<p>Fix: run <code>pnpm install --ignore-workspace && pnpm build</code> inside "
-            "<code>ABDNeural/WebPilot</code>, then rebuild this host.</p>"
+            "<li><code>ABDNeural/WebUI/dist/index.html</code></li>"
+            "<li><code>ABDNeural/WebUI/dist/assets/*.js</code></li></ul>"
+            + fix +
             "</div></body></html>";
 
         return resourceFromText(html);
     }
 
-    // Defined below loadPilotResource; forward-declared so the disk-first
-    // fallback order never depends on helper definition order.
-    std::optional<juce::WebBrowserComponent::Resource> loadEmbeddedResource (const juce::String& relativePath);
-
-    std::optional<juce::WebBrowserComponent::Resource> loadPilotResource(const juce::String& url)
+    std::optional<juce::WebBrowserComponent::Resource> loadPageResource(const juce::String& url)
     {
         const auto relativePath = normalizePath(url);
 
@@ -249,7 +310,7 @@ namespace
         if (relativePath == "juce.js" || relativePath.endsWith("/juce.js"))
             return std::nullopt;
 
-        const auto root = pilotRoot();
+        const auto root = servedRoot();
         if (root.isDirectory())
         {
             const auto file = root.getChildFile(relativePath.replace("/", juce::File::getSeparatorString()));
@@ -261,12 +322,10 @@ namespace
             }
         }
 
-        // Disk misses fall back to the WebUI snapshot embedded in the exe (see
-        // NEURONiK_WebPilotAssets in CMakeLists.txt): the host stays usable when the
-        // export folder is not next to it — and this is how the VST3 will serve it.
-        if (auto embedded = loadEmbeddedResource(relativePath))
-            return embedded;
-
+        // A disk miss has NO fallback: esta exe no lleva ninguna copia embebida de la
+        // pagina (lo que embebe la WebUI es el PLUGIN, no la bancada), y contestar con
+        // otra pagina no es un fallback. El documento pide la pagina de diagnostico.
+        //
         // Only the document request gets a visible page; missing sub-resources stay 404.
         if (relativePath == "index.html" || relativePath.isEmpty())
             return diagnosticPage(relativePath);
@@ -276,65 +335,6 @@ namespace
         const juce::ScopedLock lock (missedPathsLock);
         if (! missedPaths.contains (relativePath))
             missedPaths.add (relativePath);
-
-        return std::nullopt;
-    }
-
-    //==============================================================================
-    // Embedded WebUI fallback (see NEURONiK_WebPilotAssets in CMakeLists.txt)
-
-    /** @brief Serve `relativePath` from the snapshot embedded in the exe.
-     *  @details The disk folder ALWAYS wins (fresh `pnpm build` output); this only
-     *           runs when the export folder is not next to the executable, so the
-     *           host stays usable standalone — and it is exactly how the final VST3
-     *           will carry its WebUI. Matching is by path suffix / basename, and
-     *           the snapshot's error routes (`404/index.html`, `404.html`,
-     *           `_not-found/…`) are never allowed to answer a normal request:
-     *           the resource list is alphabetical, so `404/index.html` used to
-     *           shadow the real `index.html` (the page then never reached
-     *           react-ready and the selftest timed out).
-     */
-    std::optional<juce::WebBrowserComponent::Resource> loadEmbeddedResource (const juce::String& relativePath)
-    {
-       #ifdef NEURONIK_HAS_PILOT_ASSETS
-        // The BinaryData resource names are mangled to C identifiers (dots and
-        // dashes become underscores), so match by the ORIGINAL filename recorded
-        // alongside each resource and fetch the payload through the resource NAME
-        // (never the path).
-        const auto basePath = relativePath.fromLastOccurrenceOf ("/", false, true);
-
-        // Keep each side of the error-route split (see the class doc above): a
-        // normal request may only match normal resources, and an error-route
-        // request only matches error-route resources.
-        const auto errorRoute = relativePath.startsWith ("404/")
-                                    || relativePath == "404.html"
-                                    || relativePath.startsWith ("_not-found/");
-
-        for (int i = 0; i < BinaryData::namedResourceListSize; ++i)
-        {
-            const auto* resourceName = BinaryData::namedResourceList[i];
-            const auto original = juce::String (BinaryData::getNamedResourceOriginalFilename (resourceName))
-                                      .replaceCharacter ('\\', '/');
-
-            if (errorRoute != (original.contains ("/404/") || original.endsWith ("/404.html")
-                               || original.contains ("/_not-found/")))
-                continue;
-
-            if (! (original == relativePath || original.endsWith (relativePath)
-                   || original.endsWith (basePath)))
-                continue;
-
-            int size = 0;
-
-            if (const auto* data = BinaryData::getNamedResource (resourceName, size))
-            {
-                embeddedServed.fetch_add (1, std::memory_order_relaxed);
-                return toResource (juce::MemoryBlock (data, (size_t) size), mimeTypeFor (relativePath));
-            }
-        }
-       #else
-        juce::ignoreUnused (relativePath);
-       #endif
 
         return std::nullopt;
     }
@@ -356,13 +356,17 @@ namespace
         juce::String report;
         report << "# run " << juce::Time::getCurrentTime().toString (true, true, true, true)
                << "  reason=" << reason << "\n";
+        report << "  page                : " << pageSourceName() << "\n";
+        report << "  page root           : "
+               << (servedRoot().isDirectory() ? servedRoot().getFullPathName()
+                                              : juce::String ("<not found on disk>"))
+               << "\n";
         report << "  options built       : " << formatMs (metrics.optionsBuiltMs) << "\n";
         report << "  document interactive: " << formatMs (metrics.documentMs) << "\n";
         report << "  panel in DOM        : " << formatMs (metrics.panelMs) << "\n";
         report << "  react ready         : " << formatMs (metrics.reactReadyMs) << "\n";
         report << "  resources served    : " << served
-               << " (" << juce::String (bytes / 1024) << " KB)"
-               << " [embedded fallback: " << embeddedServed.load() << "]" << "\n";
+               << " (" << juce::String (bytes / 1024) << " KB)" << "\n";
         report << "  resource misses     : " << missedCount.load();
 
         {
@@ -408,9 +412,9 @@ namespace
             });
 
             // Render the plugin through the default audio device. Without this the
-            // processor's processBlock NEVER runs in the pilot: page keyboard notes
-            // would pile up in the MIDI FIFO unheard, and engine telemetry would
-            // stay frozen. This also makes the pilot audible for the first time.
+            // processor's processBlock NEVER runs here: page keyboard notes would pile
+            // up in the MIDI FIFO unheard, and engine telemetry would stay frozen. This
+            // also makes the page audible.
             audioDeviceManager.initialiseWithDefaultDevices (0, 2);
             audioPlayer.setProcessor (&processor);
             audioDeviceManager.addAudioCallback (&audioPlayer);
@@ -428,9 +432,24 @@ namespace
 
             // Spectral models for the page: the bridge publishes the engine's
             // current slots (file-backed mirror) so the WASM path can morph
-            // between the SAME partials the plugin renders.
-            modelsAdapter = std::make_unique<EngineModelsAdapter> (processor);
+            // between the SAME partials the plugin renders — and serves the
+            // loadModel action (the loadA..loadD dialog the native panel had).
+            // That dialog is ASYNCHRONOUS, so its answer is sent from the
+            // adapter's callbacks: the bridge keeps owning the wire. A pending
+            // answer cannot outlive the bridge here either, because the chooser
+            // is a member of the adapter and juce::FileChooser drops its pending
+            // async callback when it is destroyed.
+            modelsAdapter = std::make_unique<EngineModelsAdapter> (
+                processor,
+                [this] (int) { bridge->sendModelsState(); },
+                [this] (int slot, const juce::String& detail) { bridge->sendModelError (slot, detail); });
             bridge->setModelController (modelsAdapter.get());
+
+            // RANDOMIZE as a bridge action: the bench keeps the capability the
+            // native panel used to offer (the panel is on its way out, the action
+            // is not). The page asks, the processor randomises.
+            randomizeAdapter = std::make_unique<RandomizerAdapter> (processor);
+            bridge->setRandomizeController (randomizeAdapter.get());
 
             addAndMakeVisible (browser);
             nativePanel = std::make_unique<NEURONiK::UI::ParameterPanel> (processor);
@@ -447,7 +466,37 @@ namespace
             startTimer (30);
 
             if (selftest)
-                startSelftest();
+            {
+                // The SAME harness the plugin editor runs (ticket 8.1 step 2c), so
+                // the bench cannot drift from the surface that ships. Here it only
+                // gets this browser and this verdict: the exit code is what build.bat
+                // reads, exactly as before.
+                selftestRunner = std::make_unique<NEURONiK::WebUI::BridgeSelftest> (
+                    processor,
+                    [this] (const juce::String& script, std::function<void (const juce::String&)> onResult)
+                    {
+                        browser.evaluateJavascript (
+                            script,
+                            [onResult] (juce::WebBrowserComponent::EvaluationResult result)
+                            {
+                                if (onResult == nullptr)
+                                    return;
+
+                                onResult (result.getResult() != nullptr
+                                              ? result.getResult()->toString()
+                                              : juce::String ("NO_RESULT"));
+                            });
+                    },
+                    [] (const juce::String& line) { std::cout << line << "\n"; },
+                    [this] (bool passed)
+                    {
+                        selftestPassed = passed;
+                        g_selftestExitCode.store (passed ? 0 : 1, std::memory_order_relaxed);
+                        finish (passed ? "selftest-ok" : "selftest-fail");
+                    });
+
+                selftestRunner->start();
+            }
         }
 
         ~PilotComponent() override
@@ -470,301 +519,18 @@ namespace
     private:
         static constexpr int stripHeight = 240;   // the real GENERAL tab needs more than the old strip
         static constexpr double pollTimeoutMs = 20000.0;
-        static constexpr double selftestStepMs = 250.0;
 
         // ============================================================================
-        // --selftest: automated two-direction check of the bridge.
+        // --selftest: the six-direction check lives in WebUI/BridgeSelftest.h.
         //
-        // I cannot move a mouse, so this exercises the SAME channel a manual test would:
-        //   NATIVE -> JS: setValueNotifyingHost on the APVTS, then read the page's slider
-        //                 position back via evaluateJavascript.
-        //   JS -> NATIVE: dispatch a real 'input' event on the page's slider (exactly what
-        //                 a user drag produces), then read the APVTS parameter.
-        // The script prints SELFTEST: OK / SELFTEST: FAIL and the process exits 0/1.
+        // It used to be a state machine right here, which is exactly why only this
+        // bench could run it. Since ticket 8.1 step 2c the plugin editor hosts the
+        // page too, so the harness is shared and both surfaces exercise the SAME
+        // directions instead of two copies that drift: the bench only plugs in this
+        // browser and this verdict (the plugin plugs in the editor's web view). Las dos
+        // superficies sirven la MISMA pagina (`WebUI/dist`) y corren las SEIS direcciones
+        // sin omitidos desde que el piloto se retiro (ticket 8.4).
         // ============================================================================
-
-        enum class SelftestStage { idle, waitReady, nativePushed, jsPushed, generalCheck, midiCheck };
-
-        void startSelftest()
-        {
-            selftestStage = SelftestStage::waitReady;
-            std::cout << "[selftest] waiting for the page to be ready...\n";
-        }
-
-        void selftestTick()
-        {
-            switch (selftestStage)
-            {
-                case SelftestStage::waitReady:
-                {
-                    if (metrics.reactReadyMs < 0.0)
-                        return;   // the normal probe loop sets reactReadyMs when the page is up
-
-                    selftestStage = SelftestStage::nativePushed;
-
-                    // --- NATIVE -> JS --------------------------------------------
-                    // Move the parameter the way the native UI would.
-                    if (auto* parameter = processor.getAPVTS().getParameter ("masterLevel"))
-                        parameter->setValueNotifyingHost (0.25f);
-
-                    // The page's own state updates from the bridge on the next poll tick
-                    // (30 ms); give it a generous 400 ms before reading the slider.
-                    juce::Timer::callAfterDelay (400, [this]
-                    {
-                        browser.evaluateJavascript (
-                            "document.querySelector('input[type=range]')"
-                            " ? String(document.querySelector('input[type=range]').value)"
-                            " : 'NO_SLIDER'",
-                            [this] (juce::WebBrowserComponent::EvaluationResult result)
-                            {
-                                const auto raw = result.getResult() != nullptr
-                                                   ? result.getResult()->toString()
-                                                   : juce::String ("NO_RESULT");
-                                selftestNativePushed (raw);
-                            });
-                    });
-                    break;
-                }
-
-                case SelftestStage::nativePushed:
-                    break;   // waiting on the async evaluation above
-
-                case SelftestStage::jsPushed:
-                    break;   // waiting on the async evaluation above
-
-                case SelftestStage::idle:
-                default:
-                    break;
-            }
-        }
-
-        void selftestNativePushed (const juce::String& sliderValue)
-        {
-            // The page stores normalised 0..1 and the control edits real units; for
-            // masterLevel both scales coincide (0..1, no skew), so the input's value
-            // should carry 0.25 (modulo float text rounding).
-            const auto pageValue = sliderValue.getFloatValue();
-            const auto ok = sliderValue.isNotEmpty() && sliderValue != "NO_SLIDER"
-                                && sliderValue != "NO_RESULT"
-                                && std::abs (pageValue - 0.25f) < 0.02f;
-
-            std::cout << "[selftest] NATIVE -> JS: native masterLevel = 0.25, page slider = "
-                      << sliderValue << " -> " << (ok ? "OK" : "FAIL") << "\n";
-            selftestNativeToJsOk = ok;
-
-            // --- JS -> NATIVE ------------------------------------------------
-            // Dispatch a real input event on the first slider, the same event a user
-            // drag fires. The React onChange picks it up and pushes the change through
-            // the bridge; the poller applies it to the APVTS.
-            selftestStage = SelftestStage::jsPushed;
-
-            browser.evaluateJavascript (
-                "(() => { const s = document.querySelector('input[type=range]');"
-                " if (!s) return 'NO_SLIDER';"
-                " const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;"
-                " setter.call(s, '0.75');"
-                " s.dispatchEvent(new Event('input', { bubbles: true }));"
-                " return 'DISPATCHED'; })()",
-                [this] (juce::WebBrowserComponent::EvaluationResult result)
-                {
-                    const auto raw = result.getResult() != nullptr
-                                       ? result.getResult()->toString()
-                                       : juce::String ("NO_RESULT");
-
-                    // React needs a moment to re-render and push through the bridge;
-                    // the APVTS is applied on the host's next 30 ms poll.
-                    juce::Timer::callAfterDelay (600, [this, raw]
-                    {
-                        const auto* parameter = processor.getAPVTS().getParameter ("masterLevel");
-                        const auto nativeValue = parameter != nullptr ? parameter->getValue() : -1.0f;
-                        const auto okJs = raw == "DISPATCHED" && std::abs (nativeValue - 0.75f) < 0.02f;
-
-                        std::cout << "[selftest] JS -> NATIVE: page slider set to 0.75, native masterLevel = "
-                                  << juce::String (nativeValue, 4) << " -> " << (okJs ? "OK" : "FAIL") << "\n";
-                        selftestJsToNativeOk = okJs;
-
-                        selftestStartGeneralCheck();
-                    });
-                });
-        }
-
-        // --- GENERAL E2E (Phase 7) -------------------------------------------------
-        // The GENERAL tab joined 11 new parameter ids to the page's state. The bridge
-        // mirrors the WHOLE APVTS, so every snapshot must carry them; and a native
-        // edit of one of them must land in the page's normalised state. The footer
-        // serialises that state as JSON (<code>), which is exactly what we read back.
-        void selftestStartGeneralCheck()
-        {
-            selftestStage = SelftestStage::generalCheck;
-
-            if (auto* parameter = processor.getAPVTS().getParameter ("envAttack"))
-                parameter->setValueNotifyingHost (0.5f);
-
-            juce::Timer::callAfterDelay (400, [this]
-            {
-                browser.evaluateJavascript (
-                    "(() => { try {"
-                    "  const state = JSON.parse(document.querySelector('.panel-footer code').textContent);"
-                    "  const ids = ['engineType','envAttack','envDecay','envSustain','envRelease',"
-                    "    'unisonDetune','unisonSpread','randomStrength','freezeResonator',"
-                    "    'freezeFilter','freezeEnvelopes'];"
-                    "  return JSON.stringify({"
-                    "    missing: ids.filter((id) => !(id in state)),"
-                    "    bad: ids.filter((id) => typeof state[id] !== 'number')"
-                    "             .map((id) => id + '=' + String(state[id])),"
-                    "    envAttack: state.envAttack });"
-                    " } catch (e) { return 'GENERAL_FAIL: ' + e.message; } })()",
-                    [this] (juce::WebBrowserComponent::EvaluationResult result)
-                    {
-                        selftestGeneralCheck (result.getResult() != nullptr
-                                                  ? result.getResult()->toString()
-                                                  : juce::String ("NO_RESULT"));
-                    });
-            });
-        }
-
-        void selftestGeneralCheck (const juce::String& raw)
-        {
-            const auto parsed = juce::JSON::parse (raw);
-            const auto* object = parsed.getDynamicObject();
-            const auto envAttack = object != nullptr
-                                       ? static_cast<double> (object->getProperty ("envAttack"))
-                                       : -1.0;
-            const auto* missing = object != nullptr
-                                      ? object->getProperty ("missing").getArray()
-                                      : nullptr;
-            const auto* bad = object != nullptr
-                                  ? object->getProperty ("bad").getArray()
-                                  : nullptr;
-
-            const auto ok = object != nullptr
-                                && missing != nullptr && missing->isEmpty()
-                                && bad != nullptr && bad->isEmpty()
-                                && std::abs (envAttack - 0.5) < 0.02;
-
-            std::cout << "[selftest] GENERAL: 11 ids on the page, envAttack = "
-                      << juce::String (envAttack, 3) << " (native 0.5) -> "
-                      << (ok ? "OK" : "FAIL") << "\n";
-            selftestGeneralOk = ok;
-
-            selftestStartMidiCheck();
-        }
-
-        // --- MIDI E2E (Phase 4) -----------------------------------------------------
-        // Page keyboard -> processor: the page sends noteOn/noteOff through its OWN
-        // MIDI send path (window.__pilotSendMidi, the same helper the React keyboard
-        // uses) and we read the processor's held-note FIFO.
-        // Wheels native -> page: push a mod-wheel level through the processor's
-        // injection API, switch to the KEYS tab and read the shared wheel's slider.
-        // Fully async: every hop is an evaluateJavascript callback or a Timer, so the
-        // message thread never blocks.
-        void selftestStartMidiCheck()
-        {
-            selftestStage = SelftestStage::midiCheck;
-
-            // mod wheel to 0.5 the way the native side would receive external MIDI
-            processor.injectController (1, 1, 64);
-
-            juce::Timer::callAfterDelay (600, [this]
-            {
-                // Switch to KEYS (the shared wheels live there) and press page C4.
-                browser.evaluateJavascript (
-                    "(() => { try {"
-                    "  document.querySelector('[data-tab=\"keys\"]')?.click();"
-                    "  if (!window.__pilotSendMidi) return 'NO_MIDI_HELPER';"
-                    "  window.__pilotSendMidi({ action: 'midiNoteOn', note: 60, velocity: 0.9 });"
-                    "  return 'ON_SENT';"
-                    " } catch (e) { return 'MIDI_FAIL: ' + e.message; } })()",
-                    [this] (juce::WebBrowserComponent::EvaluationResult result)
-                    {
-                        const auto raw = result.getResult() != nullptr
-                                           ? result.getResult()->toString()
-                                           : juce::String ("NO_RESULT");
-
-                        // A poll later the FIFO has drained; read held notes natively
-                        // and the mod wheel slider on the (now mounted) KEYS tab.
-                        juce::Timer::callAfterDelay (400, [this, raw]
-                        {
-                            const auto held = processor.getHeldNotes();
-                            const auto noteOnArrived = raw == "ON_SENT"
-                                && std::find (held.begin(), held.end(), 60) != held.end();
-
-                            browser.evaluateJavascript (
-                                // The shared Wheel renders the mod wheel as a 0..127
-                                // range input inside #mod-wheel-container: normalise.
-                                "(() => { const el = document.querySelector('#mod-wheel-container .kbd-wheel-slider');"
-                                " return el ? String(Number(el.value) / 127) : 'NO_MOD'; })()",
-                                [this, noteOnArrived] (juce::WebBrowserComponent::EvaluationResult modResult)
-                                {
-                                    const auto modRaw = modResult.getResult() != nullptr
-                                                          ? modResult.getResult()->toString()
-                                                          : juce::String ("NO_RESULT");
-                                    // Stash for the later lambda hops (no capture needed).
-                                    setModPageValue (modRaw.isNotEmpty() && modRaw != "NO_MOD"
-                                                                        && modRaw != "NO_RESULT"
-                                                           ? modRaw.getFloatValue() : -1.0f);
-
-                                    browser.evaluateJavascript (
-                                        "(() => { try {"
-                                        "  window.__pilotSendMidi({ action: 'midiNoteOff', note: 60 });"
-                                        "  return 'OFF_SENT';"
-                                        " } catch (e) { return 'MIDI_FAIL: ' + e.message; } })()",
-                                        [this, noteOnArrived] (juce::WebBrowserComponent::EvaluationResult offResult)
-                                        {
-                                            const auto offRaw = offResult.getResult() != nullptr
-                                                                  ? offResult.getResult()->toString()
-                                                                  : juce::String ("NO_RESULT");
-
-                                            juce::Timer::callAfterDelay (400, [this, noteOnArrived, offRaw]
-                                            {
-                                                const auto held2 = processor.getHeldNotes();
-                                                const auto noteOffArrived = offRaw == "OFF_SENT"
-                                                    && std::find (held2.begin(), held2.end(), 60) == held2.end();
-
-                                                const auto ok = noteOnArrived && noteOffArrived
-                                                                    && getModPageValue() >= 0.0f
-                                                                    && std::abs (getModPageValue() - 0.5f) < 0.1f;
-
-                                                std::cout << "[selftest] MIDI: page note 60 on/off native = "
-                                                          << (noteOnArrived ? "on" : "STUCK")
-                                                          << "/" << (noteOffArrived ? "off" : "STUCK")
-                                                          << ", mod wheel page = "
-                                                          << juce::String (getModPageValue(), 2)
-                                                          << " (native 0.5) -> " << (ok ? "OK" : "FAIL") << "\n";
-                                                selftestMidiOk = ok;
-
-                                                selftestFinish();
-                                            });
-                                        });
-                                });
-                        });
-                    });
-            });
-        }
-
-        /** @brief Mod-wheel slider stash for the async MIDI-check hops (the
-         *  evaluateJavascript callback and the Timer lambda are siblings, so the
-         *  value rides a member instead of a capture). */
-        void setModPageValue (float value) { modPageValue.store (value, std::memory_order_relaxed); }
-        float getModPageValue() const { return modPageValue.load (std::memory_order_relaxed); }
-
-        std::atomic<float> modPageValue { -1.0f };
-
-        void selftestFinish()
-        {
-            const auto allOk = selftestNativeToJsOk && selftestJsToNativeOk
-                                   && selftestGeneralOk && selftestMidiOk;
-
-            std::cout << "[selftest] RESULT: " << (allOk ? "OK" : "FAIL") << "\n";
-            selftestPassed = allOk;
-
-            // Publish the verdict for PilotApplication: build.bat reads the exit code.
-            g_selftestExitCode.store (allOk ? 0 : 1, std::memory_order_relaxed);
-
-            // Report the startup metrics plus the verdict, then leave: the process
-            // exit code is what scripts and build.bat read.
-            finish (allOk ? "selftest-ok" : "selftest-fail");
-        }
 
         /** @brief Browser options, with the transport of the parameter bridge. */
         juce::WebBrowserComponent::Options makeBrowserOptions()
@@ -775,7 +541,7 @@ namespace
             return juce::WebBrowserComponent::Options{}
                 .withBackend (juce::WebBrowserComponent::Options::Backend::webview2)
                 .withNativeIntegrationEnabled (true)
-                .withResourceProvider (loadPilotResource)
+                .withResourceProvider (loadPageResource)
                 .withEventListener (NEURONiK::WebUI::BridgeEventIds::jsToNative,
                                     [this] (const juce::var& message)
                                     {
@@ -802,7 +568,7 @@ namespace
         {
             // No audio callback here: without this poll, the APVTS-derived ui*
             // telemetry (morph coords, envelope params) would freeze and the
-            // native XYPad/EnvelopeVisualizer would never move in the pilot.
+            // native XYPad would never move.
             processor.refreshUiTelemetryFromApvts();
 
             bridge->publishPendingChanges();
@@ -829,9 +595,12 @@ namespace
 
             nativePanel->repaint();   // the real panel repaints its own timers; labels need no manual refresh
 
-            if (selftest)
+            if (selftestRunner != nullptr)
             {
-                selftestTick();
+                if (metrics.reactReadyMs >= 0.0)
+                    selftestRunner->notifyPageReady();
+
+                selftestRunner->tick();
 
                 if (finished)   // the selftest can finish inside its own tick
                     return;
@@ -891,8 +660,8 @@ namespace
 
             // A selftest that ends without a verdict (e.g. a timeout because the
             // page never became ready) is a FAIL: publish exit 1 or the process
-            // would report success. selftestFinish() stores the code BEFORE
-            // finishing, so this never overrides a real verdict.
+            // would report success. The harness verdict callback stores the code
+            // BEFORE finishing, so this never overrides a real verdict.
             if (selftest && g_selftestExitCode.load (std::memory_order_relaxed) < 0)
                 g_selftestExitCode.store (1, std::memory_order_relaxed);
 
@@ -921,9 +690,10 @@ namespace
         std::unique_ptr<PresetManagerAdapter> presetAdapter;
         std::unique_ptr<MidiInjectionAdapter> midiAdapter;
         std::unique_ptr<EngineModelsAdapter> modelsAdapter;
+        std::unique_ptr<RandomizerAdapter> randomizeAdapter;
         std::unique_ptr<NEURONiK::WebUI::ParameterBridge> bridge;
 
-        // Audio plumbing for the pilot: default device + the standard JUCE player
+        // Audio plumbing de la bancada: default device + the standard JUCE player
         // that pulls the processor's processBlock. The processor is declared BEFORE
         // these (they reference it), and destroyed AFTER them (the callback must be
         // gone before the processor dies) — member order handles both.
@@ -936,12 +706,11 @@ namespace
         std::unique_ptr<NEURONiK::UI::XYPad> xyPad;
         const bool autoQuit;
         const bool selftest;
-        SelftestStage selftestStage = SelftestStage::idle;
-        bool selftestNativeToJsOk = false;
-        bool selftestJsToNativeOk = false;
-        bool selftestGeneralOk = false;   // 11 GENERAL ids present + native->page propagation
-        bool selftestMidiOk = false;      // page note on/off reaches the engine + mod wheel mirrors back
-        bool selftestPassed = false;
+        // The shared five-direction check (WebUI/BridgeSelftest.h), or null when
+        // --selftest was not passed. Declared AFTER `browser` on purpose: it asks
+        // the browser for scripts, so it has to die BEFORE it.
+        std::unique_ptr<NEURONiK::WebUI::BridgeSelftest> selftestRunner;
+        bool selftestPassed = false;   // the verdict, for the report and the exit code
         bool probeInFlight = false;
         bool finished = false;
 
@@ -980,8 +749,14 @@ namespace
         {
             processStartMs = juce::Time::getMillisecondCounterHiRes();
 
+            std::cout << "[page] sirviendo " << pageSourceName() << "\n"
+                      << "[page] root: "
+                      << (servedRoot().isDirectory() ? servedRoot().getFullPathName()
+                                                     : juce::String ("<no esta en disco>"))
+                      << std::endl;
+
             // --selftest implies --auto-quit: the check runs unattended and the exit
-            // code is the verdict (0 = both directions moved, 1 = something didn't).
+            // code is the verdict (0 = every applicable direction moved, 1 = something didn't).
             const auto runSelftest = containsArgument (commandLine, "--selftest");
             const auto shouldAutoQuit = containsArgument (commandLine, "--auto-quit") || runSelftest;
 

@@ -1,168 +1,615 @@
+/**
+ * NEURONiK WebUI — hoja propia del plugin (el tema y los widgets vienen de
+ * `@abdsynths/shared`; aquí solo va la COMPOSICIÓN de la página).
+ *
+ * El lienzo es de tamaño fijo (1440x900) a propósito: es una superficie de
+ * diseño, como el panel de un instrumento, no un documento que reflowee. Dentro
+ * del plugin el WebView ocupa exactamente esa superficie (el editor nativo se
+ * dimensiona a juego) y el zoom se aplica como zoom CSS del documento, no como
+ * reflow. En un navegador, si la ventana es menor, la página se desplaza.
+ *
+ * Las medidas de abajo son las de `src/contracts/sections.js` (GEOMETRY/CANVAS) y
+ * tests/sections.test.js comprueba que las dos fuentes siguen diciendo lo mismo:
+ * cambiar una sin la otra es un fallo de test, no una sorpresa en WebView2.
+ */
+
 :root {
   color-scheme: dark;
+
+  /* --- geometría del lienzo (espejo de contracts/sections.js) -------------- */
+  --abd-canvas-w: 1440px;
+  --abd-canvas-h: 900px;
+  --abd-top-h: 40px;
+  --abd-band-gap: 10px;
+  --abd-card-header-h: 20px;
+  --abd-card-pad: 8px;      /* GEOMETRY.cardPadding = 8 + 8 */
+  --abd-card-row-gap: 4px;  /* GEOMETRY.cardRowGap */
+  --abd-card-border: 2px;   /* 1 px arriba + 1 px abajo */
+  --abd-cell-h: 80px;       /* alto de una fila de controles */
+  --abd-keys-h: 120px;
+  --abd-footer-h: 44px;
+  --abd-panel-pad: 10px;    /* GEOMETRY.panelPadding = 6 + 4 */
+  --abd-knob-size: 48px;    /* GEOMETRY.knob: manda el alto de celda */
 }
 
 body {
   margin: 0;
-  background: var(--abd-surface, #14161a);
-  color: var(--abd-text, #e8eaed);
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: var(--color-bg-base, #0a0e14);
+  color: var(--color-text-main, #f0f7ff);
+  font-family: var(--font-sans, system-ui, sans-serif);
 }
 
+/* La superficie de diseño. Sin relleno alrededor: el lienzo ES la página. */
 #app {
-  padding: 14px 18px 18px;
+  width: var(--abd-canvas-w);
+  height: var(--abd-canvas-h);
 }
 
 .panel {
   display: grid;
-  gap: 10px;
+  grid-template-rows: auto auto auto auto;
+  gap: var(--abd-band-gap);
   align-content: start;
+  height: var(--abd-canvas-h);
+  box-sizing: border-box;
+  /* 6 arriba + 4 abajo = GEOMETRY.panelPadding. */
+  padding: 6px 10px 4px;
 }
 
-.panel h1 {
-  font-size: 16px;
+/* --- cabecera ------------------------------------------------------------- */
+
+.panel-header {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 4px 16px;
+  height: var(--abd-top-h);
+}
+
+.panel-header h1 {
   margin: 0;
-  letter-spacing: 0.1em;
+  font-size: var(--text-xl, 13px);
+  letter-spacing: 0.16em;
+  color: var(--color-accent, #00c3ff);
 }
 
-.status,
-.contract-line,
-.tab-note,
-.keys-note {
+.panel-header .status,
+.panel-header .contract-line {
   margin: 0;
-  font-size: 12px;
-  opacity: 0.7;
+  font-size: var(--text-xs, 8px);
+  color: var(--color-text-dim, #4a637a);
 }
 
-.tab-note {
-  max-width: 620px;
-  line-height: 1.45;
+.panel-header .status { grid-column: 2; }
+
+.panel-header .contract-line {
+  grid-column: 1 / -1;
+  justify-self: end;
 }
 
-/* --- audio owner (policy: one engine at a time) ---------------------------- */
+/* --- audio owner (policy: un solo motor) ---------------------------------- */
 
 .audio-mode {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--text-xs, 8px);
+  justify-self: end;
 }
 
 .audio-mode__label {
-  letter-spacing: 0.06em;
-  opacity: 0.8;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted, #7e9bb5);
 }
 
 .audio-mode__detail {
-  opacity: 0.55;
+  color: var(--color-text-dim, #4a637a);
   font-variant-numeric: tabular-nums;
 }
 
-.audio-start {
+.audio-start,
+.keys-panic,
+.keys-toggle {
   appearance: none;
-  border: 1px solid rgb(255 255 255 / 25%);
-  background: rgb(255 255 255 / 8%);
-  color: inherit;
-  font: inherit;
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  padding: 3px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.audio-start:hover {
-  background: rgb(255 255 255 / 14%);
-}
-
-/* --- tabs ----------------------------------------------------------------- */
-
-.tabs {
-  display: flex;
-  gap: 6px;
-  border-bottom: 1px solid rgb(255 255 255 / 12%);
-  padding-bottom: 6px;
-}
-
-.tab {
-  appearance: none;
-  border: 1px solid transparent;
+  border: 1px solid var(--color-panel-border-strong, rgb(0 195 255 / 45%));
   background: transparent;
-  color: inherit;
+  color: var(--color-text-main, #f0f7ff);
   font: inherit;
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  padding: 5px 12px;
-  border-radius: 6px;
+  font-size: var(--text-2xs, 7px);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 4px;
   cursor: pointer;
-  opacity: 0.7;
 }
 
-.tab:hover {
-  opacity: 1;
+.audio-start:hover,
+.keys-panic:hover,
+.keys-toggle:hover {
+  background: var(--color-accent-dim, rgb(0 195 255 / 15%));
 }
 
-.tab--active {
-  opacity: 1;
-  border-color: rgb(255 255 255 / 22%);
-  background: rgb(255 255 255 / 6%);
-}
+/* --- bandas y fichas ------------------------------------------------------ */
 
-.tab-group {
+.canvas {
   display: grid;
-  gap: 10px;
-  align-content: start;
-  min-height: 40px;
+  gap: var(--abd-band-gap);
 }
 
-.tab-group[hidden] {
+.band {
+  display: grid;
+  /* Carriles: las fichas de la banda suman exactamente este ancho (sections.js). */
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--abd-band-gap);
+}
+
+.card {
+  display: grid;
+  grid-template-rows: var(--abd-card-header-h) 1fr;
+  gap: var(--abd-card-row-gap);
+  padding: var(--abd-card-pad);
+  box-sizing: border-box;
+  background: var(--color-panel-bg, #0f1620);
+  border: 1px solid var(--color-panel-border, rgb(0 195 255 / 20%));
+  border-radius: 8px;
+}
+
+.card__heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.card__heading h2 {
+  margin: 0;
+  font-size: var(--text-md, 10px);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-accent, #00c3ff);
+  white-space: nowrap;
+}
+
+.card__subtitle {
+  font-size: var(--text-2xs, 7px);
+  color: var(--color-text-dim, #4a637a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * Accion de ficha (RANDOM): boton de estado, no un parametro, asi que va en la
+ * cabecera y no ocupa celda — el encaje de la rejilla no cambia. `margin-left:
+ * auto` lo empuja al extremo derecho de la cabecera; deshabilitado (sin host) se
+ * queda sin color de acento para que se lea como lo que es: no disponible.
+ */
+.card__action {
+  margin-left: auto;
+  flex: 0 0 auto;
+  padding: 2px 10px;
+  font-size: var(--text-2xs, 8px);
+  /* Altura determinista: sin `line-height` propio el boton mide lo que digan las
+   * metricas de la fuente, y la fila de cabecera de la ficha mide 20 px FIJOS
+   * (`grid-template-rows: var(--abd-card-header-h) 1fr`). Con line-height 1 son
+   * 8 + 4 + 2 = 14 px, con 6 px de holgura. */
+  line-height: 1;
+  font-family: inherit;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-accent, #00c3ff);
+  background: var(--color-panel-surface, #101c27);
+  border: 1px solid var(--color-accent, #00c3ff);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.card__action:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent, #00c3ff) 22%, transparent);
+}
+
+.card__action:disabled {
+  color: var(--color-text-dim, #4a637a);
+  border-color: var(--color-text-dim, #4a637a);
+  cursor: default;
+}
+
+.card__body {
+  display: grid;
+  gap: var(--abd-card-row-gap) 6px;
+  align-content: start;
+}
+
+/*
+ * Vista de ficha (curva ADSR): ocupa una celda de la rejilla, como un control,
+ * pero no lo es — no tiene parametro ni gesto. La celda mide lo mismo que las
+ * demas (GEOMETRY.cell), asi que el encaje no cambia.
+ */
+.card__visual {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 0;
+}
+
+.card__visual svg {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+.envelope-curve__line {
+  fill: none;
+  stroke: var(--color-accent, #00c3ff);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.envelope-curve__area {
+  fill: color-mix(in srgb, var(--color-accent, #00c3ff) 18%, transparent);
+  stroke: none;
+}
+
+/* --- celda de control ----------------------------------------------------- */
+
+.cell {
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  gap: 2px;
+  height: var(--abd-cell-h);
+  min-width: 0;
+}
+
+.cell__label {
+  font-size: var(--text-sm, 9px);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted, #7e9bb5);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.cell__readout {
+  font-size: var(--text-sm, 9px);
+  color: var(--color-text-dim, #4a637a);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* El contrato marca los parámetros que el motor no consume: se señalan, no se
+   esconden (el panel nativo también los muestra). */
+.cell--divergent .cell__label::after,
+.cell--divergent .abd-knob__label::after,
+.cell--divergent .abd-select__label::after {
+  content: ' *';
+  color: var(--color-text-dim, #4a637a);
+}
+
+/* La lista es el `Select` compartido: estos números son SOLO el encaje de la
+   celda (ancho de columna y alto de fila), no su aspecto, que vive en
+    `@abdsynths/shared/styles/components/widgets.css`. */
+.cell--choice .abd-select__field {
+  width: 100%;
+  max-width: 92px;
+  height: 22px;
+  padding: 0 2px;
+}
+
+.cell--toggle .abd-toggle {
+  width: 100%;
+  max-width: 92px;
+  height: 34px;
+  padding: 0 4px;
+  font-size: var(--text-sm, 9px);
+}
+
+/* --- control base del host (masterLevel): range nativo -------------------- */
+
+.cell--baseline {
+  grid-column: span 2;
+  justify-items: stretch;
+  align-content: center;
+  gap: 4px;
+}
+
+.cell--baseline input[type='range'] {
+  width: 100%;
+  accent-color: var(--color-accent, #00c3ff);
+}
+
+.cell--baseline .cell__label,
+.cell--baseline .cell__readout {
+  text-align: left;
+}
+
+/* --- ficha de cajón (matriz de modulación) -------------------------------- */
+
+/*
+ * Los 12 controles de la matriz NO están en la rejilla del lienzo: viven en el
+ * cajón. Aquí queda el resumen de las 4 rutas, que ocupa el cuerpo entero de la
+ * ficha (por eso una sola columna: no reparte celdas).
+ */
+.card--drawer .card__body {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.mod-summary {
+  display: grid;
+  gap: 3px;
+  align-content: start;
+}
+
+.mod-summary__row {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto minmax(0, 1fr) 46px;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  font-size: var(--text-sm, 9px);
+  background: rgb(255 255 255 / 3%);
+  border-radius: 4px;
+}
+
+.mod-summary__slot {
+  color: var(--color-text-dim, #4a637a);
+  font-variant-numeric: tabular-nums;
+}
+
+.mod-summary__source {
+  color: var(--color-text-muted, #7e9bb5);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mod-summary__arrow {
+  color: var(--color-text-dim, #4a637a);
+}
+
+.mod-summary__destination {
+  color: var(--color-text-main, #f0f7ff);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mod-summary__amount {
+  color: var(--color-accent, #00c3ff);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* --- ficha de ranuras de modelo (MODELOS A–D) ----------------------------- */
+
+/*
+ * Cuatro filas (letra, nombre cargado, botón CARGAR) y una línea de estado. No
+ * reparte celdas: es la vista de TODA la ficha, como el resumen de la matriz, así
+ * que la rejilla del cuerpo es de una sola columna (lo declara `sections.js`).
+ *
+ * La fila vacía y la divergente se distinguen por color, no por texto: gris cuando
+ * la ranura no tiene nada, ámbar cuando el motor no pudo cargar lo que el preset
+ * apunta (mismo criterio y mismo color que el gating del `Select` compartido).
+ */
+.model-slots {
+  display: grid;
+  gap: 3px;
+  align-content: start;
+}
+
+.model-slots__row {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  font-size: var(--text-sm, 9px);
+  background: rgb(255 255 255 / 3%);
+  border-radius: 4px;
+}
+
+.model-slots__slot {
+  color: var(--color-accent, #00c3ff);
+  font-variant-numeric: tabular-nums;
+}
+
+.model-slots__name {
+  color: var(--color-text-main, #f0f7ff);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-slots__row[data-loaded="false"] .model-slots__name {
+  color: var(--color-text-dim, #4a637a);
+}
+
+.model-slots__row[data-divergent="true"] .model-slots__name {
+  color: var(--color-warning, #ffaa00);
+}
+
+/* Botón pequeño de fila: mismo lenguaje que `.card__action` (el de RANDOM y el
+ * abridor del cajón) pero más corto, que la ficha mide dos carriles. */
+.model-slots__load {
+  padding: 1px 6px;
+  font-family: inherit;
+  font-size: var(--text-2xs, 7px);
+  line-height: 1;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-accent, #00c3ff);
+  background: var(--color-panel-surface, #101c27);
+  border: 1px solid var(--color-accent, #00c3ff);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.model-slots__load:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent, #00c3ff) 22%, transparent);
+}
+
+.model-slots__load:disabled {
+  color: var(--color-text-dim, #4a637a);
+  border-color: var(--color-text-dim, #4a637a);
+  cursor: default;
+}
+
+.model-slots__status {
+  margin: 0;
+  font-size: var(--text-2xs, 7px);
+  color: var(--color-text-dim, #4a637a);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-slots__status[data-state="error"] {
+  color: var(--color-danger, #ff3344);
+}
+
+/* --- cajón lateral (patrón ABDMS2000 / ABDEep / ABDCZ101) ----------------- */
+
+/*
+ * `position: fixed` y colgado del documento, como en los hermanos. Abrir y cerrar
+ * es una clase: las celdas se montaron una vez (ver ui/drawer.js) y el lienzo no se
+ * reconstruye, así que no hay estado que perder al abrir.
+ */
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(4 8 14 / 55%);
+  backdrop-filter: blur(3px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease-out;
+  z-index: 20;
+}
+
+.drawer-backdrop--visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: min(640px, 92vw);
+  display: grid;
+  grid-template-rows: auto 1fr;
+  box-sizing: border-box;
+  background: var(--color-panel-bg, #0f1620);
+  border-left: 1px solid var(--color-panel-border-strong, rgb(0 195 255 / 45%));
+  box-shadow: -12px 0 32px rgb(0 0 0 / 55%);
+  transform: translateX(100%);
+  transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 30;
+}
+
+.drawer--open {
+  transform: translateX(0);
+}
+
+.drawer__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-panel-border, rgb(0 195 255 / 20%));
+}
+
+.drawer__badge {
+  padding: 2px 6px;
+  font-size: var(--text-2xs, 7px);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-panel-bg, #0f1620);
+  background: var(--color-accent, #00c3ff);
+  border-radius: 3px;
+}
+
+.drawer__title {
+  margin: 0;
+  font-size: var(--text-md, 10px);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-text-main, #f0f7ff);
+}
+
+.drawer__close {
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  font: inherit;
+  font-size: var(--text-sm, 9px);
+  color: var(--color-text-muted, #7e9bb5);
+  background: transparent;
+  border: 1px solid var(--color-panel-border, rgb(0 195 255 / 20%));
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.drawer__close:hover {
+  color: var(--color-panel-bg, #0f1620);
+  background: var(--color-accent, #00c3ff);
+}
+
+.drawer__body {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+/* Una fila por ruta: distintivo + los tres campos de la ruta. */
+.drawer-slot {
+  display: grid;
+  grid-template-columns: 56px repeat(3, minmax(0, 1fr));
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgb(255 255 255 / 3%);
+  border: 1px solid var(--color-panel-border, rgb(0 195 255 / 20%));
+  border-radius: 6px;
+}
+
+.drawer-slot__badge {
+  font-size: var(--text-2xs, 7px);
+  letter-spacing: 0.1em;
+  color: var(--color-text-dim, #4a637a);
+}
+
+/* En el cajón hay ancho de sobra: la lista de 28 destinos no debe seguir recortada
+   al ancho que necesita en la rejilla del lienzo. */
+.drawer .cell--choice .abd-select__field {
+  max-width: none;
+}
+
+/* --- franja de interpretación (ruedas + teclado) -------------------------- */
+
+.performance {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 4px;
+  height: var(--abd-keys-h);
+}
+
+.performance--collapsed {
+  height: auto;
+}
+
+.performance--collapsed #keys-root {
   display: none;
 }
-
-/* --- controls ------------------------------------------------------------- */
-
-.controls,
-.control {
-  display: grid;
-  gap: 6px;
-  max-width: 460px;
-}
-
-.control-label {
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  opacity: 0.8;
-}
-
-.control input[type='range'] {
-  width: 100%;
-}
-
-.readout {
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-  opacity: 0.9;
-}
-
-/* --- GENERAL (read-only rows until 8.2 lands the shared widgets) ---------- */
-
-.param-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 12px;
-  align-items: baseline;
-  max-width: 460px;
-  padding: 4px 0;
-  border-bottom: 1px solid rgb(255 255 255 / 8%);
-  font-size: 13px;
-}
-
-.param-row__value {
-  font-variant-numeric: tabular-nums;
-  opacity: 0.85;
-}
-
-/* --- KEYS ----------------------------------------------------------------- */
 
 .keys-toolbar {
   display: flex;
@@ -170,34 +617,21 @@ body {
   gap: 10px;
 }
 
-.keys-panic {
-  appearance: none;
-  border: 1px solid rgb(255 255 255 / 25%);
-  background: rgb(255 255 255 / 8%);
-  color: inherit;
-  font: inherit;
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  padding: 4px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
 .keys-status {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  opacity: 0.7;
+  font-size: var(--text-2xs, 7px);
+  letter-spacing: 0.1em;
+  color: var(--color-text-muted, #7e9bb5);
 }
 
 .keys-status--local {
-  opacity: 0.5;
+  color: var(--color-text-dim, #4a637a);
 }
 
 .keys-strip {
   display: flex;
   gap: 14px;
   align-items: stretch;
-  min-height: 120px;
+  min-height: 92px;
 }
 
 #pitch-wheel-container,
@@ -211,21 +645,23 @@ body {
   min-width: 0;
 }
 
-/* --- footer (the host parses this <code> as JSON) ------------------------- */
+/* --- pie (el host parsea este <code> como JSON) --------------------------- */
 
 .panel-footer {
   display: grid;
-  gap: 4px;
-  font-size: 11px;
-  opacity: 0.55;
-  border-top: 1px solid rgb(255 255 255 / 10%);
-  padding-top: 8px;
+  gap: 2px;
+  height: var(--abd-footer-h);
+  padding-top: 4px;
+  box-sizing: border-box;
+  border-top: 1px solid var(--color-panel-border-dim, rgb(0 195 255 / 10%));
+  font-size: var(--text-2xs, 7px);
+  color: var(--color-text-dim, #4a637a);
 }
 
 .panel-footer code {
   display: block;
-  max-height: 40px;
+  max-height: 22px;
   overflow: hidden;
-  font-size: 10px;
+  font-size: var(--text-2xs, 7px);
   word-break: break-all;
 }

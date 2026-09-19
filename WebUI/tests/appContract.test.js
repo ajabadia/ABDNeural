@@ -28,6 +28,9 @@ const read = (...segments) => readFileSync(join(here, ...segments), 'utf8');
 describe('WebUI entry contract', () => {
   const app = read('../src/app.js');
   const panel = read('../src/ui/panel.js');
+  const visuals = read('../src/ui/visuals.js');
+  const store = read('../src/contracts/paramStore.js');
+  const bridge = read('../src/bridge/bridgeCore.js');
   const html = read('../index.html');
 
   it('keeps masterLevel as the baseline parameter the host selftest drives', () => {
@@ -49,8 +52,63 @@ describe('WebUI entry contract', () => {
     expect(mounted).toBeLessThan(started);
   });
 
-  it('the store owns every screen id (bridge + GENERAL)', () => {
+  it('the store owns every screen id (the 70 of the canvas)', () => {
     expect(app).toContain('createParameterStore({ ids: SCREEN_PARAMETER_IDS })');
+  });
+
+  it('builds the single canvas from the section layout SSOT', () => {
+    expect(app).toContain("import { BANDS, SECTION_ACTIONS, SECTION_VISUALS } from './contracts/sections.js'");
+    expect(app).toContain('const bands = BANDS.map');
+    expect(app).toContain('baselineId: BASELINE_PARAMETER_ID');
+  });
+
+  it('pushes cell edits to the store in NORMALISED units, with their gesture', () => {
+    expect(app).toContain('onChange: (id, normalized) => store.handleChange(id, normalized)');
+    expect(app).toContain('onGesture: (id, phase) => store.handleGesture(id, phase)');
+  });
+
+  it('resolves card actions against their own catalogue and routes them to the store', () => {
+    // El boton de ficha llega al panel ya resuelto (mismo trato que los controles)
+    // y su accion la ejecuta el store, que es quien habla con el host.
+    expect(app).toContain('action: section.action ? SECTION_ACTIONS[section.action] ?? null : null');
+    expect(app).toContain("if (id === 'randomize') store.randomize();");
+  });
+
+  it('monta las vistas de ficha (curva ADSR, resumen de la matriz) aparte de las celdas', () => {
+    expect(app).toContain("import { createVisual } from './ui/visuals.js'");
+    expect(app).toContain('visualSpec.parameterIds.map(describeControl)');
+    expect(app).toContain('visual: visualSpec');
+    expect(app).toContain('createVisual(visualSpec.id, visualControls, {');
+
+    // La FABRICA vive en su modulo porque la usan la pagina y la suite del panel:
+    // cuando estaba escrita dentro del test, el harness montaba una curva ADSR para
+    // cualquier vista declarada (y el resumen de la matriz añadio una segunda).
+    expect(visuals).toContain("if (visualId === 'amp-envelope') return createEnvelopeCurve({ controls });");
+    expect(visuals).toContain("if (visualId === 'mod-summary') return createModSummary({ controls });");
+    expect(visuals).toContain("if (visualId === 'model-slots') return createModelSlots({ onLoad: options.onLoad ?? null });");
+  });
+
+  it('las ranuras de modelo A–D piden la carga al store, que la pide al host', () => {
+    // El dialogo lo abre el HOST (la pagina no tiene sistema de ficheros), asi que el
+    // boton pasa por el store y no toca el cable por su cuenta.
+    expect(app).toContain('onLoad: (slot) => store.loadModel(slot)');
+    expect(store).toContain('transport?.sendLoadModel(slot);');
+    expect(bridge).toContain("emit({ action: 'loadModel', slot });");
+
+    // Y el panel le pasa el ESTADO entero a las vistas: las ranuras no son parametros
+    // (`state.models`) y se habilitan segun haya host.
+    expect(panel).toContain('for (const visual of visuals) visual.paint(parameters, state);');
+  });
+
+  it('la matriz de modulacion se edita en el cajon y no en la rejilla del lienzo', () => {
+    // El panel monta las celdas de una ficha de cajon DENTRO del cajon (y el lienzo
+    // se queda con el resumen): si alguien devuelve la matriz al lienzo, cae aqui.
+    expect(panel).toContain("import { createDrawer } from './drawer.js'");
+    expect(panel).toContain('const drawer = section.drawer ? drawerFor(section, context) : null;');
+    expect(panel).toContain('(slotOf?.get(control.id) ?? body).append(cell.element);');
+    expect(panel).toContain('context.drawers.set(section.id, drawer);');
+    // Abrir el cajon es estado de VISTA: no pasa por el store ni por el host.
+    expect(panel).toContain('trigger.addEventListener(\'click\', () => drawer.open());');
   });
 
   it('mounts the shared keyboard with the DUAL MIDI path (bridge + worklet)', () => {

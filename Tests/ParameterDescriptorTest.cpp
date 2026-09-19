@@ -7,7 +7,9 @@
 
                    1. descriptors are coherent with the real APVTS layout;
                    2. the contract keeps the pinned values the WebUI depends on;
-                   3. the committed generated artifacts are up to date.
+                   3. per-option engine gating is derived, index aligned and stable
+                      (the destination order is preset state);
+                   4. the committed generated artifacts are up to date.
 
   ==============================================================================
 */
@@ -329,9 +331,123 @@ int main()
 
     if (const auto* strength = requireDescriptor (IDs::randomStrength))
         check (strength->dspStatus == ParameterDspStatus::uiOnly,
-               "randomStrength stays uiOnly: the panel randomise action reads it");
+               "randomStrength stays uiOnly: the RANDOMIZE state action reads it, the DSP never does");
 
-    // --- 5. Generated artifacts are in sync -------------------------------------
+    // --- 5. Engine gating per option --------------------------------------------
+    // The retired native panel gated the modulation destinations with a hand
+    // written index list inside a 100 ms timer ({21,22,23} / {24,25,26,27}, 1-based
+    // in a ComboBox, with comments that contradicted themselves about 0-based).
+    // That list is now derived from the destination table plus engineCoverageFor(),
+    // and this section is what keeps the derivation honest: if a destination is
+    // wired to another parameter, the split below changes and this fails.
+    std::cout << "\nEngine gating per option\n";
+
+    check (getEngineChoiceCoverage().size() == static_cast<size_t> (getEngineChoiceLabels().size()),
+           "the engine selector labels and their coverage stay index aligned");
+
+    if (const auto* engineSelector = requireDescriptor (IDs::engineType))
+    {
+        check (engineSelector->optionEngines == getEngineChoiceCoverage(),
+               "engineType says which engine each of its options activates");
+        check (engineSelector->engineParameter.isEmpty(),
+               "engineType is not gated by itself");
+    }
+
+    // The destination table IS preset state: the index of an entry is what a saved
+    // mod slot means. Pinning the labels makes a reorder a deliberate, visible act.
+    const auto& destinations = getModDestinationTable();
+
+    check (destinations.size() == 28,
+           "the destination table still has 28 entries ("
+               + juce::String (destinations.size()) + ")");
+
+    const char* expectedLabels[] =
+    {
+        "Off", "Osc Level", "Inharmonicity", "Roughness", "Morph X", "Morph Y",
+        "Amp Attack", "Amp Decay", "Amp Sustain", "Amp Release",
+        "Filter Cutoff", "Filter Res", "Filter Env Amt",
+        "Flt Attack", "Flt Decay", "Flt Sustain", "Flt Release",
+        "Saturation", "Delay Time", "Delay FB",
+        "Odd/Even Bal", "Spectral Shift", "Harm Roll-off",
+        "Excite Noise", "Excite Color", "Impulse Mix", "Res Bank Res", "Unison Detune"
+    };
+
+    if (destinations.size() == 28)
+    {
+        bool labelsStable = true;
+
+        for (size_t index = 0; index < destinations.size(); ++index)
+            if (juce::String (destinations[index].label) != juce::String (expectedLabels[index]))
+                labelsStable = false;
+
+        check (labelsStable,
+               "destination labels keep their preset indices (reordering needs a preset migration)");
+    }
+
+    // Every named destination must point at a parameter that really exists: a typo
+    // here would silently gate nothing.
+    bool destinationIdsResolve = true;
+
+    for (const auto& destination : destinations)
+        if (destination.parameterId != nullptr
+            && findParameterDescriptor (destination.parameterId) == nullptr)
+            destinationIdsResolve = false;
+
+    check (destinationIdsResolve, "every modulation destination names a real parameter");
+
+    check (getModDestinations().size() == static_cast<int> (destinations.size()),
+           "getModDestinations() lists the table, so the layout cannot drift from it");
+
+    if (const auto* list = requireDescriptor (IDs::mod1Destination))
+    {
+        check (list->choices.size() == static_cast<int> (destinations.size()),
+               "the APVTS choice list is the destination table (same length)");
+        check (list->optionEngines.size() == static_cast<size_t> (list->choices.size()),
+               "mod1Destination carries one engine per option, index aligned");
+        check (list->engineParameter == IDs::engineType,
+               "mod1Destination names the parameter that selects the engine");
+    }
+
+    for (const auto* id : { IDs::mod1Destination, IDs::mod2Destination,
+                            IDs::mod3Destination, IDs::mod4Destination })
+        if (const auto* list = requireDescriptor (id))
+            check (list->optionEngines.size() == static_cast<size_t> (list->choices.size()),
+                   juce::String (id) + " is gated with one engine per option");
+
+    // The split, by index, as the retired panel had it: Neuronik-only destinations
+    // (parity/shift/roll-off and the whole filter block) and Neurotik-only ones
+    // (the excitation and resonator-bank parameters).
+    if (const auto* list = requireDescriptor (IDs::mod1Destination))
+    {
+        juce::String neuronikOnly;
+        juce::String neurotikOnly;
+        int both = 0;
+
+        for (size_t index = 0; index < list->optionEngines.size(); ++index)
+        {
+            if (list->optionEngines[index] == ParameterEngine::neuronik)
+                neuronikOnly += juce::String (static_cast<int> (index)) + " ";
+            else if (list->optionEngines[index] == ParameterEngine::neurotik)
+                neurotikOnly += juce::String (static_cast<int> (index)) + " ";
+            else
+                ++both;
+        }
+
+        check (neuronikOnly.trim() == "2 3 10 11 12 13 14 15 16 20 21 22",
+               "Neuronik-only destinations: " + neuronikOnly.trim());
+        check (neurotikOnly.trim() == "23 24 25 26",
+               "Neurotik-only destinations: " + neurotikOnly.trim());
+        check (both == 12, "engine independent destinations: " + juce::String (both));
+    }
+
+    // Lists that do not depend on the engine must stay ungated: gating them would
+    // hide options for no reason.
+    for (const auto* id : { IDs::mod1Source, IDs::mod1Amount, IDs::lfo1Waveform, IDs::midiChannel })
+        if (const auto* plain = requireDescriptor (id))
+            check (plain->optionEngines.empty() && plain->engineParameter.isEmpty(),
+                   juce::String (id) + " stays engine independent");
+
+    // --- 6. Generated artifacts are in sync -------------------------------------
     std::cout << "\nGenerated artifacts\n";
 
    #if defined(NEURONIK_PARAMETER_ARTIFACTS_DIR)

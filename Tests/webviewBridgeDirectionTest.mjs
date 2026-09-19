@@ -18,11 +18,13 @@ import { checkBridgeDirection, formatFindings } from '../../ABDSharedCode/WebVie
 const testsDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.dirname(testsDirectory);
 
-// `WebPilotHost.cpp` es el único que emite hacia el WebUI: la mitad positiva del guard
-// falla si deja de hacerlo, que es justo el fallo silencioso que vigila.
+// Las DOS superficies que emiten hacia el WebUI, en rutas RELATIVAS a `Source/`: la
+// bancada (`Source/WebPilotHost.cpp`) y la vista del editor del plugin
+// (`Source/WebUI/NeuronikWebView.h`). La mitad positiva del guard falla si una deja de
+// hacerlo, que es justo el fallo silencioso que vigila.
 const result = checkBridgeDirection({
   sourceRoot: path.join(repositoryRoot, 'Source'),
-  emitters: ['WebPilotHost.cpp'],
+  emitters: ['WebPilotHost.cpp', 'WebUI/NeuronikWebView.h'],
 });
 
 console.log(`Bridge direction guard — ${result.scanned} ficheros C++ analizados en Source/`);

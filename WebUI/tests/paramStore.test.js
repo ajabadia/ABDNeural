@@ -112,6 +112,71 @@ describe('createParameterStore', () => {
     expect(window.__pilotReady).toBe(false);
   });
 
+  it('randomize: es una accion de ESTADO y sin host no finge nada', () => {
+    const store = createParameterStore();
+
+    // Sin host no hay APVTS que sortear: no se emite nada y devuelve false, para
+    // que la pagina no pueda decir "he sorteado" cuando no hay plugin.
+    expect(store.randomize()).toBe(false);
+
+    const backend = makeBackend();
+    window.__JUCE__ = { backend };
+
+    const online = createParameterStore();
+    online.start();
+
+    expect(online.randomize()).toBe(true);
+    expect(backend.emitted.at(-1).message).toEqual({ action: 'randomize' });
+
+    online.dispose();
+    store.dispose();
+  });
+
+  it('loadModel: pide la ranura al host y el error de la carga llega al estado', () => {
+    const store = createParameterStore();
+
+    // Sin host no hay dialogo que abrir: no se emite nada y devuelve false.
+    expect(store.loadModel(0)).toBe(false);
+
+    const backend = makeBackend();
+    window.__JUCE__ = { backend };
+
+    const online = createParameterStore();
+    online.start();
+
+    expect(online.loadModel(2)).toBe(true);
+    expect(backend.emitted.at(-1).message).toEqual({ action: 'loadModel', slot: 2 });
+
+    // El host cancela el dialogo: el motivo queda en el estado (la vista lo enseña).
+    backend.dispatchFromNative(NATIVE_TO_JS_EVENT_ID, {
+      action: 'modelError', slot: 2, detail: 'no file chosen',
+    });
+
+    expect(online.getState().modelError).toEqual({ slot: 2, detail: 'no file chosen' });
+
+    // Y una respuesta nueva del motor limpia el fallo: los slots frescos son la
+    // verdad de lo que hay cargado.
+    backend.dispatchFromNative(NATIVE_TO_JS_EVENT_ID, {
+      action: 'modelsState',
+      slots: [{ slot: 2, name: 'Campana', isValid: true, amplitudes: [], frequencyOffsets: [] }],
+    });
+
+    expect(online.getState().modelError).toBeNull();
+    expect(online.getState().models[0].name).toBe('Campana');
+
+    // Y un intento nuevo tambien lo limpia: el mensaje viejo es de otra carga.
+    backend.dispatchFromNative(NATIVE_TO_JS_EVENT_ID, {
+      action: 'modelError', slot: 2, detail: 'not a usable .neuronikmodel: x',
+    });
+    expect(online.getState().modelError).not.toBeNull();
+
+    online.loadModel(2);
+    expect(online.getState().modelError).toBeNull();
+
+    online.dispose();
+    store.dispose();
+  });
+
   it('preset flow: loadPreset sends the wire message, presetList/presetError update state', () => {
     const backend = makeBackend();
     window.__JUCE__ = { backend };
@@ -283,7 +348,9 @@ describe('createParameterStore', () => {
     const store = createParameterStore();
     store.start();
 
-    expect(backend.listenerCount(NATIVE_TO_JS_EVENT_ID)).toBe(6);
+    // Una por mensaje nativo del contrato: snapshot, parameterChanged, presetList,
+    // presetError, midiNoteState, modelsState y modelError.
+    expect(backend.listenerCount(NATIVE_TO_JS_EVENT_ID)).toBe(7);
 
     store.dispose();
 

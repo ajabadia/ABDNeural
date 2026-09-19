@@ -40,8 +40,14 @@ NEURONiKProcessor::NEURONiKProcessor()
             apvts.addParameterListener(p->getParameterID(), this);
     }
 
+    // OJO: `engineType` NO entra en esta lista aunque `parameterChanged` lo atienda. El
+    // motor de arriba ya se ha creado a partir de ESE MISMO valor, y volver a pasar por
+    // `parameterChanged` construia un SEGUNDO motor (32 voces, delay, reverb) para
+    // prepararlo con `getSampleRate()` = 0 — el plugin nace sin tasa, la pone el host en
+    // `prepareToPlay` — y tirar el primero. En Debug ese prepare(0, 0) ademas revienta en
+    // el jassert del smoothed value de la saturacion. El motor vivo es el de arriba, y
+    // `prepareToPlay` es quien lo deja a punto.
     #define LOAD_PARAM(id) parameterChanged(IDs::id, apvts.getRawParameterValue(IDs::id)->load())
-    LOAD_PARAM(engineType);
     LOAD_PARAM(morphX);
     LOAD_PARAM(morphY);
     LOAD_PARAM(oscLevel);
@@ -220,8 +226,18 @@ void NEURONiKProcessor::parameterChanged(const juce::String& parameterID, float 
         else
             newEngine = std::make_unique<NEURONiK::DSP::NeurotikEngine>();
 
-        // Prepare new engine
-        newEngine->prepare(getSampleRate(), getBlockSize());
+        // Prepare new engine, PERO solo si el host ya nos ha dicho su tasa.
+        //
+        // `getSampleRate()` NO es la tasa de la sesion hasta que el host la fija
+        // (`setRateAndBufferSizeDetails`, que llama prepareToPlay): antes vale 0. Preparar
+        // un motor con 0 lo deja con divisores a cero y el primer bloque con nota revienta
+        // (0xC0000094, lo cazo ModelSlotTest). Sin tasa todavia, el motor se queda sin
+        // preparar y lo prepara `prepareToPlay`, que es por donde pasa el motor inicial:
+        // un host siempre llama a prepare antes de que haya audio que procesar.
+        const auto hostSampleRate = getSampleRate();
+
+        if (hostSampleRate > 0.0)
+            newEngine->prepare(hostSampleRate, getBlockSize());
         newEngine->setPolyphony(currentPolyphony.load());
         
         // Load models into new engine
@@ -435,7 +451,7 @@ void NEURONiKProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
         NEURONiK::DSP::Runtime::copyToDspMidiBuffer (midiMessages, engineMidiBuffer);
         engine->renderNextBlock(dspBufferView, engineMidiBuffer);
 
-        // External MIDI view for UI feedback (WebPilot keyboard): fold this
+        // External MIDI view for UI feedback (the WebUI page keyboard): fold this
         // block's note on/off into the 128-bit held mask. Relax order: the mask
         // is advisory (page key highlights), never synchronisation.
         for (const auto metadata : midiMessages)
@@ -474,8 +490,8 @@ void NEURONiKProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
             modulationValues[i].store(mods[i], std::memory_order_relaxed);
         }
         
-        // APVTS-derived UI telemetry (safe from any thread — also polled by the
-        // WebPilot host, which has no audio callback).
+        // APVTS-derived UI telemetry (safe from any thread — tambien lo llama el
+        // timer de la bancada WebView2).
         refreshUiTelemetryFromApvts();
     }
 
@@ -524,9 +540,12 @@ void NEURONiKProcessor::setStateInformation(const void* data, int sizeInBytes)
     }
 }
 
-void NEURONiKProcessor::loadModel(const juce::File& file, int slot)
+bool NEURONiKProcessor::loadModel(const juce::File& file, int slot)
 {
-    if (slot < 0 || slot >= 4 || !file.exists()) return;
+    // Failure is an ABSOLUTE return, not a fall-through: the WebUI answers modelError
+    // when this is false, so "did anything change" has to be answerable here.
+    if (slot < 0 || slot >= 4 || !file.exists())
+        return false;
     auto model = NEURONiK::Serialization::PresetManager::loadModelFromFile(file);
     if (model.isValid)
     {
@@ -555,7 +574,11 @@ void NEURONiKProcessor::loadModel(const juce::File& file, int slot)
         if (apvts.state.isValid())
             apvts.state.setProperty("modelPath" + juce::String(slot), file.getFullPathName(), nullptr);
         // Note: Editor should listen to property changes instead of being called directly
+
+        return true;
     }
+
+    return false;
 }
 
 void NEURONiKProcessor::processCommands()

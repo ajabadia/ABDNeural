@@ -108,12 +108,12 @@ node "%~dp0Tests\neuronik_wasm_smoke.mjs" "%~dp0build-wasm\neuronik_dsp.js"
 if errorlevel 1 goto :fail
 
 REM --- 6. Sincronizar los artefactos que sirve la WebUI ------------------------
-REM Sin este paso el worklet de WebPilot\public\worklet se queda en el DSP de la
+REM Sin este paso el worklet de WebUI\public\worklet se queda en el DSP de la
 REM pasada anterior: el drift no se ve en el codigo (los .js/.wasm se versionan)
 REM y solo aparece como audio viejo en la WebUI. Ocurrio dos veces; ahora es
 REM imposible por construccion.
-echo [6/6] Sincronizando artefactos con WebPilot\public\worklet ...
-node "%~dp0WebPilotVite\scripts\sync-wasm.mjs"
+echo [6/6] Sincronizando artefactos con WebUI\public\worklet ...
+node "%~dp0WebUI\scripts\sync-wasm.mjs"
 if errorlevel 1 goto :fail
 
 echo.
@@ -122,7 +122,7 @@ echo  [EXITO] WASM compilado y validado (paridad + smoke + sync)
 echo    build-wasm\neuronik_dsp.js
 echo    build-wasm\neuronik_dsp.wasm
 echo    build-wasm\parity-native.json  (referencia nativa)
-echo    WebPilot\public\worklet\      (sincronizado)
+echo    WebUI\public\worklet\      (sincronizado)
 echo =======================================================
 set "EXIT_CODE=0"
 goto :finish

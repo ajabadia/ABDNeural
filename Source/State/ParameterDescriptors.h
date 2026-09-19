@@ -81,6 +81,28 @@ struct ParameterDescriptor
     ParameterDspStatus dspStatus = ParameterDspStatus::implemented;
     ParameterEngine engines = ParameterEngine::both;
     juce::String dspNote;             //!< Only set when the status needs explaining
+
+    /**
+     * Engine behind each option of a choice, index aligned with `choices`.
+     * Empty when the list does not depend on the engine (the common case).
+     *
+     * Two roles, both "the engine this option refers to":
+     *   - on a GATED list (`mod1Destination`...): the engine that consumes that
+     *     destination. The UI must disable the options whose engine is not the
+     *     active one and MUST NOT rewrite a value that lands on one of them.
+     *   - on the engine SELECTOR itself (`engineType`): the engine each option
+     *     activates, which is what resolves the other lists.
+     *
+     * Derived from the destination table plus engineCoverageFor(), never typed by
+     * hand here, so it cannot contradict the parameter it describes.
+     */
+    std::vector<ParameterEngine> optionEngines;
+
+    /**
+     * ID of the choice parameter that selects the engine, for lists whose
+     * availability depends on it. Empty when the list is engine independent.
+     */
+    juce::String engineParameter;
 };
 
 /** @brief Machine readable name of a kind ("float", "choice", "bool"). */
@@ -97,6 +119,12 @@ ParameterDspStatus dspStatusFor (const juce::String& id);
 
 /** @brief Synthesis path coverage for a parameter ID. */
 ParameterEngine engineCoverageFor (const juce::String& id);
+
+/**
+ * @brief Engine each option of the engine selector activates, in APVTS index
+ *        order (index aligned with State::getEngineChoiceLabels()).
+ */
+std::vector<ParameterEngine> getEngineChoiceCoverage();
 
 /** @brief Short explanation for parameters whose status is not self evident. */
 juce::String dspNoteFor (const juce::String& id);

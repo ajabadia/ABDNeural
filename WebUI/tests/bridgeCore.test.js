@@ -1,6 +1,6 @@
 /**
  * Contract tests for the JS transport (src/bridge/bridgeCore.js) — the web half
- * of the versioned bridge protocol (`WebPilot/contracts/bridge-protocol.json`).
+ * of the versioned bridge protocol (`WebUI/contracts/bridge-protocol.json`).
  *
  * PORTADO de `WebPilot/tests/bridge.test.js`; sólo cambia la ruta del import.
  *
@@ -69,6 +69,7 @@ describe('bridge transport', () => {
       expect(() => transport.sendParameterChange('masterLevel', 0.5, 'change')).not.toThrow();
       expect(() => transport.sendRequestState()).not.toThrow();
       expect(() => transport.announcePageLoaded()).not.toThrow();
+      expect(() => transport.sendLoadModel(0)).not.toThrow();
       expect(() => transport.dispose()).not.toThrow();
       expect(onSnapshot).not.toHaveBeenCalled();
     });
@@ -108,6 +109,19 @@ describe('bridge transport', () => {
       expect(backend.emitted).toEqual([
         { eventId: JS_TO_NATIVE_EVENT_ID, message: { action: 'requestState' } },
         { eventId: PAGE_LOADED_EVENT_ID, message: { action: 'pageLoaded' } },
+      ]);
+    });
+
+    it('sendLoadModel asks the host for a slot, and nothing else', () => {
+      const backend = makeBackend();
+      window.__JUCE__ = { backend };
+      const transport = createBridgeTransport({});
+
+      transport.sendLoadModel(2);
+
+      // La pagina no manda ni ruta ni bytes: el dialogo es del host.
+      expect(backend.emitted).toEqual([
+        { eventId: JS_TO_NATIVE_EVENT_ID, message: { action: 'loadModel', slot: 2 } },
       ]);
     });
   });
@@ -175,7 +189,9 @@ describe('bridge transport', () => {
       window.__JUCE__ = { backend };
 
       const transport = createBridgeTransport({ onSnapshot, onParameterChanged });
-      expect(backend.listenerCount(NATIVE_TO_JS_EVENT_ID)).toBe(6);
+      // Una por mensaje del contrato: snapshot, parameterChanged, presetList,
+      // presetError, midiNoteState, modelsState y modelError.
+      expect(backend.listenerCount(NATIVE_TO_JS_EVENT_ID)).toBe(7);
 
       transport.dispose();
       expect(backend.listenerCount(NATIVE_TO_JS_EVENT_ID)).toBe(0);
@@ -245,7 +261,7 @@ describe('bridge transport', () => {
       createBridgeTransport({ onModels });
 
       const slots = [
-        { slot: 0, isValid: true,
+        { slot: 0, name: 'Campana', isValid: true,
           amplitudes: new Array(64).fill(0), frequencyOffsets: new Array(64).fill(0) },
       ];
       slots[0].amplitudes[0] = 0.5;
@@ -257,6 +273,27 @@ describe('bridge transport', () => {
 
       expect(onModels).toHaveBeenCalledTimes(1);
       expect(onModels).toHaveBeenCalledWith(slots);
+      // El nombre viaja con el slot: es lo unico que le dice a la pagina que hay
+      // cargado en cada ranura (no puede leer el disco).
+      expect(onModels.mock.calls[0][0][0].name).toBe('Campana');
+    });
+
+    it('onModelError receives the reason a load did NOT happen', () => {
+      const onModelError = vi.fn();
+      const backend = makeBackend();
+      window.__JUCE__ = { backend };
+
+      createBridgeTransport({ onModelError });
+
+      backend.dispatchFromNative(NATIVE_TO_JS_EVENT_ID, {
+        action: 'modelError', slot: 2, detail: 'no file chosen',
+      });
+      backend.dispatchFromNative(NATIVE_TO_JS_EVENT_ID, {
+        action: 'modelError', slot: 0,
+      }); // sin detalle: se ignora
+
+      expect(onModelError).toHaveBeenCalledTimes(1);
+      expect(onModelError).toHaveBeenCalledWith({ slot: 2, detail: 'no file chosen' });
     });
   });
 });

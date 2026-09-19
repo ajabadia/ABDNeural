@@ -103,38 +103,27 @@ set(NEURONIK_SOURCES
     Source/Main/MidiMappingManager.cpp
     
     # UI
+    # Lo que queda es lo que la bancada WebView2 MONTA de verdad (ParameterPanel +
+    # XYPad, en WebPilotHost) y lo que estos usan. El resto del arbol nativo (paneles
+    # de parametros, LCD, browser de presets, visualizadores sin montar) se retiro el
+    # 2026-09-19: se compilaba sin que nadie lo instanciara y ahi vivian el
+    # temporizador que reescribia el APVTS y las etiquetas duplicadas a mano
+    # (ver DOCS/WEBUI_VS_NATIVE_PARITY.md).
     Source/UI/ParameterPanel.h
     Source/UI/ParameterPanel.cpp
-    Source/UI/SpectralVisualizer.h
-    Source/UI/SpectralVisualizer.cpp
     Source/UI/XYPad.h
     Source/UI/XYPad.cpp
-    Source/UI/EnvelopeVisualizer.h
     Source/UI/CustomUIComponents.h
     Source/UI/CustomUIComponents.cpp
     Source/UI/ThemeManager.h
     Source/UI/ThemeManager.cpp
     Source/UI/MidiLearner.h
     Source/UI/MidiLearner.cpp
-    Source/UI/Panels/OscillatorPanel.h
-    Source/UI/Panels/OscillatorPanel.cpp
-    Source/UI/Panels/FilterEnvPanel.h
-    Source/UI/Panels/FilterEnvPanel.cpp
-    Source/UI/Panels/FXPanel.h
-    Source/UI/Panels/FXPanel.cpp
-    Source/UI/Panels/ModulationPanel.h
-    Source/UI/Panels/ModulationPanel.cpp
-    Source/UI/Panels/PresetPanel.h
-    Source/UI/Panels/PresetPanel.cpp
-    Source/UI/LcdDisplay.h
-    Source/UI/LcdDisplay.cpp
-    
-    # UI - Browser
-    Source/UI/Browser/PresetBrowser.h
-    Source/UI/Browser/PresetBrowser.cpp
 
     # State
     Source/State/ParameterDefinitions.h
+    Source/State/ParameterRandomizer.h
+    Source/State/ParameterRandomizer.cpp
 
     # MIDI
     Source/Main/MidiChannelFilter.h
@@ -322,10 +311,9 @@ if(NEURONIK_WEBUI_ASSETS)
             "the shared provider (abd::webview2), it does not ship its own copy.")
     endif()
 
-    # HEADER_NAME + NAMESPACE explicitos: el generico `BinaryData` es justo el
-    # nombre que usa la bancada del piloto, y dos `BinaryData::` en el mismo arbol
-    # de build es la clase de homonimia que el inventario de ABDSharedCode marca
-    # como deuda.
+    # HEADER_NAME + NAMESPACE explicitos: el generico `BinaryData` es un nombre
+    # comun en un arbol con varias librerias de recursos, y la homonimia es la clase
+    # de deuda que el inventario de ABDSharedCode marca. Cada recurso, con su nombre.
     juce_add_binary_data(NEURONiK_WebUIAssets
         HEADER_NAME "NeuronikWebUIAssets.h"
         NAMESPACE "NeuronikWebUIAssets"
@@ -337,8 +325,15 @@ if(NEURONIK_WEBUI_ASSETS)
     # nada de esto: compila el editor sin interfaz, que es lo que su guard mira.
     foreach(_neuronik_ui_target NEURONiK NEURONiK_Standalone)
         if(TARGET ${_neuronik_ui_target})
+            # ParameterBridge.cpp va AQUI, no en NEURONIK_SOURCES: quien lo necesita
+            # es la pagina (el editor la monta a traves de NeuronikWebView), no el
+            # motor. Los targets que no montan pagina lo anaden por su cuenta
+            # (StatePersistenceTest y la bancada WebView2, que lo prueban).
+            # Sin esta linea el plugin compila y NO enlaza: la lib del wrapper
+            # queda con NEURONiKEditor.obj pidiendo los 10 simbolos del puente.
             target_sources(${_neuronik_ui_target} PRIVATE
                 Source/WebUI/NeuronikWebView.h
+                Source/WebUI/ParameterBridge.cpp
             )
 
             target_include_directories(${_neuronik_ui_target} PRIVATE
@@ -458,7 +453,7 @@ target_link_libraries(NEURONiK_ParameterContract PUBLIC
     juce::juce_audio_processors
 )
 
-# Regenerates WebPilot/generated/{parameters.generated.json,.js,.d.ts}
+# Regenerates WebUI/generated/{parameters.generated.json,.js,.d.ts}
 add_executable(NEURONiK_ParameterExport Tests/ParameterExportTool.cpp)
 target_link_libraries(NEURONiK_ParameterExport PRIVATE NEURONiK_ParameterContract)
 
@@ -627,7 +622,7 @@ add_test(NAME NEURONiK_LfoSyncTest COMMAND NEURONiK_LfoSyncTest)
 add_executable(NEURONiK_ParameterDescriptorTest Tests/ParameterDescriptorTest.cpp)
 target_link_libraries(NEURONiK_ParameterDescriptorTest PRIVATE NEURONiK_ParameterContract)
 target_compile_definitions(NEURONiK_ParameterDescriptorTest PRIVATE
-    NEURONIK_PARAMETER_ARTIFACTS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/WebPilot/generated"
+    NEURONIK_PARAMETER_ARTIFACTS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/WebUI/generated"
 )
 
 add_test(NAME NEURONiK_ParameterDescriptorTest COMMAND NEURONiK_ParameterDescriptorTest)
@@ -654,7 +649,7 @@ add_test(NAME NEURONiK_PresetRoundTripTest COMMAND NEURONiK_PresetRoundTripTest)
 
 # State persistence: the DAW-session round trip (getStateInformation /
 # setStateInformation) needs the REAL processor, so it compiles the same source
-# set as the WebPilot host (plugin sources minus the .rc) plus the bridge.
+# set as the WebView2 bench (plugin sources minus the .rc) plus the bridge.
 set(NEURONIK_STATE_TEST_SOURCES ${NEURONIK_SOURCES})
 if(MSVC)
     list(REMOVE_ITEM NEURONIK_STATE_TEST_SOURCES Resources/NEURONiK.rc)
@@ -696,6 +691,47 @@ target_link_libraries(NEURONiK_StatePersistenceTest PRIVATE
 
 add_test(NAME NEURONiK_StatePersistenceTest COMMAND NEURONiK_StatePersistenceTest)
 
+# Model slots A-D (ticket 8.2): el formato de un .neuronikmodel (el que escribe el
+# ModelMaker contra el que leia el plugin), la carga por ranura, el preset que las
+# referencia, el modelsState con el adaptador REAL y el audio. Necesita el
+# procesador de verdad —los modelos solo llegan al motor por su FIFO de comandos y
+# el hilo de audio—, asi que compila el mismo juego de fuentes que el de estado.
+add_executable(NEURONiK_ModelSlotTest
+    Tests/ModelSlotTest.cpp
+    Source/WebUI/ParameterBridge.cpp
+    ${NEURONIK_STATE_TEST_SOURCES}
+)
+
+target_include_directories(NEURONiK_ModelSlotTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Main"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/UI"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/Panels"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/State"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Serialization"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/WebUI"
+)
+
+target_compile_definitions(NEURONiK_ModelSlotTest PRIVATE
+    JucePlugin_Name="NEURONiK"
+)
+
+target_link_libraries(NEURONiK_ModelSlotTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_audio_processors
+    juce::juce_audio_utils
+    juce::juce_core
+    juce::juce_data_structures
+    juce::juce_dsp
+    juce::juce_graphics
+    juce::juce_gui_basics
+    juce::juce_gui_extra
+    NEURONiK_Common
+)
+
+add_test(NAME NEURONiK_ModelSlotTest COMMAND NEURONiK_ModelSlotTest)
+
 # Parameter bridge: same real layout APVTS as the contract, no WebView2 — the
 # transport is a recording lambda, so the protocol is testable without a window.
 add_executable(NEURONiK_ParameterBridgeTest
@@ -715,7 +751,27 @@ target_link_libraries(NEURONiK_ParameterBridgeTest PRIVATE
 
 add_test(NAME NEURONiK_ParameterBridgeTest COMMAND NEURONiK_ParameterBridgeTest)
 
-# Bridge protocol contract: pins the versioned WebPilot/contracts/bridge-protocol.json
+# El RANDOMIZE salio del panel nativo (ticket 8.2) a State/ParameterRandomizer,
+# donde puede probarse sin procesador ni UI. Este test es la regresion del bug que
+# traia: mezclaba unidades reales con normalizadas y clavaba el parametro en su
+# maximo. Necesita el MISMO layout APVTS que el contrato.
+add_executable(NEURONiK_ParameterRandomizerTest
+    Tests/ParameterRandomizerTest.cpp
+    Source/State/ParameterRandomizer.cpp
+)
+
+target_include_directories(NEURONiK_ParameterRandomizerTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/State"
+)
+
+target_link_libraries(NEURONiK_ParameterRandomizerTest PRIVATE
+    NEURONiK_ParameterContract
+)
+
+add_test(NAME NEURONiK_ParameterRandomizerTest COMMAND NEURONiK_ParameterRandomizerTest)
+
+# Bridge protocol contract: pins the versioned WebUI/contracts/bridge-protocol.json
 # against the wire constants compiled into ParameterBridge.h. Same anti-drift mechanism
 # as the parameter contract above (NEURONIK_PARAMETER_ARTIFACTS_DIR).
 add_executable(NEURONiK_BridgeProtocolContractTest
@@ -735,7 +791,7 @@ target_link_libraries(NEURONiK_BridgeProtocolContractTest PRIVATE
 )
 
 target_compile_definitions(NEURONiK_BridgeProtocolContractTest PRIVATE
-    NEURONIK_BRIDGE_PROTOCOL_JSON="${CMAKE_CURRENT_SOURCE_DIR}/WebPilot/contracts/bridge-protocol.json"
+    NEURONIK_BRIDGE_PROTOCOL_JSON="${CMAKE_CURRENT_SOURCE_DIR}/WebUI/contracts/bridge-protocol.json"
 )
 
 add_test(NAME NEURONiK_BridgeProtocolContractTest COMMAND NEURONiK_BridgeProtocolContractTest)
@@ -764,40 +820,49 @@ else()
     message(STATUS "node not found: NEURONiK_WebViewBridgeDirection test skipped")
 endif()
 
+# Selftest contract, C++ <-> pagina. El selftest de seis direcciones
+# (WebUI/BridgeSelftest.h) consulta unos anclajes de la pagina (el primer
+# input[type=range], el <code> del pie, la pestana KEYS, la rueda de modulacion,
+# el cajon lateral de la matriz y la celda de un control, la ficha MODELOS A-D,
+# __pilotSendMidi) y comprueba los 11 ids de GENERAL: si un
+# lado se mueve sin el otro, el selftest deja de comprobar lo que dice comprobar y
+# puede dar OK. Tambien fija que las seis direcciones son OBLIGATORIAS: la maquinaria de
+# "direccion no aplicable" se fue con el piloto retirado (ticket 8.4), y este test impide
+# que vuelva por la puerta de atras. Lo fija por los dos lados, como el contrato del
+# protocolo. Necesita node.
+if(NEURONIK_NODE_EXECUTABLE)
+    add_test(NAME NEURONiK_WebUiSelftestContract
+        COMMAND ${NEURONIK_NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/Tests/webuiSelftestContractTest.mjs"
+    )
 
-# ============================================================================
-# NEXT.JS WEBVIEW2 PILOT HOST
-# ============================================================================
-
-# Fail fast: the host serves the Next.js static export straight from disk.
-set(NEURONIK_WEBPILOT_OUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/WebPilot/out")
-if(NOT EXISTS "${NEURONIK_WEBPILOT_OUT_DIR}/index.html")
-    message(FATAL_ERROR
-        "WebPilot static export missing. Run 'pnpm install --ignore-workspace && pnpm build' "
-        "inside ${CMAKE_CURRENT_SOURCE_DIR}/WebPilot before configuring this host.")
-endif()
-
-# Embedded snapshot of the WebUI export: the host serves from disk first (fresh
-# `pnpm build` output) and falls back to this copy inside the exe when the folder
-# is not next to it. This is also how the final VST3 will carry its WebUI.
-file(GLOB_RECURSE NEURONIK_WEBPILOT_ASSETS CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/WebPilot/out/*")
-
-# The error routes (`404.html`, `404/index.html`, `_not-found/…`) share the root
-# document's basename (`index.html`): juce_add_binary_data keeps ONE identifier per
-# basename (alphabetically the 404 copy won it), so the embedded snapshot used to
-# serve the not-found page as index.html and the pilot never reached react-ready.
-# They are error pages the fallback never needs to serve -> exclude all of them so
-# the embedded identifiers are unique AND honest. loadEmbeddedResource keeps a
-# matching guard so an error-route request can never shadow a normal one.
-list(FILTER NEURONIK_WEBPILOT_ASSETS EXCLUDE REGEX "_not-found")
-list(FILTER NEURONIK_WEBPILOT_ASSETS EXCLUDE REGEX "[/\\\\]404([/\\\\]|\\.html$)")
-
-if(NEURONIK_WEBPILOT_ASSETS)
-    juce_add_binary_data(NEURONiK_WebPilotAssets SOURCES ${NEURONIK_WEBPILOT_ASSETS})
+    # Paridad lienzo web <-> superficies nativas. El test NO exige que las dos
+    # superficies se vean iguales (no lo son, y a proposito: ver
+    # DOCS/WEBUI_VS_NATIVE_PARITY.md); exige lo unico que si es contractual: que
+    # ningun id del lienzo ni del C++ se haya quedado fuera del contrato, y que el
+    # lienzo no pinte el mismo parametro dos veces. El informe completo (que
+    # parametros ve cada superficie con el mismo preset cargado) lo imprime el
+    # script, con `--quiet` para el resumen. Necesita node.
+    add_test(NAME NEURONiK_NativePanelParity
+        COMMAND ${NEURONIK_NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/Tests/nativePanelParityReport.mjs" --quiet
+    )
 else()
-    message(WARNING "WebPilot/out is empty: the pilot host will require the folder next to the exe (no embedded WebUI).")
+    message(STATUS "node not found: NEURONiK_WebUiSelftestContract test skipped")
 endif()
+
+
+# ============================================================================
+# WEBVIEW2 BENCH (bancada de la WebUI + panel nativo)
+# ============================================================================
+
+# Ya retirado el piloto (ticket 8.4), esta bancada sirve la UNICA pagina que hay
+# (`WebUI/dist`, la que embebe el plugin) desde disco, sin snapshot embebido: el que
+# lleva su WebUI dentro es el PLUGIN, y contestar una peticion con otra pagina no es un
+# fallback. Por eso aqui no hay FATAL_ERROR que exigir ni juce_add_binary_data que
+# embeber — esa fue la otra mitad de la retirada (el exe llevaba el export del piloto).
+#
+# Sigue existiendo porque es la UNICA superficie que monta el panel nativo
+# (ParameterPanel) y el XYPad de morph, y la unica que mide el arranque de la pagina
+# (`--auto-quit` -> pilot-startup.log).
 
 juce_add_gui_app(NEURONiK_WebPilotHost
     PRODUCT_NAME "NEURONiK Web Pilot"
@@ -825,23 +890,20 @@ target_sources(NEURONiK_WebPilotHost PRIVATE
 target_compile_definitions(NEURONiK_WebPilotHost PRIVATE
     JUCE_USE_WIN_WEBVIEW2=1
     JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1
-    NEURONiK_WEBPILOT_OUT_DIR="${NEURONIK_WEBPILOT_OUT_DIR}"
+    # La ruta de la pagina va grabada (misma pagina que el plugin, `WebUI/dist`) y
+    # `NEURONIK_WEBUI_DEV_DIR` (mismo override de desarrollo que el plugin) la puede
+    # apuntar a otra exportacion.
+    NEURONiK_WEBUI_DIR="${NEURONIK_WEBUI_DIST_DIR}"
     # Plugin sources (copied below) reference JucePlugin_Name; the gui app target
     # does not generate plugin macros, so pin the same value the plugin target uses.
     JucePlugin_Name="NEURONiK"
 )
 
-if(TARGET NEURONiK_WebPilotAssets)
-    target_link_libraries(NEURONiK_WebPilotHost PRIVATE NEURONiK_WebPilotAssets)
-    target_compile_definitions(NEURONiK_WebPilotHost PRIVATE NEURONIK_HAS_PILOT_ASSETS=1)
-endif()
-
 # The panel's UI dependencies (RotaryControl, GlassBox, MidiLearner, themes...)
-# and the processor's DSP chain: the same set the Standalone links, minus the
-# audio-device stack (the pilot has no audio callback; parameter traffic only).
+# and the processor's DSP chain: the same set the Standalone links.
 target_link_libraries(NEURONiK_WebPilotHost PRIVATE
     juce::juce_audio_basics
-    juce::juce_audio_devices   # AudioProcessorPlayer: the pilot renders audio so page MIDI notes sound
+    juce::juce_audio_devices   # AudioProcessorPlayer: renders audio so page MIDI notes sound
     juce::juce_audio_utils
     juce::juce_data_structures
     juce::juce_dsp

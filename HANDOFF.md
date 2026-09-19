@@ -1,8 +1,11 @@
 # NEURONiK Handoff
 
-## Estado de la instrumentación del piloto
+## Estado de la instrumentación del arranque (bancada WebView2)
 
-El host `NEURONiK_WebPilotHost` mide el arranque real y lo escribe en un log:
+La bancada `NEURONiK_WebPilotHost` sirve `WebUI/dist` —la misma página que embebe el plugin— y
+mide su arranque real en un log. Es lo único que queda con nombre del piloto: el target, su exe y
+su `.cpp` conservan el nombre porque renombrarlos toca CMake, `build.bat`, `start.bat` y dos
+tests, y no era parte de este encargo (ver la sección de la retirada, al final).
 
 ```bash
 cd ABDNeural
@@ -12,8 +15,11 @@ cd ABDNeural
 - `--auto-quit` cierra el host en cuanto el panel está listo, para poder medir sin interacción.
 - Salida: `pilot-startup.log` junto al ejecutable (se añade un bloque por ejecución) y stdout.
 - Qué mide: construcción del backend WebView2, `document.readyState` interactivo, panel en el DOM,
-  `window.__pilotReady` (effect de React), recursos servidos con sus bytes y rutas no resueltas.
-- El marcador `window.__pilotReady` lo publica `WebPilot/app/page.jsx`.
+  `window.__pilotReady` (lo publica el store de la página al terminar de aplicarse el snapshot),
+  recursos servidos con sus bytes y rutas no resueltas.
+- El marcador `window.__pilotReady` lo publica `WebUI/src/contracts/paramStore.js` (lo pone
+  `WebUI/src/app.js` en marcha). Los nombres "panel in DOM" y "react ready" del log son del piloto:
+  la métrica es la misma y cambió el dueño del marcador.
 
 Resultados (Release, 2026-09-16):
 
@@ -116,9 +122,10 @@ argumento (por defecto `build-reference`).
 
 Arranque de la versión web (`start.bat`, mismo patrón que ABDMS2000, menú 1-3):
 
-1. **Piloto en WebView2** — lanza "NEURONiK Web Pilot.exe" (bridge bidireccional con el
-   plugin; es la web "de verdad", como el Vite 8384 en ABDMS2000).
-2. **Solo WebUI en navegador** — sirve `WebPilot/out` en `http://localhost:8399` con
+1. **Bancada WebView2** — lanza "NEURONiK Web Pilot.exe" (bridge bidireccional con el
+   plugin; es la web "de verdad", como el Vite 8384 en ABDMS2000). Ése es el nombre del exe
+   porque el target conserva el del piloto: retirado el piloto, esto es la bancada de la WebUI.
+2. **Solo WebUI en navegador** — sirve `WebUI/dist` en `http://localhost:8399` con
    `npx serve`; sin JUCE la página queda en LOCAL MODE (útil para depurar la página a solas).
 3. **Selftest del bridge** — ejecuta el host con `--selftest` (E2E automático NATIVO->JS y
    JS->NATIVO, imprime resultado y cierra solo; exit 0 = OK).
@@ -313,9 +320,12 @@ no hace falta reescribir el `index.html` ni forzar `basePath`.
 
 El proveedor de recursos se ha endurecido después de la verificación:
 
-- la raíz del export se localiza por ruta de compilación (`NEURONiK_WEBPILOT_OUT_DIR`) y, si falla,
-  buscando `WebPilot/out` hacia arriba desde el ejecutable y desde el directorio de trabajo;
-- CMake falla en configure si falta `WebPilot/out/index.html`;
+- la raíz de la página se localiza por ruta de compilación (`NEURONiK_WEBUI_DIR`) y, si falla,
+  buscando `WebUI/dist` hacia arriba desde el ejecutable y desde el directorio de trabajo;
+  `NEURONIK_WEBUI_DEV_DIR` la puede apuntar a cualquier exportación (mismo override que el plugin);
+- CMake **ya no falla** en configure por esta carpeta: hasta la retirada del piloto exigía
+  `WebPilot/out/index.html` (y llevaba su export embebido, `NEURONiK_WebPilotAssets`); hoy la
+  bancada sirve `WebUI/dist` desde disco y no embebe página;
 - si el documento no se encuentra, se sirve una página de diagnóstico legible en lugar de una ventana en blanco.
 
 Nota operativa: el `.exe` del host queda bloqueado mientras la ventana está abierta, así que hay que
@@ -328,14 +338,18 @@ eventos de JUCE 8 y lleva una tira nativa de comparación.
 
 ```text
 Source/WebUI/ParameterBridge.{h,cpp}   protocolo bidireccional (sin WebView2: testeable con una lambda)
-Source/WebPilotHost.cpp                transporte + APVTS real (createLayoutApvts) + tira nativa
-WebPilot/lib/bridge.js                 transporte JS (window.__JUCE__.backend; modo local sin JUCE)
-WebPilot/app/page.jsx                  panel conectado, con fases de gesto y estado normalizado
+Source/WebPilotHost.cpp                transporte + APVTS real (createLayoutApvts) + tira nativa (bancada)
+WebUI/src/bridge/bridgeCore.js         transporte JS (window.__JUCE__.backend; modo local sin JUCE)
+WebUI/src/app.js                       panel conectado, con fases de gesto y estado normalizado
 Tests/ParameterBridgeTest.cpp          protocolo completo contra el APVTS del contrato
 Tests/webviewBridgeDirectionTest.mjs   guard de dirección (compartido con ABDSharedCode)
 ```
 
-Puntos clave de diseño (el detalle completo está en `WEB_PILOT.md`, sección del bridge):
+(Las dos rutas JS de esta tabla decían `WebPilot/lib/bridge.js` y `WebPilot/app/page.jsx` hasta la
+retirada del piloto: son los ficheros que se portaron a `WebUI/src/`, y desde 8.4 viven ahí.)
+
+Puntos clave de diseño (el detalle completo está en `DOCS/PILOT_RETIRED.md`, sección del bridge —
+ese documento es el registro del piloto y se conserva por esto mismo):
 
 - El APVTS reflejado es `State::createLayoutApvts()`: el layout exacto del plugin (70 parámetros).
 - **Salida por sondeo** (`publishPendingChanges`, timer de 30 ms) en lugar de listeners de
@@ -357,8 +371,8 @@ payloads en ambas direcciones, dispose sin fugas) y el guard de dirección sobre
 
 ### El protocolo, como contrato versionado (2026-09-16)
 
-El formato del cable está fijado en `WebPilot/contracts/bridge-protocol.json` (versionado en git,
-versión 1) con especificación completa en `WebPilot/BRIDGE_PROTOCOL.md`. Misma mecánica que el
+El formato del cable está fijado en `WebUI/contracts/bridge-protocol.json` (versionado en git,
+versión 1) con especificación completa en `DOCS/BRIDGE_PROTOCOL.md`. Misma mecánica que el
 contrato de parámetros: el fichero no se genera, se edita, y dos tests anti-drift lo comparan con
 lo que cada lado ejecuta:
 
@@ -2409,3 +2423,558 @@ Paso 2 de 8.1, que es el que falta: `ResourceProvider` compartido (disco en dev 
 embebido), el `WebBrowserComponent` dentro de `NEURONiKEditor` (tamano/zoom sin romper
 `resized()`), y llevar el selftest de cuatro direcciones a **Standalone y VST3** — hoy ese
 arnes solo existe en `WebPilotHost.cpp`.
+
+---
+
+## 8.1, paso 2c: el selftest de cuatro direcciones pasa al editor, y la bancada usa el MISMO (2026-09-19)
+
+Ultimo paso de 8.1 antes de retirar el piloto. El arnes deja de ser de la bancada y pasa a
+`Source/WebUI/BridgeSelftest.h`; quien lo corre **en el plugin** es el editor, porque es la
+unica superficie que hospeda la pagina en los dos formatos.
+
+**Que se movio**
+
+| Pieza | De | A |
+|---|---|---|
+| La maquina de estados del selftest | `Source/WebPilotHost.cpp` (~300 lineas dentro de `PilotComponent`) | `Source/WebUI/BridgeSelftest.h` (`NEURONiK::WebUI::BridgeSelftest`) |
+| Selectores de la pagina | repartidos por el C++ de la bancada | `SelftestPage` (un solo sitio, documentado como contrato) |
+| Quien lo dispara | solo la bancada (`--selftest`) | el editor del plugin (argv en Standalone, `NEURONIK_SELFTEST=1` en cualquier formato) |
+
+La bancada **ya no tiene copia**: la usa igual, enchufandole su navegador y su veredicto. El
+port es de comportamiento: los cinco scripts JS, los tiempos (400/600 ms) y el texto de las
+lineas del log son los mismos, asi que un log del plugin y uno de la bancada se leen igual.
+
+**El disparo, y por que son dos vias**
+
+```text
+NEURONiK.exe --selftest                    -> Standalone (proceso): codigo de salida 0/1
+NEURONIK_SELFTEST=1 NEURONiK.exe           -> cualquier formato, y el UNICO del VST3
+NEURONIK_SELFTEST_LOG=<ruta>               -> donde queda el transcript (opcional)
+```
+
+El VST3 lo lanza el DAW y no recibe argv, asi que la variable de entorno no es un atajo: es su
+unica via. Con ella puesta el arnes corre dentro de pluginval o del DAW que abra el editor. El
+log por defecto va a datos de usuario del sistema (`.../NEURONiK/neuronik-selftest.log`)
+porque el VST3 no puede escribir junto a su propio binario (esa carpeta es del host).
+
+**Dos precauciones que la bancada no necesitaba**, porque alli moria el proceso entero:
+
+- **timeout de 30 s**: un hop perdido termina en FAIL, nunca deja el editor de un DAW colgado;
+- **guarda de vida en TODOS los callbacks** (evaluaciones del navegador y `callAfterDelay`): el
+  editor se puede cerrar con hops en vuelo, y el arnes se declara despues de `webView` en el
+  editor para morir **antes** que el navegador. Sin esto, cerrar el editor a mitad del selftest
+  es un `use-after-free` con la firma de un crash aleatorio del plugin.
+
+**El contrato con la pagina, fijado por los dos lados.** Los anclajes que el arnes consulta (el
+primer `input[type=range]`, el `<code>` del pie, la pestana KEYS, la rueda de modulacion,
+`__pilotSendMidi`) y los 11 ids de GENERAL se comprueban en
+`Tests/webuiSelftestContractTest.mjs` (ctest, `NEURONiK_WebUiSelftestContract`, test 18): que el
+C++ declare exactamente esos anclajes, que cada uno siga en el fichero de la pagina que lo posee
+**y** pinchado en la suite de la propia pagina, y que las dos listas de ids de GENERAL coincidan.
+Un anclaje que se mueve en un solo lado deja el selftest comprobando lo que no cree: eso es un
+falso OK, y es lo que este test impide. Verificado que falla de verdad (mutacion temporal del
+anclaje → exit 1).
+
+**Verificacion (Release, todo en verde)**
+
+```text
+build completo (cmake --build build-reference --config Release)  0 errores, 0 avisos propios
+ctest -C Release                                                 18/18 (17 + el nuevo)
+NEURONiK.exe --selftest                                          las 4 direcciones OK, exit 0
+NEURONiK.exe con NEURONIK_SELFTEST=1 (sin argv)                  OK, exit 0
+NEURONiK Web Pilot.exe --selftest (arnes compartido)             OK, exit 0 (sin regresion)
+```
+
+**Dos regresiones del paso 2, arregladas aqui** (el `build.bat` se paro en 5/10 y el log solo
+ensenaba la primera, porque la compilacion aborta):
+
+- **103 errores dentro de `juce_StandaloneFilterWindow.h`** al compilar `NEURONiKEditor.cpp`. El
+  paso 2 quito `#include <juce_audio_utils/...>` del editor, y ese header **no incluye sus
+  dependencias** (`juce_audio_devices` para `AudioDeviceManager`/`AudioIODeviceCallback`/
+  `MidiInput` y `AudioProcessorPlayer` de `juce_audio_utils`): confia en el `JuceHeader.h` del
+  wrapper. Los tres includes van ahora explicitos en el guard de `JucePlugin_Build_Standalone`,
+  con el motivo escrito al lado.
+- **10 `LNK2019` de `ParameterBridge`** al enlazar el VST3: `ParameterBridge.cpp` se quedo fuera
+  de los targets del plugin (solo lo anadian la bancada y los tests), asi que
+  `NEURONiKEditor.obj` pedia el puente y nadie lo aportaba. Va en el `foreach` de los targets
+  que montan pagina y **no** en `NEURONIK_SOURCES`: quien lo necesita es la pagina, no el motor.
+
+**`build.bat` 10/10** ejecuta ahora PRIMERO el selftest del **plugin** (la superficie que se
+envia; su Standalone hospeda la pagina de `WebUI/dist`) y despues el de la bancada, que sigue
+contando hasta el commit de retirada. El transcript del plugin queda en
+`build-reference\neuronik-selftest.log`, para leer el detalle sin depender del stdout.
+
+**Lo que queda de 8.1 / 8:** el **commit de retirada del piloto** (mudar las 3 SSOT —
+`WebPilot/generated`, `bridge-protocol.json`, `public/` — y repuntar sus 4 consumidores, mas
+`bridgeProtocolContractTest.mjs` y `webviewBridgeDirectionTest.mjs`), y despues 8.2 (paridad de
+control). El **VST3 real** con un host dentro (DAW o pluginval) es 8.5: su arnes ya esta puesto
+y documentado, pero no se apunta como verificado.
+
+## 8.2 — el lienzo unico: los 70 controles en una pantalla (2026-09-19)
+
+**Peticion:** lienzo mas grande (referencia ABDMS2000) e intentar todos los controles en una
+sola pantalla; si no cabe, el sistema de los hermanos (fichas por secciones con lo principal +
+panel deslizante lateral, que es EXACTAMENTE lo que hace ABDMS2000 con `slideDrawer`; ABDEep
+mide 1200x768 y el suyo tambien va por ahi).
+
+**Lo primero fue medir, no opinar.** Hechos que cambian la decision:
+
+- ABDMS2000 tiene editor de **1080x680** (mas pequeno que el que tenia NEURONiK, 1100x720) y
+  reparte casi todo en cajones; ABDEep 1200x768. O sea: "tamano MS2000" NO es mas grande.
+- NEURONiK tiene 70 parametros, no los ~40 de un MS2000. Para que quepan de una vez hacen
+  falta ~1440x900 de superficie, mas ancho que cualquier hermano: eso es "mas grande" aqui.
+- Reparto por el contrato (sin tablas a mano): 46 `float`, 5 `bool`, 19 `choice`.
+
+**Decision: un solo lienzo de 1440x900, sin pestanas de parametros.** Siete fichas en tres
+bandas de 12 carriles, todas a dos filas, siguiendo la agrupacion del panel nativo:
+OSCILADOR (12) + RESONADOR (4) + GLOBAL & MASTER (9) / FILTRO & ENVOLVENTE (11) + EFECTOS (12)
+/ LFO 1 & 2 (10) + MATRIZ DE MODULACION (12) = **70**. La franja de teclado es fija abajo
+(como en el nativo) y plegable con el boton TECLADO.
+
+**El encaje es un numero, no una impresion.** `src/contracts/sections.js` es la SSOT del
+reparto y la geometria, y `tests/sections.test.js` comprueba con esos mismos numeros: alto
+calculado <= 1440x900, fichas a dos filas, bandas que llenan el ancho, y que la CSS declara
+las MISMAS medidas (`--abd-cell-h: 80px`, `--abd-knob-size: 48px`...).
+
+**Y se midio en un motor de verdad, porque jsdom no calcula layout.** Arnar temporal en
+iframe + Chrome headless a 1440x900 (borrado despues): `scrollHeight == clientHeight == 900`,
+`scrollWidth == clientWidth == 1440` -> **cero desborde, cero barras**; 70 celdas (45 knob /
+5 toggle / 19 select), 36 teclas y la rueda de modulacion montadas, y el primer
+`input[type=range]` del documento sigue siendo `masterLevel`. Esta medicion pago sola: mi
+primera cuenta dejaba fuera bordes, huecos de fila y relleno del armazon, y el lienzo
+desbordaba **33 px** (scroll activo) sin que ningun test unitario lo notara.
+
+- **Tipo por descriptor, no por tabla:** `float -> Knob`, `bool -> Toggle`, `choice ->
+  desplegable`. `masterLevel` es el UNICO control fuera de la familia compartida: su `range`
+  nativo es la mitad del contrato del selftest (8.1 paso 2c) y va en la ficha GLOBAL, por
+  delante de las ruedas del teclado.
+- **Hueco encontrado en `@abdsynths/shared`:** la familia no tiene control de LISTA
+  (Knob/Slider/Toggle/Wheel/XYPad). Los 19 `choice` van a un `<select>` nativo estilizado; un
+  control `Select` compartido es candidato claro, sobre todo para los 28 destinos de la matriz
+  de modulacion.
+- **Sin pestanas, pero con los anclajes:** `[data-tab="keys"]` sigue publicado (ahora es el
+  boton que pliega la franja de teclado) porque el selftest del host lo pulsa; el anti-drift
+  (`Tests/webuiSelftestContractTest.mjs`) lo exige en `contracts/screens.js` y en la suite.
+- **Verificacion:** vitest **127/127** (13 ficheros; +3 ficheros nuevos), `pnpm build` OK
+  (80,2 KB JS / 20,8 KB gzip), build Release del plugin 0 errores, **18/18 ctest** y el
+  `--selftest` del Standalone contra la pagina nueva: 4 direcciones OK, exit 0.
+- **Editor nativo:** `NEURONiKEditor` pasa a 1440x925 (`canvasWidth`/`canvasHeight` + la barra
+  de menu), para que el WebView reciba exactamente el lienzo. El ancho del lienzo vive en tres
+  sitios que tienen que decir lo mismo (constante C++, `CANVAS` de sections.js,
+  `--abd-canvas-w` de la CSS); los dos del lado de la pagina se comprueban entre si.
+
+**A/B contra el nativo con el mismo preset (hecho 2026-09-19).** `Tests/nativePanelParityReport.mjs`
+extrae los dos inventarios de sus fuentes —los patrones de `Source/UI/**` y el contrato +
+`sections.js`— y los cruza id a id con el preset cargado (el INIT del contrato, o un
+`.neuronikpreset` real con `--preset`). El informe completo esta anotado en
+**`DOCS/WEBUI_VS_NATIVE_PARITY.md`**; el script corre en ctest (`NEURONiK_NativePanelParity`, test
+19) solo por sus dos invariantes (ningun id fuera del contrato, ninguna celda repetida) y esta
+verificado que **falla de verdad** (mutacion temporal del lienzo -> exit 1).
+
+Lo que sale con el INIT: la pagina ve **70/70**, el nativo **66/70** con algun control y **1/70**
+montado en lo que se envia (los paneles estan compilados y sin instanciar: se retiran en 8.4),
+**4** parametros sin control nativo en ningun sitio (`oscLevel`, `midiThru`, `velocityCurve`,
+`unisonEnabled` — este ultimo `notRouted`, y la pagina es la unica que lo dice), **41/66**
+etiquetas distintas (el nativo abrevia: `VOLUME` vs Master Level, `ROOM` vs Reverb Size) y
+**4/66** tipos (`mod*Amount`: fader horizontal vs knob).
+
+El unico hueco que es **funcion** y no presentacion: el nativo **filtra los destinos de la
+matriz por motor** (desactivando indices 21-27 en un timer de 100 ms) y la pagina entrega
+`engines` en el view-model sin que **nadie lo consuma**; ademas el gating nativo es fragil por
+indice. Lo demas es cosmetica deliberada de un panel que se retira (incluido que el nativo lee los
+valores con `juce::String(v, 2)`, sin unidades). La lectura literal del DoD ("se ve identico")
+queda descartada con evidencia: la paridad que se exige es **mismo valor real** y **misma
+cobertura**, y eso se cumple.
+
+**RANDOMIZE y primera retirada del arbol nativo (hecho 2026-09-19, despues del A/B).**
+
+- **RANDOMIZE al estado, no al panel.** El sorteo vivia en `ParameterPanel::randomizeParameters()`
+  y se iba a perder con el panel. Ahora es **`State/ParameterRandomizer`** (tabla de intencion +
+  congelados, probado sin procesador ni UI) y el puente gana la accion **`randomize`** (sin
+  campos: la fuerza sale de `randomStrength`, los congelados del APVTS). La pagina tiene el boton
+  en la cabecera de GLOBAL & MASTER y sin host queda deshabilitado (`store.randomize()` devuelve
+  false en modo local).
+- **Dos defectos corregidos, con test** (`NEURONiK_ParameterRandomizerTest`, nuevo, test 20):
+  1. la mezcla promediaba el valor actual en **REAL** con el sorteo en **NORMALIZADO**
+     (`jmap(strength, currentValue, random0to1)`): todo parametro cuyo rango real no fuera 0..1
+     acababa clavado en su maximo (un cutoff saltaba a 20 kHz). Ahora la mezcla es lineal en
+     unidades reales y se convierte una vez;
+  2. la ventana de `resonatorRes` (0.3..0.95) **no cabia** en su parametro (0.5..1): el test exige
+     que cada ventana quepa en su rango, que a fuerza 0 no cambie nada, que lo congelado no se
+     mueva y que la mezcla sea el punto medio en Hz.
+- **Retirada del arbol sin instanciar.** Fuera del arbol y de `CMakeLists.txt`: los **cuatro
+  paneles de parametros**, `PresetPanel`, `PresetBrowser` (y `PresetListModels.h`), `LcdDisplay`,
+  `LcdMenuManager`, `SpectralVisualizer` y `EnvelopeVisualizer`. Con `ModulationPanel` se fue su
+  `timerCallback`, que **reescribia el APVTS cada 100 ms** (puesto el destino de modulacion en Off)
+  y era el bug mas serio que quedaba en el arbol. Se quedan `ParameterPanel` y `XYPad` porque la
+  bancada los monta, y el overload de `VerticalSliderControl` porque **no era muerto** (es el
+  master vertical: la afirmacion contraria del informe se corrigio).
+- **El A/B sigue al arbol**: `Tests/nativePanelParityReport.mjs` pasa de 66 a **15** ids nativos y
+  ahora **falla** si una superficie declarada desaparece (antes un borrado lo habria reventado con
+  un stacktrace). El informe esta en `DOCS/WEBUI_VS_NATIVE_PARITY.md`.
+
+**Verificacion:** build Release 0 errores · **20/20 ctest** · vitest **132/132** ·
+`--selftest` del Standalone contra la pagina nueva (con el boton RANDOM): 4 direcciones OK, exit 0.
+No commiteado; `Source/ModelMaker/Version.h` revertido (lo autobumpea compilar ese target).
+
+**Curva ADSR (hecho 2026-09-19).** `src/ui/envelopeCurve.js` dibuja la envolvente de amplitud a
+partir de los cuatro `env*` del lienzo, en la **celda libre** de la ficha FILTRO & ENVOLVENTE (11
+controles en una rejilla de 6x2), asi que la geometria no cambia ni un pixel: la celda mide los 80
+px fijos de `.cell` y el SVG se estira dentro. Decisiones que no son obvias: los tiempos se
+comprimen con raiz cuadrada (el rango va de 1 ms a 5 s y el `skew` de esos parametros ya es
+logaritmico; en lineal un ataque de 1 ms seria medio pixel) y el tramo de sostenido tiene ancho
+propio (no es un tiempo: sin el, un sostenido sin rampas parecia una meseta de ancho cero).
+No es una celda de parametro: lleva `.card__visual`, no `.cell`, para que "70 celdas" siga
+significando lo mismo en los tests y en el informe de paridad. Vistas y acciones de ficha se
+declaran como DATO (`SECTION_VISUALS`/`SECTION_ACTIONS` en `sections.js`) y las resuelve `app.js`;
+el panel solo las pinta.
+
+**`Select` compartido, gating por contrato y matriz al cajon (hecho 2026-09-19).** Los tres salen
+del mismo hilo: el lienzo tenia 70 controles a la vez y el unico hueco que era FUNCION (no
+presentacion) en el A/B era el filtrado de destinos por motor.
+
+- **`Select` en la familia compartida** (`ABDSharedAssets/components/select.js` + CSS + skin
+  `vector`/`ms2000` + 14 tests + demo): las 19 listas del lienzo ya no construyen ningun `<select>`
+  a mano. Modelo de valor por **INDICE** (el hermano discreto del boolean de `Toggle`): normalizar
+  a 0..1 queda al llamador porque en un `choice` ese mapeo lleva el skew del parametro, y meterlo
+  en la capa compartida arrastraria matematica del APVTS. Dos cosas que un control nuevo necesita y
+  que ahora estan resueltas: `applySkin` **falla con error explicito** cuando no hay renderer para
+  un `CONTROL_KIND` (antes salia como "fn is not a function", que parece un error del llamador), y
+  el nombre `.abd-select` choca con el de `controls.css` (la libreria CSS previa, que estiliza un
+  `<select>` crudo) → el layout del bloque es **opt-in** (`.abd-select--labelled`) para que un
+  `<select>` suelto siga viendose igual, con test. Es el unico de la familia sin `drag-core`
+  (arrastrar por 28 opciones elige por accidente): el desplegable y las flechas cubren la edicion.
+- **Gating de destinos por motor, en el CONTRATO.** `optionEngines` (un motor por opcion) +
+  `engineParameter` (el id del selector) salen del generador; en C++ los deriva
+  `applyEngineGating()` de la **tabla unica** de destinos (`State/ParameterDefinitions.h`:
+  etiqueta + parametro que mueve, EN ORDEN porque el indice es estado de preset) cruzada con
+  `engineCoverageFor()`, mas la cobertura de cada opcion del propio `engineType`. El reparto sale
+  identico al del panel retirado (neuronik `2 3 10-16 20 21 22`, neurotik `23 24 25 26`, 12 de los
+  dos) y el test de contrato lo pincha, junto con las etiquetas POR INDICE y que
+  `getModDestinations()` liste la tabla (antes la lista estaba duplicada a mano dentro del layout).
+  En la pagina, el `Select` deshabilita lo que el motor activo no consume, pone el motivo en la
+  opcion (`title`) y **nunca reescribe el valor**: lo marca (`[data-divergent]`). Si el snapshot no
+  trae el motor, no se aplica gating (no se inventa el activo).
+- **Matriz de modulacion al cajon lateral.** Una ficha puede declarar `drawer` en el reparto: sus
+  celdas se montan en `src/ui/drawer.js` (patron ABDMS2000/ABDEep/ABDCZ101) agrupadas por ruta, y en
+  el lienzo quedan el resumen de las 4 rutas (`src/ui/modSummary.js`) y el boton. **Diferencias
+  deliberadas con el `slideDrawer` de los hermanos**: el contenido NO se reconstruye al abrir (las
+  70 celdas estan siempre en el documento: el selftest y la suite cuentan celdas, y reconstruir
+  perderia el gesto en curso) y abrir/cerrar es una clase CSS. Los ids siguen en el reparto, asi que
+  store, recuento y cobertura no cambian. Medido en Chrome a 1440x900: **0 px de desborde** con el
+  cajon fuera de pantalla, 12 celdas en el cajon y 0 en la rejilla, 4 rutas en el resumen, teclado
+  montado y `masterLevel` como primer `range`.
+- **Flecos que la pasada dejo de paso**: la fabrica de vistas (`src/ui/visuals.js`) sale de `app.js`
+  porque el harness del test la duplicaba (montaba una curva ADSR para CUALQUIER vista declarada, y
+  al anadir el resumen contaba dos); el resumen **no** lleva `data-parameter-id` (ese atributo marca
+  celdas de control en esta pagina, y marcarlo duplicaba el recuento de los 70); y un cajon
+  destruido ya no muta estado.
+
+**Fleco abierto, con el dato localizado: el ANILLO del valor modulado.** El procesador **si**
+publica la modulacion viva (`getModulationValueForUI()` sobre `modulationValues[]`, que llenaba el
+`ModulatedSlider` nativo), pero **no viaja en el cable**: el protocolo del puente
+(`Source/WebUI/ParameterBridge.h`, versionado en `WebPilot/contracts/bridge-protocol.json`) no tiene
+canal de modulacion. Hacerlo bien es un cambio de frontera: controlador en el puente + mensaje
+aditivo (tipo `midiNoteState`) + poll del host + estado en el store + el anillo como opcion del
+`Knob` compartido. Se deja para la proxima pasada **a proposito**: dibujar el anillo con la CANTIDAD
+del slot no seria el valor modulado, seria otra cosa con el mismo nombre.
+
+**Lo que queda de 8.2:** el anillo (arriba) y, si una seccion crece, mas cajon (el reparto es
+dato: cambiarlo es una linea y el test de encaje avisa). Los slots de modelo A-D se cierran en la
+pasada siguiente (abajo).
+
+**Verificacion de esta pasada:** vitest **166/166** en la WebUI (+14 en `ABDSharedAssets`, 53/53) ·
+`pnpm build` OK · build Release 0 errores · **20/20 ctest** · `--selftest` del Standalone: **4
+direcciones OK, exit 0** · contrato regenerado (`parameters.generated.*`, con `optionEngines`) y
+`ModelMaker/Version.h` revertido. No commiteado.
+
+## 8.2 (b) — los slots de modelo A–D: la carga la hace el host y contesta TARDE (2026-09-19)
+
+**Que era en el nativo.** El bloque MODEL de `OscillatorPanel` eran cuatro botones
+`loadA..loadD` sobre el XYPad (`buttonClicked`): abrian un `juce::FileChooser` de
+`*.neuronikmodel`, cargaban con `processor.loadModel(file, slot)` (slot 0 = A) y **rotulaban la
+ranura con el nombre del fichero elegido**. Ese `loadModel` no devolvia nada y salia en silencio
+si el fichero no era un modelo valido, asi que un fichero inservible dejaba el nombre puesto
+hasta que el timer de 10 Hz lo corregia leyendo `getModelNames()`. Un tick diciendo una cosa y el
+motor teniendo otra.
+
+**Que hay ahora.** Ficha **MODELOS A–D** en el lienzo (`span: 2`, en la banda del LFO: la matriz
+baja de 8 a 6 carriles porque en el lienzo solo alberga el resumen — 6 le sobran) con cuatro
+filas (letra, nombre cargado, **CARGAR**) y una linea de estado (`n/4 cargados`, o el motivo del
+ultimo fallo). Las ranuras son del MOTOR, no del APVTS (un preset lleva `modelPath<slot>`, no una
+copia de los parciales), asi que la ficha **no tiene celdas**: el encaje de los 70 no se mueve y
+un test lo fija, junto al reparto de esa banda.
+
+**Decision de sitio, consultada.** Cualquier fila nueva son 84 px que el lienzo no tiene (18 px de
+holgura), asi que el cajon lateral era la salida natural; se pregunto y se eligio **ficha propia
+siempre visible** (los cuatro botones del nativo tambien lo estaban, sobre el pad) antes que un
+cajon para cuatro botones.
+
+**La carga, en el contrato (aditivo a v1).**
+
+- `loadModel { slot: 0..3 }` (JS→nativo) es la **unica accion cuya respuesta llega DESPUES**: la
+  pagina no tiene sistema de ficheros ni puede nombrar rutas (el cable no es de fiar), asi que el
+  HOST abre el dialogo (`EngineModelsAdapter`, con el `juce::FileChooser` que tenia el panel) y
+  contesta mas tarde. `NativeModelController` gana `loadModel(slot)` y `getModelName(slot)`.
+- `modelsState` viaja con **`name`** por ranura ("EMPTY" cuando no hay nada): el nombre solo lo
+  sabe el motor y las dos superficies tienen que ensenar la MISMA lista.
+- `modelError { slot, detail }`: cancelar, elegir algo que no es un modelo, ranura fuera de rango
+  o **fraccionaria** (se rechaza, no se trunca) o no haber backend. Una carga nunca falla en
+  silencio, que era justo el defecto de arriba. `stats.modelLoads` / `stats.modelErrors` lo hacen
+  observable.
+- `NEURONiKProcessor::loadModel` ahora devuelve `bool` (antes no habia forma de saber si la carga
+  ocurrio) y solo renombra la ranura cuando el modelo es valido.
+- El contrato versionado documenta las tres formas y la regla (`behaviour.modelMessages`), y los
+  dos tests de contrato pinchan los literales nuevos.
+
+**Vida de un dialogo abierto.** El adaptador es dueño del `FileChooser` y `juce::FileChooser`
+suelta su callback pendiente al destruirse (`~FileChooser` limpia `asyncCallback` y el pimpl se
+apaga con `safeThis.lock()` fallando), asi que un host cerrado a media eleccion de fichero no
+contesta a un puente muerto; en el editor, ademas, los adaptadores se declaran DESPUES del puente
+(mueren antes) y el destructor corta el transporte primero. Se comprobo en las fuentes de JUCE
+(`juce_FileChooser_windows.cpp`) antes de apoyarse en ello.
+
+**En la pagina.** `loadModel(slot)` en el store (devuelve false sin host: no hay a quien pedirselo,
+igual que `randomize`), `modelError` en el estado (un intento nuevo limpia el mensaje viejo, que es
+de otra carga), y la vista `src/ui/modelSlots.js` como DATO de ficha (`SECTION_VISUALS`,
+`parameterIds: []`): el panel le da sitio y **estado entero** (`paint(parameters, state)`, porque
+`models`/`modelError` viven fuera del APVTS) y el handler de carga le llega por `options.onLoad`
+desde `app.js`, para que el panel siga sin saber que dibuja cada vista. Un nombre con
+`isValid: false` se **marca** en ambar (mismo criterio que el gating del `Select`), no se oculta.
+
+**Verificacion de esta pasada:** build Release **0 errores** (VST3 + Standalone + bancada) ·
+**20/20 ctest** · vitest WebUI **185/185** (+19: 12 en `tests/modelSlots.test.js` y el resto en
+`sections`/`panel`/`bridgeCore`/`paramStore`/`appContract`) · `pnpm build` OK (95.2 KB JS) ·
+medicion en Chrome a 1440x900 con la ficha nueva: **0 px de desborde**, 8 fichas, **70 celdas**,
+19 select, 4 filas de ranura (228x206 px de ficha, 164 px de cuerpo para 86 px de vista) y
+`masterLevel` como primer `range` · `--selftest` del Standalone: **4 direcciones OK, exit 0**. No
+commiteado.
+
+## 8.2 (c) — «cargar un modelo en A–D se ve y suena», comprobado, y destapa un fallo viejo (2026-09-19)
+
+**El encargo, partido en dos mitades porque una sola superficie no puede hacer las dos.** Un proceso
+con ventana no puede medir su propia salida de audio sin pelearse con el hilo que la está tirando
+(con un dispositivo de audio abierto lo hace el `AudioProcessorPlayer`), así que la prueba se reparte:
+
+- **SE VE** — la **quinta dirección** del selftest (`Source/WebUI/BridgeSelftest.h`), corriendo en el
+  **plugin real**: escribe cuatro `.neuronikmodel` en el directorio temporal, los carga por
+  `NEURONiKProcessor::loadModel` en A–D y lee los cuatro nombres (`.model-slots__name`) de la ficha de
+  la página de verdad, en su WebView2. Se escriben en el **JSON del ModelMaker** a propósito: si el
+  plugin dejase de entender ESE formato, las ranuras se quedan mudas y la dirección lo dice en voz
+  alta en vez de dar OK con cuatro ranuras vacías.
+- **SUENA** — `Tests/ModelSlotTest.cpp`, con el procesador real (**26 comprobaciones**).
+
+**Lo que destapó la mitad «suena», que es la razón de que exista.**
+
+1. **El formato del ModelMaker nunca se leía.** `PresetManager::loadModelFromFile` solo entendía el
+   dialecto XML (`<NEURONIK_MODEL amplitudes=".." offsets=".."/>`) y la herramienta escribe **JSON**
+   (`{amplitudes[64], frequencyOffsets[64], name, description}`), así que **los ficheros de la propia
+   herramienta no cargaban**: la ranura se quedaba con nombre y sin sonido — exactamente el síntoma
+   del panel nativo, pero por otra causa. Ahora se leen los dos dialectos y lo que no es un modelo se
+   rechaza sin tocar la ranura.
+2. **Mi primer arreglo tenía un `use-after-free`.** `juce::JSON::parse(texto).getDynamicObject()` sobre
+   un `var` **temporal** devuelve un puntero que muere al final de la sentencia: el objeto parseaba
+   «bien» y salía **vacío**. Lo cazó el propio test (un literal parseaba y el fichero no), y el patrón
+   correcto es el que ya usaba `BridgeSelftest.h`: guardar el `var` y leerlo después. Anotado porque es
+   un fallo con la firma de un crash aleatorio en producción, no de un error de compilación.
+3. **Un crash de división por cero que NO era del test.** El test reventaba con
+   `STATUS_INTEGER_DIVIDE_BY_ZERO` (0xC0000094) en el primer bloque **con nota**. La causa: cambiar de
+   motor construye un motor nuevo y lo prepara con `getSampleRate()`/`getBlockSize()`, que valen 0
+   hasta que el host fija la tasa. Dos caminos lo disparaban:
+   - el **constructor del procesador** llamaba `LOAD_PARAM(engineType)`, así que construía un SEGUNDO
+     motor (32 voces, delay, reverb) para prepararlo con 0 y tirar el primero — en Debug eso es un
+     `jassert` en el smoothed value de la saturación. El motor de arriba ya se creó con ESE mismo
+     valor; el que queda lo deja a punto `prepareToPlay`. `engineType` sale de esa lista.
+   - `parameterChanged` preparaba el motor nuevo con la tasa del host **aunque el host no la hubiera
+     dado**: ahora, sin tasa, el motor se prepara en `prepareToPlay` (un host siempre llama a prepare
+     antes de que haya audio). Es la misma clase de bug que un preset restaurado antes de que el
+     reproductor arranque, así que se cierra con guarda **y con test** (sección 6).
+   El test ahora se prepara como lo hace un host (`setRateAndBufferSizeDetails`) en vez de confiar en
+   `prepareToPlay`, que es una llamada virtual: **fue el arnés el que mentía**, no el motor.
+
+**Una tercera cosa, ya en el arnés: ni un OK engañoso ni un FAIL ajeno.** La bancada del piloto sirve
+todavía su exportación retirada (`WebPilot/out`), anterior a la ficha MODELOS A–D, así que su quinta
+dirección fallaba por una página que ya no se mantiene — y un FAIL ahí no habla del puente. El arnés
+no adivina: **el dueño declara** `BridgeSelftest::PageCapabilities`, cuyo defecto es la capacidad
+**COMPLETA** (callar no libra de ninguna dirección), y la bancada declara `retiredPilotPage()`. Su
+transcript dice `MODELOS: OMITIDO (no aplicable): la pagina de esta superficie no publica la ficha…` y
+el veredicto lo repite **en su misma línea** (`RESULT: OK  (MODELOS no aplicable en esta pagina;
+obligatoria en el plugin)`), para que un OK de cuatro no pueda parecer un OK de cinco. El editor del
+plugin no declara nada y `Tests/webuiSelftestContractTest.mjs` lo fija por los dos lados: capacidad
+por defecto completa, parámetro opcional, y **el único que se acoge al omitido es la bancada**.
+
+**Verificación de esta pasada:** build Release **0 errores** (VST3 + Standalone + bancada) ·
+**21/21 ctest** (incluido el nuevo contrato del arnés) · vitest WebUI **185/185** · `--selftest` del
+**Standalone**: `MODELOS`, `NATIVO -> JS`, `JS -> NATIVO`, `GENERAL` y `MIDI` en verde, `RESULT: OK`,
+**exit 0** · `--selftest` de la **bancada**: las cuatro que su página soporta en verde, `MODELOS
+OMITIDO` declarado, **exit 0**. No commiteado.
+
+## La bancada sirve la página del PLUGIN (y `--pilot-page` para la retirada) (2026-09-19)
+
+**El problema, en una frase.** La bancada era, desde el principio, la única superficie con página; el
+plugin la hospeda desde el paso 2c, y entonces la bancada se quedó comprobando **otra** página (la
+exportación retirada, sin la ficha MODELOS A–D) que ya nadie mantiene: un veredicto verde ahí no decía
+nada de lo que se envía, y su quinta dirección tenía que declararse no aplicable.
+
+**Qué cambia.** `Source/WebPilotHost.cpp` gana `PageSource` (`pluginWebUI` por defecto, `pilotExport`
+con `--pilot-page`):
+
+- **Por defecto sirve `WebUI/dist`** (la página que embebe el plugin) desde disco, con la ruta
+  grabada en el binario (`NEURONiK_WEBUI_DIR`) y el mismo override de desarrollo que el plugin
+  (`NEURONIK_WEBUI_DEV_DIR`, apuntar ahí y recargar). Su `--selftest` corre las **cinco**
+  direcciones, igual que el Standalone, y por eso `build.bat` ya no puede dar un verde de cuatro.
+- **El fallback embebido no cambia de página.** El snapshot del exe es la exportación del piloto
+  (`NEURONiK_WebPilotAssets`), así que solo se usa cuando la página servida ES esa (`--pilot-page`).
+  Con la del plugin, un fallo de disco da la página de diagnóstico visible — que dice qué página se
+  estaba sirviendo, dónde la buscó y cómo arreglarlo — en vez de responder a `WebUI/dist` con la
+  página del piloto: un fallback que cambia de página no es un fallback.
+- **La capacidad del arnés viaja con la bandera**, no con el ejecutable: `--pilot-page` declara
+  `PageCapabilities::retiredPilotPage()` (y su transcript lo dice en voz alta); el defecto no declara
+  nada, o sea las cinco direcciones obligatorias. Es el camino débil **pedido a propósito**.
+- **El reporte dice qué página se sirvió** (`page`, `page root`) además de las métricas de arriba,
+  así que un log viejo no se puede confundir con el de otra página.
+- **`build.bat` simplificado de paso:** la guarda del selftest de la bancada ya no es
+  `WebPilot\out\index.html` ni el resultado de la exportación del piloto (`WEBUI_BUILD_FAILED`
+  desaparece), sino `WebUI\dist\index.html`: lo que se comprueba es la página que se envía.
+
+**Verificación (las dos rutas, sobre el mismo binario):**
+
+```
+"NEURONiK Web Pilot.exe" --selftest              -> sirviendo WebUI/dist (la pagina del plugin)
+   MODELOS OK · NATIVO->JS OK · JS->NATIVO OK · GENERAL OK · MIDI OK · RESULT: OK  (exit 0)
+"NEURONiK Web Pilot.exe" --selftest --pilot-page -> sirviendo WebPilot/out (la exportacion retirada)
+   MODELOS: OMITIDO (no aplicable) · las otras cuatro OK · RESULT: OK (MODELOS no aplicable)  (exit 0)
+```
+
+**Fleco abierto:** el snapshot embebido de la bancada sigue siendo el del piloto (y su target
+**exige** `WebPilot/out` para configurarse). Cuando llegue el commit de retirada, eso se va con él:
+la bancada pasará a servir solo `WebUI/dist` y su `CMakeLists` perderá el `FATAL_ERROR` y
+`NEURONiK_WebPilotAssets`.
+
+## La dirección MATRIZ: el selftest corre con el cajón abierto y la matriz en uso (2026-09-19)
+
+**El encargo.** Verificar que el cajón lateral de la matriz no rompe el selftest del plugin **con la
+matriz en uso** — no que el cajón pinte bien (eso lo cubre `WebUI/tests/drawer.test.js`), sino que el
+resto del arnés siga midiendo lo mismo cuando la UI está en ese estado.
+
+**Cómo se comprueba, y por qué así.** El arnés gana una dirección **0 (MATRIZ)** que corre la PRIMERA y
+deja el cajón **abierto a propósito**, para que las otras cinco pasen con la matriz en uso y el lienzo
+tapado (un anclaje que deja de ser el primero del documento, un cajón que roba el foco, un poll que
+deja de empujar: es ahí donde se rompe una UI):
+
+1. pone la matriz **en uso** por el APVTS, que es por donde la pondría un preset: ruta 1 = LFO 1 →
+   Filter Cutoff, cantidad +0.5. Los índices que se esperan en la página NO están escritos en el
+   arnés: el destino sale de `getModDestinationTable()` (append-only, y su orden ES estado de preset)
+   y la fuente de `getModSources()`, así que mover un destino no invalida la dirección;
+2. **pulsa el disparador** `[data-drawer-trigger]` — el mismo clic que daría un usuario, no una clase
+   puesta a mano — y lee, **dentro del cajón abierto**: sus 4 rutas, sus 12 celdas (3 por ruta), la
+   fuente y el destino como `selectedIndex` del `<select>` nativo y la cantidad en el `aria-valuenow`
+   del dial del `Knob` compartido. Que el cajón abierto y su velo compartan id se exige aparte: si no
+   coinciden, lo que se abrió no es el diálogo que ese disparador gobierna.
+
+Leer los controles **dentro** del cajón no es un detalle de estilo: si la celda estuviera en el
+lienzo, la aserción pasaría igual y el cajón podría estar vacío.
+
+**El arnés se cazó a sí mismo (y por eso la dirección vale).** La primera versión comparaba
+`drawer.dataset.drawer` con `trigger.dataset.drawerTrigger` para saber que el cajón abierto era el del
+disparador: son **ids distintos** (`drawer-modMatrix` — el id del DOM — frente a `modMatrix` — el de la
+sección), así que la dirección dijo **FAIL** en su primera corrida con todo lo demás ya en verde. El
+fallo no era del cajón: era una suposición mía sobre el DOM. Se sustituyó por la pareja cajón/velo
+(comprobación más fuerte y verdadera) y por leer los controles dentro del cajón.
+
+**Dónde SÍ y dónde NO.** La capacidad `matrixDrawer` (`PageCapabilities`) nace **completa**: la página
+de la bancada del piloto retirado no lleva cajón, y con `--pilot-page` la dirección se declara NO
+APLICABLE en voz alta, igual que MODELOS. El `RESULT` lista **las dos** en su misma línea
+(`RESULT: OK  (MATRIZ, MODELOS no aplicable(s) en esta pagina; obligatorias en el plugin)`), y el
+contract-test fija que el único que se acoge al omitido sea la bancada.
+
+**Verificación de esta pasada:** build Release **0 errores** · **21/21 ctest** (contrato del arnés
+incluido, con los 5 anclajes nuevos pinchados por los dos lados) · vitest WebUI **185/185** (la página
+no cambia: esta dirección no pide una línea de JS nueva) · `--selftest` del **Standalone**: MATRIZ +
+MODELOS + NATIVO→JS + JS→NATIVO + GENERAL + MIDI en verde, `RESULT: OK`, **exit 0** · `--selftest` de
+la **bancada** sobre la página del plugin: **las seis**, exit 0 · `--selftest --pilot-page`: cuatro
+verdes y **dos omitidos declarados**, exit 0. No commiteado.
+
+**Lo que esta dirección NO comprueba (a propósito).** Que la modulación llegue al AUDIO: eso vive en
+el motor y el arnés no puede exigirlo sin garantizar que el host esté corriendo `processBlock` (en el
+VST3 con un DAW dentro, el editor puede estar abierto con el audio parado). Lo que sí queda medido es
+que la matriz está configurada y que **la página la enseña donde tiene que enseñarla**.
+
+## Retirada del piloto: las tres SSOT se mudan y la bancada pierde su snapshot (2026-09-19)
+
+**El encargo.** Retirar el piloto: mudar sus tres SSOT (el contrato de parámetros, el contrato
+versionado del protocolo y `public/`) y quitar el snapshot que la bancada llevaba embebido, con
+los consumidores repuntados en el mismo commit.
+
+**Cuatro cosas que se decidieron mirando el árbol, no el plan:**
+
+1. **La bancada SE QUEDA** — y no es un matiz: el plan decía "se borra tras la mudanza de las
+   SSOT", pero al ir a borrarla aparece que `Source/WebPilotHost.cpp` es la **única** superficie que
+   monta `ParameterPanel` + `XYPad` (el comentario del procesador ya lo decía: *"its only consumer
+   since the EnvelopeVisualizer was retired"*) y la única que mide el arranque (`--auto-quit` →
+   `pilot-startup.log`). Borrarla se habría llevado por delante el pad XY y las métricas. Lo que se
+   va es su **camino del piloto**: `--pilot-page`, la elección de página (`PageSource`/`pilotRoot`),
+   el respaldo embebido (`loadEmbeddedResource` + `NEURONiK_WebPilotAssets`, y con él el
+   `FATAL_ERROR` de CMake que exigía `WebPilot/out` para poder configurar) y la maquinaria de
+   omisión del arnés. Ahora sirve **solo** `WebUI/dist`, desde disco, y si el disco falla da la
+   página de diagnóstico (que dice dónde la buscó) en vez de contestar con otra página.
+2. **Los nombres "Pilot" se quedan.** El target (`NEURONiK_WebPilotHost`), su `.exe`
+   (`NEURONiK Web Pilot.exe`), `Source/WebPilotHost.cpp`, `pilot-startup.log` y el helper
+   `__pilotSendMidi` conservan el nombre. Renombrarlos toca CMake, `build.bat`, `start.bat`,
+   `bridge-protocol.json` y tres tests (uno de ellos tiene el helper **pinchado por los dos lados**:
+   el C++ y la suite de la página), y no era parte de este encargo. Queda anotado como deuda
+   cosmética: mientras el nombre sea el único resto, el arnés no corre contra nada que se llame
+   "piloto".
+3. **El workspace pnpm de la WebUI era el del piloto.** Hallazgo que no estaba en ningún plan:
+   `WebPilot/pnpm-workspace.yaml` listaba `'../WebUI'`, así que los enlaces de
+   `WebUI/node_modules/@abdsynths/{shared,midi-keyb}` salían de ahí. Borrarlo sin más habría dejado
+   a la WebUI sin poder resolver sus dos dependencias de workspace (el `pnpm install` desde WebUI
+   camina hacia arriba, encuentra el workspace raíz de la suite —que **no** lista `ABDNeural/WebUI`—
+   y deja `node_modules` sin enlaces). La WebUI estrena el suyo: `WebUI/pnpm-workspace.yaml`
+   (ella + los dos paquetes compartidos) y `WebUI/pnpm-lock.yaml`.
+4. **El contrato del protocolo nombraba ficheros muertos.** Su lista `implementations` decía
+   `WebPilot/lib/bridge.js` y `WebPilot/app/page.jsx`, y `BridgeProtocolContractTest` **exige que
+   existan** ("every implementation file the contract names exists"): ahora son
+   `WebUI/src/bridge/bridgeCore.js`, `WebUI/src/app.js` y `Source/WebUI/NeuronikWebView.h`. De paso,
+   `webviewBridgeDirectionTest.mjs` pasa a exigir **dos** emisores (`WebPilotHost.cpp` **y**
+   `WebUI/NeuronikWebView.h`): el editor emite hacia la página desde 8.1 y el guard solo vigilaba
+   uno.
+
+**Las mudanzas (con `git mv`, para que se lean como mudanza y no como copia):**
+
+| De | A | Consumidores repuntados |
+|---|---|---|
+| `WebPilot/generated/` | `WebUI/generated/` | `CMakeLists.txt` (`NEURONIK_PARAMETER_ARTIFACTS_DIR`), `Tests/ParameterExportTool.cpp` (destino por defecto), `build.bat` (paso 2/9) |
+| `WebPilot/contracts/bridge-protocol.json` | `WebUI/contracts/bridge-protocol.json` | `CMakeLists.txt` (`NEURONIK_BRIDGE_PROTOCOL_JSON`), los dos tests del protocolo |
+| `WebPilot/public/` (assets + worklet) | `WebUI/public/` | `WebUI/vite.config.js` (`publicDir`), `build_wasm.bat`, `sync_wasm.bat`, `start.bat` (guard de staleness) |
+| `WebPilotVite/scripts/sync-wasm.mjs` | `WebUI/scripts/sync-wasm.mjs` | `build_wasm.bat` (paso 6/6), `sync_wasm.bat`, y un `pnpm sync:wasm` nuevo en la WebUI |
+| `WebPilot/BRIDGE_PROTOCOL.md` | `DOCS/BRIDGE_PROTOCOL.md` | `Source/WebUI/ParameterBridge.h`, `HANDOFF` |
+| `WEB_PILOT.md` | `DOCS/PILOT_RETIRED.md` (con aviso de que el piloto no existe) | la referencia del bridge en `HANDOFF` |
+| — | `WebUI/pnpm-workspace.yaml` + `WebUI/pnpm-lock.yaml` | `pnpm install` de la WebUI |
+
+**Lo que sale del árbol:** `WebPilot/` completo (app Next, `lib/`, `tests/`, `out/`, `package.json`,
+`next.config.mjs`, `vitest.config.js`, su `.gitignore` y su workspace anidado) y `WebPilotVite/`
+(el contra-piloto React); la bandera `build.bat nextui`; el camino `--pilot-page` de la bancada; el
+snapshot `NEURONiK_WebPilotAssets` y su `FATAL_ERROR`; y `BridgeSelftest::PageCapabilities` con
+`retiredPilotPage()` — su único usuario era la página retirada.
+
+**Un cambio que se ve en el veredicto del arnés.** El `RESULT` deja de poder llevar el sufijo
+`(MODELOS no aplicable en esta pagina; obligatorias en el plugin)`: no hay páginas a las que rebajar
+el listón. `webuiSelftestContractTest.mjs` da la vuelta al check — antes exigía que la capacidad
+fuera completa y que el omitido tuviera un único usuario; ahora **prohíbe** las dos cosas
+(`PageCapabilities`, `retiredPilotPage`, `capabilitiesToUse`, `matrixSkipped`, `modelsSkipped`): no
+basta con no usarla, no puede volver.
+
+**Verificación de esta pasada:** `cmake -S . -B build-reference` **sin** `WebPilot/out` (el
+`FATAL_ERROR` ya no existe y no lo echa de menos) · build Release **0 errores** (Standalone + VST3 +
+bancada + 20 targets de test) · **21/21 ctest** · WebUI **185/185** con `pnpm test` y `pnpm build`
+(`dist/worklet/` sale del `public/` mudado: la prueba de que el `publicDir` es el nuevo) · el
+exportador regenera el contrato en `WebUI/generated/` con los mismos 70 parámetros · `--selftest` del
+**Standalone**: MATRIZ + MODELOS + NATIVO→JS + JS→NATIVO + GENERAL + MIDI, `RESULT: OK`, exit 0 ·
+`--selftest` de la **bancada**: las seis, exit 0, y `pilot-startup.log` con `page: WebUI/dist (la
+pagina del plugin)`, `page root: .../WebUI/dist`, 4 recursos y sin línea de respaldo embebido ·
+`node WebUI/scripts/sync-wasm.mjs` escribe en `WebUI/public/worklet/`.
+
+**Lo que NO se ha tocado:** el VST3 con un host dentro sigue siendo 8.5; el panel nativo y el
+`XYPad` siguen vivos *por* la bancada (su retirada es 8.4); y el anillo del valor modulado sigue
+siendo el fleco abierto de 8.2.

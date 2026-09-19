@@ -12,6 +12,8 @@
 
 #include <juce_events/juce_events.h>
 
+#include <iterator>
+
 namespace NEURONiK::State
 {
 namespace
@@ -86,6 +88,61 @@ namespace
         return result;
     }
 
+    /** Engine each engine-selector option activates, index aligned with
+        State::getEngineChoiceLabels(). The labels come from the layout table and
+        the coverage from here, so the two are pinned together by a size check in
+        the contract test instead of by a comment. */
+    constexpr ParameterEngine engineChoiceCoverage[]
+    {
+        ParameterEngine::neuronik,   // "NEURONiK"
+        ParameterEngine::neurotik,   // "Neurotik"
+    };
+
+    /**
+        @brief Attach the per-option engine metadata a gated choice needs.
+
+        @details Two kinds of list depend on the engine, and both are derived here
+                 rather than hard coded by the UI (which is what the retired
+                 native panel did, by index, with 1-based/0-based comments that
+                 contradicted each other):
+
+                   - the engine SELECTOR: which engine each option activates;
+                   - the four mod DESTINATIONS: which engine consumes each option.
+
+                 The destinations are resolved through the destination table
+                 (State/ParameterDefinitions.h) and engineCoverageFor(), so a
+                 destination can never claim an engine its own parameter does not
+                 belong to.
+    */
+    void applyEngineGating (ParameterDescriptor& descriptor)
+    {
+        if (descriptor.kind != ParameterKind::choice)
+            return;
+
+        if (descriptor.id == IDs::engineType)
+        {
+            descriptor.optionEngines = getEngineChoiceCoverage();
+            return;
+        }
+
+        const bool isDestinationList = descriptor.id == IDs::mod1Destination
+                                    || descriptor.id == IDs::mod2Destination
+                                    || descriptor.id == IDs::mod3Destination
+                                    || descriptor.id == IDs::mod4Destination;
+
+        if (! isDestinationList)
+            return;
+
+        descriptor.optionEngines.reserve (getModDestinationTable().size());
+
+        for (const auto& destination : getModDestinationTable())
+            descriptor.optionEngines.push_back (destination.parameterId == nullptr
+                                                    ? ParameterEngine::both   // "Off"
+                                                    : engineCoverageFor (destination.parameterId));
+
+        descriptor.engineParameter = IDs::engineType;
+    }
+
     ParameterDescriptor describe (const juce::RangedAudioParameter& parameter)
     {
         ParameterDescriptor descriptor;
@@ -129,6 +186,8 @@ namespace
         descriptor.engines   = engineCoverageFor (descriptor.id);
         descriptor.dspNote   = dspNoteFor (descriptor.id);
 
+        applyEngineGating (descriptor);
+
         return descriptor;
     }
 }
@@ -170,12 +229,14 @@ juce::String parameterEngineName (ParameterEngine engine)
 
 juce::StringArray getUiOnlyParameterIds()
 {
-    // Present in the APVTS and wired to panel behaviour, but never forwarded to a
-    // DSP engine: the panels apply the action themselves.
-    // Only the randomise action of ParameterPanel reads these; the DSP never does.
+    // Present in the APVTS and wired to a STATE action, but never forwarded to a
+    // DSP engine. Since 2026-09-19 that action is `State/ParameterRandomizer`, which
+    // the processor runs for both surfaces (the page's RANDOM asks over the bridge,
+    // the bench calls it directly): the DSP still never sees them, so they stay
+    // `uiOnly` and the page keeps marking them as "not consumed by the engine".
     return {
-        IDs::randomStrength,    // scaling of the randomise button
-        IDs::freezeResonator,   // randomise guards, applied by the panel
+        IDs::randomStrength,    // scales the RANDOMIZE (0 = nothing moves)
+        IDs::freezeResonator,   // RANDOMIZE guards, one per group
         IDs::freezeFilter,
         IDs::freezeEnvelopes
     };
@@ -204,6 +265,11 @@ ParameterDspStatus dspStatusFor (const juce::String& id)
     if (getNotRoutedParameterIds().contains (id)) return ParameterDspStatus::notRouted;
 
     return ParameterDspStatus::implemented;
+}
+
+std::vector<ParameterEngine> getEngineChoiceCoverage()
+{
+    return { std::begin (engineChoiceCoverage), std::end (engineChoiceCoverage) };
 }
 
 ParameterEngine engineCoverageFor (const juce::String& id)
@@ -259,9 +325,9 @@ juce::String dspNoteFor (const juce::String& id)
     if (id == IDs::unisonEnabled)
         return "Retired from the panel: nothing reads it, unison amount comes from detune and spread";
     if (id == IDs::randomStrength)
-        return "Panel action only: strength of the randomise button";
+        return "State action only: scales the RANDOMIZE; the DSP never sees it";
     if (id.startsWith ("freeze"))
-        return "Panel action only: the UI performs the freeze";
+        return "State action only: the RANDOMIZE skips the frozen group";
 
     return {};
 }

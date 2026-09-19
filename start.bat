@@ -3,8 +3,8 @@ setlocal enabledelayedexpansion
 REM ============================================================
 REM start.bat - Arranque de la version web de NEURONiK
 REM
-REM   1) Host del piloto WebPilot (WebView2 + bridge JUCE<->
-REM      WebUI, igual que ABDMS2000 usa su Vite en el 8384).
+REM   1) Bancada WebView2 (NEURONiK Web Pilot.exe): sirve WebUI\dist
+REM      con el bridge JUCE<->WebUI, igual que ABDMS2000 usa su Vite en el 8384.
 REM   2) Modo navegador: la misma WebUI servida sin bridge
 REM      (LOCAL MODE), para depurar la pagina a solas.
 REM
@@ -12,10 +12,10 @@ REM Compila antes con build.bat si los ejecutables no existen.
 REM ============================================================
 
 set "HOST_EXE=build-reference\NEURONiK_WebPilotHost_artefacts\Release\NEURONiK Web Pilot.exe"
-set "WEBUI_DIR=WebPilot\out"
+set "WEBUI_DIR=WebUI\dist"
 
 echo ============================================================
-echo  NEURONiK - Version web (WebPilot)
+echo  NEURONiK - Version web (WebUI)
 echo ============================================================
 
 if not exist "%HOST_EXE%" (
@@ -27,13 +27,13 @@ if not exist "%HOST_EXE%" (
 if not exist "%WEBUI_DIR%\index.html" (
     echo [ERROR] No existe la WebUI exportada:
     echo         %WEBUI_DIR%\index.html
-    echo         Compila primero con build.bat ^(genera WebPilot\out^)
+    echo         Compila primero con build.bat ^(genera WebUI\dist^)
     goto :fin
 )
 
 REM --- Aviso de staleness del worklet (evita "sonar a la pasada anterior") ---
-REM build.bat deja build-wasm\neuronik_dsp.wasm recien compilado y Vite copia
-REM WebPilot\public\worklet a out/. Si aqui no coinciden, la pagina sonaria con
+REM build.bat deja build-wasm\neuronik_dsp.wasm recien compilado y el build de la
+REM WebUI copia WebUI\public\worklet a dist/. Si aqui no coinciden, la pagina sonaria con
 REM un DSP viejo (o no sonaria si falta), que es el sintoma mudo de siempre.
 if not exist "build-wasm\neuronik_dsp.wasm" (
     echo [AVISO] Falta build-wasm\neuronik_dsp.wasm: compila con build_wasm.bat.
@@ -46,7 +46,7 @@ if not exist "build-wasm\neuronik_dsp.wasm" (
 )
 
 echo.
-echo   1. Piloto en WebView2 ^(bridge con el plugin^)  [recomendado]
+echo   1. Bancada WebView2 ^(bridge con el plugin^)  [recomendado]
 echo   2. Solo la WebUI en el navegador ^(sin bridge, LOCAL MODE^)
 echo   3. Selftest bidireccional del bridge ^(automatico, cierra solo^)
 echo.
@@ -54,10 +54,10 @@ choice /C 123 /N /M "Elige una opcion [1-3]: "
 if errorlevel 3 goto :selftest
 if errorlevel 2 goto :navegador
 
-:piloto
+:bancada
 echo.
 echo ============================================================
-echo  Arrancando el host del piloto ^(WebView2^)...
+echo  Arrancando la bancada WebView2...
 echo  Cierra la ventana para salir.
 echo ============================================================
 start "" "%HOST_EXE%"

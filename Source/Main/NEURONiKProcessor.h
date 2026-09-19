@@ -37,7 +37,17 @@ public:
     NEURONiK::Serialization::PresetManager& getPresetManager() { return *presetManager; }
     NEURONiK::Main::MidiMappingManager& getMidiMappingManager() { return *midiMappingManager; }
 
-    void loadModel(const juce::File& file, int slot);
+    /**
+     * Loads a .neuronikmodel into one of the four slots (0 = A ... 3 = D).
+     *
+     * Accepts nothing it cannot use: an out-of-range slot, a missing file and a
+     * file that is not a valid model all answer false and leave the slot as it
+     * was (the name and modelPath<slot> only change on success). The WebUI needs
+     * that answer: its loadModel action ends in modelsState or in modelError, so
+     * a silent failure would be a slot that looks loaded and sounds empty.
+     * @returns true when the model was queued into the engine and the slot renamed.
+     */
+    bool loadModel(const juce::File& file, int slot);
     void reloadModels();
 
     /**
@@ -126,7 +136,7 @@ public:
         return modulationValues[static_cast<size_t>(target)];
     }
 
-    // --- MIDI Injection (Used by Editor/Keyboard/WebPilot bridge) ---
+    // --- MIDI Injection (Used by Editor/Keyboard/WebUI bridge) ---
     void injectNoteOn(int midiChannel, int midiNoteNumber, float velocity);
     void injectNoteOff(int midiChannel, int midiNoteNumber, float velocity);
     /** Pitch bend from UI threads: position14bit is the raw 14-bit value (0..16383, 8192 = center). */
@@ -138,7 +148,7 @@ public:
     void requestAllNotesOff();
 
     // Last mod-wheel level injected through injectController (CC1), 0..1, for UI
-    // feedback loops (WebPilot keyboard page mirrors it on the shared wheel).
+    // feedback loops (the WebUI page keyboard mirrors it on the shared wheel).
     std::atomic<float> externalModWheel { 0.0f };
 
     // Pitch bend as this block handed it to the engine, -1..+1 (0 = centre).
@@ -148,21 +158,23 @@ public:
      *         channel filter + injected notes), cumulative across blocks.
      *  Bitmask over 4 x uint32, written from the audio thread in processBlock and
      *  read relaxed from the UI thread (a torn 32-bit read is impossible).
-     *  Mirrored on the WebPilot page keyboard via midiNoteState.
+     *  Mirrored on the WebUI page keyboard via midiNoteState.
      */
     [[nodiscard]] std::vector<int> getHeldNotes() const;
 
     // Last mod-wheel level injected through injectController (CC1), 0..1, for UI
-    // feedback loops (WebPilot keyboard page mirrors it on the shared wheel).
+    // feedback loops (the WebUI page keyboard mirrors it on the shared wheel).
     // externalPitchBend (above) completes the external MIDI view.
     std::atomic<std::uint32_t> heldNotesMask[4] { 0u, 0u, 0u, 0u };
 
     // Copies the APVTS values into the ui* telemetry atomics the visuals read
-    // (envelope params, morph coordinates). processBlock calls it every block;
-    // the WebPilot host — which has NO audio callback — polls it from its timer
-    // so the native XYPad/EnvelopeVisualizer stay live there too. Thread-safe by
-    // construction (atomics + APVTS raw-value loads). NOT the engine-derived
-    // telemetry (spectral/LFO/output envelopes): that only exists after render.
+    // (envelope params, morph coordinates). processBlock calls it every block, y la
+    // bancada WebView2 lo llama ADEMAS desde su timer: asi el XYPad nativo sigue vivo
+    // aunque el audio de la bancada no este corriendo (su unico consumidor desde que
+    // el EnvelopeVisualizer se retiro el 2026-09-19; la curva se la queda la pagina).
+    // Thread-safe by construction (atomics + APVTS raw-value loads). NOT the
+    // engine-derived telemetry (spectral/LFO/output envelopes): that only exists
+    // after render.
     void refreshUiTelemetryFromApvts() noexcept;
 
 protected:

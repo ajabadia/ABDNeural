@@ -2,8 +2,8 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "CustomUIComponents.h"
-#include "EnvelopeVisualizer.h"
 #include "../Main/ModulationTargets.h"
+#include "../State/ParameterRandomizer.h"
 
 class NEURONiKProcessor;
 
@@ -22,7 +22,6 @@ public:
 private:
     void setupControl(RotaryControl& control, const juce::String& paramID, const juce::String& labelText, ::NEURONiK::ModulationTarget modTarget = ::NEURONiK::ModulationTarget::Count);
     void setupControl(VerticalSliderControl& control, const juce::String& paramID, const juce::String& labelText, ::NEURONiK::ModulationTarget modTarget = ::NEURONiK::ModulationTarget::Count);
-    void randomizeParameters();
 
     NEURONiKProcessor& processor;
     juce::AudioProcessorValueTreeState& vts;
@@ -34,14 +33,16 @@ private:
     RotaryControl randomStrength;
     VerticalSliderControl masterLevel;
 
-    std::unique_ptr<EnvelopeVisualizer> adsrVisualizer;
-
     // Unison Controls. There is no enable toggle: the parameter exists in the
     // APVTS for preset compatibility but the engine ignores it, so exposing it
     // would be a control that does nothing.
     RotaryControl unisonDetune;
     RotaryControl unisonSpread;
 
+    // RANDOM: la logica del sorteo es COMPARTIDA (State/ParameterRandomizer), para
+    // que la bancada y la pagina hagan exactamente lo mismo. El generador vive aqui
+    // (sin getSystemRandom(): regla WASM 7A).
+    juce::Random random { static_cast<juce::int64> (juce::Time::getMillisecondCounter()) };
     juce::TextButton randomizeButton{ "RANDOM" };
     
     juce::ToggleButton freezeResBtn { "FREEZE RESONATOR" };

@@ -40,11 +40,10 @@ ParameterPanel::ParameterPanel(NEURONiKProcessor& p)
     setupControl(masterLevel, IDs::masterLevel, "VOLUME", ModulationTarget::MasterLevel);
     setupControl(randomStrength, IDs::randomStrength, "STRENGTH", ModulationTarget::Count);
 
-    adsrVisualizer = std::make_unique<EnvelopeVisualizer>(
-        processor.uiAttack, processor.uiDecay, processor.uiSustain, processor.uiRelease, 
-        processor.uiEnvelope
-    );
-    // Visualizer removed from General per user request (no space)
+    // El `EnvelopeVisualizer` (y su miembro adsrVisualizer) se retiro el 2026-09-19:
+    // se construia en CADA apertura del editor y nunca se anadia al panel ("removed
+    // from General per user request (no space)"), asi que era una asignacion muerta.
+    // La curva ADSR vive ahora en la WebUI (ficha FILTRO & ENVOLVENTE).
     globalBox.addAndMakeVisible(freezeResBtn);
     globalBox.addAndMakeVisible(freezeFltBtn);
     globalBox.addAndMakeVisible(freezeEnvBtn);
@@ -63,7 +62,13 @@ ParameterPanel::ParameterPanel(NEURONiKProcessor& p)
     engineSelector.addItem("Engine: Neurotik", 2);
     engineAttach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(vts, IDs::engineType, engineSelector);
 
-    randomizeButton.onClick = [this] { randomizeParameters(); };
+    // RANDOM: la logica es COMPARTIDA (State/ParameterRandomizer), no un metodo
+    // privado de este panel. Antes vivia aqui y tenia un `jmap` que mezclaba
+    // unidades reales con normalizadas (ver ParameterRandomizerTest).
+    randomizeButton.onClick = [this]
+    {
+        NEURONiK::State::applyRandomize (vts, NEURONiK::State::readRandomizeStrength (vts), random);
+    };
     
     startTimerHz(30);
 }
@@ -89,89 +94,6 @@ void ParameterPanel::setupControl(VerticalSliderControl& ctrl, const juce::Strin
     UIUtils::setupVerticalSlider(*this, ctrl, paramID, labelText, vts, processor, verticalLNF, modTarget);
 }
 
-
-void ParameterPanel::randomizeParameters()
-{
-    // Instancia local en vez de getSystemRandom(): sin entropia de sistema
-    // (regla WASM 7A) y sin estado global compartido entre hilos.
-    juce::Random random { (juce::int64) juce::Time::getMillisecondCounter() };
-
-    auto randomizeParam = [&](const juce::String& id, float minVal, float maxVal) {
-        if (auto* param = vts.getParameter(id))
-        {
-            // Check freeze flags based on parameter ID
-            bool isFrozen = false;
-            if (id == IDs::morphX || id == IDs::morphY || id == IDs::oscInharmonicity || id == IDs::oscRoughness ||
-                id == IDs::resonatorParity || id == IDs::resonatorShift || id == IDs::resonatorRolloff ||
-                id == IDs::oscExciteNoise || id == IDs::excitationColor || id == IDs::impulseMix || id == IDs::resonatorRes ||
-                id == IDs::unisonDetune || id == IDs::unisonSpread)
-            {
-                isFrozen = vts.getRawParameterValue(IDs::freezeResonator)->load() > 0.5f;
-            }
-            else if (id == IDs::filterCutoff || id == IDs::filterRes)
-            {
-                isFrozen = vts.getRawParameterValue(IDs::freezeFilter)->load() > 0.5f;
-            }
-            else if (id.startsWith("env") || id == IDs::oscLevel)
-            {
-                isFrozen = vts.getRawParameterValue(IDs::freezeEnvelopes)->load() > 0.5f;
-            }
-            else if (id.startsWith("fx"))
-            {
-                 // Use Filter freeze for FX as well since we don't have a dedicated button
-                 isFrozen = vts.getRawParameterValue(IDs::freezeFilter)->load() > 0.5f;
-            }
-
-            if (isFrozen) return;
-
-            float strength = vts.getRawParameterValue(IDs::randomStrength)->load();
-            float currentValue = vts.getParameterRange(id).convertFrom0to1(param->getValue());
-            
-            float fullRandomVal = minVal + random.nextFloat() * (maxVal - minVal);
-            float random0to1 = vts.getParameterRange(id).convertTo0to1(fullRandomVal);
-            
-            float newVal0to1 = juce::jmap(strength, currentValue, random0to1);
-            param->setValueNotifyingHost(newVal0to1);
-        }
-    };
-
-    randomizeParam(IDs::morphX, 0.0f, 1.0f);
-    randomizeParam(IDs::morphY, 0.0f, 1.0f);
-    
-    // Core Resonator Parameters
-    randomizeParam(IDs::oscInharmonicity, 0.0f, 0.4f);
-    randomizeParam(IDs::oscRoughness,     0.0f, 0.5f);
-    
-    // Advanced Spectral Controls
-    randomizeParam(IDs::resonatorParity,  0.2f, 0.8f); 
-    randomizeParam(IDs::resonatorShift,   0.8f, 1.3f);
-    randomizeParam(IDs::resonatorRolloff, 0.5f, 2.8f);
-
-    randomizeParam(IDs::filterCutoff, 200.0f, 8000.0f);
-    randomizeParam(IDs::filterRes, 0.0f, 0.6f);
-    randomizeParam(IDs::envAttack, 0.001f, 0.5f);
-    randomizeParam(IDs::envDecay, 0.1f, 1.0f);
-    randomizeParam(IDs::envSustain, 0.2f, 0.8f);
-    randomizeParam(IDs::envRelease, 0.1f, 2.0f);
-    
-    // Add missing params
-    randomizeParam(IDs::oscLevel, 0.3f, 0.8f);
-    
-    // Mild FX Randomization
-    randomizeParam(IDs::fxSaturation, 0.0f, 0.4f);
-    randomizeParam(IDs::fxChorusMix, 0.0f, 0.5f);
-    randomizeParam(IDs::fxReverbMix, 0.0f, 0.4f);
-
-    // Neurotik Specific (Phase 30.5)
-    randomizeParam(IDs::oscExciteNoise,  0.0f, 0.8f);
-    randomizeParam(IDs::excitationColor, 0.2f, 0.7f);
-    randomizeParam(IDs::impulseMix,       0.0f, 1.0f);
-    randomizeParam(IDs::resonatorRes,    0.3f, 0.95f);
-
-    // Mild Unison Randomization
-    randomizeParam(IDs::unisonDetune, 0.0f, 0.05f);
-    randomizeParam(IDs::unisonSpread, 0.2f, 0.8f);
-}
 
 void ParameterPanel::paint(juce::Graphics& g)
 {

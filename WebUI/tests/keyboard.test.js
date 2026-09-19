@@ -6,23 +6,27 @@
  *      the host's selftest reads the mod wheel after injecting CC1 natively;
  *   2. mounting the keyboard does NOT push the masterLevel slider out of first
  *      place: the host reads `document.querySelector('input[type=range]')` and
- *      the wheels are range inputs too. Screen order (bridge first) is what
- *      keeps them behind it, and this is the regression that would break it.
+ *      the wheels are range inputs too. El orden del documento (el fader va en
+ *      la ficha GLOBAL, las ruedas en la franja de abajo) es lo que las deja
+ *      detrás, y esta es la regresión que lo rompería.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { describeControl } from '../src/contracts/parameters.js';
-import { contractSummary, defaultNormalizedState, describePilotControls } from '../src/contracts/parameters.js';
-import { GENERAL_PARAMETER_IDS, SCREEN_PARAMETER_IDS } from '../src/contracts/screens.js';
+import { contractSummary, defaultNormalizedState, describeControl } from '../src/contracts/parameters.js';
+import { SCREEN_PARAMETER_IDS } from '../src/contracts/screens.js';
+import { BANDS } from '../src/contracts/sections.js';
 import { createPanel } from '../src/ui/panel.js';
 import { mountKeyboard } from '../src/ui/keyboard.js';
 
+/** Las mismas bandas que monta app.js, con sus controles resueltos. */
+const bands = BANDS.map((band) => band.map((section) => ({
+  ...section,
+  controls: section.ids.map(describeControl).filter(Boolean),
+})));
+
 function mountPanelWithKeyboard(callbacks = {}) {
-  const panel = createPanel({
-    bridgeControls: describePilotControls(['masterLevel', 'morphX']),
-    generalControls: GENERAL_PARAMETER_IDS.map(describeControl).filter(Boolean),
-  });
+  const panel = createPanel({ bands, baselineId: 'masterLevel' });
 
   document.body.append(panel.element);
 

@@ -188,13 +188,17 @@ namespace
         [[nodiscard]] juce::String getCurrentPreset() const override { return current; }
     };
 
-    /** @brief Spectral-model backend stub for the modelsState section. */
+    /** @brief Spectral-model backend stub for the modelsState/loadModel sections. */
     struct FakeModelController final : public NativeModelController
     {
         int numSlots = 4;
         float amp0 = 0.5f;
         float freq0 = 0.25f;
         bool valid = true;
+        /** Display names, one per slot: what the page shows next to A..D. */
+        juce::StringArray slotNames { "EMPTY", "EMPTY", "EMPTY", "EMPTY" };
+        /** Slots the bridge asked to load, in request order. */
+        std::vector<int> loads;
 
         int getNumModelSlots() const override { return numSlots; }
 
@@ -208,6 +212,16 @@ namespace
             frequencyOffsets[0] = freq0;
             isValid = valid;
         }
+
+        juce::String getModelName (int slot) const override
+        {
+            if (slot < 0 || slot >= slotNames.size())
+                return "EMPTY";
+
+            return slotNames[slot];
+        }
+
+        void loadModel (int slot) override { loads.push_back (slot); }
     };
 
     /** @brief `{ action: <name>, name: <preset> }`, the shape preset messages use. */
@@ -614,6 +628,8 @@ int main()
                 check ((int) entry->getProperty ("slot") == 0
                            && validVar.isBool() && static_cast<bool> (validVar),
                        "slot 0 is published as valid");
+                check (entry->getProperty ("name").toString() == fakeModels.slotNames[0],
+                       "slot 0 travels with its display name (the page cannot read the disk)");
                 check (amps != nullptr && amps->size() == 64
                            && static_cast<double> ((*amps)[0]) == static_cast<double> (fakeModels.amp0),
                        "amplitudes travel as 64 doubles (slot 0 amplitude matches)");
@@ -643,6 +659,97 @@ int main()
 
         check (recorder.withAction (BridgeActions::modelsState).empty(),
                "without a model backend no modelsState is sent");
+    }
+
+    // --- 10. Model loading (additive to protocol v1) -------------------------------
+    std::cout << "\nModel loading\n";
+
+    {
+        FakeModelController fakeModels;
+        bridge.setModelController (&fakeModels);
+        bridge.setSender (recorder.sender());
+        bridge.resetStats();
+        recorder.messages.clear();
+
+        const auto loadJs = [] (const juce::var& slot)
+        {
+            juce::DynamicObject::Ptr message = new juce::DynamicObject();
+            message->setProperty ("action", BridgeActions::loadModel);
+            message->setProperty ("slot", slot);
+            return juce::var (message.get());
+        };
+
+        // The request reaches the backend; the ANSWER is asynchronous (the dialog
+        // has not closed yet), so nothing else may be sent here.
+        bridge.handleJsEvent (loadJs (2));
+
+        check (fakeModels.loads == std::vector<int> { 2 },
+               "loadModel hands the slot to the backend");
+        check (bridge.getStats().modelLoads == 1,
+               "the accepted request is counted in stats.modelLoads");
+        check (recorder.withAction (BridgeActions::modelError).empty(),
+               "an accepted request stays silent until the dialog answers");
+
+        // The completion: the page gets the slots again, with the name the
+        // processor recorded for the loaded slot.
+        fakeModels.slotNames.set (2, "Cristal");
+        bridge.sendModelsState();
+
+        const auto afterLoad = recorder.withAction (BridgeActions::modelsState);
+        check (afterLoad.size() == 1, "the completion publishes a fresh modelsState");
+
+        if (afterLoad.size() == 1)
+        {
+            const auto* slots = afterLoad[0].getDynamicObject()->getProperty ("slots").getArray();
+
+            check (slots != nullptr && slots->size() == 4
+                       && (*slots)[2].getDynamicObject()->getProperty ("name").toString() == "Cristal",
+                   "the fresh modelsState carries the loaded slot's name");
+        }
+
+        // Cancelled dialog or unusable file: the backend answers modelError.
+        bridge.sendModelError (2, "no file chosen");
+
+        const auto errors = recorder.withAction (BridgeActions::modelError);
+        check (errors.size() == 1
+                   && (int) errors[0].getDynamicObject()->getProperty ("slot") == 2
+                   && errors[0].getDynamicObject()->getProperty ("detail").toString() == "no file chosen",
+               "modelError names the slot and the reason");
+        check (bridge.getStats().modelErrors == 1, "modelError is counted");
+
+        // Out-of-range and fractional slots never reach the backend: the wire is
+        // untrusted, and a silently truncated slot would look like it worked.
+        recorder.messages.clear();
+        bridge.handleJsEvent (loadJs (4));
+        bridge.handleJsEvent (loadJs (-1));
+        bridge.handleJsEvent (loadJs (1.5));
+
+        check (fakeModels.loads.size() == 1,
+               "slots outside 0..numSlots-1 and fractional slots never reach the backend");
+
+        const auto rejects = recorder.withAction (BridgeActions::modelError);
+        check (rejects.size() == 3, "every rejected slot answers modelError");
+
+        if (rejects.size() == 3)
+            check (rejects[0].getDynamicObject()->getProperty ("detail").toString().contains ("out of range")
+                       && rejects[2].getDynamicObject()->getProperty ("detail").toString().contains ("integer"),
+                   "out-of-range and fractional slots say exactly why");
+
+        // Without a backend every request answers modelError: a slot that looks
+        // loaded and sounds empty is the bug this message exists to prevent.
+        bridge.setModelController (nullptr);
+        recorder.messages.clear();
+        bridge.resetStats();
+
+        bridge.handleJsEvent (loadJs (0));
+
+        const auto noBackend = recorder.withAction (BridgeActions::modelError);
+        check (noBackend.size() == 1
+                   && noBackend[0].getDynamicObject()->getProperty ("detail").toString()
+                          .contains ("no model backend"),
+               "without a backend every loadModel answers modelError");
+        check (bridge.getStats().modelLoads == 0,
+               "a request with no backend is not counted as a load");
     }
 
     // ============================================================================

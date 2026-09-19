@@ -1,3 +1,27 @@
 node_modules/
 dist/
 *.log
+
+# ---------------------------------------------------------------------------
+# generated/ NO se ignora a proposito.
+#
+# Esta regla (y su razon) venian del piloto: al retirarlo se mudo aqui el contrato
+# de parametros, que era su SSOT mas importante. Contiene lo que consume el panel
+# (parameters.generated.json / .js / .d.ts, ~70 KB en total) y se versiona por
+# tres motivos:
+#
+#   1. NEURONiK_ParameterDescriptorTest lo compara contra una exportacion nueva,
+#      asi que versionarlo convierte cualquier divergencia en un diff revisable.
+#      Si se ignorara, en un clone limpio el test fallaria hasta ejecutar la
+#      exportacion, y la garantia anti-drift no valdria nada fuera de esta maquina.
+#   2. Lo importa src/contracts/parameters.js y lo copia el build de Vite: el
+#      repositorio queda autocontenido (salvo node_modules).
+#   3. Es texto pequeno y determinista (sin fechas), asi que no genera ruido.
+#
+# Lo MISMO vale para contracts/bridge-protocol.json (lo pinchan los dos tests del
+# protocolo) y para public/ (los assets compartidos y el worklet): son SSOT
+# versionadas, no salida de build. Lo unico que es salida es dist/.
+#
+# Se regenera con build.bat (paso 2/9) o con NEURONiK_ParameterExport.
+# No anadir aqui ninguna regla que ignore generated/, contracts/ ni public/.
+# ---------------------------------------------------------------------------

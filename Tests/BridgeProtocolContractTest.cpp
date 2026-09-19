@@ -7,7 +7,7 @@
 
                  The wire format of the bridge (event ids, action names, gesture
                  phases, value conventions, delivery behaviours) is pinned by
-                 `WebPilot/contracts/bridge-protocol.json`, in git. This test
+                 `WebUI/contracts/bridge-protocol.json`, in git. This test
                  compares that committed file against the constants the native
                  side actually compiles with, so:
 
@@ -144,6 +144,9 @@ int main()
     check (asString (property (parsed, "messages.nativeToJs.modelsState.fields.action"))
                .contains (NEURONiK::WebUI::BridgeActions::modelsState),
            "modelsState literal matches the compiled constant");
+    check (asString (property (parsed, "messages.nativeToJs.modelError.fields.action"))
+               .contains (NEURONiK::WebUI::BridgeActions::modelError),
+           "modelError literal matches the compiled constant");
 
     // --- Actions: JS -> native -----------------------------------------------------
     check (asString (property (parsed, "messages.jsToNative.parameterChanged.fields.action"))
@@ -161,6 +164,9 @@ int main()
     check (asString (property (parsed, "messages.jsToNative.savePreset.fields.action"))
                .contains (NEURONiK::WebUI::BridgeActions::savePreset),
            "savePreset literal matches the compiled constant");
+    check (asString (property (parsed, "messages.jsToNative.loadModel.fields.action"))
+               .contains (NEURONiK::WebUI::BridgeActions::loadModel),
+           "loadModel literal matches the compiled constant");
     check (asString (property (parsed, "messages.jsToNative.midiNoteOn.fields.action"))
                .contains (NEURONiK::WebUI::BridgeActions::midiNoteOn),
            "midiNoteOn literal matches the compiled constant");
@@ -178,6 +184,8 @@ int main()
            "midiPanic literal matches the compiled constant");
     check (! property (parsed, "behaviour.midiMessages").isVoid(),
            "the contract documents the MIDI behaviour (ranges, rejection, no echo)");
+    check (! property (parsed, "behaviour.modelMessages").isVoid(),
+           "the contract documents the model behaviour (async answer, never silent)");
 
     // --- Gestures: the phases the native side accepts ------------------------------
     {
@@ -238,8 +246,8 @@ int main()
             // Release -> NEURONiK_BridgeProtocolContractTest.exe's parent chain is
             //   build-reference/Release -> build-reference -> ABDNeural
             const juce::File repoRoot = juce::File (NEURONIK_BRIDGE_PROTOCOL_JSON)
-                                            .getParentDirectory()   // WebPilot/contracts
-                                            .getParentDirectory()   // WebPilot
+                                            .getParentDirectory()   // WebUI/contracts
+                                            .getParentDirectory()   // WebUI
                                             .getParentDirectory();  // ABDNeural
 
             for (const auto& entry : referenced)

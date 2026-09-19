@@ -1,0 +1,18 @@
+# Workspace pnpm de la WebUI.
+#
+# Es SU PROPIO workspace por el mismo motivo por el que lo era el del piloto: el
+# workspace raíz de la suite (D:/desarrollos/ABDSynths/pnpm-workspace.yaml) NO
+# lista esta carpeta, así que sin este fichero `pnpm install` desde WebUI camina
+# hacia arriba, resuelve las dependencias en el lock raíz y `WebUI/node_modules`
+# se queda SIN enlaces a los dos paquetes compartidos (el síntoma es un build que
+# no encuentra `@abdsynths/shared`). Con él, la WebUI es su propio workspace y los
+# compartidos son miembros, de modo que el `@abdsynths/shared@workspace:*` interno
+# de midi-keyb resuelve aquí dentro, zero-copy.
+#
+# Antes esto lo hacía el workspace anidado del piloto
+# (`WebPilot/pnpm-workspace.yaml`, que listaba `'../WebUI'`); ese fichero se fue
+# con la retirada del piloto (ticket 8.4) y la WebUI se queda con el suyo.
+packages:
+  - '.'
+  - '../../ABDSharedAssets'
+  - '../../ABDSharedCode/MidiKeyboard'

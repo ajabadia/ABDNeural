@@ -62,6 +62,37 @@ namespace
         return out;
     }
 
+    /** @brief Quoted, comma separated engine names, ready to drop into an array. */
+    juce::String formatEngines (const std::vector<ParameterEngine>& engines)
+    {
+        juce::StringArray quoted;
+
+        for (const auto engine : engines)
+            quoted.add (quote (parameterEngineName (engine)));
+
+        return quoted.joinIntoString (", ");
+    }
+
+    /**
+        @brief Per-option engine metadata, emitted only where it exists.
+        @details 66 of the 70 descriptors carry no gating, and an empty array on
+                 each of them would be noise: the key appears only on the lists
+                 that depend on the engine (see applyEngineGating).
+    */
+    juce::String formatEngineGating (const ParameterDescriptor& descriptor, const char* indent)
+    {
+        juce::String lines;
+
+        if (! descriptor.optionEngines.empty())
+            lines << indent << "\"optionEngines\": ["
+                  << formatEngines (descriptor.optionEngines) << "],\n";
+
+        if (descriptor.engineParameter.isNotEmpty())
+            lines << indent << "\"engineParameter\": " << quote (descriptor.engineParameter) << ",\n";
+
+        return lines;
+    }
+
     juce::String formatChoices (const juce::StringArray& choices, const juce::String& separator)
     {
         juce::StringArray quoted;
@@ -133,6 +164,7 @@ juce::String buildParameterArtifactsJson()
         json << "      \"defaultChoiceIndex\": " << descriptor.defaultChoiceIndex << ",\n";
         json << "      \"dspStatus\": " << quote (parameterDspStatusName (descriptor.dspStatus)) << ",\n";
         json << "      \"engines\": " << quote (parameterEngineName (descriptor.engines)) << ",\n";
+        json << formatEngineGating (descriptor, "      ");
         json << "      \"dspNote\": " << quote (descriptor.dspNote) << "\n";
         json << "    }" << (index + 1 < descriptors.size() ? "," : "") << "\n";
     }
@@ -198,6 +230,7 @@ juce::String buildParameterArtifactsJavaScript()
         js << "    defaultChoiceIndex: " << descriptor.defaultChoiceIndex << ",\n";
         js << "    dspStatus: " << quote (parameterDspStatusName (descriptor.dspStatus)) << ",\n";
         js << "    engines: " << quote (parameterEngineName (descriptor.engines)) << ",\n";
+        js << formatEngineGating (descriptor, "    ");
         js << "    dspNote: " << quote (descriptor.dspNote) << ",\n";
         js << "  },\n";
     }
@@ -262,6 +295,12 @@ juce::String buildParameterArtifactsTypeScript()
     ts << "  readonly defaultChoiceIndex: number;\n";
     ts << "  readonly dspStatus: DspStatus;\n";
     ts << "  readonly engines: EngineCoverage;\n";
+    ts << "  /** Engine behind each option of a gated choice (index aligned with choices):\n";
+    ts << "      the engine that consumes the option, or the engine it selects when the\n";
+    ts << "      descriptor IS the engine selector. Absent when the list is engine independent. */\n";
+    ts << "  readonly optionEngines?: readonly EngineCoverage[];\n";
+    ts << "  /** Choice parameter that selects the engine, for lists whose availability depends on it. */\n";
+    ts << "  readonly engineParameter?: string;\n";
     ts << "  readonly dspNote: string;\n";
     ts << "}\n";
     ts << "\n";

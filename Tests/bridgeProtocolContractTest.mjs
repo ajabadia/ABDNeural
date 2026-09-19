@@ -1,9 +1,10 @@
 /**
  * ABDNeural — anti-drift del contrato versionado del protocolo del bridge.
  *
- * Comprueba que `WebPilot/lib/bridge.js` (el transporte JS real) y las formas de
- * mensaje que la página envía y espera coinciden con
- * `WebPilot/contracts/bridge-protocol.json`, que está versionado en git.
+ * Comprueba que `WebUI/src/bridge/bridgeCore.js` (el transporte JS real, que era
+ * `WebPilot/lib/bridge.js` hasta la retirada del piloto) y las formas de mensaje
+ * que la página envía y espera coinciden con
+ * `WebUI/contracts/bridge-protocol.json`, que está versionado en git.
  *
  * Es el gemelo JS de `NEURONiK_BridgeProtocolContractTest` (C++): entre los dos,
  * ninguna de las dos partes puede mover un literal o una forma de mensaje sin que
@@ -17,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 
 const testsDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.dirname(testsDirectory);
-const contractPath = path.join(repositoryRoot, 'WebPilot', 'contracts', 'bridge-protocol.json');
+const contractPath = path.join(repositoryRoot, 'WebUI', 'contracts', 'bridge-protocol.json');
 
 const failures = [];
 
@@ -39,7 +40,7 @@ check(contract.version === 1, 'contract version 1 (la versión actual del protoc
 
 // --- Literales del transporte JS contra el contrato -----------------------------
 
-const bridgeSource = fs.readFileSync(path.join(repositoryRoot, 'WebPilot', 'lib', 'bridge.js'), 'utf8');
+const bridgeSource = fs.readFileSync(path.join(repositoryRoot, 'WebUI', 'src', 'bridge', 'bridgeCore.js'), 'utf8');
 
 check(
   bridgeSource.includes(`const NATIVE_TO_JS_EVENT_ID = '${contract.channels.nativeToJs.eventId}';`),
@@ -90,7 +91,7 @@ globalThis.window = { __JUCE__: { backend: createFakeBackend() } };
 
 // Windows: dynamic import exige URL file:// para rutas absolutas.
 const bridgeModuleUrl = new URL(
-  `file:///${path.join(repositoryRoot, 'WebPilot', 'lib', 'bridge.js').replace(/\\/g, '/')}`,
+  `file:///${path.join(repositoryRoot, 'WebUI', 'src', 'bridge', 'bridgeCore.js').replace(/\\/g, '/')}`,
 );
 const { createBridgeTransport } = await import(bridgeModuleUrl.href);
 
