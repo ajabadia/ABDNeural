@@ -1420,5 +1420,119 @@
     "uiOnly": 4,
     "notRouted": 1,
     "notInLayout": 0
-  }
+  },
+  "modDestinations": [
+    {
+      "label": "Off",
+      "parameterId": null
+    },
+    {
+      "label": "Osc Level",
+      "parameterId": "oscLevel"
+    },
+    {
+      "label": "Inharmonicity",
+      "parameterId": "oscInharmonicity"
+    },
+    {
+      "label": "Roughness",
+      "parameterId": "oscRoughness"
+    },
+    {
+      "label": "Morph X",
+      "parameterId": "morphX"
+    },
+    {
+      "label": "Morph Y",
+      "parameterId": "morphY"
+    },
+    {
+      "label": "Amp Attack",
+      "parameterId": "envAttack"
+    },
+    {
+      "label": "Amp Decay",
+      "parameterId": "envDecay"
+    },
+    {
+      "label": "Amp Sustain",
+      "parameterId": "envSustain"
+    },
+    {
+      "label": "Amp Release",
+      "parameterId": "envRelease"
+    },
+    {
+      "label": "Filter Cutoff",
+      "parameterId": "filterCutoff"
+    },
+    {
+      "label": "Filter Res",
+      "parameterId": "filterRes"
+    },
+    {
+      "label": "Filter Env Amt",
+      "parameterId": "filterEnvAmount"
+    },
+    {
+      "label": "Flt Attack",
+      "parameterId": "filterAttack"
+    },
+    {
+      "label": "Flt Decay",
+      "parameterId": "filterDecay"
+    },
+    {
+      "label": "Flt Sustain",
+      "parameterId": "filterSustain"
+    },
+    {
+      "label": "Flt Release",
+      "parameterId": "filterRelease"
+    },
+    {
+      "label": "Saturation",
+      "parameterId": "fxSaturation"
+    },
+    {
+      "label": "Delay Time",
+      "parameterId": "fxDelayTime"
+    },
+    {
+      "label": "Delay FB",
+      "parameterId": "fxDelayFeedback"
+    },
+    {
+      "label": "Odd/Even Bal",
+      "parameterId": "resonatorParity"
+    },
+    {
+      "label": "Spectral Shift",
+      "parameterId": "resonatorShift"
+    },
+    {
+      "label": "Harm Roll-off",
+      "parameterId": "resonatorRolloff"
+    },
+    {
+      "label": "Excite Noise",
+      "parameterId": "oscExciteNoise"
+    },
+    {
+      "label": "Excite Color",
+      "parameterId": "excitationColor"
+    },
+    {
+      "label": "Impulse Mix",
+      "parameterId": "impulseMix"
+    },
+    {
+      "label": "Res Bank Res",
+      "parameterId": "resonatorRes"
+    },
+    {
+      "label": "Unison Detune",
+      "parameterId": "unisonDetune"
+    }
+  ]
 }

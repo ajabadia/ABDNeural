@@ -398,6 +398,47 @@ int main()
     check (getModDestinations().size() == static_cast<int> (destinations.size()),
            "getModDestinations() lists the table, so the layout cannot drift from it");
 
+    // The telemetry contract: the generated artifacts must carry the SAME table
+    // (index order, labels, parameter ids) so the WebUI can map modulation[t]
+    // onto a parameter without copying the list by hand. The export tool keeps
+    // them in sync; this is the anti-drift net for the mapping itself.
+    {
+        const auto artifacts = buildParameterArtifactsJavaScript();
+        const juce::String token = "export const MOD_DESTINATIONS";
+        const auto start = artifacts.indexOf (token);
+
+        check (start >= 0,
+               "the generated JS artifact carries MOD_DESTINATIONS (telemetry mapping)");
+
+        if (start >= 0)
+        {
+            auto body = artifacts.substring (start + token.length());
+            const auto end = body.indexOf ("];");
+
+            if (end >= 0)
+                body = body.substring (0, end);
+
+            int entries = 0;
+
+            for (int position = 0; (position = body.indexOf (position, "{ label:")) >= 0;)
+            {
+                ++entries;
+                position += 8;   // "{ label:".length()
+            }
+
+            check (entries == static_cast<int> (destinations.size()),
+                   "MOD_DESTINATIONS has one entry per destination ("
+                       + juce::String (entries) + " of "
+                       + juce::String (static_cast<int> (destinations.size())) + ")");
+
+            // Cheap sentinels at both ends of the preset order.
+            check (body.contains ("{ label: \"Off\", parameterId: null }"),
+                   "MOD_DESTINATIONS keeps Off at index 0");
+            check (body.contains ("{ label: \"Unison Detune\", parameterId: \"unisonDetune\" }"),
+                   "MOD_DESTINATIONS keeps Unison Detune last (index 27)");
+        }
+    }
+
     if (const auto* list = requireDescriptor (IDs::mod1Destination))
     {
         check (list->choices.size() == static_cast<int> (destinations.size()),

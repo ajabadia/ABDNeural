@@ -8,6 +8,8 @@
 
 #include "ParameterDescriptorExport.h"
 
+#include "ParameterDefinitions.h"
+
 #include <cmath>
 
 namespace NEURONiK::State
@@ -103,6 +105,55 @@ namespace
         return quoted.joinIntoString (separator);
     }
 
+    /** @brief Escape a text for a JSON/JS double-quoted literal (quote()). */
+    juce::String formatModDestinationsJson ()
+    {
+        const auto& table = getModDestinationTable ();
+
+        juce::String out;
+        out << "[\n";
+
+        for (size_t index = 0; index < table.size(); ++index)
+        {
+            const auto& destination = table[index];
+
+            out << "    {\n";
+            out << "      \"label\": " << quote (destination.label) << ",\n";
+            out << "      \"parameterId\": "
+                << (destination.parameterId == nullptr
+                        ? juce::String ("null")
+                        : quote (destination.parameterId))
+                << "\n";
+            out << "    }" << (index + 1 < table.size() ? "," : "") << "\n";
+        }
+
+        out << "  ]";
+        return out;
+    }
+
+    juce::String formatModDestinationsJs ()
+    {
+        const auto& table = getModDestinationTable ();
+
+        juce::String out;
+        out << "[\n";
+
+        for (size_t index = 0; index < table.size(); ++index)
+        {
+            const auto& destination = table[index];
+
+            out << "  { label: " << quote (destination.label)
+                << ", parameterId: "
+                << (destination.parameterId == nullptr
+                        ? juce::String ("null")
+                        : quote (destination.parameterId))
+                << " }" << (index + 1 < table.size() ? "," : "") << "\n";
+        }
+
+        out << "]";
+        return out;
+    }
+
     /** @brief How many descriptors fall into each DSP status. */
     struct StatusCounts
     {
@@ -191,8 +242,10 @@ juce::String buildParameterArtifactsJson()
     json << "    \"uiOnly\": " << counts.uiOnly << ",\n";
     json << "    \"notRouted\": " << counts.notRouted << ",\n";
     json << "    \"notInLayout\": " << unrouted.size() << "\n";
-    json << "  }\n";
-    json << "}\n";
+    json << "  },\n";
+    json << "  \"modDestinations\": ";
+    json << formatModDestinationsJson();
+    json << "\n}\n";
 
     return json;
 }
@@ -266,6 +319,16 @@ juce::String buildParameterArtifactsJavaScript()
     js << "  notRouted: " << counts.notRouted << ",\n";
     js << "  notInLayout: " << unrouted.size() << ",\n";
     js << "});\n";
+    js << "\n";
+    js << "/**\n";
+    js << " * Modulation destinations in preset-index order (the index a\n";
+    js << " * `mod1Destination` value stores). Index t of `telemetry.modulation`\n";
+    js << " * describes THIS entry: what the target drives lives in `parameterId`\n";
+    js << " * (null for Off), so the UI never hard codes the mapping.\n";
+    js << " */\n";
+    js << "export const MOD_DESTINATIONS = ";
+    js << formatModDestinationsJs();
+    js << ";\n";
 
     return js;
 }
@@ -326,6 +389,14 @@ juce::String buildParameterArtifactsTypeScript()
     ts << "export declare const UNROUTED_PARAMETER_IDS: readonly string[];\n";
     ts << "export declare const UNROUTED_PARAMETERS: readonly UnroutedParameter[];\n";
     ts << "export declare const CONTRACT_SUMMARY: ContractSummary;\n";
+    ts << "\n";
+    ts << "export interface ModDestinationDescriptor {\n";
+    ts << "  readonly label: string;\n";
+    ts << "  /** APVTS id the destination drives, or null for Off. */\n";
+    ts << "  readonly parameterId: string | null;\n";
+    ts << "}\n";
+    ts << "\n";
+    ts << "export declare const MOD_DESTINATIONS: readonly ModDestinationDescriptor[];\n";
 
     return ts;
 }

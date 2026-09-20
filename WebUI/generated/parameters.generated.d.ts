@@ -52,3 +52,11 @@ export declare const PARAMETERS_BY_ID: Readonly<Record<string, ParameterDescript
 export declare const UNROUTED_PARAMETER_IDS: readonly string[];
 export declare const UNROUTED_PARAMETERS: readonly UnroutedParameter[];
 export declare const CONTRACT_SUMMARY: ContractSummary;
+
+export interface ModDestinationDescriptor {
+  readonly label: string;
+  /** APVTS id the destination drives, or null for Off. */
+  readonly parameterId: string | null;
+}
+
+export declare const MOD_DESTINATIONS: readonly ModDestinationDescriptor[];
