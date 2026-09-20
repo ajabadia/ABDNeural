@@ -3101,3 +3101,21 @@ ROADMAP pone como sustituto del zoom. El componente compartido no se toca.
 build` verde · contrato de fuente de `app.js` actualizado (import con `CANVAS` + línea del
 ajuste). El jsdom no mide layout: lo que se prueba es el CÁLCULO (escala/offsets/acotas)
 y el ciclo de vida del listener de resize.
+
+## 2026-09-20 (d): NEURONiK, primer consumidor del fondo tintable de la suite
+
+**Que:** la WebUI adopta el mecanismo `.abd-theme-bg` de `@abdsynths/shared` (hoja nueva
+`styles/components/backgrounds.css` del paquete): clase en el `body` de `index.html` e
+import del css en `app.js`. Cero configuracion local: el tinte por defecto del mecanismo
+es `var(--color-bg-base)` (#0a0e14) — el tema de tokens manda, como se diseno. La textura
+entra por `soft-light` y se ve en los huecos entre tarjetas y en el letterbox del fit
+(`#app` no pinta fondo propio); las tarjetas siguen opacas. El asset servido es
+`bg_neutral.webp` SIN perdida (1.9 MB, pixel-exacto al PNG master de 2.8 MB): la lossy se
+descarto con metricas — el degradado suave del grano se cuantiza en mesetas (banding) a
+cualquier calidad, incluida q100. Vite emite el webp al dist (`bg_neutral-*.webp`).
+
+**Verificacion:** WebUI **199/199** (1 `it` nuevo en appContract: clase en body + import
+del css) · `pnpm build` verde con el webp en dist · Standalone recompilado (`--target
+NEURONiK_Standalone`): exe y embed llevan la pagina con fondo. El VST3, hasta el proximo
+`build.bat`. Ajuste fino de tinte por tema (`--abd-bg-tint`) pendiente de decidir temas.
+

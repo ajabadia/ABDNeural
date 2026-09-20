@@ -169,4 +169,9 @@ describe('WebUI entry contract', () => {
     expect(app).toContain("'@abdsynths/shared/styles/tokens.css'");
     expect(app).toContain("'@abdsynths/shared/styles/components/widgets.css'");
   });
+
+  it('paints the shared tintable background on the page root', () => {
+    expect(html).toContain('<body class="abd-theme-bg">');
+    expect(app).toContain("'@abdsynths/shared/styles/components/backgrounds.css'");
+  });
 });

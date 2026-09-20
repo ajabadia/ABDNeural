@@ -20,9 +20,10 @@
  * se empuja al worklet por un solo camino.
  */
 
-// Tema y widgets de la SSOT compartida, más el CSS de esta carpeta.
+// Tema, widgets y fondo de la SSOT compartida, más el CSS de esta carpeta.
 import '@abdsynths/shared/styles/tokens.css';
 import '@abdsynths/shared/styles/components/widgets.css';
+import '@abdsynths/shared/styles/components/backgrounds.css';
 import './styles/main.css';
 
 import { createParameterStore } from './contracts/paramStore.js';
