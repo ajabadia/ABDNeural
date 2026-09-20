@@ -85,13 +85,18 @@ describe('WebUI entry contract', () => {
     // cualquier vista declarada (y el resumen de la matriz añadio una segunda).
     expect(visuals).toContain("if (visualId === 'amp-envelope') return createEnvelopeCurve({ controls });");
     expect(visuals).toContain("if (visualId === 'mod-summary') return createModSummary({ controls });");
-    expect(visuals).toContain("if (visualId === 'model-slots') return createModelSlots({ onLoad: options.onLoad ?? null });");
+    // La vista MODELOS es compuesta desde 8.3: pad dibujado + ranuras, montadas
+    // por la misma fabrica (un solo punto de comportamiento, dos mitades).
+    expect(visuals).toContain("if (visualId === 'model-slots') {");
+    expect(visuals).toContain('createModelSlots({ onLoad: options.onLoad ?? null })');
+    expect(visuals).toContain('createXyPad({ onEdit: options.onEdit ?? null })');
   });
 
   it('las ranuras de modelo A–D piden la carga al store, que la pide al host', () => {
     // El dialogo lo abre el HOST (la pagina no tiene sistema de ficheros), asi que el
     // boton pasa por el store y no toca el cable por su cuenta.
     expect(app).toContain('onLoad: (slot) => store.loadModel(slot)');
+    expect(app).toContain('onEdit: (id, value, phase) => store.pushParameter(id, value, phase)');
     expect(store).toContain('transport?.sendLoadModel(slot);');
     expect(bridge).toContain("emit({ action: 'loadModel', slot });");
 

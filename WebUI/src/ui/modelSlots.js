@@ -127,7 +127,7 @@ export function createModelSlots({ onLoad = null } = {}) {
  * "EMPTY", así que ese literal (y el vacío) cuentan como ranura vacía aunque el
  * nombre exista.
  */
-function displayableName(entry) {
+export function displayableName(entry) {
   const name = typeof entry?.name === 'string' ? entry.name.trim() : '';
 
   if (name === '' || name === EMPTY_SLOT_NAME) return null;

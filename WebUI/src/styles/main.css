@@ -18,7 +18,7 @@
 
   /* --- geometría del lienzo (espejo de contracts/sections.js) -------------- */
   --abd-canvas-w: 1440px;
-  --abd-canvas-h: 900px;
+  --abd-canvas-h: 990px;
   --abd-top-h: 40px;
   --abd-band-gap: 10px;
   --abd-card-header-h: 20px;
@@ -31,6 +31,7 @@
   --abd-panel-pad: 10px;    /* GEOMETRY.panelPadding = 6 + 4 */
   --abd-knob-size: 48px;    /* GEOMETRY.knob: manda el alto de celda */
 }
+
 
 body {
   margin: 0;
@@ -472,6 +473,25 @@ body {
 
 .model-slots__status[data-state="error"] {
   color: var(--color-danger, #ff3344);
+}
+
+/* --- bloque MODEL (ficha MODELOS A–D): pad dibujado + ranuras ------------- */
+
+/*
+ * La vista compuesta del 8.3: el pad XY (morphX/morphY, nombres en esquinas)
+ * encima, las cuatro ranuras debajo — el bloque MODEL del panel nativo. El alto
+ * de la ficha lo fija SECTION_VISUALS['model-slots'].minBodyHeight (SSOT del
+ * encaje); aqui solo se reparte el cuerpo que ese numero ya reserva.
+ */
+.model-block {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.xy-pad {
+  display: grid;
+  place-items: center;
 }
 
 /* --- cajón lateral (patrón ABDMS2000 / ABDEep / ABDCZ101) ----------------- */

@@ -3020,3 +3020,50 @@ Pasada cosmética de documentación, sin tocar código ni build:
   el test de paridad—; el README ahora enlaza a la raíz.
 
 Sin verificación de build: esta pasada solo toca los tres documentos.
+
+## 8.3, paso 1: el pad XY dibujado (2026-09-20)
+
+**El encargo.** Cablear el XYPad de `@abdsynths/shared` en la WebUI como primera pieza del
+8.3: pad para morphX/morphY con los nombres de los modelos A–D, con su test.
+
+**Dónde vive cada cosa** (decisión de capa):
+
+- **El COMPONENTE gana la capability en el compartido**: `ABDSharedAssets/components/xypad.js`
+  (ya era del paquete — nació en la era del piloto) añade `corners` (opción) y `setCorners()`
+  (en caliente): una etiqueta por esquina `[arriba-izq, arriba-der, abajo-izq, abajo-der]`,
+  `''` oculta la suya. Con esquinas visibles el readout de porcentaje se esconde
+  (`abd-xypad--corners`): las esquinas dicen QUÉ hay donde, la cruz dice DÓNDE, y el valor
+  sigue en `aria-valuetext`. Estilos en `widgets.css`, 4 tests nuevos (16 en su fichero;
+  suite 57/57) y `COMPONENTS.md` actualizado. Cero impacto en quien no la use: sin
+  `corners`, el DOM del pad no cambia.
+- **El wiring es de NEURONiK**: `WebUI/src/ui/xyPad.js` monta el compartido (200x150),
+  coordina DOS gestos (uno por eje, fase completa `begin/change/end`; el `begin` anuncia el
+  valor actual, igual que `handleGesture`) vía `pushParameter` — `handleChange` solo sabe
+  cerrar UN id — y pinta las esquinas desde `state.models` con el mismo criterio de ranura
+  vacía que las ranuras (`displayableName`, ahora exportada). Un paso de teclado viaja como
+  `end` y SOLO en el eje que cambió. `paint` no pega con el dedo: durante un drag, el
+  snapshot del host no mueve el pulgar.
+- **La ficha MODELOS A–D es compuesta** (fábrica `visuals.js`): pad encima, ranuras debajo —
+  el bloque MODEL del panel nativo, que era exactamente eso. `app.js` inyecta
+  `onEdit → store.pushParameter`; el contrato de fuente de `appContract.test.js` vigilaba la
+  línea del despachador y se actualizó con la composición.
+
+**El encaje, por delante de la vista**: el pad necesita cuerpo real, así que
+`SECTION_VISUALS['model-slots']` declara `minBodyHeight: 256` y `cardHeight()` lo respeta
+(`max(pilas de celdas, cuerpo de vista)` — con filas de celdas no cambia nada). La banda 3
+la cerraba el LFO (206); ahora la cierra MODELOS (298) → `CANVAS.height` 900 → **990** y
+`--abd-canvas-h` a la par (el test de geometría exige el MISMO número en las dos SSOT). Los
+knobs morphX/morphY SIGUEN en OSCILADOR: el pad es aditivo, `SECTION_PARAMETER_IDS` sigue en
+70 y la paridad del informe no se mueve.
+
+**Verificación de la pasada**: ABDSharedAssets **57/57** · WebUI **191/191** (`pnpm test`, 6
+tests nuevos: montaje, teclado→`end` por eje cambiado, drag→dos gestos coordinados, paint
+sin eco y sin pelea con el dedo, esquinas desde `modelsState`, composición) · `pnpm build`
+en verde · informe de paridad `Tests/nativePanelParityReport.mjs`: *Estructura OK · 70
+celdas web · contrato 70*. Sin tocar C++: el contrato de parámetros no cambia, no hay paso
+2/9 que regenerar.
+
+**Lo que NO es este paso**: el anillo del valor modulado que dibuja el pad nativo (ghost
+ring con la posición base) sigue siendo el fleco abierto de 8.2 — necesita la telemetría del
+puente. Y el espectral y el scope del mismo ítem 8.3 siguen esperando el canal de lectura a
+30-60 Hz.

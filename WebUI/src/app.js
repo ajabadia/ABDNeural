@@ -85,6 +85,10 @@ const bands = BANDS.map((band) => band.map((section) => {
     visual: visualSpec
       ? createVisual(visualSpec.id, visualControls, {
         onLoad: (slot) => store.loadModel(slot),
+        // El pad de la ficha MODELOS edita morphX/morphY: un gesto suyo son DOS
+        // gestos coordinados (uno por eje) con fase completa. pushParameter es
+        // la primitiva; handleChange solo sabe cerrar UN id.
+        onEdit: (id, value, phase) => store.pushParameter(id, value, phase),
       })
       : null,
   };

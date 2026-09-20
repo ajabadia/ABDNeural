@@ -44,7 +44,10 @@
  */
 export const CANVAS = {
   width: 1440,
-  height: 900,
+  // 900 hasta 8.3: el pad XY dibujado de la ficha MODELOS pide cuerpo propio
+  // (SECTION_VISUALS['model-slots'].minBodyHeight) y su banda pasa a cerrarla
+  // ella. La CSS declara el MISMO numero (--abd-canvas-h, test de geometria).
+  height: 990,
   /** Carriles de la rejilla horizontal; las bandas suman exactamente esto. */
   lanes: 12,
 };
@@ -107,7 +110,13 @@ export const SECTION_VISUALS = {
   },
   'model-slots': {
     id: 'model-slots',
-    parameterIds: [],
+    // El pad XY dibujado (8.3) edita morphX/morphY, que la ficha OSCILADOR ya
+    // pinta como knobs: la vista declara de que se alimenta, como la curva ADSR.
+    parameterIds: ['morphX', 'morphY'],
+    // Cuerpo que pide la vista (ranuras compactas + pad 150 + estado). Con cero
+    // filas de celdas es LO QUE CIERRA su banda (ver cardHeight): antes la
+    // cerraba el LFO con sus dos filas.
+    minBodyHeight: 256,
   },
   'mod-summary': {
     id: 'mod-summary',
@@ -359,12 +368,17 @@ export function rowsOf(section) {
  */
 export function cardHeight(section) {
   const rows = rowsOf(section);
+  const rowsStack = rows * GEOMETRY.cell + Math.max(rows - 1, 0) * GEOMETRY.cardRowGap;
+
+  // Una vista puede pedir cuerpo propio (el pad XY de MODELOS: ranuras + pad).
+  // Con filas de celdas el max no cambia nada; con cero filas (ficha de cajon
+  // o de motor) es lo que decide si la ficha estira o cierra su banda.
+  const visualBody = SECTION_VISUALS[section.visual]?.minBodyHeight ?? 0;
 
   return GEOMETRY.cardPadding
     + GEOMETRY.cardHeader
     + GEOMETRY.cardRowGap
-    + rows * GEOMETRY.cell
-    + Math.max(rows - 1, 0) * GEOMETRY.cardRowGap
+    + Math.max(rowsStack, visualBody)
     + GEOMETRY.cardBorder;
 }
 

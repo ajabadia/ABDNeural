@@ -533,7 +533,7 @@ una barra de menú File/Edit/Help.
 | **Menú MIDI del LCD** (8 destinos CC + RESET ALL) | `UI/LcdMenuManager.h` (`ItemType::MidiCC` / `Action`) | No | 8.3 con el LCD |
 | **LCD 2 líneas + D-pad** (estados Idle/Navigation/Edit) | `UI/LcdDisplay.{h,cpp}` (166) + `UI/LcdMenuManager.h` | No | 8.3: árbol GLOBAL/RESONATOR/FILTER/EFFECTS/MIDI CONTROL, con ítems que **dependen del `engineType`** |
 | Visualizador espectral (64 parciales) | `UI/SpectralVisualizer.{h,cpp}` (97) | No | 8.3 vía canal de lectura nativo→web (`IVisualizationSource`) |
-| XYPad (morph X/Y + nombres de modelo) | `UI/XYPad.{h,cpp}` (150) | **Parcial**: morph X/Y como knobs y los nombres de modelo en la ficha MODELOS A–D (viajan en `modelsState.name`); el pad dibujado, no | 8.3, mismo canal |
+| XYPad (morph X/Y + nombres de modelo) | `UI/XYPad.{h,cpp}` (150) | **Sí** (8.3, 2026-09-20): pad dibujado en la ficha MODELOS A–D con los nombres en las esquinas (XYPad compartido + `setCorners`); los knobs morphX/morphY siguen en OSCILADOR — el pad es aditivo, las 70 celdas intactas | Hecho; el anillo de modulación sigue siendo el fleco 8.2 |
 | **Feedback de modulación en cada control** (anillo/overlay del valor modulado) | `UI/CustomUIComponents.h` (`ModulatedSlider` + `Main/ModulationTargets.h`) | No | 8.2: es una función del **control compartido**, no del panel — hoy `@abdsynths/shared` no la tiene. **Ojo: el dato existe** en el procesador (`getModulationValueForUI`, `modulationValues[64]`) pero no está en el protocolo del puente: sin un mensaje de telemetría (aditivo, tipo `midiNoteState`) no hay anillo honesto que dibujar |
 | Barra de menú File/Edit/Help (cargar preset, zoom, specs MIDI, info RANDOM/FREEZE) | `NEURONiKEditor.cpp` (`getMenuBarNames`/`menuItemSelected`) | No | 8.3 como botones de cabecera o menú web; **los ítems de audio del Standalone no se migran** (los pone el wrapper de JUCE) |
 | Diálogo de ayuda + especificaciones MIDI de fábrica | `UI/HelpDialog.h` + `showMidiSpecifications()` | No | 8.3 como overlay |
@@ -1002,6 +1002,9 @@ sigue siendo la salida natural si una sección crece una fila de más (el repart
 - [ ] **Visualización en vivo**: `SpectralVisualizer`, scope flotante y `XYPad` (morph X/Y).
       Requiere un canal de datos de solo lectura nativo→web a ~30-60 Hz, con presupuesto de
       CPU medido y sin asignar en el hilo de audio (snapshot con `AudioThreadSnapshot`).
+  - [x] **El XYPad ya está** (2026-09-20, SIN el canal): la ficha MODELOS A–D monta el pad
+        dibujado con los nombres en esquinas; edita y refleja morphX/morphY por el puente de
+        parámetros que ya existía. El espectral y el scope sí necesitan el canal de lectura.
 - [ ] **MIDI Learn**: `MidiLearner` + `MidiMappingManager` (aprender, asignar, borrar,
       persistir). El aprendizaje es UI (la web pide "aprende el próximo CC"); el mapeo y su
       guardado siguen en el procesador.

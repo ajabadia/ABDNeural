@@ -138,9 +138,14 @@ describe('sections / encaje en el lienzo', () => {
     expect(card?.id).toBe('models');
     expect(visual).toBeTruthy();
 
-    // No tiene celdas: ni la ficha ni su vista declaran un solo id de parametro...
+    // La ficha no tiene celdas; su vista alimenta el pad con los morph que ya
+    // pinta la ficha OSCILADOR (mismo contrato, ninguna celda nueva)...
     expect(card.ids).toEqual([]);
-    expect(visual.parameterIds).toEqual([]);
+    expect(visual.parameterIds).toEqual(['morphX', 'morphY']);
+    for (const id of visual.parameterIds)
+      expect(SECTION_PARAMETER_IDS).toContain(id);
+    // ...y declara el cuerpo que cierra su banda (el pad dibujado, 8.3).
+    expect(visual.minBodyHeight).toBeGreaterThan(0);
     // ...asi que no aporta filas al encaje (el lienzo sigue midiendo lo mismo).
     expect(rowsOf(card)).toBe(0);
     expect(canvasHeight()).toBeLessThanOrEqual(CANVAS.height);
@@ -170,11 +175,12 @@ describe('sections / encaje en el lienzo', () => {
     expect(drawerSection.ids).toHaveLength(12);
     expect(SECTION_PARAMETER_IDS).toContain('mod1Source');
 
-    // Y su banda la cierra el bloque de la companera (el LFO).
+    // Y su banda la cierra la ficha MODELOS desde 8.3: el pad dibujado pide mas
+    // cuerpo (minBodyHeight) que las dos filas del LFO.
     const band = BANDS.find((candidate) => candidate.includes(drawerSection));
 
     expect(band.reduce((total, section) => total + section.span, 0)).toBe(CANVAS.lanes);
-    expect(Math.max(...band.map(cardHeight))).toBe(cardHeight(SECTIONS.find((s) => s.id === 'lfo')));
+    expect(Math.max(...band.map(cardHeight))).toBe(cardHeight(SECTIONS.find((s) => s.id === 'models')));
   });
 
   it('las rutas del cajon son, en orden, los ids de la ficha', () => {
