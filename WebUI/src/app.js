@@ -28,10 +28,11 @@ import './styles/main.css';
 import { createParameterStore } from './contracts/paramStore.js';
 import { describeControl, getDescriptor } from './contracts/parameters.js';
 import { SCREEN_PARAMETER_IDS } from './contracts/screens.js';
-import { BANDS, SECTION_ACTIONS, SECTION_VISUALS } from './contracts/sections.js';
+import { BANDS, CANVAS, SECTION_ACTIONS, SECTION_VISUALS } from './contracts/sections.js';
 import { createPanel } from './ui/panel.js';
 import { createVisual } from './ui/visuals.js';
 import { mountKeyboard } from './ui/keyboard.js';
+import { mountFitStage } from './ui/fitStage.js';
 import { audioOwnerFor } from './audio/policy.js';
 import {
   isAudioEngineReady,
@@ -129,6 +130,11 @@ if (root) {
   const renderAudio = () => panel.paintAudio({ owner, ...engineSnapshot });
 
   root.append(panel.element);
+
+  // El lienzo es de diseño FIJO (CANVAS) y el editor es redimensionable: escalar
+  // para caber entero — sin esto, una ventana baja corta el pie y la franja de
+  // teclado (el fallo "no se distinguen las teclas": el keybed estaba FUERA).
+  mountFitStage(root, { width: CANVAS.width, height: CANVAS.height });
 
   bindBaseline(panel.element.querySelector(`#${BASELINE_PARAMETER_ID}`), store);
 

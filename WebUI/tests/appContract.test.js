@@ -57,9 +57,13 @@ describe('WebUI entry contract', () => {
   });
 
   it('builds the single canvas from the section layout SSOT', () => {
-    expect(app).toContain("import { BANDS, SECTION_ACTIONS, SECTION_VISUALS } from './contracts/sections.js'");
+    expect(app).toContain("import { BANDS, CANVAS, SECTION_ACTIONS, SECTION_VISUALS } from './contracts/sections.js'");
     expect(app).toContain('const bands = BANDS.map');
     expect(app).toContain('baselineId: BASELINE_PARAMETER_ID');
+
+    // Y el lienzo de diseño ENCAJA en el viewport del editor: sin el ajuste, una
+    // ventana baja corta por abajo el pie y la franja de teclado.
+    expect(app).toContain("mountFitStage(root, { width: CANVAS.width, height: CANVAS.height })");
   });
 
   it('pushes cell edits to the store in NORMALISED units, with their gesture', () => {

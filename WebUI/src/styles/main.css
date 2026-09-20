@@ -32,9 +32,16 @@
   --abd-knob-size: 48px;    /* GEOMETRY.knob: manda el alto de celda */
 }
 
+html,
+body {
+  height: 100%;
+}
 
 body {
   margin: 0;
+  /* El lienzo escala con transform (ui/fitStage.js), que NO cambia el box de
+     layout: sin overflow hidden, el lienzo sin escalar daría scrollbars. */
+  overflow: hidden;
   background: var(--color-bg-base, #0a0e14);
   color: var(--color-text-main, #f0f7ff);
   font-family: var(--font-sans, system-ui, sans-serif);

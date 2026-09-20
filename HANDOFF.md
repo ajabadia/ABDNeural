@@ -3081,3 +3081,23 @@ con Copy/Paste Patch, MIDI Channel, Voices, Zoom y Options. Los IDs de menú NO 
 servía la página vieja incrustada aunque `WebUI/dist` ya tuviera el pad. Recompilado el
 Standalone (`--target NEURONiK_Standalone`): exe y embed llevan la página nueva. El VST3
 se queda con el menú viejo hasta el próximo `build.bat`.
+
+## 2026-09-20 (c): el teclado "no se distinguía" porque la página se SALÍA del viewport
+
+**Diagnóstico (con captura del usuario):** el keybed compartido está BIEN (marfil sobre
+`--kbd-bg` con sus fallbacks — nada que arreglar en `midi-keyb`). Lo que pasaba: la página
+es un lienzo de diseño FIJO (1440x990) SIN ningún ajuste al viewport, y el editor es
+redimensionable — en la ventana del usuario (~1424x780 CSS útiles tras la barra nativa)
+sobraban ~210px por abajo: el pie y CASI TODA la franja del teclado quedaban fuera de
+vista. El pad del 8.3 (lienzo 900→990) agravó un corte que ya existía en 8.2.
+
+**Arreglo, en su capa (la página):** `WebUI/src/ui/fitStage.js` — `computeFit` (escala
+acotada 0.25x–3x como el zoom nativo, centrado en el eje que sobra) y `mountFitStage`
+(transform + margins + resize) sobre `#app` desde `app.js`; `body` con `overflow: hidden`
+porque el transform no cambia el box de layout. Es el "escala del contenedor" que el
+ROADMAP pone como sustituto del zoom. El componente compartido no se toca.
+
+**Verificación:** WebUI **198/198** (`pnpm test`, 7 tests nuevos de fitStage) · `pnpm
+build` verde · contrato de fuente de `app.js` actualizado (import con `CANVAS` + línea del
+ajuste). El jsdom no mide layout: lo que se prueba es el CÁLCULO (escala/offsets/acotas)
+y el ciclo de vida del listener de resize.
