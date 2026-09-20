@@ -3219,3 +3219,23 @@ destroy con removeEventListener real) - NEURONiK WebUI **200/200** (1 it nuevo d
 `pnpm build` verde - paridad **70 celdas · contrato 70** (el selector no es celda de
 parametro) - Standalone recompilado con el embed nuevo.
 
+
+## 2026-09-20 (j): indice de commits del dia — donde esta TODO
+
+**ABDNeural (10 commits):** `791ed02` docs (README/handoff/roadmaps/legado) · `f98ff5d` pad XY
+8.3 · `b4d4e68` menu File · `3d95e88` fit al viewport · `5d0e412` fondo tintable · `fb419b4`
+ModelMaker JUCE 8 · `850dd96` fix de build.bat · `9fbc417` selector Dark/Light · `3090370`
+docs de la segunda mitad. Arbol limpio.
+
+**ABDSharedAssets (5 commits, primera vez que se commitea la familia):** `62b36d1` ignore
+node_modules · `fb32e9b` contracts esquema 2.0 + nuevos · `238c7b0` familia de controles +
+tests (68) + ThemeSwitcher · `d1869f0` tokens claros + fondo tintable + audiolab/teclado ·
+`4ebeb14` assets (fondos, renders, iconos) + COMPONENTS.md + demo. Fuera a proposito:
+`abdbank/` (app completa dentro del paquete, probablemente extraviada: ABDBankManager ya es
+repo propio — decidir su destino).
+
+**Estado de la suite:** modo claro disenado y con contrato, selector universal, fondo
+tintable, pad con corners — todo heredable por los synths definiendo solo tokens de color.
+Pendientes del roadmap: 8.3 (browser, LCD, espectral+telemetria, MIDI learn, menu web),
+"View" para el tema, fitStage por extraer al paquete, deuda de temas de ABDMS2000.
+
