@@ -1,5 +1,11 @@
 # NEURONiK Handoff
 
+> **Este documento es un registro corrido (append-only):** las entradas nuevas se añaden al final,
+> fechadas. Las secciones temáticas de la primera mitad reflejan el arranque de la migración
+> (**2026-09-16**) y varias quedaron superadas por decisiones posteriores —las marcadas como
+> «histórico» y las que ya tienen entrada propia más abajo—. Estado vigente: la última entrada de
+> este documento y la **Fase 8** de `ROADMAP.md`.
+
 ## Estado de la instrumentación del arranque (bancada WebView2)
 
 La bancada `NEURONiK_WebPilotHost` sirve `WebUI/dist` —la misma página que embebe el plugin— y
@@ -39,7 +45,7 @@ NEURONiK es un sintetizador propio basado en JUCE/C++. Tiene un motor híbrido d
 
 El objetivo futuro es conservar Standalone/VST3/AU y añadir una interfaz web reutilizable, primero en navegador/WebView2 y posteriormente con un posible backend WASM para el mismo núcleo DSP.
 
-Fecha de este handoff: **2026-09-16**.
+Fecha de apertura de este handoff: **2026-09-16** (crece por entradas fechadas; la última está al final).
 
 ## Repositorio
 
@@ -218,7 +224,11 @@ La fachada expone eventos propios (`NoteOn`, `NoteOff`, pitch bend, presión y t
 
 La prueba `NEURONiK_DSPReferenceTest` ya pasa a través de esta fachada.
 
-## Próximo trabajo recomendado
+## Próximo trabajo recomendado (histórico, 2026-09-16)
+
+> Superada por las entradas fechadas posteriores: el bridge existe y está verificado en las dos
+> direcciones, el piloto se creó y luego se retiró, Vite ganó el A/B y el plan vigente es la
+> **Fase 8** de `ROADMAP.md`.
 
 1. Lanzar `build.bat`: compila el host con el bridge y añade `NEURONiK_ParameterBridgeTest` a la
    suite (8 tests). Verificación interactiva que solo puede hacerse con la ventana delante:
@@ -1329,7 +1339,12 @@ Antes de cambiar el DSP:
 
 No borrar ni sobrescribir `build-reference` hasta generar una nueva referencia validada.
 
-## Decisiones pendientes
+## Decisiones pendientes (histórico, 2026-09-16)
+
+> Resueltas desde entonces: el stack es **JS vanilla + Vite** (Next.js retirado el 2026-09-19),
+> el primer panel migrado fue GENERAL y el lienzo 8.2 ya cubre los 70 parámetros, y los presets
+> viajan por el **protocolo v1 del bridge** (2026-09-17). Lo que queda por decidir vive en la
+> **Fase 8** de `ROADMAP.md`.
 
 - Si la interfaz web piloto se hará inicialmente con React/Vite o Next.js estático.
 - Qué panel será el primero en migrar.
@@ -1337,7 +1352,12 @@ No borrar ni sobrescribir `build-reference` hasta generar una nueva referencia v
 - Qué formato de preset común se utilizará entre APVTS, web y WASM.
 - Qué componentes de `ABDSharedCode` se extraerán sin acoplarlos a Next.js.
 
-## No hacer todavía
+## No hacer todavía (histórico, 2026-09-16)
+
+> Frenos del arranque de la migración. Los vigentes los fija la **Fase 8** de `ROADMAP.md`
+> (p. ej. solo este proyecto —ABDMS2000 no se toca— y no revivir las homonimias retiradas, ver
+> 8.5). Dos se siguen cumpliendo por diseño: el APVTS sigue siendo la SSOT de parámetros y los
+> IDs no se duplican a mano (viajan en el contrato generado).
 
 - No reescribir todo `NEURONiKProcessor`.
 - No eliminar APVTS.
@@ -2978,3 +2998,25 @@ pagina del plugin)`, `page root: .../WebUI/dist`, 4 recursos y sin línea de res
 **Lo que NO se ha tocado:** el VST3 con un host dentro sigue siendo 8.5; el panel nativo y el
 `XYPad` siguen vivos *por* la bancada (su retirada es 8.4); y el anillo del valor modulado sigue
 siendo el fleco abierto de 8.2.
+
+
+## Documentación al día (2026-09-20)
+
+Pasada cosmética de documentación, sin tocar código ni build:
+
+- **`README.md` reescrito en lo operativo**: el build documentado es `build.bat` con sus modos
+  (`tests`, `noselftest`, `nowasm`, `modelmaker`, directorio alternativo) y los artefactos en
+  `build-reference/NEURONiK_artefacts/`; prerequisitos reales (JUCE por `JUCE_PATH` o `C:\JUCE`,
+  Node+pnpm, emsdk en `C:\emsdk` para el WASM). Sección nueva de la versión web (`start.bat` 1-3,
+  LOCAL MODE en el 8399, selftest de seis direcciones) y de la WebUI (contrato SSOT generado del
+  APVTS, protocolo versionado, worklet WASM con paridad bit-exacta). `Scripts/manage.ps1` queda
+  marcado como legado.
+- **Secciones históricas anotadas** en este HANDOFF («Próximo trabajo recomendado», «Decisiones
+  pendientes», «No hacer todavía») y nota de registro corrido bajo el título, para que nadie
+  tome por vigente una decisión del arranque.
+- **`DOCS/PLANS/ROADMAP.MD` pasa a stub**: era la copia congelada del 09-16 y había divergido de
+  la raíz (que siguió creciendo con las Fases 7 y 8). El roadmap vivo es y sigue siendo
+  `ROADMAP.md` en la raíz —lo citan este documento, `DOCS/PILOT_RETIRED.md`, `WebUI/README.md` y
+  el test de paridad—; el README ahora enlaza a la raíz.
+
+Sin verificación de build: esta pasada solo toca los tres documentos.

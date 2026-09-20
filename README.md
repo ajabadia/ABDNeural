@@ -4,6 +4,11 @@
 
 While initially envisioned as a deep-learning-based instrument, NEURONiK has evolved into a highly optimized C++ DSP engine that captures the *spirit* of neural synthesis—sonic complexity, rich harmonic textures, and fluid morphing capabilities—without the overhead of heavy AI frameworks.
 
+The project is mid-migration (Phase 8 of the roadmap): the DSP core has been de-coupled from
+JUCE so the exact same engine runs natively and as WebAssembly (bit-exact parity), and the
+plugin interface is moving from native JUCE panels to a web UI (vanilla JS + Vite) served
+inside WebView2 through a versioned parameter bridge.
+
 **Repository:** [https://github.com/ajabadia/ABDNeural](https://github.com/ajabadia/ABDNeural)
 
 ---
@@ -17,38 +22,79 @@ While initially envisioned as a deep-learning-based instrument, NEURONiK has evo
     *   **Roughness/Entropy**: Introduces controlled chaos and micro-variations into the sound for a more organic and less sterile character.
 *   **Expressive Control**: Support for **Velocity Curves** (Linear, Soft, Hard) and **Aftertouch** modulation for dynamic performances.
 *   **Flexible MIDI Mapping**: A robust CC mapping system with persistence, auto-conflict resolution, and a dedicated "MIDI CONTROL" LCD menu for hardware-style configuration.
-*   **Modern UI**: A clean, hardware-inspired user interface with tabbed sections for clear and intuitive control, plus a "MIDI Specifications" help dialog.
-*   **Cross-Platform**: Built with JUCE and CMake for portability across Windows, macOS, and Linux.
+*   **Modern UI**: A clean, hardware-inspired user interface — currently a single web canvas with all 70 parameters, model slots A–D and a shared MIDI keyboard strip, rendered with the control family from `@abdsynths/shared`.
+*   **Cross-Platform DSP**: The DSP core is plain C++ built with CMake; the plugin host layer is JUCE. (The definitive web UI layer is Windows-only for now — WebView2.)
 
 ## Technical Architecture
 
-NEURONiK is built entirely in C++ using the **JUCE framework**. The architecture prioritizes performance and stability:
-
-*   **Custom DSP Engine**: All audio processing is handled by a custom-built DSP engine designed for real-time performance with zero memory allocations on the audio thread.
-*   **APVTS-driven State**: Parameter management is centralized using `juce::AudioProcessorValueTreeState` for robust DAW integration, preset handling, and automation.
-*   **CMake Build System**: The project uses a modern CMake setup for straightforward compilation on any platform.
+*   **JUCE host layer**: `AudioProcessorValueTreeState` for parameters, presets, MIDI mapping and persistence. APVTS remains the single source of truth for parameters.
+*   **De-JUCE'd DSP core** (`Source/DSP/**`): a progressive facade (`DspEngineFacade`) over engines with no JUCE includes and deterministic math (no libm), running at a fixed 64-sample control rate. The identical core compiles to WASM for the AudioWorklet.
+*   **Web UI** (`WebUI/`): vanilla JS (no framework) built with Vite; shared knobs/sliders/toggles come from `@abdsynths/shared`; the page sounds through an AudioWorklet running the WASM engine.
+*   **Parameter bridge**: generated parameter contract (from APVTS into `WebUI/generated/`, never hand-duplicated) plus a versioned wire protocol (`WebUI/contracts/bridge-protocol.json`) enforced by tests on both the C++ and JS sides.
+*   **CMake Build System**: Modern CMake setup for straightforward compilation.
 
 ## Getting Started
 
 ### Prerequisites
-*   A C++20 compatible compiler (MSVC, Clang, or GCC).
-*   CMake 3.15 or higher.
-*   The JUCE framework (the project is configured to find it in `C:\JUCE`).
+*   MSVC (C++20) and CMake 3.15+.
+*   The JUCE framework: found via the `JUCE_PATH` environment variable, falling back to `C:\JUCE`.
+*   Node.js + pnpm: WebUI build/tests and the browser mode of `start.bat`.
+*   emsdk (auto-detected in `C:\emsdk`, or set `EMSDK`): only needed to (re)build the WASM worklet (`build_wasm.bat`).
 
 ### Building on Windows
 
-A PowerShell script is provided to manage the build process. Open a PowerShell terminal and run:
+`build.bat` does everything: CMake configure, parameter-contract regeneration, Standalone + VST3 + WebView2 host build, WebUI export, WASM worklet, the full CTest and web test suites, and the bridge E2E selftest. It always ends with a pause and mirrors its console output to `build-last-run.log`.
 
-```powershell
-# Clean and build the plugin (Release configuration)
-.\Scripts\manage.ps1 -Task Build -Config Release
-
-# To simply clean the build directory
-.\Scripts\manage.ps1 -Task Clean
+```bat
+build.bat              :: full build + tests + selftest (default build dir: build-reference)
+build.bat tests        :: fast mode: contract + test suites only
+build.bat noselftest   :: skip the bridge E2E step
+build.bat nowasm       :: skip the WASM worklet build
+build.bat modelmaker   :: also build ModelMaker (bumps Source\ModelMaker\Version.h)
+build.bat <dir>        :: use a different build directory
 ```
 
-The compiled plugin (`NEURONiK_Standalone.exe`, `NEURONiK.vst3`) will be located in the `build_neuronik/NEURONiK_artefacts/` directory.
+The compiled plugin is located in `build-reference\NEURONiK_artefacts\Release\`:
+
+*   `Standalone\NEURONiK.exe`
+*   `VST3\NEURONiK.vst3`
+
+> The legacy `Scripts\manage.ps1` is superseded by `build.bat`.
+
+## Running the Web Version
+
+`start.bat` (compile first with `build.bat` if artifacts are missing):
+
+1.  **WebView2 bench (recommended)** — launches the `NEURONiK Web Pilot.exe` host: it serves `WebUI\dist` with the live JUCE<->WebUI bridge, exactly the same page the plugin embeds. (The "Web Pilot" name is documented cosmetic debt from the retired pilot; see `DOCS/PILOT_RETIRED.md`.)
+2.  **Browser only** — serves `WebUI\dist` at `http://localhost:8399`; without the bridge the page runs in LOCAL MODE (handy for debugging the UI on its own).
+3.  **Bridge selftest** — automated E2E over the real WebView2 channel in six directions (mod matrix, native→JS, JS→native, GENERAL, MIDI, models A–D); exit code 0 = OK.
+
+## WebUI Development
+
+*   `WebUI/` is vanilla JS built with Vite. From `WebUI/`: `pnpm install`, `pnpm test` (vitest + jsdom), `pnpm build`.
+*   Parameter names/ranges/defaults are never duplicated by hand: the contract is generated from the APVTS into `WebUI/generated/`.
+*   The bridge wire format has its own versioned contract (`WebUI/contracts/bridge-protocol.json`) checked by contract tests in C++ and JS.
+*   The worklet engine comes from `build_wasm.bat` (or `pnpm sync:wasm` / `WebUI/scripts/sync-wasm.mjs` to refresh `WebUI/public/worklet/`). Bit-exact parity with the native engine is asserted by `Tests/neuronik_wasm_parity.mjs` across sample rates and block sizes.
+
+## Testing
+
+*   **C++**: `ctest --test-dir build-reference -C Release` — includes `NEURONiK_DSPReferenceTest` (RMS/peak reference render), the bridge protocol contract test and the WebView2 host selftest.
+*   **Web**: `pnpm test` inside `WebUI/`.
+*   House rule: a step without its test doesn't count as done.
+
+## Documentation
+
+| Doc | What it is |
+|---|---|
+| `HANDOFF.md` | Running, append-only log of every decision and step (newest entries at the end) |
+| `ROADMAP.md` | Live development plan — Phases 0–8; Phase 8 is the definitive WebView2 interface |
+| `DOCS/BRIDGE_PROTOCOL.md` | The JUCE<->WebUI bridge protocol |
+| `DOCS/PILOT_RETIRED.md` | Why the Next.js pilot was retired, and what replaced it |
+| `DSP_PARAMETERS.md` | The DSP parameter contract |
+| `WebUI/README.md` | WebUI architecture and status |
 
 ## Project Roadmap
 
-The project's future is guided by our [**Master Development Roadmap (ROADMAP.MD)**](DOCS/PLANS/ROADMAP.MD). It outlines the upcoming phases, including SIMD optimization for ARM (Raspberry Pi) and advanced UI features. We welcome contributions and ideas!
+The project's future is guided by our [**Master Development Roadmap (ROADMAP.md)**](ROADMAP.md). Phase 8 (current): the definitive web interface in WebView2 — 8.3 adds everything that is not "a parameter" (preset browser with tags, LCD + MIDI CC menu, spectral visualizer, drawn XYPad, MIDI learn), 8.4 retires the native JUCE panels, and 8.5 validates the VST3 with an embedded host. Windows-only for now (WebView2); a future macOS entry point would be `juce::WebBrowserComponent`.
+
+We welcome contributions and ideas!

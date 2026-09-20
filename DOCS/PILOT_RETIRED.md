@@ -12,6 +12,9 @@
 > (`WebUI/scripts/sync-wasm.mjs`). La interfaz que se envía es `WebUI/` (JS vainilla
 > sobre Vite) y la historia de esa decisión está en `ROADMAP.md` (Fase 8) y `HANDOFF.md`.
 >
+> El **inventario del legado** del piloto —qué sobrevivió y dónde vive hoy, qué quedó solo
+> en él y qué se retiró a propósito— está al final de este documento (2026-09-20).
+>
 > Se conserva porque su sección del bridge sigue siendo el relato de diseño de un
 > componente VIVO (`Source/WebUI/ParameterBridge.{h,cpp}`), y porque las mediciones del
 > A/B Next vs Vite (tamaño de bundle, arranque) son el porqué de la decisión.
@@ -327,3 +330,93 @@ del workspace.
 ## Regla de alcance
 
 No añadir nuevas pantallas, presets ni conexión de audio hasta cerrar formalmente este punto de decisión.
+
+
+## Legado del piloto — inventario (2026-09-20)
+
+Levantado tras la retirada: qué de lo construido durante la era del piloto (2026-09-16 →
+09-19) sobrevive, dónde vive hoy y qué quedó solo en él. Verificado contra el árbol actual y
+la historia de git —el código del piloto sigue consultable en `c811b75^`—, no contra el
+recuerdo. El piloto nació para decidir Next.js vs React/Vite y avanzó bastante más que eso:
+es el origen de casi toda la fontanería que la WebUI usa hoy.
+
+### Lo que sobrevivió — y dónde vive hoy
+
+**Portado tal cual a `WebUI/src/`** (la retirada lo deja por escrito; lo único que murió fue
+el armazón React):
+
+| En el piloto | Hoy |
+|---|---|
+| `lib/bridge.js` | `WebUI/src/bridge/bridgeCore.js` |
+| `lib/parameters.js` | `WebUI/src/contracts/parameters.js` |
+| `lib/paramValue.js` | `WebUI/src/contracts/paramValue.js` |
+| `lib/audioParams.js` | `WebUI/src/wasm/audioParams.js` (mapeo contrato → campos WASM) |
+| `lib/audioWorkletEngine.js` | `WebUI/src/audio/audioWorkletEngine.js` |
+| `lib/useParameterControls.js` | `WebUI/src/contracts/paramStore.js` (publica `window.__pilotReady`) |
+
+**Diseño concebido aquí que sigue mandando:**
+
+- El **protocolo v1 versionado** del bridge (sondeo de 30 ms sin eco, gestos
+  `begin/change/end` con cierre al recargar, `value` normalizado en el cable, entrada
+  tolerante con `Stats`, modo local): `WebUI/contracts/bridge-protocol.json` +
+  `DOCS/BRIDGE_PROTOCOL.md` + sus dos tests anti-drift (C++ y node).
+- El **contrato de parámetros SSOT** generado del APVTS —nació para sustituir al mock de
+  4 IDs—: `WebUI/generated/`, regenerado en el paso 2 del `build.bat`.
+- El **`--selftest` E2E sobre el canal real de WebView2**: nació con dos direcciones, el
+  piloto le añadió GENERAL y MIDI, y hoy corre con seis (MATRIZ, nativo→JS, JS→nativo,
+  GENERAL, MIDI, MODELOS A–D) en el editor del plugin (8.1 paso 2c) y en la bancada.
+- **Presets y MIDI por el cable** (wire aditivo a v1: `listPresets/loadPreset/savePreset` con
+  nombres no fiables; `midiNoteOn/Off`, pitch/mod, `midiPanic`, `midiNoteState` ~6 Hz) y los
+  patrones `PresetController`/`MidiController` de `Source/WebUI/ParameterBridge.h`.
+- El **guard de audio** («dentro de un host JUCE el worklet no arranca»): la regla canónica
+  es `WebUI/src/audio/policy.js`.
+
+**Arreglos nacidos de incidentes del piloto que siguen en pie:**
+
+- El **drag 1:1** de `ABDSharedAssets/components/drag-core.js` (la velocidad crecía
+  cuadráticamente con el número de eventos de movimiento): descubierto con los sliders
+  morphX/morphY del piloto, con test de regresión nuevo en la familia.
+- **`NEURONiKProcessor::refreshUiTelemetryFromApvts()`**: la telemetría de UI solo se
+  refrescaba dentro de `processBlock` y el host del piloto (sin callback de audio) la tenía
+  congelada. Hoy es pública y thread-safe.
+- El **exit code del selftest** (`g_selftestExitCode`): sin él, un FAIL se habría celebrado
+  como `[OK] Bridge verificado` en `build.bat`.
+- El **endurecimiento de `build.bat`**: los pasos dejan de ser «blandos»
+  (`HOST_BUILD_FAILED`/`WEBUI_BUILD_FAILED` omiten el selftest en vez de correrlo contra la
+  WebUI vieja).
+- La **lección pnpm** («tocar `ABDSharedAssets` exige re-install en cada consumidor `file:`»)
+  y el workspace anidado del piloto, ancestro directo del `WebUI/pnpm-workspace.yaml` propio
+  (mudado en la retirada).
+
+Y los **números del A/B** — Vite 471 KB vs Next 854 KB; build 2-6 s vs 15-25 s — que son el
+porqué escrito de la decisión vanilla+Vite (`ROADMAP.md`, Fase 8).
+
+### Lo que quedó solo en el piloto
+
+1. **El pad XY dibujado.** Con un matiz: lo que se veía junto a la página era el **XYPad
+   nativo** de la bancada (`Source/WebPilotHost.cpp`), que sigue ahí por ser su última
+   consumidora y muere en 8.4 con el panel. La pieza **web** sí nació en esta era —
+   `ABDSharedAssets/components/xypad.js` (12 tests, demo sección 8) — pero la WebUI de 8.2
+   pinta morphX/morphY como knobs en la ficha OSCILADOR. El pad dibujado está apuntado a
+   **8.3**; cablearlo es barato porque el componente ya está hecho y probado.
+2. **El footer de diagnóstico en página.** La pestaña BRIDGE llevaba JSON de estado en vivo,
+   contador de cambios y `contractErrors` visibles. No se portó: hoy la depuración de página
+   es el selftest y los logs. Candidato barato a recuperar como modo debug.
+3. **El puente de tema (`themeChanged`).** Propuesto en la lista «qué falta» del 09-16 y
+   nunca implementado: la WebUI vive de sus propios tokens CSS. Deuda menor — la fuente del
+   tema (`ThemeManager` nativo) desaparece en 8.4.
+
+### Lo que se retiró a propósito (pérdida aceptada)
+
+- El **fallback embebido de assets** (`NEURONiK_WebPilotAssets` + `loadEmbeddedResource`):
+  se validó a fondo —con dos bugs arreglados de paso: fuga de exit code en timeout y el
+  snapshot que servía `404/index.html` como `index.html`— y se retiró con el snapshot. La
+  bancada sirve `WebUI/dist` desde disco y, si el disco falla, página de diagnóstico.
+- El **armazón React** (`app/page.jsx`, `lib/controls.jsx`): la capa de wrappers sobre los
+  controles imperativos era exactamente la superficie extra que la decisión vanilla eliminó.
+- Los **simulacros temporales** (`--selftest-force-fail`): retirados tras validar el camino
+  del exit code.
+
+*Inventario levantado con `git grep` sobre `c811b75^` (último árbol con el piloto) y greps
+sobre `WebUI/src/`, `ABDSharedAssets/components/`, `WebUI/contracts/bridge-protocol.json` y
+`Source/WebPilotHost.cpp`. Sin código tocado: solo este documento.*
