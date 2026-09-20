@@ -349,8 +349,8 @@ describe('createParameterStore', () => {
     store.start();
 
     // Una por mensaje nativo del contrato: snapshot, parameterChanged, presetList,
-    // presetError, midiNoteState, modelsState y modelError.
-    expect(backend.listenerCount(NATIVE_TO_JS_EVENT_ID)).toBe(7);
+    // presetError, midiNoteState, modelsState, modelError y telemetryFrame.
+    expect(backend.listenerCount(NATIVE_TO_JS_EVENT_ID)).toBe(8);
 
     store.dispose();
 

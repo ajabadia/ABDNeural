@@ -25,6 +25,7 @@
  */
 
 import { createBridgeTransport } from '../bridge/bridgeCore.js';
+import { latestTelemetry, onTelemetry, pushTelemetryFrame } from '../bridge/telemetry.js';
 import {
   PILOT_PARAMETER_IDS,
   contractSummary,
@@ -257,6 +258,12 @@ export function createParameterStore({ ids = PILOT_PARAMETER_IDS, scope = global
       onModelError(modelError) {
         setState({ modelError });
       },
+
+      onTelemetry(frame) {
+        // Los frames NO son estado de la app (llegan a ~15 Hz): van al bufer de
+        // src/bridge/telemetry.js, que reparte solo a los suscriptores visuales.
+        pushTelemetryFrame(frame);
+      },
     });
 
     setState({ bridgeAvailable: transport.available });
@@ -291,6 +298,10 @@ export function createParameterStore({ ids = PILOT_PARAMETER_IDS, scope = global
     ids,
     getState,
     subscribe,
+    /** Telemetria en tiempo real (fuera del ciclo setState): ver bridge/telemetry.js. */
+    onTelemetry,
+    /** Ultimo frame recibido, o null antes del primero (visuales que montan tarde). */
+    latestTelemetry,
     start,
     dispose,
     pushParameter,

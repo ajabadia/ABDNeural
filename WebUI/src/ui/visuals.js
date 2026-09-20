@@ -21,6 +21,7 @@
  */
 
 import { createEnvelopeCurve } from './envelopeCurve.js';
+import { createSpectral } from './spectral.js';
 import { createModelSlots } from './modelSlots.js';
 import { createModSummary } from './modSummary.js';
 import { createXyPad } from './xyPad.js';
@@ -35,6 +36,9 @@ import { createXyPad } from './xyPad.js';
  * @param {(id: 'morphX'|'morphY', normalized: number,
  *          phase: 'begin'|'change'|'end') => void} [options.onEdit]  edición del
  *   pad XY (`model-slots`): el store la cierra con su protocolo de gestos.
+ * @param {(notify: Function) => Function} [options.onTelemetry]  canal de
+ *   telemetría en vivo (`model-slots`): lo consume el espectral; es pintura,
+ *   no estado, así que va por su propio camino y no por el paint de snapshots.
  * @returns {{ element: HTMLElement, paint: Function, destroy?: Function }|null}
  *   null cuando el catálogo declara una vista que nadie construye (el llamador lo
  *   avisa en consola en vez de pintar un hueco vacío).
@@ -53,18 +57,22 @@ export function createVisual(visualId, controls, options = {}) {
   if (visualId === 'model-slots') {
     const slots = createModelSlots({ onLoad: options.onLoad ?? null });
     const pad = createXyPad({ onEdit: options.onEdit ?? null });
+    const spectral = createSpectral({ onFrame: options.onTelemetry ?? null });
 
     const element = document.createElement('div');
     element.className = 'model-block';
-    element.append(pad.element, slots.element);
+    element.append(pad.element, spectral.element, slots.element);
 
     return {
       element,
       paint(parameters, state) {
         pad.paint(parameters, state);
+        // El espectral NO pinta con snapshots: sus barras viven en el canal de
+        // telemetría y un snapshot no debe congelarlas.
         slots.paint(parameters, state);
       },
       destroy() {
+        spectral.destroy();
         pad.destroy();
         slots.destroy();
       },

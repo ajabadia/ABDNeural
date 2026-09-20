@@ -31,9 +31,10 @@ import { describeControl, getDescriptor } from './contracts/parameters.js';
 import { SCREEN_PARAMETER_IDS } from './contracts/screens.js';
 import { BANDS, CANVAS, SECTION_ACTIONS, SECTION_VISUALS } from './contracts/sections.js';
 import { createPanel } from './ui/panel.js';
+import { createModulationRings } from './ui/modulationRings.js';
 import { createVisual } from './ui/visuals.js';
 import { mountKeyboard } from './ui/keyboard.js';
-import { mountFitStage } from './ui/fitStage.js';
+import { mountFitStage } from '@abdsynths/shared/components';
 import { audioOwnerFor } from './audio/policy.js';
 import {
   isAudioEngineReady,
@@ -91,6 +92,9 @@ const bands = BANDS.map((band) => band.map((section) => {
         // gestos coordinados (uno por eje) con fase completa. pushParameter es
         // la primitiva; handleChange solo sabe cerrar UN id.
         onEdit: (id, value, phase) => store.pushParameter(id, value, phase),
+        // El espectral de la ficha MODELOS se cuelga del canal de telemetria
+        // (pintura en vivo, fuera del ciclo setState).
+        onTelemetry: store.onTelemetry,
       })
       : null,
   };
@@ -127,6 +131,10 @@ if (root) {
 
   let owner = audioOwnerFor(false);
   let lastEngineIndex = -1;
+
+  // Anillos de modulacion: el frame de telemetria suma sobre cada destino;
+  // el mapa de knobs lo alimenta la misma coleccion que pinta los snapshots.
+  const modRings = createModulationRings(panel.knobsById);
 
   const renderAudio = () => panel.paintAudio({ owner, ...engineSnapshot });
 
@@ -213,6 +221,11 @@ if (root) {
 
 // subscribe() paints immediately, so the panel never renders a blank frame.
 store.subscribe(paint);
+
+// Telemetria (nativa -> web): los frames NO son estado (a ~15 Hz no pasan por
+// setState); alimentan directamente la pintura en tiempo real. Hoy, el anillo
+// de modulacion; el espectral y el scope se cuelgan del mismo canal.
+store.onTelemetry((frame) => modRings.handleFrame(frame));
 
 /**
  * Wire the baseline slider: normalised value on the wire, real units in the

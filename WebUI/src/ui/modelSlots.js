@@ -35,6 +35,7 @@ export function createModelSlots({ onLoad = null } = {}) {
   const element = document.createElement('div');
   element.className = 'model-slots';
   element.dataset.visual = 'model-slots';
+  // 2x2: la mitad de alto que la columna (el espectral comparte la ficha).
 
   const rows = MODEL_SLOT_LABELS.map((label, slot) => {
     const row = document.createElement('div');

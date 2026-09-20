@@ -43,6 +43,10 @@ import { ThemeSwitcher } from '@abdsynths/shared/components';
  */
 export function createPanel({ bands, baselineId, handlers = {} }) {
   const controls = [];
+  // Mapa id -> control para consumidores de TELEMETRIA (el anillo de modulacion
+  // pinta sobre el knob, no escribe el parametro): su acceso es por id y su
+  // ciclo de vida es el del panel.
+  const knobsById = new Map();
   // Vistas de ficha (curva ADSR...): no son controles, pero se repintan con el
   // mismo snapshot, asi que el panel les pasa el estado igual que a las celdas.
   const visuals = [];
@@ -126,6 +130,7 @@ export function createPanel({ bands, baselineId, handlers = {} }) {
         actionButtons,
         baselineId,
         controls,
+        knobsById,
         drawers,
         gatedControls,
         visuals,
@@ -292,6 +297,7 @@ export function createPanel({ bands, baselineId, handlers = {} }) {
 
   function destroy() {
     for (const control of controls) control.destroy();
+    knobsById.clear();
     for (const visual of visuals) visual.destroy?.();
     for (const drawer of drawers.values()) drawer.destroy();
     controls.length = 0;
@@ -305,6 +311,7 @@ export function createPanel({ bands, baselineId, handlers = {} }) {
     element,
     keysRoot,
     drawers,
+    knobsById,
     paint,
     paintAudio,
     toggleKeys,
@@ -379,9 +386,16 @@ function buildCard(section, context) {
   // cajón deja que su vista resumen llene el cuerpo (su ancho no reparte celdas).
   if (! drawer) body.style.gridTemplateColumns = `repeat(${section.columns}, minmax(0, 1fr))`;
 
-  // Destino de cada celda: el cuerpo de la ficha, o la fila de su ruta en el cajón.
-  const slotOf = drawer && section.drawer.groups
-    ? buildSlotRows(section, drawer.body)
+  // Destino de cada celda: el cuerpo de la ficha, o su hueco en el cajón. Un
+  // cajón CON `groups` (la matriz) monta una fila por ruta; SIN `groups`
+  // (GLOBAL & MASTER) apila las celdas en una columna con distintivo n1..nN.
+  const slotOf = drawer
+    ? (section.drawer.groups
+        ? buildSlotRows(section, drawer.body)
+        : buildSlotColumn(
+            section.ids.filter((id) => id !== context.baselineId),
+            drawer.body,
+          ))
     : null;
 
   for (const control of section.controls) {
@@ -401,6 +415,10 @@ function buildCard(section, context) {
 
     context.controls.push({ id: control.id, setNormalized: cell.setNormalized, destroy: cell.destroy });
 
+    // Solo los knobs traen anillo: un choice/toggle no suma telemetria pintable.
+    if (typeof cell.setModulation === 'function')
+      context.knobsById.set(control.id, cell);
+
     if (cell.engineParameter && cell.setEngine)
       context.gatedControls.push({ engineParameter: cell.engineParameter, setEngine: cell.setEngine });
 
@@ -419,6 +437,32 @@ function buildCard(section, context) {
   card.append(heading, body);
 
   return card;
+}
+
+/**
+ * Columna del cajón sin rutas (patron GLOBAL & MASTER): una fila por control,
+ * con su distintivo numerico. Devuelve el mismo mapa id -> fila que
+ * buildSlotRows, para que el bucle de controles no sepa en qué variante está.
+ */
+function buildSlotColumn(ids, host) {
+  const slots = new Map();
+
+  for (const [index, id] of ids.entries()) {
+    const row = document.createElement('div');
+    row.className = 'drawer-slot drawer-slot--column';
+    row.dataset.slot = String(index + 1);
+
+    const badge = document.createElement('span');
+    badge.className = 'drawer-slot__badge';
+    badge.textContent = `n${index + 1}`;
+
+    row.append(badge);
+    host.append(row);
+
+    slots.set(id, row);
+  }
+
+  return slots;
 }
 
 /** El cajón de una ficha (uno solo por ficha, aunque se pinte desde dos sitios). */
