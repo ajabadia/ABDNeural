@@ -522,7 +522,7 @@ una barra de menú File/Edit/Help.
 
 | Función nativa | Dónde vive | ¿En la web hoy? | Destino en la web |
 |---|---|---|---|
-| Tab GENERAL | `UI/ParameterPanel.cpp` (276) | **Sí** (ficha GLOBAL & MASTER del lienzo) | 8.2 |
+| Tab GENERAL | `UI/ParameterPanel.cpp` (276) | **Sí** (ficha GLOBAL & MASTER del lienzo, con cajón desde 8.3; el fader MASTER queda visible en su ficha) | 8.2 |
 | Tab RESONATOR | `UI/Panels/OscillatorPanel.cpp` (216) | **Sí** (fichas RESONADOR y MODELOS A–D) | 8.2: el bloque MODEL queda cubierto (los 9 knobs del motor, repartidos entre OSCILADOR y RESONADOR; el XYPad como `morphX`/`morphY`; y las ranuras `loadA..loadD` en la ficha MODELOS A–D) |
 | Tab FILTER/ENV | `UI/Panels/FilterEnvPanel.cpp` (114) + `UI/EnvelopeVisualizer.h` | **Sí** (ficha FILTRO & ENVOLVENTE) | 8.2: falta la curva ADSR dibujada |
 | Tab FX | `UI/Panels/FXPanel.cpp` (169) | **Sí** (ficha EFECTOS) | 8.2 |
@@ -532,9 +532,9 @@ una barra de menú File/Edit/Help.
 | **MIDI Learn por control** (mouseUp sobre el control) + persistencia | `UI/MidiLearner.{h,cpp}` + `Main/MidiMappingManager` | No | 8.3: acción del bridge ("aprende el próximo CC", cancelar, borrar) y mapeo/guardado en el procesador |
 | **Menú MIDI del LCD** (8 destinos CC + RESET ALL) | `UI/LcdMenuManager.h` (`ItemType::MidiCC` / `Action`) | No | 8.3 con el LCD |
 | **LCD 2 líneas + D-pad** (estados Idle/Navigation/Edit) | `UI/LcdDisplay.{h,cpp}` (166) + `UI/LcdMenuManager.h` | No | 8.3: árbol GLOBAL/RESONATOR/FILTER/EFFECTS/MIDI CONTROL, con ítems que **dependen del `engineType`** |
-| Visualizador espectral (64 parciales) | `UI/SpectralVisualizer.{h,cpp}` (97) | No | 8.3 vía canal de lectura nativo→web (`IVisualizationSource`) |
+| Visualizador espectral (64 parciales) | `UI/SpectralVisualizer.{h,cpp}` (97) | **Sí** (2026-09-20): `WebUI/src/ui/spectral.js` (64 barras suscritas a `onTelemetry`) compuesto en la ficha MODELOS A–D; ranuras compactadas a 2×2 para caber en el presupuesto del lienzo | Hecho; queda pulido visual (paleta/escala) si la bancada lo pide |
 | XYPad (morph X/Y + nombres de modelo) | `UI/XYPad.{h,cpp}` (150) | **Sí** (8.3, 2026-09-20): pad dibujado en la ficha MODELOS A–D con los nombres en las esquinas (XYPad compartido + `setCorners`); los knobs morphX/morphY siguen en OSCILADOR — el pad es aditivo, las 70 celdas intactas | Hecho; el anillo de modulación sigue siendo el fleco 8.2 |
-| **Feedback de modulación en cada control** (anillo/overlay del valor modulado) | `UI/CustomUIComponents.h` (`ModulatedSlider` + `Main/ModulationTargets.h`) | No | 8.2: es una función del **control compartido**, no del panel — hoy `@abdsynths/shared` no la tiene. **Ojo: el dato existe** en el procesador (`getModulationValueForUI`, `modulationValues[64]`) pero no está en el protocolo del puente: sin un mensaje de telemetría (aditivo, tipo `midiNoteState`) no hay anillo honesto que dibujar |
+| **Feedback de modulación en cada control** (anillo/overlay del valor modulado) | `UI/CustomUIComponents.h` (`ModulatedSlider` + `Main/ModulationTargets.h`) | **Sí** (2026-09-20): anillo en el `Knob` compartido (`setModulation`, doble trazo como el nativo, token `--color-mod-ring`) + consumidor `modulationRings.js` (telemetría → anillos vía la tabla SSOT `MOD_DESTINATIONS` del exportador C++, con anti-drift a ambos lados) | Hecho (lo que la tabla llamaba 8.2); la semántica es la nativa: contribución con signo, normalizada contra el rango del destino |
 | Barra de menú File/Edit/Help (cargar preset, zoom, specs MIDI, info RANDOM/FREEZE) | `NEURONiKEditor.cpp` (`getMenuBarNames`/`menuItemSelected`) | No | 8.3 como botones de cabecera o menú web; **los ítems de audio del Standalone no se migran** (los pone el wrapper de JUCE). Nota 09-20: en el nativo, Load/Save Preset ya viven en File (reorganización propia, sin migración web) |
 | Diálogo de ayuda + especificaciones MIDI de fábrica | `UI/HelpDialog.h` + `showMidiSpecifications()` | No | 8.3 como overlay |
 | Teclado en pantalla | `juce::MidiKeyboardComponent` + `MidiKeyboardState` | **Sí** (teclado compartido, como franja fija abajo) | Resuelto: franja fija como en nativo, plegable con el botón TECLADO |
@@ -985,7 +985,7 @@ sigue siendo la salida natural si una sección crece una fila de más (el repart
         existe, no hay una segunda página a la que rebajar el listón y las seis direcciones son
         obligatorias en las dos superficies. `Tests/webuiSelftestContractTest.mjs` fija que no
         vuelva: ni `PageCapabilities`, ni `retiredPilotPage`, ni ninguna marca de omitido.
-- [ ] **Anillo del valor modulado (fleco abierto, con el dato localizado).** El procesador SÍ
+- [ ] **Anillo del valor modulado (fleco abierto; el dato ahora TAMBIÉN viaja: `telemetryFrame.modulation[]` desde el 2026-09-20).** El procesador SÍ
       publica la modulación viva (`NEURONiKProcessor::getModulationValueForUI()` sobre
       `modulationValues[]`, que llenaba el `ModulatedSlider` nativo), pero **no viaja en el cable**:
       el protocolo del puente no tiene canal de modulación. Hacerlo bien es un cambio de frontera
@@ -999,6 +999,12 @@ sigue siendo la salida natural si una sección crece una fila de más (el repart
 - [ ] **LCD + navegación tipo hardware**: `LcdDisplay` + `LcdMenuManager` + D-pad
       (MENU/OK/flechas) y los botones de comando. Es lo que da carácter al instrumento; si se
       simplifica, que sea una decisión escrita, no un olvido.
+      **La MECÁNICA ya existe (nota 2026-09-20)**: la familia LCD universal vive en
+      `@abdsynths/shared` (lcdMachine: máquina pura Idle/Nav/Edit con árbol inyectado y hooks;
+      lcdScreen: ping-pong + preview + cola con prioridad; lcdPanel: D-pad con hold-repeat) y su
+      gemelo C++ en `ABDSharedCode/LcdDisplay` (`ABDShared::LcdDisplay`). Queda lo del synth:
+      el árbol GLOBAL/RESONATOR/FILTER/EFFECTS/MIDI CONTROL (recuperable del `LcdMenuManager.h`
+      retirado, en git) y los hooks al bridge. Guía: `ABDSharedAssets/docs/LCD_GUIDE.md`.
 - [ ] **Visualización en vivo**: `SpectralVisualizer`, scope flotante y `XYPad` (morph X/Y).
       Requiere un canal de datos de solo lectura nativo→web a ~30-60 Hz, con presupuesto de
       CPU medido y sin asignar en el hilo de audio (snapshot con `AudioThreadSnapshot`).
@@ -1057,16 +1063,23 @@ sigue siendo la salida natural si una sección crece una fila de más (el repart
 **9. ModelMaker a web (FUTURA — se planifica, no se empieza hasta cerrar la Fase 8)**
 
 Apuntada 2026-09-20. Hoy `NEURONiK_ModelMaker` es una app JUCE independiente (WIN32, fuera
-del build por defecto a propósito: arrastra `UpdateVersion` y es otro entregable; se compila
-con `build.bat modelmaker`). Flujo: LOAD AUDIO → análisis espectral de 64 parciales con
+del build por defecto a propósito: es otro entregable; se compila con `build.bat modelmaker`,
+y su `Version.h` SOLO se incrementa en builds marcadas release (`build.bat modelmaker
+release`, mecanismo cambiado el 2026-09-20). Flujo: LOAD AUDIO → análisis espectral de 64 parciales con
 detección de pitch → A/B PLAY ORIGINAL/PLAY MODEL (comparte `Oscillator`/`Resonator` con el
 plugin) → REC → EXPORT `*.neuronikmodel` (JSON `{amplitudes[64], frequencyOffsets[64], name,
-description}`). Migrarla a web la libera de Win32 y del versionado por compilación (el
+description}`). Migrarla a web la libera de Win32 y de la herramienta aparte (el
 C4996 de JUCE 8 se resolvió el 2026-09-20: export migrado a AudioFormatWriterOptions).
 
 - [ ] **Decidir el alojamiento**: segunda página del MISMO bundle WebUI (ruta aparte; la
       bancada ya sirve `WebUI/dist`) vs app Vite aparte en el workspace. Por defecto, página
       del mismo bundle: cero infraestructura nueva.
+- [ ] **Integrarla DENTRO del propio plugin como segunda herramienta** (apuntado 2026-09-20):
+      la misma página del bundle, presentada como ventana modal que se abre desde un punto de
+      menú "View" en la nav-bar — el mismo menú ya apuntado para el modo claro (nota del 8.3,
+      fuera de su DoD). Así el synth no abre otra app: abre su taller. La casilla de alojamiento
+      decide dónde VIVE el código (página del bundle vs app aparte); esta decide cómo se PRESENTA
+      (modal sobre el lienzo vs página navegable).
 - [ ] **Portar el ANÁLISIS al WASM**: la extracción de 64 parciales + detección de pitch es
       C++ propio del ModelMaker y NO vive en el motor WASM (el DSP de playback sí, con
       paridad bit-exacta de la Fase 5). Es el grueso del trabajo técnico de esta fase.

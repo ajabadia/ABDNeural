@@ -3239,3 +3239,157 @@ tintable, pad con corners — todo heredable por los synths definiendo solo toke
 Pendientes del roadmap: 8.3 (browser, LCD, espectral+telemetria, MIDI learn, menu web),
 "View" para el tema, fitStage por extraer al paquete, deuda de temas de ABDMS2000.
 
+
+## 2026-09-20 (k): canal de telemetria nativa->web — el mensaje que desbloquea espectral, scope y anillo
+
+**El mensaje:** `telemetryFrame` (aditivo a v1) — `{ seq, spectral: [64], envelopes: [2], lfos: [2], modulation: [targets], morph: [x, y] }`, todo 0..1. Sondeo y CON DIFF de valor (epsilon 1/255): un synth quieto no emite nada, un valor que se mueve emite exactamente un frame. Los hosts emiten cada 2 ticks del timer de 30 ms (~15 Hz). `stats.telemetrySent` cuenta los frames.
+
+**Lado nativo:** interfaz `TelemetryController` en `ParameterBridge.h` (lo que el bridge necesita de un backend visual, nada mas; el procesador ya implementaba lo equivalente para la UI nativa via `IVisualizationSource`) + `VisualizationSourceAdapter` en `BridgeAdapters.h` (pass-through). `sendTelemetry()` en el bridge; instalacion y sondeo decimado en los DOS hosts (NeuronikWebView y WebPilotHost, el mismo timer de modelsState/midiNoteState).
+
+**Lado JS:** `src/bridge/telemetry.js` — consumidor que guarda el ULTIMO frame y reparte una llamada por frame a los suscriptores (futuro espectral, scope, anillo). Los frames NO son estado de la app: viven FUERA del ciclo `setState` a proposito (llegan 15 veces por segundo). `bridgeCore` anade el dispatch `onTelemetry` (octavo listener nativo->JS) y `paramStore` cables el push.
+
+**Contrato:** `telemetryFrame` en `bridge-protocol.json` (con `behaviour.telemetryPoll`: la politica de sondeo con diff) y checks en los DOS tests de contrato (C++ compara el literal contra `BridgeActions::telemetry`; el mjs entrega un frame y lo ve llegar como `onTelemetry`).
+
+**Tests:** `ParameterBridgeTest` seccion 11 (17 checks: primer frame siempre emite, campos uno a uno, quieto=no mensaje, movimiento=un frame, sub-epsilon no emite, seq monotona, sin backend=no-op). Web: `tests/telemetry.test.js` (6) + `tests/bridgeTelemetry.test.js` (3, arnes de `window.__JUCE__` falso) — y los dos tests que fijaban el numero de listeners pasan de 7 a 8 (el cambio legitimo del contrato).
+
+**Verificacion:** ctest **21/21** - WebUI **209/209** - selftest del plugin y de la bancada **OK** (seis direcciones sobre el canal real, la pagina nueva) - Standalone y bancada recompilados.
+
+**Lo que desbloquea (consumidores pendientes):** visualizador espectral (fila 8.3 del roadmap), scope, y el anillo del valor modulado (la cantidad por destino viaja en `modulation[]` — queda la pintura en el Knob compartido).
+## 2026-09-20 (l): fitStage extraido a @abdsynths/shared — CZ101 ya tenia su copia artesanal
+
+**La deduplicacion que justifica la extraccion:** CZ101 lleva su propio `scaleUI()` en su
+app.js (~20 lineas: `min(scaleW, scaleH)` sobre su 1409x768, listener de resize, SIN acotar
+y con el centrado delegado en `transform-origin: center`). Dos implementaciones del mismo
+mecanismo divergiendo: el patron que la suite viene eliminando.
+
+**En el paquete:** `components/fitStage.js` (`computeFit` puro + `mountFitStage` con
+viewport inyectable), exportado por el barrel. Generalizacion minima: `minScale`/`maxScale`
+son opcion (defaults 0.25x-3x, el rango del zoom nativo de NEURONiK) — adoptar el compartido
+o mantener el comportamiento sin tope de CZ101 es ahora decision de una linea. El tamano de
+diseno sigue entrando por parametro (el paquete no conoce lienzos ajenos). Documentado en
+COMPONENTS.md como INFRAESTRUCTURA de pagina, no control: sin contrato de control, y con el
+requisito de uso `body { overflow: hidden }` en el CSS de cada pagina.
+
+**En NEURONiK:** `app.js` importa `mountFitStage` del barrel; borradas `WebUI/src/ui/fitStage.js`
+y su test (los 7 tests viven ahora en el paquete, portados tal cual, + 2 nuevos de cotas
+custom). La asercion del `appContract` fija el consumo del paquete (no copia local). La
+llamada `mountFitStage(root, { width: CANVAS.width, height: CANVAS.height })` no cambia.
+
+**Verificacion:** ABDSharedAssets **77/77** (9 de fitStage) - NEURONiK WebUI **202/202** -
+`pnpm build` verde - Standalone recompilado con el embed nuevo y selftest **OK** (seis
+direcciones). Pendiente para CZ101 (su repo): sustituir `scaleUI` por
+`mountFitStage(container, { width: 1409, height: 768 })` — gana acotacion y centrado
+explicito. MS2000 no adopta hoy (layout fluido, sin lienzo que escalar).
+## 2026-09-20 (m): el bump del ModelMaker pasa a ser RELEASE-GATED
+
+**El defecto:** `Scripts/update_version.ps1` corria en CADA compilacion del target (un custom
+command con OUTPUT ficticio, siempre "caducado") y quemaba un numero de
+`Source/ModelMaker/Version.h` — un fichero VERSIONADO en git — por cada build de
+verificacion. `build.bat` incluso aconsejaba "descarta el incremento" a mano.
+
+**El cambio:** el ps1 solo incrementa si la build viene marcada
+(`NEURONIK_MM_RELEASE=1`); `build.bat modelmaker release` pone la marca justo antes de
+compilar el target y la retira despues. El custom command es ahora PRE_BUILD del target
+(sin dependencia muerta `UpdateVersion`, sin `-E env` que congelaria el valor en
+generacion: el ps1 HEREDA el entorno de la invocacion). La version oficial del plugin no
+depende de esto; la define CMake.
+
+**Verificado:** build SIN marca -> `skipped`, Version.h intacto; CON marca -> `Incremented
+version to 0.1.29`; SIN marca de nuevo -> no lo toca (se queda 29). El incremento de la
+prueba se descarto (`git checkout -- Version.h`, sigue 0.1.28).
+
+**Docs:** README (seccion ModelMaker: dos invocaciones), ROADMAP Fase 9 (sin el "arrastra
+UpdateVersion") y build.bat (token `release`, banner y mensajes honestos).
+## 2026-09-20 (n): el flujo del ModelMaker reproducido de punta a punta — por fin, con analisis real
+
+**Lo que nadie habia corrido hasta hoy:** audio -> `detectPitch`/`analyze` del ModelMaker ->
+export `.neuronikmodel` -> `loadModel` en las ranuras A-D. `ModelSlotTest` cubria el lector y
+las ranuras con JSON sintetico; el ANALISIS real del ModelMaker no tenia prueba y no habia
+invariant de su flujo. El test `NEURONiK_ModelMakerRoundTripTest` (Tests/
+ModelMakerRoundTripTest.cpp, 22 checks) reproduce el flujo completo con el MISMO codigo que
+la GUI conduce: sintetiza el "sample" (A4, 1 s, 64 armonicos 1/n — el espectro de un
+instrumento real), corre el HPS del analizador (detecta 439.45 Hz), analiza, escribe el JSON
+EXACTO de exportModel(), carga en A-D y verifica tres niveles: el ESTADO de las ranuras
+(contenido <= 1e-3 contra el analisis, nombres), lo que SUENA (RMS 0.23; la tabla del motor,
+que el resonador RE-ESCALA por SUMA — forma contractual, no amplitudes crudas: argmax=
+fundamental, suma=1.000, ratio de forma 3.080 vs 3.080) y lo que la PAGINA veria
+(modelsState via EngineModelsAdapter, con el nombre del fichero).
+
+**Hallazgo del round-trip (no bug, semantica documentada):** la tabla de
+`spectralDataForUI` son CUOTAS (suma 1.0), no el modelo en bruto: quien lea
+`spectralDataForUI` como amplitudes del modelo esta leyendo otra cosa. Los consumer
+(espectral del 8.3, anillo) tienen que saberlo.
+
+**Limitacion documentada en el propio test:** la deteccion HPS del analizador puede irse a
+la octava con notas graves (la ventana FFT de 8192 muestras = 170 ms contiene <2 periodos de
+un A2): el GUI del ModelMaker lo corrige a mano con su combo nota/octava; el flujo
+automatizado usa A4 y no lo pisa. Con un periodo y medio la deteccion HPS era inestable;
+con A4 es estable. Es limitacion de SENAL de la herramienta, no del plugin.
+
+**En el build:** ctest 22/22 (el test nuevo entra en la lista de build.bat). El flujo GUI
+con raton (LOAD AUDIO -> ANALYZE -> EXPORT) sigue siendo manual a proposito: la logica es
+exactamente la que el test invoca.
+
+## 2026-09-20 (o): ABDMS2000 migrado al selector universal — la mecanica sube, los efectos se quedan
+
+Los 3 botones `.mode-tab` de la nav-bar dejaron paso a un <select> unico
+(`ThemeSwitcher` con `variant: 'select'`): la interfaz respira y la eleccion de tema
+tiene UNA sola ruta. Los temas son datos declarativos (`WebUI/src/contracts/themes.js`:
+id/label/bodyClass/payload); el switcher compartido aplica `data-theme` y la clase de
+skin con politica de dueno unico, y entrega el payload (el indice de `synthMode`) como
+segundo argumento del onChange. Los efectos del synth se quedan en casa:
+`applyThemeEffects()` manda synthMode al store/bridge y sincroniza el bank manager; las
+acciones de menu `skin-*` pasan por el switcher. El LCD universal queda apuntado para
+diseno posterior (la bancada CZ101 lleva ~880 lineas de LCD propia).
+
+## 2026-09-20 (p): LCD universal disenado en el paquete — la maquina del nativo vuelve como dato+hooks
+
+El LCD del 8.3 ya no hay que escribirlo: la familia vive en @abdsynths/shared
+(lcdMachine: maquina PURA Idle/Nav/Edit con arbol inyectado y hooks; lcdScreen:
+ping-pong + preview + cola con prioridad; lcdPanel: D-pad con hold-repeat) y su
+gemelo C++ en ABDSharedCode/LcdDisplay (ABDShared::LcdDisplay, INTERFACE, gate
+WASM, sonda compilada contra JUCE). Herencia: la maquina es el LcdMenuManager
+nativo retirado (c811b75, recuperado de git) con el arbol como DATO y los
+efectos como callbacks; el scroller es el de CZ101; la cola, la de ABDEep.
+Verificado: 109/109 en el paquete (26 tests LCD), QA visual en la demo
+(menu GLOBAL/EFFECTS/PANIC navegado en vivo), C++ compilado. Guia y plan de
+adopcion (CZ101 ~880 lineas, MS2000, ABDEep): docs/LCD_GUIDE.md.
+
+## 2026-09-20 (q): GLOBAL & MASTER al final del lienzo + Segmented universal (dos repos)
+
+Mudanza 8.3: la ficha GLOBAL & MASTER vive al FINAL del lienzo, abajo a la
+izquierda (primera de la banda models+modMatrix+globalFull). Patron de la
+matriz: en el lienzo solo queda el fader MASTER (el control base del host,
+intacto para el selftest) + RANDOM + EDITAR, que abre el cajon lateral con
+tempo/velocity/MIDI/congelados/randomStrength apilados en columna (cajon sin
+`groups`: buildSlotColumn con distintivo n1..nN, CSS .drawer-slot--column).
+La geometria la paga el LFO (se muda a los carriles libres de la banda
+superior, mismas 2 filas): el lienzo sigue midiendo 990 y el encaje da
+holgura >= 8px. tests: sections 18/18, panel incluido.
+
+Componente nuevo UNIVERSAL en los dos repos compartidos: Segmented, el
+hermano compacto del Select (listas de DOS opciones siempre visibles: motor
+y sync de LFO). JS: ABDSharedAssets/components/segmented.js (radiogroup con
+roving tabindex, flechas, vetados con nota, divergente conservado) + CSS en
+widgets.css + renderer en skins vector/ms2000; 7 tests propios.
+C++: ABDSharedCode/Segmented/Segmented.h (ABDShared::Segmented, INTERFACE,
+gate WASM, sonda ejecutable ABDShared_SegmentedProbe compilada y en verde,
+exit 0). Cableado en NEURONiK: SEGMENTED_CHOICES en controls.js decide la
+presentacion (decision de pagina, no de contrato) — engineType + los dos
+sync de LFO en segmentado, waveforms (6) y listas largas/gateadas siguen en
+Select. Recuento del lienzo: 45 knobs + 1 base + 5 toggles + 16 selects +
+3 segmented = 70. Sonda C++ y ctest de contrato en verde; verificado
+segmented 7/7, paquete 10 ficheros, WebUI 21 ficheros, build Vite.
+
+Inventario ABDEep (WebUI) para futuras extracciones al paquete:
+- Step-editor de 16 pasos (panel LFO3): patrones ritmicos; NO reusable en
+  NEURONiK hoy (su LFO no tiene secuenciador), candidato LFO avanzado.
+- Filas de botones LED (shape-led / led-row de los paneles OSC): la version
+  universal ya existe (Toggle con LED del paquete); para waveforms de 6 hay
+  que decidir entre Select y una fila LED - decidir con la bancada real.
+- Numberbox +/- con edit directo (paneles EDIT): util para BPM/canales; no
+  extraido. Candidato si el cajon de GLOBAL & MASTER pide edicion fina.
+- Tab bar deslizante de paneles: la navegacion por fichas del lienzo de
+  NEURONiK lo cubre; extraer solo si otro synth pide pestanas.
+- Scope/canvas visual: en curso via telemetria (espectral del 8.3).
+Los ya extraidos esta jornada: LCD universal (p) y Segmented (q).

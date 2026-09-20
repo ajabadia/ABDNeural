@@ -22,7 +22,7 @@ inside WebView2 through a versioned parameter bridge.
     *   **Roughness/Entropy**: Introduces controlled chaos and micro-variations into the sound for a more organic and less sterile character.
 *   **Expressive Control**: Support for **Velocity Curves** (Linear, Soft, Hard) and **Aftertouch** modulation for dynamic performances.
 *   **Flexible MIDI Mapping**: A robust CC mapping system with persistence, auto-conflict resolution, and a dedicated "MIDI CONTROL" LCD menu for hardware-style configuration.
-*   **Modern UI**: A clean, hardware-inspired user interface — currently a single web canvas with all 70 parameters, model slots A–D and a shared MIDI keyboard strip, rendered with the control family from `@abdsynths/shared` (with a Dark/Light theme switch in the header; the light palette is the suite's measured-contrast `data-theme="light"`).
+*   **Modern UI**: A clean, hardware-inspired user interface — currently a single web canvas with all 70 parameters, model slots A–D and a shared MIDI keyboard strip, rendered with the control family from `@abdsynths/shared` (with a Dark/Light theme switch in the header; the light palette is the suite's measured-contrast `data-theme="light"`). The canvas closes with the GLOBAL & MASTER card at the bottom-left: only the master fader (the host's native range input) plus RANDOM and an EDIT button that opens the right-side drawer with tempo, MIDI and freezes. Short choice lists (engine, LFO sync) render as shared `Segmented` selectors; the modulation ring and the 64-bar spectral visualizer are live via the telemetry channel.
 *   **Cross-Platform DSP**: The DSP core is plain C++ built with CMake; the plugin host layer is JUCE. (The definitive web UI layer is Windows-only for now — WebView2.)
 
 ## Technical Architecture
@@ -73,12 +73,13 @@ writes a `*.neuronikmodel` file, plain JSON (`{amplitudes[64], frequencyOffsets[
 description}`). Those files are what the A–D slots in the plugin load — and what the XY pad
 morphs between.
 
-**Why it is opt-in:** its CMake target drags `UpdateVersion`, which increments the versioned
-`Source\ModelMaker\Version.h` on every compile; keeping it out of the default build means
-day-to-day builds never dirty a versioned file. Build it with:
+**Why it is opt-in:** it is a separate deliverable, kept out of the default build on
+purpose. Its version (`Source\ModelMaker\Version.h`, a versioned file) only moves on
+RELEASE builds: a plain verification compile never touches it. Build it with:
 
 ```bat
-build.bat modelmaker     :: builds build-reference\Release\NEURONiK_ModelMaker.exe
+build.bat modelmaker            :: builds the exe; Version.h stays untouched
+build.bat modelmaker release    :: release build: increments Version.h (commit it)
 ```
 
 Run it after touching the shared DSP core (it compiles the same resonator code). Two house
