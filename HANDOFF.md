@@ -3119,3 +3119,103 @@ del css) · `pnpm build` verde con el webp en dist · Standalone recompilado (`-
 NEURONiK_Standalone`): exe y embed llevan la pagina con fondo. El VST3, hasta el proximo
 `build.bat`. Ajuste fino de tinte por tema (`--abd-bg-tint`) pendiente de decidir temas.
 
+
+## 2026-09-20 (e): la jornada se cierra en cinco commits temáticos
+
+**Qué:** todo el trabajo del día quedó commiteado en ABDNeural. Los ficheros compartidos
+entre temas (`app.js`, `appContract.test.js`, `main.css`, `HANDOFF.md`) se trocearon hunk
+a hunk por tema con staging quirúrgico (`git hash-object` + `update-index` sobre versiones
+intermedias verificadas en `.git/tmp-stage/`, sin tocar el árbol de trabajo):
+
+- `791ed02` docs: README operativo, handoff registro corrido, roadmap viejo a stub, legado del piloto
+- `f98ff5d` feat(webui): pad XY dibujado para morphX/morphY (8.3 paso 1)
+- `b4d4e68` feat(editor): Load/Save Preset suben del menú Edit al File
+- `3d95e88` fix(webui): ajuste del lienzo de diseño al viewport (fitStage)
+- `5d0e412` feat(webui): primer consumidor del fondo tintable (.abd-theme-bg)
+
+`git status` limpio y `git diff HEAD` vacío tras el cierre. El ROADMAP se puso al día en
+la misma pasada: fila del zoom (el "escala del contenedor" prometido ya es fitStage),
+nota de la reorganización del menú nativo y casilla de diálogos/menú anotada.
+
+**Pendiente abierto:** `ABDSharedAssets` SIN commitear (~89 entradas: XYPad con `corners`,
+`backgrounds.css`, `COMPONENTS.md`, contracts… mezcladas con trabajo previo sin trackear);
+el VST3 sigue con el binario anterior hasta el próximo `build.bat`; del 8.3 quedan browser
+de presets, LCD + menú MIDI, espectral/scope (necesitan canal de telemetría), MIDI learn y
+menú/diálogos web; flecos: anillo de valor modulado (8.2) y tinte del fondo por decidir.
+
+
+## 2026-09-20 (f): apuntado para más adelante — modo claro desde un menú "View"
+
+**Idea del usuario, sin diseñar todavía:** un modo claro que se conmute desde un punto de
+menú **"View"** en la nav-bar, como en otros synths nuestros. Referencia de temas: el
+`themes.css` de ABDMS2000 (`data-theme` + tokens). Encaja con lo que ya existe: el fondo es
+tintable por tema (`backgrounds.css`), así que el grueso del trabajo es un juego de tokens
+claros + el ítem de menú, no CSS nuevo. Pendiente de decidir: si "View" es menú web nuevo
+o entra en la casilla de diálogos/menú del 8.3 (ahí quedó apuntado en el ROADMAP).
+
+
+## 2026-09-20 (g): ModelMaker sin C4996 — export a AudioFormatWriterOptions (y una mina en build.bat)
+
+**Migración JUCE 8:** el export de audio del ModelMaker usaba la sobrecarga deprecada
+`AudioFormat::createWriterFor(OutputStream*, ...)` (el C4996 del log del 18/09). Ahora:
+`AudioFormatWriterOptions` (`withSampleRate/withNumChannels/withBitsPerSample`) y el stream
+viaja en `unique_ptr` — la propiedad pasa al writer si abre; si falla, lo libera el scope
+(la API vieja lo borraba por dentro). Solo `Source/ModelMaker/MainComponent.cpp` (~257): el
+import no toca API deprecada — `AudioFormatManager::createReaderFor(const File&)` está
+limpio en JUCE 8. Verificado dos veces: target suelto (cero C4996) y `build.bat modelmaker`
+completo → RESULTADO: OK, 21/21 ctest, selftest de las seis direcciones en plugin Y bancada.
+El bump de Version.h que deja la verificación (28→31 en tres builds) se descarta, como
+aconseja el propio script.
+
+**Mina preexistente en build.bat (fix incluido):** el bloque de aviso "WebUI dist no
+existe" tenía un `)` sin escapar dentro del `if` (`echo ... interfaz). Selftest...`): al
+PARSEAR el bloque, cmd cerraba el if ahí y el `.` siguiente lo mataba ("No se esperaba . en
+este momento.", EXIT 255) ANTES del selftest de la bancada — sin banner de RESULTADO. Pasaba
+en TODA pasada completa desde el endurecimiento del 09-19 (el grep de AVISO demostró que el
+bloque nunca llegó a ejecutarse: moría al parsearlo). Escapado `^(...^)`; un scan del resto
+de echoes con paréntesis no encontró más casos dentro de bloques.
+
+
+## 2026-09-20 (h): modo claro de la SUITE diseñado en tokens.css (sin menú)
+
+**Qué:** paleta clara completa en `[data-theme="light"]` del paquete compartido — el MISMO
+juego de tokens de color/sombra del oscuro, con contraste WCAG medido (text-main 15.7-16.5,
+text-muted 6.9-7.3, accent 5.4-5.7 como texto y 5.7 el blanco sobre accent). Decisiones de
+diseño: el LCD NO cambia (autoiluminado como el hardware), LED/estados oscurecidos para
+superficies claras, sombras suavizadas y profundidad invertida (elevado = más claro). Solo
+color/sombra: tamaños/espaciados/fuentes se heredan — el test de contrato
+(`tests/tokens.test.js`, 5 tests) vigila ambas direcciones: cobertura completa y sin
+invenciones. De paso entraron al :root dos tokens que `widgets.css` consumía y NO existían
+(`--color-bg-elev`, `--color-border`; valores dark bit-exacto a sus fallbacks). El fondo
+tintable sigue al tema solo: el tinte por defecto es `var(--color-bg-base)` y
+`backgrounds.css` re-resuelve el tinte en el elemento tematizado — funciona con
+`data-theme` en `<html>` (MS2000) o en `<body>` (el demo, que ahora tiene botón "Light").
+El menú "View" que lo conmute sigue pendiente: apuntado en el ROADMAP, fuera del DoD 8.3.
+
+**Verificación:** ABDSharedAssets **62/62** (5 tests nuevos) · NEURONiK WebUI **199/199**
+(sin cambios: consume tokens.css por import) · contraste medido con script (WCAG 2.1).
+
+
+## 2026-09-20 (i): selector Dark/Light en la cabecera - el interruptor es compartido, el tema es de la suite
+
+**Que:** para poder PROBAR el modo claro, la cabecera de la WebUI lleva ahora un selector de
+temas montado con el `ThemeSwitcher` NUEVO del paquete compartido (`components/
+themeSwitcher.js`, exportado por el barrel): dos temas, `dark` (el `:root`, se aplica SIN
+atributo) y `light` (el bloque de tokens disenado hoy). Va en la esquina derecha, junto al
+grupo de audio; SIN persistencia a proposito: cada carga arranca oscuro, asi selftest y
+paridad nunca heredan el estado de una prueba manual. El menu "View" de navegacion sigue
+siendo otra pieza (apuntado en el ROADMAP); este es el interruptor de prueba.
+
+**Arquitectura (principio fijado por el usuario):** el interruptor es UNIVERSAL (paquete),
+los temas son SOLO tokens de color, y todo lo demas (widgets, skins de forma, fondo
+tintable, LCD, ajuste al viewport) es de la suite: un synth nuevo define sus bloques
+`[data-theme=...]` y elige tipos de elemento, sin copiar CSS de widgets. ABDMS2000 aun
+reparte su tema entre su `themes.css` local y el paquete: deuda conocida, sin tocar hoy.
+`COMPONENTS.md` fija el principio.
+
+**Verificacion:** ABDSharedAssets **68/68** (6 tests nuevos del switcher: data-theme en el
+root elegido, dark=sin atributo, aria/estado activo, persistencia opcional, ids duplicados,
+destroy con removeEventListener real) - NEURONiK WebUI **200/200** (1 it nuevo de contrato) -
+`pnpm build` verde - paridad **70 celdas · contrato 70** (el selector no es celda de
+parametro) - Standalone recompilado con el embed nuevo.
+

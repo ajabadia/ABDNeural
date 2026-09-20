@@ -535,10 +535,10 @@ una barra de menú File/Edit/Help.
 | Visualizador espectral (64 parciales) | `UI/SpectralVisualizer.{h,cpp}` (97) | No | 8.3 vía canal de lectura nativo→web (`IVisualizationSource`) |
 | XYPad (morph X/Y + nombres de modelo) | `UI/XYPad.{h,cpp}` (150) | **Sí** (8.3, 2026-09-20): pad dibujado en la ficha MODELOS A–D con los nombres en las esquinas (XYPad compartido + `setCorners`); los knobs morphX/morphY siguen en OSCILADOR — el pad es aditivo, las 70 celdas intactas | Hecho; el anillo de modulación sigue siendo el fleco 8.2 |
 | **Feedback de modulación en cada control** (anillo/overlay del valor modulado) | `UI/CustomUIComponents.h` (`ModulatedSlider` + `Main/ModulationTargets.h`) | No | 8.2: es una función del **control compartido**, no del panel — hoy `@abdsynths/shared` no la tiene. **Ojo: el dato existe** en el procesador (`getModulationValueForUI`, `modulationValues[64]`) pero no está en el protocolo del puente: sin un mensaje de telemetría (aditivo, tipo `midiNoteState`) no hay anillo honesto que dibujar |
-| Barra de menú File/Edit/Help (cargar preset, zoom, specs MIDI, info RANDOM/FREEZE) | `NEURONiKEditor.cpp` (`getMenuBarNames`/`menuItemSelected`) | No | 8.3 como botones de cabecera o menú web; **los ítems de audio del Standalone no se migran** (los pone el wrapper de JUCE) |
+| Barra de menú File/Edit/Help (cargar preset, zoom, specs MIDI, info RANDOM/FREEZE) | `NEURONiKEditor.cpp` (`getMenuBarNames`/`menuItemSelected`) | No | 8.3 como botones de cabecera o menú web; **los ítems de audio del Standalone no se migran** (los pone el wrapper de JUCE). Nota 09-20: en el nativo, Load/Save Preset ya viven en File (reorganización propia, sin migración web) |
 | Diálogo de ayuda + especificaciones MIDI de fábrica | `UI/HelpDialog.h` + `showMidiSpecifications()` | No | 8.3 como overlay |
 | Teclado en pantalla | `juce::MidiKeyboardComponent` + `MidiKeyboardState` | **Sí** (teclado compartido, como franja fija abajo) | Resuelto: franja fija como en nativo, plegable con el botón TECLADO |
-| Zoom del editor (base 800×600) | `setZoom()` | No | Se sustituye por editor redimensionable + escala del contenedor |
+| Zoom del editor (base 800×600) | `setZoom()` | **Parcial** (2026-09-20): el ajuste automático al viewport está hecho — `WebUI/src/ui/fitStage.js` escala el lienzo 0.25x–3x y lo centra en cada resize; el editor ya es redimensionable | El "escala del contenedor" prometido aquí ya es el comportamiento por defecto; el zoom manual por menú web queda para 8.3 |
 | Tema por producto | `UI/ThemeManager.{h,cpp}` | No | Tokens de `@abdsynths/shared` (el mecanismo ya existe) |
 | Look&feel nativo (knobs, `GlassBox`, `CustomButton`, `LedIndicator`) | `UI/CustomUIComponents.{h,cpp}` | N/A | **No se migra**: muere con el código nativo; su sitio son los componentes compartidos + CSS |
 
@@ -1008,9 +1008,15 @@ sigue siendo la salida natural si una sección crece una fila de más (el repart
 - [ ] **MIDI Learn**: `MidiLearner` + `MidiMappingManager` (aprender, asignar, borrar,
       persistir). El aprendizaje es UI (la web pide "aprende el próximo CC"); el mapeo y su
       guardado siguen en el procesador.
-- [ ] **Diálogos y menú**: ayuda, especificaciones MIDI, y el zoom.
+- [ ] **Diálogos y menú**: ayuda, especificaciones MIDI, y el zoom manual (el ajuste automático al viewport ya está: `fitStage`, 2026-09-20).
 - **DoD:** no queda ninguna función de la UI nativa sin equivalente web; la lista de arriba
   está toda tachada o con su "no se migra porque…" escrito en este documento.
+
+- **Más adelante (apuntado 2026-09-20, fuera de este DoD):** **modo claro conmutado desde un
+  menú "View"** en la nav-bar, al estilo de otros synths de la suite. Referencia de temas:
+  `ABDMS2000/WebUI/src/styles/themes.css` (`data-theme` + tokens). El fondo ya es tintable
+  (`backgrounds.css`: `--abd-bg-tint`), así que el grueso es UN NUEVO JUEGO DE TOKENS + el
+  ítem de menú — no CSS nuevo. Cuándo y con qué alcance, por decidir.
 
 **8.4 Retirada del panel nativo**
 - [ ] Borrar `Source/UI/**` (paneles, visualizadores, tema, LCD, browser, MIDI learner) y las
@@ -1047,6 +1053,32 @@ sigue siendo la salida natural si una sección crece una fila de más (el repart
 | Dos motores sonando si el worklet se activa dentro del plugin | Fijado en código (2026-09-19): `WebUI/src/audio/policy.js` decide por `window.__JUCE__` y el motor del worklet se niega a arrancar dentro de un host; la misma guarda en la página del piloto. Falta la comprobación E2E, que cae en 8.1 con el selftest del editor |
 | El hot-reload de dev funciona en el host del piloto y no en el editor del plugin (rutas relativas del VST3) | ResourceProvider con fallback embebido, probado en 8.1 en los dos formatos |
 | Retirar el nativo antes de tener paridad deja el plugin sin UI usable | El nativo no se borra hasta que 8.2 y 8.3 estén tachadas; durante la migración la página es la principal y el nativo el respaldo, y el borrado es el último paso con su propio commit |
+
+**9. ModelMaker a web (FUTURA — se planifica, no se empieza hasta cerrar la Fase 8)**
+
+Apuntada 2026-09-20. Hoy `NEURONiK_ModelMaker` es una app JUCE independiente (WIN32, fuera
+del build por defecto a propósito: arrastra `UpdateVersion` y es otro entregable; se compila
+con `build.bat modelmaker`). Flujo: LOAD AUDIO → análisis espectral de 64 parciales con
+detección de pitch → A/B PLAY ORIGINAL/PLAY MODEL (comparte `Oscillator`/`Resonator` con el
+plugin) → REC → EXPORT `*.neuronikmodel` (JSON `{amplitudes[64], frequencyOffsets[64], name,
+description}`). Migrarla a web la libera de Win32 y del versionado por compilación (el
+C4996 de JUCE 8 se resolvió el 2026-09-20: export migrado a AudioFormatWriterOptions).
+
+- [ ] **Decidir el alojamiento**: segunda página del MISMO bundle WebUI (ruta aparte; la
+      bancada ya sirve `WebUI/dist`) vs app Vite aparte en el workspace. Por defecto, página
+      del mismo bundle: cero infraestructura nueva.
+- [ ] **Portar el ANÁLISIS al WASM**: la extracción de 64 parciales + detección de pitch es
+      C++ propio del ModelMaker y NO vive en el motor WASM (el DSP de playback sí, con
+      paridad bit-exacta de la Fase 5). Es el grueso del trabajo técnico de esta fase.
+- [ ] **Audio de entrada** por `decodeAudioData` del navegador (sin JUCE `AudioFormat`).
+- [ ] **A/B paridad**: PLAY ORIGINAL/PLAY MODEL con el resonador WASM, comparado contra el
+      ModelMaker nativo con las reglas de comparación de la casa antes de retirar nada.
+- [ ] **Export**: descarga del `.neuronikmodel` en el MISMO dialecto JSON que lee el plugin
+      (el selftest ya escribe ese dialecto a propósito — es el test de contrato del lado
+      receptor). `File System Access API` o `<a download>`.
+- [ ] **Destino del exe nativo**: herramienta de referencia (congelada) o retirada estilo
+      8.4, con su commit propio y su nota.
+
 
 ---
 
