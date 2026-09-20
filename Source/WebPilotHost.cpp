@@ -66,6 +66,7 @@ namespace
     using NEURONiK::WebUI::MidiInjectionAdapter;
     using NEURONiK::WebUI::PresetManagerAdapter;
     using NEURONiK::WebUI::RandomizerAdapter;
+    using NEURONiK::WebUI::VisualizationSourceAdapter;
 
     //==============================================================================
     // Measurement state
@@ -451,6 +452,11 @@ namespace
             randomizeAdapter = std::make_unique<RandomizerAdapter> (processor);
             bridge->setRandomizeController (randomizeAdapter.get());
 
+            // El cuarto adaptador: telemetria visual para el canal nativa->web
+            // (la bancada la ejercita con audio real, igual que el editor).
+            visualizationAdapter = std::make_unique<VisualizationSourceAdapter> (processor);
+            bridge->setTelemetryController (visualizationAdapter.get());
+
             addAndMakeVisible (browser);
             nativePanel = std::make_unique<NEURONiK::UI::ParameterPanel> (processor);
             addAndMakeVisible (nativePanel.get());
@@ -584,6 +590,13 @@ namespace
                                            processor.externalModWheel.load());
             }
 
+            // Telemetria visual (~15 Hz): mismo contrato que en el editor.
+            if (++telemetryTick >= telemetryTicks)
+            {
+                telemetryTick = 0;
+                bridge->sendTelemetry();
+            }
+
             if (finished)
                 return;
 
@@ -691,6 +704,7 @@ namespace
         std::unique_ptr<MidiInjectionAdapter> midiAdapter;
         std::unique_ptr<EngineModelsAdapter> modelsAdapter;
         std::unique_ptr<RandomizerAdapter> randomizeAdapter;
+        std::unique_ptr<VisualizationSourceAdapter> visualizationAdapter;
         std::unique_ptr<NEURONiK::WebUI::ParameterBridge> bridge;
 
         // Audio plumbing de la bancada: default device + the standard JUCE player
@@ -700,6 +714,10 @@ namespace
         juce::AudioDeviceManager audioDeviceManager;
         juce::AudioProcessorPlayer audioPlayer;
         int midiStateTick = 0;
+        // Telemetry decimation: emit every Nth poll (~15 Hz over the 30 ms poll;
+        // the bridge value-diffs on top, so an idle synth adds no traffic).
+        static constexpr int telemetryTicks = 2;
+        int telemetryTick = 0;
         std::unique_ptr<NEURONiK::UI::ParameterPanel> nativePanel;
         // Declared after processor/bridge so it is destroyed BEFORE them (it reads
         // the APVTS and the IVisualizationSource in its 30 Hz timer).
