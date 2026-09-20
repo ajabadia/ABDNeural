@@ -170,6 +170,15 @@ describe('WebUI entry contract', () => {
     expect(app).toContain("'@abdsynths/shared/styles/components/widgets.css'");
   });
 
+  it('mounts the shared theme switcher (dark = current, light = suite) in the header', () => {
+    // El selector es UNIVERSAL (@abdsynths/shared); los temas son de la suite.
+    // Sin persistencia: cada carga empieza en el tema oscuro (selftest/paridad).
+    expect(panel).toContain("import { ThemeSwitcher } from '@abdsynths/shared/components'");
+    expect(panel).toContain("new ThemeSwitcher(audioRow");
+    expect(panel).toContain("{ id: 'dark', label: 'Dark' }");
+    expect(panel).toContain("{ id: 'light', label: 'Light' }");
+  });
+
   it('paints the shared tintable background on the page root', () => {
     expect(html).toContain('<body class="abd-theme-bg">');
     expect(app).toContain("'@abdsynths/shared/styles/components/backgrounds.css'");

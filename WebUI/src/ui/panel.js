@@ -27,6 +27,7 @@ import { displayText, realFromNormalized } from '../contracts/paramValue.js';
 import { KEYS_TAB } from '../contracts/screens.js';
 import { createParameterControl } from './controls.js';
 import { createDrawer } from './drawer.js';
+import { ThemeSwitcher } from '@abdsynths/shared/components';
 
 /**
  * @param {object} options
@@ -89,6 +90,18 @@ export function createPanel({ bands, baselineId, handlers = {} }) {
   audioButton.addEventListener('click', () => handlers.onStartSound?.());
 
   audioRow.append(audioLabel, audioDetail, audioButton);
+
+  // Selector de temas (infraestructura compartida; los temas son de la suite:
+  // 'dark' es el :root y 'light' el bloque de tokens claro). SIN persistencia:
+  // cada carga arranca oscuro, asi selftest y paridad nunca heredan el estado
+  // de una prueba manual. El menu "View" de navegacion es otra pieza (ROADMAP).
+  new ThemeSwitcher(audioRow, {
+    themes: [
+      { id: 'dark', label: 'Dark' },
+      { id: 'light', label: 'Light' },
+    ],
+    root: document.documentElement,
+  });
 
   const status = document.createElement('p');
   status.className = 'status';
