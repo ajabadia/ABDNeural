@@ -254,8 +254,15 @@ void MainComponent::stopRecording()
         
         {
             juce::WavAudioFormat wavFormat;
-            std::unique_ptr<juce::AudioFormatWriter> writer(wavFormat.createWriterFor(new juce::FileOutputStream(tempFile),
-                loadedSampleRate, (unsigned int)loadedAudio.getNumChannels(), 16, juce::StringPairArray(), 0));
+            // JUCE 8: the (OutputStream*, ...) overload is deprecated — AudioFormatWriterOptions
+            // instead. The stream travels in a unique_ptr: ownership moves to the writer on
+            // success; on failure this scope releases it (old API deleted it internally).
+            std::unique_ptr<juce::OutputStream> stream(new juce::FileOutputStream(tempFile));
+            juce::AudioFormatWriterOptions options;
+            options = options.withSampleRate(loadedSampleRate)
+                .withNumChannels((int) loadedAudio.getNumChannels())
+                .withBitsPerSample(16);
+            auto writer = wavFormat.createWriterFor(stream, options);
             
             if (writer != nullptr)
             {
