@@ -199,16 +199,21 @@ describe('panel / lienzo único', () => {
     mountPanel();
 
     for (const section of SECTIONS) {
-      // Una ficha de cajon (matriz) pinta sus celdas en el cajon, no en el lienzo:
-      // el reparto es el mismo, cambia donde vive la celda.
+      // Una ficha de cajon pinta sus celdas en el cajon, no en el lienzo: el
+      // reparto es el mismo, cambia donde vive la celda. El cajon SIN grupos
+      // (GLOBAL & MASTER) excluye ademas el control base: masterLevel lo pinta
+      // buildCard en la ficha (es el range nativo que consulta el host).
       const scope = section.drawer
         ? `#drawer-${section.id} [data-parameter-id]`
         : `[data-section-id="${section.id}"] [data-parameter-id]`;
+      const expected = section.drawer?.groups
+        ? section.ids
+        : section.ids.filter((id) => id !== 'masterLevel');
       const ids = [...document.querySelectorAll(scope)].map((cell) => cell.dataset.parameterId);
 
       // En el cajon el orden es el de las rutas (fuente, destino, cantidad), que es
       // el mismo de `ids`; el distintivo de cada ruta no lleva `data-parameter-id`.
-      expect(ids, `ficha "${section.id}"`).toEqual(section.ids);
+      expect(ids, `ficha "${section.id}"`).toEqual(expected);
     }
   });
 
@@ -222,9 +227,11 @@ describe('panel / lienzo único', () => {
     expect(countOf('.cell--knob')).toBe(45);
     expect(countOf('.cell--baseline')).toBe(1);
     expect(countOf('.cell--toggle')).toBe(5);
-    // Los desplegables son el `Select` COMPARTIDO (clase de la familia), no un
-    // <select> hecho a mano: si alguien vuelve a construirlo inline, esto cae.
-    expect(countOf('.cell--choice .abd-select__field')).toBe(19);
+    // 19 choices: 16 desplegables + 3 segmentados (motor y los dos sync de LFO,
+    // el set SEGMENTED_CHOICES de controls.js). Ambos son familia COMPARTIDA:
+    // si alguien vuelve a construir uno inline, esto cae.
+    expect(countOf('.cell--choice .abd-select__field')).toBe(16);
+    expect(countOf('.cell--choice .abd-segmented__group')).toBe(3);
     expect(countOf('.cell--knob') + countOf('.cell--baseline')
       + countOf('.cell--toggle') + countOf('.cell--choice')).toBe(70);
   });
@@ -497,7 +504,7 @@ describe('panel / acciones de ficha (RANDOM)', () => {
   it('vive en la cabecera de GLOBAL & MASTER y NO ocupa celda', () => {
     mountPanel();
 
-    const card = document.querySelector('.card[data-section-id="global"]');
+    const card = document.querySelector('.card[data-section-id="globalFull"]');
     const button = card.querySelector('.card__action');
 
     expect(button).not.toBeNull();
@@ -512,7 +519,8 @@ describe('panel / acciones de ficha (RANDOM)', () => {
   it('sin host esta deshabilitado; con host, pide la accion al store', () => {
     const onAction = vi.fn();
     const panel = mountPanel({ onAction });
-    const button = document.querySelector('.card__action');
+    // Los EDITAR de cajon comparten clase con RANDOM; el sujeto es la accion.
+    const button = document.querySelector('[data-action="randomize"]');
 
     panel.paint(makeState({ bridgeAvailable: false }));
     expect(button.disabled).toBe(true);

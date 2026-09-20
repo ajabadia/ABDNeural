@@ -209,12 +209,67 @@ describe('controls / gating por motor', () => {
     }
   });
 
-  it('el selector de motor no se autodeshabilita: sus dos opciones siguen vivas', () => {
+  it('el selector de motor no se autodeshabilita: sus dos segmentos siguen vivos', () => {
     const control = mount('engineType');
 
     // No declara engineParameter (nadie lo gobierna), así que no entra en el gating.
     expect(control.engineParameter).toBe('');
-    expect([...control.element.querySelectorAll('option')].every((option) => !option.disabled))
+    expect([...control.element.querySelectorAll('.abd-segmented__segment')]
+      .every((segment) => !segment.disabled))
       .toBe(true);
+  });
+});
+
+describe('controls / presentación segmented (listas de dos)', () => {
+  // engineType tiene dos opciones: su normalizado 0 es NEURONiK y el 1, Neurotik.
+  const mount = (id, handlers = {}) => {
+    const control = createParameterControl(describeControl(id), handlers);
+
+    document.body.append(control.element);
+    return control;
+  };
+
+  it('las listas del set SEGMENTED se montan como selector segmentado', () => {
+    for (const id of ['engineType', 'lfo1SyncMode', 'lfo2SyncMode']) {
+      const control = mount(id);
+      const segments = control.element.querySelectorAll('.abd-segmented__segment');
+
+      expect(segments.length, id).toBe(2);
+      expect(control.element.querySelector('select'), id).toBeNull();
+    }
+  });
+
+  it('las listas largas y las gateadas siguen siendo Select', () => {
+    // lfo1Waveform (6 opciones) y mod1Destination (28, gateada): desplegable.
+    expect(mount('lfo1Waveform').element.querySelector('select')).not.toBeNull();
+    expect(mount('mod1Destination').element.querySelector('select')).not.toBeNull();
+  });
+
+  it('un pick de usuario sale normalizado, en la codificación del APVTS', () => {
+    const onChange = vi.fn();
+    const control = mount('engineType', { onChange });
+
+    const [, neurotik] = control.element.querySelectorAll('.abd-segmented__segment');
+    neurotik.click();
+
+    expect(onChange).toHaveBeenCalledWith('engineType', 1);
+  });
+
+  it('un snapshot normalizado activa su segmento sin disparar onChange', () => {
+    const onChange = vi.fn();
+    const control = mount('lfo1SyncMode', { onChange });
+
+    control.setNormalized(1);   // Tempo Sync: índice 1 de 2
+
+    const [, tempoSync] = control.element.querySelectorAll('.abd-segmented__segment');
+    expect(tempoSync.classList.contains('is-active')).toBe(true);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('el segmentado es el Segmented COMPARTIDO, con su label asociada', () => {
+    const control = mount('engineType');
+
+    expect(control.element.querySelector('.abd-segmented__group')).not.toBeNull();
+    expect(control.element.querySelector('.abd-segmented--labelled')).not.toBeNull();
   });
 });

@@ -182,26 +182,22 @@ export const SECTIONS = [
     ids: ['resonatorRes', 'resonatorRolloff', 'resonatorParity', 'resonatorShift'],
   },
   {
-    id: 'global',
-    title: 'GLOBAL & MASTER',
-    subtitle: 'Nivel, tempo, MIDI y congelados',
+    id: 'lfo',
+    title: 'LFO 1 & 2',
+    subtitle: 'Forma, tempo y profundidad',
     span: 4,
     columns: 5,
-    // La accion RANDOM vive aqui porque es una accion de ESTADO (todo el APVTS,
-    // con los tres freeze como filtro), no de una seccion de timbre concreta.
-    action: 'randomize',
-    // masterLevel va PRIMERO: su fader es el `input[type=range]` que el selftest
-    // del host conduce en las dos direcciones (contrato de 8.1 paso 2c).
     ids: [
-      'masterLevel',
-      'masterBPM',
-      'velocityCurve',
-      'midiChannel',
-      'midiThru',
-      'randomStrength',
-      'freezeResonator',
-      'freezeFilter',
-      'freezeEnvelopes',
+      'lfo1Waveform',
+      'lfo1RateHz',
+      'lfo1SyncMode',
+      'lfo1RhythmicDivision',
+      'lfo1Depth',
+      'lfo2Waveform',
+      'lfo2RateHz',
+      'lfo2SyncMode',
+      'lfo2RhythmicDivision',
+      'lfo2Depth',
     ],
   },
   {
@@ -249,25 +245,6 @@ export const SECTIONS = [
     ],
   },
   {
-    id: 'lfo',
-    title: 'LFO 1 & 2',
-    subtitle: 'Forma, tempo y profundidad',
-    span: 4,
-    columns: 5,
-    ids: [
-      'lfo1Waveform',
-      'lfo1RateHz',
-      'lfo1SyncMode',
-      'lfo1RhythmicDivision',
-      'lfo1Depth',
-      'lfo2Waveform',
-      'lfo2RateHz',
-      'lfo2SyncMode',
-      'lfo2RhythmicDivision',
-      'lfo2Depth',
-    ],
-  },
-  {
     id: 'models',
     title: 'MODELOS A–D',
     subtitle: 'Parciales del motor',
@@ -311,6 +288,41 @@ export const SECTIONS = [
       'mod4Source',
       'mod4Destination',
       'mod4Amount',
+    ],
+  },
+  {
+    // MUDANZA 8.3: GLOBAL & MASTER vive al final del lienzo, abajo a la
+    // izquierda (primera de su banda: cierra la lectura). Patron de la
+    // matriz: en el lienzo queda el master visible y EDITAR abre el cajon
+    // con el resto (tempo, MIDI, congelados). La geometria la paga el LFO,
+    // que se muda a los carriles que esta ficha dejo libres arriba: mismas
+    // filas, mismo alto de banda, el lienzo no cambia. RANDOM vive aqui por
+    // ser accion de ESTADO (todo el APVTS, con los freeze como filtro).
+    id: 'globalFull',
+    title: 'GLOBAL & MASTER',
+    subtitle: 'Tempo, MIDI, congelados y aleatorio',
+    span: 4,
+    columns: 5,
+    action: 'randomize',
+    drawer: {
+      badge: '8 GLOBAL',
+      trigger: 'EDITAR',
+      // Sin `groups`: el cajon apila en una columna (patron global, no el de
+      // rutas de la matriz) TODOS los ids menos el control base: masterLevel
+      // lo pinta buildCard en la ficha (es el `input[type=range]` que consulta
+      // el host, contrato de 8.1 paso 2c) y el cajon no recibe copia.
+    },
+    // masterLevel va PRIMERO: el control base siempre en la primera celda.
+    ids: [
+      'masterLevel',
+      'masterBPM',
+      'velocityCurve',
+      'midiChannel',
+      'midiThru',
+      'randomStrength',
+      'freezeResonator',
+      'freezeFilter',
+      'freezeEnvelopes',
     ],
   },
 ];

@@ -118,15 +118,16 @@ describe('sections / encaje en el lienzo', () => {
   });
 
   it('las fichas CON celdas miden lo mismo (rejilla regular)', () => {
-    // Las dos fichas SIN celdas quedan fuera: la de cajon (sus controles viven en el
-    // panel lateral) y la de MODELOS (sus cuatro ranuras son del motor, no del APVTS,
-    // asi que no tienen id). Ninguna aporta filas: su alto lo pone la banda al
-    // estirarlas y el encaje lo marca su companera de banda.
+    // Las tres fichas SIN celdas quedan fuera: las dos de vistas (MODELOS: sus
+    // cuatro ranuras son del motor; la de cajon de la MATRIZ: sus controles viven
+    // en el panel lateral) y la de cajon de GLOBAL & MASTER (mudanza 8.3: en el
+    // lienzo solo queda su control base, el master). Ninguna aporta filas: su
+    // alto lo pone la banda al estirarlas y el encaje lo marca su companera.
     const cellCards = SECTIONS.filter((section) => section.ids.length > 0 && !section.drawer);
     const cellLessCards = SECTIONS.filter((section) => section.ids.length === 0 || section.drawer);
     const heights = new Set(cellCards.map(cardHeight));
 
-    expect(cellLessCards.map((section) => section.id)).toEqual(['models', 'modMatrix']);
+    expect(cellLessCards.map((section) => section.id)).toEqual(['models', 'modMatrix', 'globalFull']);
     expect(cellCards.length).toBe(SECTIONS.length - cellLessCards.length);
     expect(heights.size).toBe(1);
   });
@@ -157,11 +158,12 @@ describe('sections / encaje en el lienzo', () => {
     expect(SECTION_PARAMETER_IDS).not.toContain('models');
     expect(SECTION_PARAMETER_IDS).not.toContain('model-slots');
 
-    // Comparte banda con el LFO y la matriz: es el unico hueco de carriles que
-    // quedaba, y el reparto de esa banda es una decision, no un accidente.
+    // Comparte banda con la matriz y GLOBAL & MASTER (mudanza 8.3: el LFO se
+    // fue a los carriles que dejo libre la ficha global en la banda superior).
+    // El reparto de esa banda es una decision, no un accidente.
     const band = BANDS.find((candidate) => candidate.includes(card));
 
-    expect(band.map((section) => section.id)).toEqual(['lfo', 'models', 'modMatrix']);
+    expect(band.map((section) => section.id)).toEqual(['models', 'modMatrix', 'globalFull']);
   });
 
   it('la ficha de cajon no aporta filas al lienzo y su banda la estira', () => {
@@ -227,10 +229,11 @@ describe('sections / encaje en el lienzo', () => {
     expect(action.label).toBe('RANDOM');
     expect(action.title).toBeTruthy();
 
-    // Vive en la ficha GLOBAL & MASTER (accion de estado, no de una seccion de timbre)
+    // Vive en la ficha GLOBAL & MASTER (accion de estado, no de una seccion de
+    // timbre); desde la mudanza 8.3 esa ficha es 'globalFull' y vive al final.
     const globalCard = SECTIONS.find((section) => section.action === 'randomize');
 
-    expect(globalCard?.id).toBe('global');
+    expect(globalCard?.id).toBe('globalFull');
 
     // No es un id del APVTS: no aparece en las celdas ni en el encaje
     expect(SECTION_PARAMETER_IDS).not.toContain('randomize');

@@ -409,6 +409,7 @@ body {
 .model-slots {
   display: grid;
   gap: 3px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-content: start;
 }
 
@@ -495,6 +496,32 @@ body {
   gap: 6px;
   align-content: start;
 }
+
+/*
+ * Espectral de la ficha MODELOS: los 64 parciales del motor, en vivo por el
+ * canal de telemetría (pintura, no estado). Autoiluminado como el LCD: no
+ * cambia con el tema, para que la señal se lea igual en oscuro y en claro.
+ */
+.spectral {
+  display: grid;
+  grid-template-columns: repeat(64, minmax(0, 1fr));
+  gap: 1px;
+  align-items: end;
+  height: 56px;
+  padding: 3px;
+  background: var(--color-lcd-bg, #102216);
+  border: 1px solid var(--color-lcd-border, rgba(68, 255, 119, 0.3));
+  border-radius: 4px;
+}
+
+.spectral__bar {
+  min-height: 2px;
+  background: var(--color-lcd-text, #44ff77);
+  opacity: 0.85;
+  border-radius: 1px 1px 0 0;
+}
+
+.spectral[data-active="false"] .spectral__bar { opacity: 0.35; }
 
 .xy-pad {
   display: grid;
@@ -607,6 +634,14 @@ body {
   background: rgb(255 255 255 / 3%);
   border: 1px solid var(--color-panel-border, rgb(0 195 255 / 20%));
   border-radius: 6px;
+}
+
+/* Variante columna (cajón de GLOBAL & MASTER, sin rutas): distintivo a la
+   izquierda y UNA celda — el control llena el resto del ancho del cajón. */
+.drawer-slot--column {
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 8px;
+  padding: 2px 0;
 }
 
 .drawer-slot__badge {

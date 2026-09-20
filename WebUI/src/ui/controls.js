@@ -27,7 +27,7 @@
  *   - toggle o desplegable: un solo handleChange (el store lo cierra como 'end').
  */
 
-import { Knob, Select, Toggle } from '@abdsynths/shared/components';
+import { Knob, Segmented, Select, Toggle } from '@abdsynths/shared/components';
 
 import { describeControl } from '../contracts/parameters.js';
 import { GEOMETRY } from '../contracts/sections.js';
@@ -43,6 +43,23 @@ export const KINDS = {
   toggle: 'toggle',
   choice: 'choice',
 };
+
+/**
+ * Presentación SEGMENTED (selector segmentado) para las listas de DOS opciones:
+ * una decisión de página, como el reparto del lienzo — NO de contrato. Las
+ * opciones y el gating por motor siguen llegando enteros del contrato; aquí
+ * solo se decide QUÉ listas se muestran de una vez (cada opción es un botón).
+ *
+ * Criterio: 2 opciones caben en una celda (~92 px) con etiqueta legible; las
+ * formas de onda (6) y las listas largas (9-28: divisiones, canales,
+ * fuentes/destinos) no — siguen en `Select`, que además regala scroll nativo
+ * para 28 destinos. Si alguna ficha gana anchura, promocionar aquí es una línea.
+ */
+const SEGMENTED_CHOICES = new Set([
+  'engineType',     // NEURONiK | Neurotik
+  'lfo1SyncMode',   // Free | Tempo Sync
+  'lfo2SyncMode',
+]);
 
 /** Tipo de control que pide un descriptor del contrato. */
 export function kindForControl(control) {
@@ -76,11 +93,16 @@ export function createParameterControl(control, handlers = {}) {
     element.title = control.dspNote || 'El motor no consume este parámetro (ver contrato)';
   }
 
+  // Presentación: las listas cortas del set SEGMENTED_CHOICES se montan como
+  // selector segmentado (opciones siempre visibles); el resto sigue Select.
+  // El kind de la celda sigue siendo 'choice' (mismo parámetro, otro mueble).
   const api = kind === KINDS.knob
     ? buildKnob(control, element, handlers)
     : kind === KINDS.toggle
       ? buildToggle(control, element, handlers)
-      : buildChoice(control, element, handlers);
+      : SEGMENTED_CHOICES.has(control.id)
+        ? buildSegmented(control, element, handlers)
+        : buildChoice(control, element, handlers);
 
   return {
     element,
@@ -116,9 +138,74 @@ function buildKnob(control, element, handlers) {
       knob.setValue(normalized);
       readout.textContent = displayText(control, realFromNormalized(control, normalized));
     },
+    // Anillo de modulacion (telemetria): pintura pura del Knob compartido.
+    setModulation(modAmount) {
+      knob.setModulation(modAmount);
+    },
     destroy() {
       knob.destroy();
       readout.remove();
+    },
+  };
+}
+
+/**
+ * choice de lista CORTA -> Segmented compartido (opciones siempre visibles).
+ * El contrato es IDENTICO al del Select: valor por índice, normalizado via
+ * paramValue (index<->normalizado con su skew), silent setValue, gating con
+ * setDisabled. Solo cambia el mueble y que las opciones no se despliegan:
+ * se ven todas, cada una como su botón.
+ */
+function buildSegmented(control, element, handlers) {
+  const engineControl = control.engineParameter ? describeControl(control.engineParameter) : null;
+  const engineFor = (index) => control.optionEngines[index] ?? 'both';
+
+  const segmented = new Segmented(element, {
+    // Mismo trato que el Select: id para <label for> y para el host.
+    id: `control-${control.id}`,
+    label: control.label,
+    options: control.options.map((label, index) => {
+      const engine = engineFor(index);
+
+      return {
+        label,
+        note: engine === 'both' ? '' : `Requiere el motor ${engineLabel(engineControl, engine)}`,
+      };
+    }),
+    value: 0,
+    onChange: (index) =>
+      handlers.onChange?.(control.id, normalizedFromChoiceIndex(control, index)),
+  });
+
+  const setEngine = engineControl
+    ? (engineNormalized) => {
+      const index = choiceIndexFromNormalized(engineControl, engineNormalized);
+      const active = engineControl.optionEngines[index];
+
+      if (active === undefined) {
+        console.warn(`"${engineControl.id}" no declara optionEngines: gating desactivado`);
+        segmented.setDisabled([]);
+        return;
+      }
+
+      segmented.setDisabled((entry, optionIndex) => {
+        const engine = engineFor(optionIndex);
+
+        return engine !== 'both' && engine !== active;
+      });
+    }
+    : null;
+
+  return {
+    engineParameter: engineControl ? engineControl.id : '',
+    setEngine,
+
+    setNormalized(normalized) {
+      segmented.setValue(choiceIndexFromNormalized(control, normalized));
+    },
+
+    destroy() {
+      segmented.destroy();
     },
   };
 }
