@@ -288,8 +288,8 @@ if not exist "%PILOT_HOST%" (
     goto :finish
 )
 if not exist "WebUI\dist\index.html" (
-    echo [AVISO] WebUI\dist no existe: sin pagina que cargar no hay E2E (y el plugin
-    echo         tampoco embebio interfaz). Selftest de la bancada omitido.
+    echo [AVISO] WebUI\dist no existe: sin pagina que cargar no hay E2E ^(y el plugin
+    echo         tampoco embebio interfaz^). Selftest de la bancada omitido.
     goto :finish
 )
 
