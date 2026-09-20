@@ -63,6 +63,9 @@ describe('WebUI entry contract', () => {
 
     // Y el lienzo de diseño ENCAJA en el viewport del editor: sin el ajuste, una
     // ventana baja corta por abajo el pie y la franja de teclado.
+    // ...y el mecanismo vive en el PAQUETE (no copia local): infraestructura
+    // de pagina compartida por la suite.
+    expect(app).toContain("import { mountFitStage } from '@abdsynths/shared/components';");
     expect(app).toContain("mountFitStage(root, { width: CANVAS.width, height: CANVAS.height })");
   });
 
