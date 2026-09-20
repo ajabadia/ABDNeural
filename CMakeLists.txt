@@ -732,6 +732,47 @@ target_link_libraries(NEURONiK_ModelSlotTest PRIVATE
 
 add_test(NAME NEURONiK_ModelSlotTest COMMAND NEURONiK_ModelSlotTest)
 
+# Round-trip del ModelMaker con analisis REAL (2026-09-20): el flujo completo de la
+# herramienta (audio -> detectPitch/analyze -> export JSON -> loadModel en A-D) con
+# el MISMO codigo que la GUI conduce. Es la reproduccion automatica del flujo a mano.
+add_executable(NEURONiK_ModelMakerRoundTripTest
+    Tests/ModelMakerRoundTripTest.cpp
+    Source/ModelMaker/Analysis/SpectralAnalyzer.cpp
+    Source/WebUI/ParameterBridge.cpp
+    ${NEURONIK_STATE_TEST_SOURCES}
+)
+
+target_include_directories(NEURONiK_ModelMakerRoundTripTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Main"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/UI"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/Panels"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/State"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Serialization"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/WebUI"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/ModelMaker/Analysis"
+)
+
+target_compile_definitions(NEURONiK_ModelMakerRoundTripTest PRIVATE
+    JucePlugin_Name="NEURONiK"
+)
+
+target_link_libraries(NEURONiK_ModelMakerRoundTripTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_audio_processors
+    juce::juce_audio_utils
+    juce::juce_core
+    juce::juce_data_structures
+    juce::juce_dsp
+    juce::juce_graphics
+    juce::juce_gui_basics
+    juce::juce_gui_extra
+    NEURONiK_Common
+)
+
+add_test(NAME NEURONiK_ModelMakerRoundTripTest COMMAND NEURONiK_ModelMakerRoundTripTest)
+
 # Parameter bridge: same real layout APVTS as the contract, no WebView2 — the
 # transport is a recording lambda, so the protocol is testable without a window.
 add_executable(NEURONiK_ParameterBridgeTest
@@ -943,16 +984,14 @@ target_link_libraries(NEURONiK_WebPilotHost PRIVATE
 # MODEL MAKER APP (STANDALONE)
 # ============================================================================
 
-# Increment Version (Windows)
-add_custom_command(
-    OUTPUT force_version_update
-    COMMAND powershell -ExecutionPolicy Bypass -File "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/update_version.ps1"
-    COMMENT "Auto-incrementing Model Maker version..."
-    VERBATIM
-)
-
-# Dummy target to force header update
-add_custom_target(UpdateVersion DEPENDS force_version_update)
+# Version bump (Windows) - RELEASE-GATED (2026-09-20).
+# Antes: un custom command con OUTPUT ficticio (siempre "caducado") corria el ps1 en
+# CADA compilacion y quemaba un numero de Version.h (fichero versionado en git) por
+# build. Ahora el ps1 SOLO incrementa si la build viene marcada como release
+# (NEURONIK_MM_RELEASE=1; build.bat modelmaker release lo pone); como PRE_BUILD del
+# target corre siempre, pero sin la marca es un no-op barato. La version oficial del
+# plugin (juce plugin version) vive en CMakeLists y NO depende de esto.
+set(NEURONIK_MODELMAKER_VERSION_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/update_version.ps1")
 
 add_executable(NEURONiK_ModelMaker WIN32
     Source/ModelMaker/Main.cpp
@@ -965,7 +1004,14 @@ add_executable(NEURONiK_ModelMaker WIN32
     $<$<PLATFORM_ID:Windows>:Resources/ModelMaker.rc>
 )
 
-add_dependencies(NEURONiK_ModelMaker UpdateVersion)
+# El bump corre como PRE_BUILD (siempre se ejecuta, es barato) pero el ps1 SOLO
+# incrementa si la build viene marcada release (NEURONIK_MM_RELEASE=1, ver el ps1).
+add_custom_command(
+    TARGET NEURONiK_ModelMaker PRE_BUILD
+    COMMAND powershell -ExecutionPolicy Bypass -File "${NEURONIK_MODELMAKER_VERSION_SCRIPT}"
+    COMMENT "ModelMaker version bump (solo incrementa en builds marcadas release)..."
+    VERBATIM
+)
 
 target_link_libraries(NEURONiK_ModelMaker PRIVATE
     juce::juce_audio_basics
@@ -981,3 +1027,5 @@ target_link_libraries(NEURONiK_ModelMaker PRIVATE
     juce::juce_gui_extra
     NEURONiK_Common
 )
+
+

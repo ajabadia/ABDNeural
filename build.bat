@@ -7,14 +7,16 @@ REM
 REM  Uso:  build.bat                    -> plugin + contrato + WebUI + tests + selftest
 REM        build.bat <directorio>       -> usa otro directorio de build
 REM        build.bat modelmaker         -> incluye la herramienta ModelMaker
+REM        build.bat modelmaker release -> ModelMaker marcado RELEASE (incrementa su Version.h)
 REM        build.bat build modelmaker   -> build limpio incluyendo ModelMaker
 REM        build.bat noselftest         -> omite el E2E del bridge (paso 9)
 REM        build.bat tests              -> modo rapido: solo contrato + suite de pruebas
 REM        build.bat nowasm             -> omite el WASM del worklet (puede quedar viejo)
 REM
-REM  ModelMaker queda fuera por defecto a proposito: su target arrastra
-REM  'UpdateVersion', que incrementa Source\ModelMaker\Version.h (fichero
-REM  versionado) en cada compilacion.
+REM  ModelMaker queda fuera por defecto a proposito: es otro entregable. Su
+REM  Version.h (fichero versionado) SOLO se incrementa en builds marcadas como
+REM  release: 'build.bat modelmaker release'. Una compilacion normal de
+REM  verificacion (build.bat modelmaker) NO lo toca.
 REM
 REM  El paso 9 corre el selftest del bridge sobre el canal real de WebView2 DOS
 REM  veces y sobre la MISMA pagina: en el PLUGIN (Standalone, el veredicto que
@@ -37,6 +39,7 @@ if not "%~1"=="--internal-log" (
 
 set "BUILD_DIR="
 set "WITH_MODELMAKER=0"
+set "MM_RELEASE=0"
 set "WITH_SELFTEST=1"
 set "TESTS_ONLY=0"
 set "WITH_WASM=1"
@@ -46,6 +49,8 @@ for %%A in (%*) do (
         rem bandera del envoltorio de log: ignorar
     ) else if /I "%%A"=="modelmaker" (
         set "WITH_MODELMAKER=1"
+    ) else if /I "%%A"=="release" (
+        set "MM_RELEASE=1""
     ) else if /I "%%A"=="noselftest" (
         set "WITH_SELFTEST=0"
     ) else if /I "%%A"=="tests" (
@@ -68,7 +73,8 @@ echo === Sesion: %DATE% %TIME% ===
 echo =======================================================
 echo          ABDNeural (NEURONiK) - Compilacion Release
 echo          Directorio de build: %BUILD_DIR%
-if "%WITH_MODELMAKER%"=="1" echo          ModelMaker: INCLUIDO ^(Version.h se incrementara^)
+if "%WITH_MODELMAKER%"=="1" if "%MM_RELEASE%"=="1" echo          ModelMaker: INCLUIDO, marcado RELEASE ^(Version.h se incrementara^)
+if "%WITH_MODELMAKER%"=="1" if "%MM_RELEASE%"=="0" echo          ModelMaker: INCLUIDO, sin marca release ^(Version.h NO se toca^)
 if "%TESTS_ONLY%"=="1" echo          Modo: SOLO TESTS
 if "%TESTS_ONLY%"=="0" echo          Modo: COMPLETO
 echo =======================================================
@@ -206,6 +212,7 @@ echo.
 echo [7/9] Herramienta ModelMaker...
 if "%WITH_MODELMAKER%"=="0" goto :no_modelmaker
 
+if "%MM_RELEASE%"=="1" set "NEURONIK_MM_RELEASE=1"
 cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_ModelMaker
 if !ERRORLEVEL! neq 0 (
     echo.
@@ -213,23 +220,28 @@ if !ERRORLEVEL! neq 0 (
     set "EXIT_CODE=1"
     goto :finish
 )
+set "NEURONIK_MM_RELEASE=0"
 
 echo [INFO] Version de ModelMaker en Source\ModelMaker\Version.h:
 findstr /R "NEURONIK_MODELMAKER_VERSION" Source\ModelMaker\Version.h
-echo [AVISO] Ese fichero esta versionado en git: revisa 'git status' y descarta el
-echo         incremento si no forma parte de lo que quieres commitear.
+if "%MM_RELEASE%"=="1" (
+    echo [INFO] Build marcada RELEASE: el incremento de Version.h forma parte de esta
+    echo        pasada y es lo que hay que commitear.
+) else (
+    echo [INFO] Sin marca release: Version.h NO se ha tocado. Para un release:
+    echo        build.bat modelmaker release
+)
 goto :tests
 
 :no_modelmaker
-echo [INFO] Omitido a proposito: compilar ModelMaker incrementa Source\ModelMaker\Version.h.
-echo        Para incluirlo: build.bat modelmaker
+echo [INFO] Omitido a proposito: es otro entregable. build.bat modelmaker para incluirlo.
 
 :tests
 echo.
 echo [8/9] Compilando y ejecutando la suite de pruebas...
 REM La lista debe cubrir TODOS los tests registrados en ctest: si falta uno,
 REM ctest falla al no encontrar el ejecutable (no se construye solo).
-cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_DSPReferenceTest NEURONiK_MidiPortTest NEURONiK_MidiChannelFilterTest NEURONiK_VelocityCurveTest NEURONiK_LfoSyncTest NEURONiK_ParameterDescriptorTest NEURONiK_PresetRoundTripTest NEURONiK_StatePersistenceTest NEURONiK_ModelSlotTest NEURONiK_ParameterBridgeTest NEURONiK_BridgeProtocolContractTest NEURONiK_DspReverbParityTest NEURONiK_DspReverbJucePolicyTest NEURONiK_DspEffectsParityTest NEURONiK_AudioBufferParityTest ABDShared_DspCore_Tests
+cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_DSPReferenceTest NEURONiK_MidiPortTest NEURONiK_MidiChannelFilterTest NEURONiK_VelocityCurveTest NEURONiK_LfoSyncTest NEURONiK_ParameterDescriptorTest NEURONiK_PresetRoundTripTest NEURONiK_StatePersistenceTest NEURONiK_ModelSlotTest NEURONiK_ModelMakerRoundTripTest NEURONiK_ParameterBridgeTest NEURONiK_BridgeProtocolContractTest NEURONiK_DspReverbParityTest NEURONiK_DspReverbJucePolicyTest NEURONiK_DspEffectsParityTest NEURONiK_AudioBufferParityTest ABDShared_DspCore_Tests
 if !ERRORLEVEL! neq 0 (
     echo.
     echo [ERROR] Fallo al compilar las pruebas.
