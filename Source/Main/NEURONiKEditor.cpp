@@ -233,6 +233,9 @@ juce::PopupMenu NEURONiKEditor::getMenuForIndex (int, const juce::String& menuNa
     if (menuName == "File")
     {
         menu.addItem (10, "New Session"); // Placeholder for future
+        menu.addSeparator();
+        menu.addItem (1, "Load Preset...");
+        menu.addItem (2, "Save Preset...");
        #if JucePlugin_Build_Standalone
         menu.addSeparator();
         menu.addItem (999, "Exit");
@@ -240,9 +243,6 @@ juce::PopupMenu NEURONiKEditor::getMenuForIndex (int, const juce::String& menuNa
     }
     else if (menuName == "Edit")
     {
-        menu.addItem (1, "Load Preset...");
-        menu.addItem (2, "Save Preset...");
-        menu.addSeparator();
         menu.addItem (60, "Copy Patch");
         menu.addItem (61, "Paste Patch");
         menu.addSeparator();

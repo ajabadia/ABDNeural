@@ -3067,3 +3067,17 @@ celdas web · contrato 70*. Sin tocar C++: el contrato de parámetros no cambia,
 ring con la posición base) sigue siendo el fleco abierto de 8.2 — necesita la telemetría del
 puente. Y el espectral y el scope del mismo ítem 8.3 siguen esperando el canal de lectura a
 30-60 Hz.
+
+## 2026-09-20 (b): Load/Save Preset suben del menú Edit al File
+
+Pedida por el usuario mientras probaba: la barra File/Edit/Help es del editor NATIVO
+(`NEURONiKEditor::getMenuBarNames`), no de la página. `Load Preset...` y `Save Preset...`
+viven ahora en **File** (entre New Session y Exit, como manda la convención); Edit queda
+con Copy/Paste Patch, MIDI Channel, Voices, Zoom y Options. Los IDs de menú NO cambian
+(1 y 2), así que `menuItemSelected` queda intacto.
+
+**Hallazgo de la recompilación**: el editor lleva la WebUI EMBEBIDA
+(`NEURONiK_WebUIAssets`, el fallback del 8.1) — el exe del 8.2 que probaba el usuario
+servía la página vieja incrustada aunque `WebUI/dist` ya tuviera el pad. Recompilado el
+Standalone (`--target NEURONiK_Standalone`): exe y embed llevan la página nueva. El VST3
+se queda con el menú viejo hasta el próximo `build.bat`.
