@@ -47,6 +47,9 @@
  *
  *   native -> JS  { action: "midiNoteState", held: [note...], pitchBend, modWheel }
  *
+ *   native -> JS  { action: "telemetryFrame", seq, spectral: [64], envelopes: [2],
+ *                   lfos: [2], modulation: [targets], morph: [x, y] }
+ *
  *   The state message feeds the shared keyboard's host-driven feedback API, so
  *   hardware/DAW MIDI reaching the plugin is mirrored on the page wheels/keys.
  *
@@ -107,6 +110,7 @@ export function nativeBackend() {
  *   a preset operation the host rejected or failed
  * @param {({ held: number[], pitchBend: number, modWheel: number }) => void} [handlers.onMidiState]
  *   the plugin's external MIDI view (held notes + wheel positions), ~6x per second
+ * @param {(frame: { seq:number, spectral:number[], envelopes:number[], lfos:number[], modulation:number[], morph:number[] }) => void} [handlers.onTelemetry]
  * @param {(slots: Array<{slot:number, name:string, isValid:boolean, amplitudes:number[], frequencyOffsets:number[]}>) => void} [handlers.onModels]
  *   the engine's current spectral model slots (sent with every snapshot)
  * @param {({ slot: number, detail: string }) => void} [handlers.onModelError]
@@ -191,6 +195,14 @@ export function createBridgeTransport(handlers) {
         pitchBend: message.pitchBend,
         modWheel: message.modWheel,
       });
+  });
+
+  const removeTelemetry = carrier.addEventListener(NATIVE_TO_JS_EVENT_ID, (message) => {
+    if (
+      message?.action === 'telemetryFrame'
+      && Array.isArray(message.spectral)
+    )
+      handlers.onTelemetry?.(message);
   });
 
   const removeModelsState = carrier.addEventListener(NATIVE_TO_JS_EVENT_ID, (message) => {
@@ -300,6 +312,7 @@ export function createBridgeTransport(handlers) {
       carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removePresetError]);
       carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removeMidiState]);
       carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removeModelsState]);
+      carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removeTelemetry]);
       carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removeModelError]);
     },
   };

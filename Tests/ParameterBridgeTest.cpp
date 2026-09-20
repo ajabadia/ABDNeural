@@ -27,6 +27,7 @@
 #include "../Source/WebUI/ParameterBridge.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <iostream>
 #include <vector>
@@ -270,6 +271,45 @@ namespace
         juce::ignoreUnused (second);
         return juce::var (message.get());
     }
+
+    /** @brief Visual-data backend stub for the telemetry section. */
+    struct FakeTelemetryController final : public TelemetryController
+    {
+        std::array<float, 64> spec {};
+        float amp = 0.0f;
+        float filter = 0.0f;
+        float lfo1 = 0.0f;
+        float lfo2 = 0.0f;
+        std::vector<float> modValues;
+        float morphX = 0.0f;
+        float morphY = 0.0f;
+
+        void getSpectralFrame (float* destination64) override
+        {
+            std::copy (spec.begin(), spec.end(), destination64);
+        }
+
+        void getEnvelopeLevels (float& ampOut, float& filterOut) override
+        {
+            ampOut = amp;
+            filterOut = filter;
+        }
+
+        float getLfoValue (int lfoIndex) override { return lfoIndex == 0 ? lfo1 : lfo2; }
+
+        int getModulationTargetCount() override { return static_cast<int> (modValues.size()); }
+
+        float getModulationValue (int targetIndex) override
+        {
+            return modValues[(size_t) juce::jlimit (0, (int) modValues.size() - 1, targetIndex)];
+        }
+
+        void getMorphCoordinates (float& xOut, float& yOut) override
+        {
+            xOut = morphX;
+            yOut = morphY;
+        }
+    };
 }
 
 int main()
@@ -797,6 +837,95 @@ int main()
                "without a backend MIDI actions are accepted and dropped");
 
         bridge.setMidiController (nullptr);
+    }
+
+    // --- 11. Telemetry (native -> JS, additive to protocol v1) --------------------
+    std::cout << "Telemetry\n";
+    {
+        const auto values = [] (const juce::var& v)
+        {
+            std::vector<double> out;
+            if (const auto* items = v.getArray())
+                for (const auto& item : *items)
+                    out.push_back (static_cast<double> (item));
+            return out;
+        };
+
+        FakeTelemetryController telemetry;
+        telemetry.spec[0] = 0.25f;
+        telemetry.spec[63] = 0.75f;
+        telemetry.amp = 0.5f;
+        telemetry.filter = 0.25f;
+        telemetry.lfo1 = 0.5f;
+        telemetry.lfo2 = 1.0f;
+        telemetry.modValues = { 0.1f, 0.2f, 0.3f };
+        telemetry.morphX = 0.25f;
+        telemetry.morphY = 0.75f;
+
+        bridge.setTelemetryController (&telemetry);
+
+        // First call: there is no previous frame, so it always emits.
+        recorder.messages.clear();
+        bridge.sendTelemetry();
+
+        auto frames = recorder.withAction (BridgeActions::telemetry);
+        check (frames.size() == 1, "the first sendTelemetry always emits one frame");
+        check (bridge.getStats().telemetrySent == 1, "the frame counts as telemetrySent");
+
+        // Field by field: the wire carries what the backend reported.
+        const auto* object = frames[0].getDynamicObject();
+        const auto specWire = values (object->getProperty ("spectral"));
+        check (specWire.size() == 64, "spectral travels as 64 values");
+        check (std::abs (specWire[0] - 0.25) < 1.0e-6 && std::abs (specWire[63] - 0.75) < 1.0e-6,
+               "spectral values match the backend frame");
+        const auto envWire = values (object->getProperty ("envelopes"));
+        check (envWire.size() == 2 && std::abs (envWire[0] - 0.5) < 1.0e-6,
+               "envelopes travels as [amp, filter]");
+        check (values (object->getProperty ("lfos")).size() == 2,
+               "lfos travels as two levels");
+        check (values (object->getProperty ("modulation")).size() == 3,
+               "modulation travels one value per target");
+        const auto morphWire = values (object->getProperty ("morph"));
+        check (morphWire.size() == 2 && std::abs (morphWire[1] - 0.75) < 1.0e-6,
+               "morph travels as [x, y]");
+        check (static_cast<int> (object->getProperty ("seq")) == 1,
+               "the first frame carries seq 1");
+
+        // Idle backend: nothing moved, so there is NO second message.
+        bridge.sendTelemetry();
+        frames = recorder.withAction (BridgeActions::telemetry);
+        check (frames.size() == 1,
+               "an unchanged backend emits no second frame (value-diffed poll)");
+
+        // A value moves above the epsilon (~1/255): exactly one new frame.
+        telemetry.amp = 0.9f;
+        bridge.sendTelemetry();
+        frames = recorder.withAction (BridgeActions::telemetry);
+        check (frames.size() == 2, "a moved value emits exactly one new frame");
+        check (bridge.getStats().telemetrySent == 2, "telemetrySent counts both frames");
+
+        const auto* second = frames[1].getDynamicObject();
+        check (static_cast<int> (second->getProperty ("seq")) == 2,
+               "seq is monotonically increasing per frame");
+        check (std::abs (values (second->getProperty ("envelopes"))[0] - 0.9) < 1.0e-6,
+               "the new frame carries the moved envelope");
+
+        // Sub-epsilon movement does not emit; above the epsilon it does.
+        telemetry.filter = 0.25f + 0.5f / 255.0f;
+        bridge.sendTelemetry();
+        check (recorder.withAction (BridgeActions::telemetry).size() == 2,
+               "sub-epsilon movement is not emitted (1/255 quantum)");
+        telemetry.filter = 0.25f + 2.0f / 255.0f;
+        bridge.sendTelemetry();
+        check (recorder.withAction (BridgeActions::telemetry).size() == 3,
+               "movement above the epsilon is emitted");
+
+        // Without a backend the call is a no-op.
+        bridge.setTelemetryController (nullptr);
+        recorder.messages.clear();
+        bridge.sendTelemetry();
+        check (recorder.messages.empty() && bridge.getStats().telemetrySent == 3,
+               "without a telemetry controller the call is a no-op");
     }
 
     std::cout << '\n' << (failures == 0 ? "All checks passed." : "Checks failed.") << '\n';

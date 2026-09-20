@@ -190,8 +190,8 @@ describe('bridge transport', () => {
 
       const transport = createBridgeTransport({ onSnapshot, onParameterChanged });
       // Una por mensaje del contrato: snapshot, parameterChanged, presetList,
-      // presetError, midiNoteState, modelsState y modelError.
-      expect(backend.listenerCount(NATIVE_TO_JS_EVENT_ID)).toBe(7);
+      // presetError, midiNoteState, modelsState, modelError y telemetryFrame.
+      expect(backend.listenerCount(NATIVE_TO_JS_EVENT_ID)).toBe(8);
 
       transport.dispose();
       expect(backend.listenerCount(NATIVE_TO_JS_EVENT_ID)).toBe(0);

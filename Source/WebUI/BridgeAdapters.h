@@ -28,6 +28,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "Main/NEURONiKProcessor.h"
+#include "Main/ModulationTargets.h"
 #include "Serialization/PresetManager.h"
 #include "State/ParameterRandomizer.h"
 #include "WebUI/ParameterBridge.h"
@@ -281,5 +282,51 @@ private:
     /** The dialog in flight; a member so it outlives launchAsync (see the class doc). */
     std::unique_ptr<juce::FileChooser> fileChooser;
 };
-
+ 
+/**
+ * @brief Adapts the processor's IVisualizationSource to the bridge's
+ *        TelemetryController. Pure pass-through: the processor backs every
+ *        getter with atomics/audio-thread snapshots and the bridge reads on
+ *        the message thread. The target count comes from the matrix enum.
+ */
+class VisualizationSourceAdapter final : public TelemetryController
+{
+public:
+    explicit VisualizationSourceAdapter (NEURONiKProcessor& processorToWrap)
+        : processor (processorToWrap) {}
+ 
+    void getSpectralFrame (float* destination64) override
+    {
+        processor.getSpectralDataForUI (destination64);
+    }
+ 
+    void getEnvelopeLevels (float& amp, float& filter) override
+    {
+        processor.getEnvelopeLevelsForUI (amp, filter);
+    }
+ 
+    float getLfoValue (int lfoIndex) override
+    {
+        return processor.getLfoValueForUI (lfoIndex);
+    }
+ 
+    int getModulationTargetCount() override
+    {
+        return (int) NEURONiK::ModulationTarget::Count;
+    }
+ 
+    float getModulationValue (int targetIndex) override
+    {
+        return processor.getModulationValueForUI (targetIndex);
+    }
+ 
+    void getMorphCoordinates (float& x, float& y) override
+    {
+        processor.getMorphCoordinatesForUI (x, y);
+    }
+ 
+private:
+    NEURONiKProcessor& processor;
+};
+ 
 } // namespace NEURONiK::WebUI

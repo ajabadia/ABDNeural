@@ -172,6 +172,12 @@ namespace BridgeActions
     // not parameter edits: the backend performs them on the APVTS itself.
     inline constexpr const char* randomize = "randomize";
 
+    // Telemetry (additive to protocol v1; see bridge-protocol.json): one frame of
+    // VISUAL data (spectral magnitudes, envelopes, LFOs, morph, live modulation)
+    // polled from a VisualizationController. Emitted only when a frame differs
+    // from the last one sent (value-diffed, like parameterChanged).
+    inline constexpr const char* telemetry = "telemetryFrame";
+
     // MIDI (additive to protocol v1; see the header doc above).
     inline constexpr const char* midiNoteOn = "midiNoteOn";
     inline constexpr const char* midiNoteOff = "midiNoteOff";
@@ -300,6 +306,40 @@ namespace BridgeGestures
 }
 
 /**
+ * @class TelemetryController
+ * @brief What the bridge needs from a VISUAL data backend, and nothing more.
+ *
+ * The processor already implements the equivalent interface for the native UI
+ * (NEURONiK::DSP::IVisualizationSource); the hosts adapt one to the other
+ * (BridgeAdapters.h). All values are 0..1. Called on the message thread from
+ * the bridge poll, so implementations only need thread-safe reads (the
+ * processor backs every getter with atomics / audio-thread snapshots).
+ */
+class TelemetryController
+{
+public:
+    virtual ~TelemetryController() = default;
+
+    /** 64 spectral magnitudes (one per partial), 0..1. */
+    virtual void getSpectralFrame (float* destination64) = 0;
+
+    /** Amp and filter envelope levels, 0..1. */
+    virtual void getEnvelopeLevels (float& amp, float& filter) = 0;
+
+    /** LFO level by index (0..numLfos-1), 0..1. */
+    virtual float getLfoValue (int lfoIndex) = 0;
+
+    /** Number of modulation targets the live values report. */
+    virtual int getModulationTargetCount() = 0;
+
+    /** Live modulated amount of one target (route order 0..count-1), 0..1. */
+    virtual float getModulationValue (int targetIndex) = 0;
+
+    /** Morph pad coordinates, 0..1. */
+    virtual void getMorphCoordinates (float& x, float& y) = 0;
+};
+
+/**
  * @class ParameterBridge
  * @brief Mirrors an APVTS both ways over the WebView2 channel.
  *
@@ -337,6 +377,7 @@ public:
         int modelErrors = 0;        //!< modelError messages emitted
         int randomized = 0;         //!< state actions accepted (one per randomize)
         int randomizedParameters = 0; //!< parameters those actions actually moved
+        int telemetrySent = 0;      //!< telemetry frames emitted (diffed; idle sends nothing)
     };
 
     /** @brief Bridge `stateToBridge`, mirroring every parameter it contains. */
@@ -363,6 +404,12 @@ public:
     void setModelController (NativeModelController* newController) noexcept;
 
     /**
+     * @brief Install the VISUAL data backend; nullptr disables telemetry.
+     *        Must be called on the message thread, before the page loads.
+     */
+    void setTelemetryController (TelemetryController* newController) noexcept;
+
+    /**
      * @brief Install the state-action backend. Passing nullptr makes randomize a
      *        no-op that still counts as accepted (silent mode), same rule as MIDI.
      *        Must be called on the message thread, before the page loads.
@@ -387,6 +434,15 @@ public:
      *          transport (bridges are alive before the page is).
      */
     void sendModelsState();
+
+    /**
+     * @brief Send one telemetryFrame, if the data moved.
+     * @details Polled by the hosts from the same 30 ms timer as
+     *          publishPendingChanges() (they decimate to ~15 Hz). The frame is
+     *          value-diffed against the last one SENT: an idle synth emits
+     *          nothing. No-op without a controller or a transport.
+     */
+    void sendTelemetry();
 
     /**
      * @brief modelError message: the answer when a load does NOT happen.
@@ -445,6 +501,14 @@ public:
     void resetStats() noexcept { stats = {}; }
 
 private:
+    TelemetryController* visualization = nullptr;
+    bool telemetryHasLastFrame = false;
+    unsigned int telemetrySeq = 0;
+    std::array<float, 64> lastSpec {};
+    float lastEnvAmp = -1.0f, lastEnvFilter = -1.0f;
+    float lastMorphX = -1.0f, lastMorphY = -1.0f;
+    float lastLfo1 = -1.0f, lastLfo2 = -1.0f;
+    std::vector<float> lastMod {};
     struct Entry
     {
         juce::RangedAudioParameter* parameter = nullptr;

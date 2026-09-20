@@ -290,6 +290,34 @@ check(
   'un modelsState válido llega como onModels',
 );
 
+// --- Telemetria: el frame llega al consumidor onTelemetry tal cual ------------
+
+const telemetryReceived = [];
+const telemetryTransport = createBridgeTransport({
+  onTelemetry(frame) {
+    telemetryReceived.push(frame);
+  },
+});
+check(telemetryTransport.available === true, 'con el backend falso el transporte esta disponible (telemetria)');
+globalThis.window.__JUCE__.backend.deliver(contract.channels.nativeToJs.eventId, {
+  action: contract.messages.nativeToJs.telemetryFrame.fields.action.split(' ')[0].replaceAll("'", ''),
+  seq: 1,
+  spectral: new Array(64).fill(0.5),
+  envelopes: [0.1, 0.9],
+  lfos: [0.5, 0.5],
+  modulation: [0.25, 0.25],
+  morph: [0.5, 0.5],
+});
+check(
+  telemetryReceived.length === 1 && telemetryReceived[0].spectral.length === 64,
+  'un telemetryFrame valido llega como onTelemetry (aditivo a v1)',
+);
+check(
+  contract.behaviour.telemetryPoll !== undefined,
+  'el contrato documenta la politica de sondeo con diff de la telemetria',
+);
+telemetryTransport.dispose();
+
 // Sin JUCE: modo local (el contrato lo documenta como comportamiento)
 delete globalThis.window;
 const localTransport = createBridgeTransport({ onSnapshot() {}, onParameterChanged() {} });

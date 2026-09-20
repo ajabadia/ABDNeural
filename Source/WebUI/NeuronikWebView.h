@@ -121,6 +121,11 @@ public:
         // pide la accion y el procesador sortea, con los mismos congelados.
         randomizeAdapter = std::make_unique<RandomizerAdapter> (processor);
         bridge->setRandomizeController (randomizeAdapter.get());
+
+        // El cuarto adaptador: telemetria VISUAL (espectro, envolventes, LFOs,
+        // morf, valores vivos de modulacion) para el canal nativa->web.
+        visualizationAdapter = std::make_unique<VisualizationSourceAdapter> (processor);
+        bridge->setTelemetryController (visualizationAdapter.get());
     }
 
     ~NeuronikWebView() override
@@ -154,6 +159,15 @@ public:
             bridge->sendMidiNoteState (processor.getHeldNotes(),
                                        processor.externalPitchBend.load(),
                                        processor.externalModWheel.load());
+        }
+
+        // Telemetria visual (~15 Hz): espectro, envolventes, LFOs, morf y valores
+        // vivos de modulacion. El bridge solo EMITE si el frame cambio (diff),
+        // asi un synth quieto no genera trafico.
+        if (++telemetryTick >= telemetryTicks)
+        {
+            telemetryTick = 0;
+            bridge->sendTelemetry();
         }
     }
 
@@ -232,6 +246,7 @@ protected:
 
 private:
     static constexpr int midiStateTicks = 6;   // 6 x 30 ms = ~180 ms
+    static constexpr int telemetryTicks = 2;   // 2 x 30 ms = ~15 Hz
 
     /**
      * @brief El catalogo del `juce_add_binary_data` de esta pagina.
@@ -342,8 +357,10 @@ private:
     std::unique_ptr<MidiInjectionAdapter> midiAdapter;
     std::unique_ptr<EngineModelsAdapter> modelsAdapter;
     std::unique_ptr<RandomizerAdapter> randomizeAdapter;
+    std::unique_ptr<VisualizationSourceAdapter> visualizationAdapter;
 
     float pageZoom = 1.0f;
+    int telemetryTick = 0;
     int midiStateTick = 0;
     bool pageLoaded = false;
 

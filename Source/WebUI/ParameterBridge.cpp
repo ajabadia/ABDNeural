@@ -90,6 +90,12 @@ void ParameterBridge::setModelController (NativeModelController* newController) 
     models = newController;
 }
 
+void ParameterBridge::setTelemetryController (TelemetryController* newController) noexcept
+{
+    jassert (juce::MessageManager::existsAndIsCurrentThread());
+    visualization = newController;
+}
+
 void ParameterBridge::setRandomizeController (RandomizeController* newController) noexcept
 {
     jassert (juce::MessageManager::existsAndIsCurrentThread());
@@ -291,6 +297,93 @@ void ParameterBridge::sendModelsState()
     send (juce::var (message.get()), false);
 }
 
+void ParameterBridge::sendTelemetry()
+{
+    if (visualization == nullptr)
+        return;
+
+    // --- leer el frame del backend (todos los valores 0..1) ----------------
+    std::array<float, 64> spec;
+    visualization->getSpectralFrame (spec.data());
+
+    float envAmp = 0.0f, envFilter = 0.0f;
+    visualization->getEnvelopeLevels (envAmp, envFilter);
+
+    const int numTargets = visualization->getModulationTargetCount();
+    std::vector<float> mod ((size_t) std::max (0, numTargets), 0.0f);
+    for (int i = 0; i < numTargets; ++i)
+        mod[(size_t) i] = visualization->getModulationValue (i);
+
+    float morphX = 0.0f, morphY = 0.0f;
+    visualization->getMorphCoordinates (morphX, morphY);
+    const float lfo1 = visualization->getLfoValue (0);
+    const float lfo2 = visualization->getLfoValue (1);
+
+    // --- diff contra el ultimo frame ENVIADO (epsilon ~1/255) --------------
+    constexpr float epsilon = 1.0f / 255.0f;
+    auto moved = [epsilon] (float a, float b) { return std::abs (a - b) > epsilon; };
+
+    bool anyMoved = ! telemetryHasLastFrame;
+    if (telemetryHasLastFrame)
+    {
+        anyMoved = moved (envAmp, lastEnvAmp) || moved (envFilter, lastEnvFilter)
+                   || moved (morphX, lastMorphX) || moved (morphY, lastMorphY)
+                   || moved (lfo1, lastLfo1) || moved (lfo2, lastLfo2);
+        if (! anyMoved && mod.size() != lastMod.size())
+            anyMoved = true; // el numero de targets cambio: el frame importa
+        if (! anyMoved)
+            for (size_t i = 0; i < mod.size(); ++i)
+                if (moved (mod[i], lastMod[i])) { anyMoved = true; break; }
+        if (! anyMoved)
+            for (size_t i = 0; i < spec.size(); ++i)
+                if (moved (spec[i], lastSpec[i])) { anyMoved = true; break; }
+    }
+    if (! anyMoved)
+        return; // sintetizador quieto: no hay mensaje
+
+    // --- recordar y emitir --------------------------------------------------
+    lastSpec = spec;
+    lastEnvAmp = envAmp;
+    lastEnvFilter = envFilter;
+    lastMorphX = morphX;
+    lastMorphY = morphY;
+    lastLfo1 = lfo1;
+    lastLfo2 = lfo2;
+    lastMod = mod;
+    telemetryHasLastFrame = true;
+
+    juce::Array<juce::var> specVar;
+    for (float s : spec)
+        specVar.add ((double) s);
+
+    juce::Array<juce::var> envVar;
+    envVar.add ((double) envAmp);
+    envVar.add ((double) envFilter);
+
+    juce::Array<juce::var> lfoVar;
+    lfoVar.add ((double) lfo1);
+    lfoVar.add ((double) lfo2);
+
+    juce::Array<juce::var> modVar;
+    for (float m : mod)
+        modVar.add ((double) m);
+
+    juce::Array<juce::var> morphVar;
+    morphVar.add ((double) morphX);
+    morphVar.add ((double) morphY);
+
+    juce::DynamicObject::Ptr message = new juce::DynamicObject();
+    message->setProperty ("action", BridgeActions::telemetry);
+    message->setProperty ("seq", (int) ++telemetrySeq);
+    message->setProperty ("spectral", juce::var (specVar));
+    message->setProperty ("envelopes", juce::var (envVar));
+    message->setProperty ("lfos", juce::var (lfoVar));
+    message->setProperty ("modulation", juce::var (modVar));
+    message->setProperty ("morph", juce::var (morphVar));
+
+    ++stats.telemetrySent;
+    send (juce::var (message.get()), false);
+}
 void ParameterBridge::sendModelError (int slot, const juce::String& detail)
 {
     juce::DynamicObject::Ptr message = new juce::DynamicObject();

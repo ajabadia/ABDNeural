@@ -147,6 +147,9 @@ int main()
     check (asString (property (parsed, "messages.nativeToJs.modelError.fields.action"))
                .contains (NEURONiK::WebUI::BridgeActions::modelError),
            "modelError literal matches the compiled constant");
+    check (asString (property (parsed, "messages.nativeToJs.telemetryFrame.fields.action"))
+               .contains (NEURONiK::WebUI::BridgeActions::telemetry),
+           "telemetryFrame literal matches the compiled constant");
 
     // --- Actions: JS -> native -----------------------------------------------------
     check (asString (property (parsed, "messages.jsToNative.parameterChanged.fields.action"))

@@ -87,6 +87,19 @@
           "slot": "The slot the request named, or -1 when it named none (a non-numeric slot).",
           "detail": "Human readable reason."
         }
+      },
+      "telemetryFrame": {
+        "sentWhen": "Polled by the hosts from the same 30 ms timer as modelsState, decimated (default every 2nd tick, ~15 Hz) and VALUE-DIFFED: an idle synth emits nothing and any moved value (epsilon 1/255) emits exactly one frame. Additive to protocol v1.",
+        "fields": {
+          "action": "'telemetryFrame' (literal)",
+          "seq": "Monotonic counter per frame, assigned by the bridge.",
+          "spectral": "64 spectral magnitudes (one per partial), 0..1.",
+          "envelopes": "[amp, filter] levels, 0..1.",
+          "lfos": "[lfo1, lfo2] levels, 0..1.",
+          "modulation": "One value per ModulationTarget index, 0..1 (dense array, target order).",
+          "morph": "[morphX, morphY], 0..1."
+        },
+        "consumer": "src/bridge/telemetry.js keeps the LAST frame and fans it out once per frame to subscribers (spectral visualizer, scope, modulation ring). Frames are NOT app state and must not enter the store setState cycle."
       }
     },
     "jsToNative": {
@@ -184,7 +197,8 @@
     "midiMessages": "MIDI messages are ADDITIVE to protocol v1. JS->native actions are validated natively (note 0..127 integer, velocity 0..1, pitch -1..+1, mod 0..1); out-of-range fields count stats.midiRejected and never reach the engine. midiPanic takes no fields and stops every sounding note. Without a MIDI backend the actions are accepted and silently dropped. midiNoteState travels native->JS only: the page applies it with the keyboard feedback API (setPitchBend/setModWheel/notesOffVisual), which suppresses the echo of host-driven wheel moves.",
     "modelMessages": "Model messages are ADDITIVE to protocol v1. modelsState travels with every syncAllParams and after every loadPreset; loadModel is the only JS->native action that answers ASYNCHRONOUSLY, because the host owns the file dialog: the slot is validated natively first (integer inside 0..numSlots), and every request ends in modelsState or in modelError — a load may never fail silently, because a slot that looks loaded and sounds empty is the failure this pair exists to prevent. The native side performs the load on the engine's own path (modelPath<slot>), so the plugin and the page never disagree about which partials a slot holds.",
     "transportGuards": "The native side MUST emit with emitEventIfBrowserIsVisible and MUST NOT call window.__JUCE__.backend.emitEvent from C++ (wrong channel direction, message silently discarded). Enforced by Tests/webviewBridgeDirectionTest.mjs.",
-    "localMode": "Without window.__JUCE__.backend the page keeps working with local state only; all sends are no-ops."
+    "localMode": "Without window.__JUCE__.backend the page keeps working with local state only; all sends are no-ops.",
+    "telemetryPoll": "Telemetry is POLLED and value-diffed: no frame when every value stayed within 1/255 of the last sent frame; one frame per poll when something moved. The page treats frames as transient data (last-wins), never as state."
   },
   "implementations": {
     "nativeProtocol": "Source/WebUI/ParameterBridge.{h,cpp}",
