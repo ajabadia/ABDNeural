@@ -1071,6 +1071,24 @@ plugin) → REC → EXPORT `*.neuronikmodel` (JSON `{amplitudes[64], frequencyOf
 description}`). Migrarla a web la libera de Win32 y de la herramienta aparte (el
 C4996 de JUCE 8 se resolvió el 2026-09-20: export migrado a AudioFormatWriterOptions).
 
+- [ ] **Mejorar el ANALIZADOR (auditado 2026-09-21, pendiente de hacer):** hoy
+      `SpectralAnalyzer::analyze` (a) usa SOLO los primeros 8192 muestras con la
+      ventana aplicada sobre un buffer no envasado, (b) muestrea la magnitud en la
+      frecuencia armonica EXACTA sin busqueda del pico en bins vecinos y (c) deja
+      `frequencyOffsets` a cero (TODO en el codigo) — la mitad del modelo que
+      morphean los motores nunca se genera. Plan: analisis multiframe (varias
+      ventanas Hop-aligned, amplitud = media/max por parcial), peak-picking local
+      (±2 bins alrededor del armonico esperado) e interpolacion parabolica para
+      precision sub-bin -> offsets reales. Referencias: la deteccion de pitch (HPS)
+      ya existe y se queda; el objetivo es que los modelos ANALIZADOS aprovechen
+      el morphX/morphY de verdad.
+- [ ] **`unisonSpread` esta MUERTO en el motor** (auditado 2026-09-21): expuesto en
+      APVTS y WebUI, guardado en Resonator, usado NUNCA en el render — el knob no
+      hace nada. O se implementa (spread -> anchura de detune por parcial:
+      `f_i * (1 + detune * (1 + spread * i / 64))`, que ademas abre el camino del
+      ensanche estereo por capa unison) o se retira del contrato SSOT. Mientras
+      tanto es un parametro mentiroso en la UI.
+
 - [ ] **Decidir el alojamiento**: segunda página del MISMO bundle WebUI (ruta aparte; la
       bancada ya sirve `WebUI/dist`) vs app Vite aparte en el workspace. Por defecto, página
       del mismo bundle: cero infraestructura nueva.

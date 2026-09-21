@@ -3393,3 +3393,77 @@ Inventario ABDEep (WebUI) para futuras extracciones al paquete:
   NEURONiK lo cubre; extraer solo si otro synth pide pestanas.
 - Scope/canvas visual: en curso via telemetria (espectral del 8.3).
 Los ya extraidos esta jornada: LCD universal (p) y Segmented (q).
+
+## 2026-09-21 (r): fitStage en TODA la suite — cuatro synths, un mecanismo
+
+Lo que empezo como arreglo de NEURONiK ("no se distinguen las teclas")
+termino siendo infraestructura de la suite: los CUATRO synths heredan el
+ajuste al viewport del fitStage compartido.
+
+- Paquete (ABDSharedAssets): `onlyShrink` (paginas fluidas: nunca ampliar,
+  identidad sin margenes) y caja NATURAL del stage (`stageWidth/Height`) para
+  el centrado honesto con floors; identidad LIMPIA el transform (un scale(1)
+  residual crea containing block y re-anclaria overlays fixed). 21/21 tests.
+- NEURONiK: sin cambios (lienzo fijo, barrel).
+- MS2000: FLUIDO con floor de diseno (min-width/height 1080x680 en #app) +
+  onlyShrink: por encima crece responsive, por debajo escala entero; las
+  media queries del dashboard siguen mandando el reflow. Overlays en body,
+  fuera del stage. 134/134 + build Vite.
+- CZ101: copia gestionada resincronizada; su test de identidad actualizado al
+  contrato nuevo (sin transform). Suite en su baseline conocida (fallos WASM
+  preexistentes, conjunto identico con y sin el cambio; fitStage 4/4).
+- ABDEep: copia gestionada (scripts/sync_shared.mjs, CJS) + glue ESM
+  js/fit-stage.js (unico modulo de su app, montado al final del body sobre el
+  chasis 1200x768). Suite 4750/4750 con el baseline guard actualizado
+  (docs/baseline_fase0_v32.md: 107 files / 4750 tests).
+
+## 2026-09-21 (s): auditoria de los dos motores — normalizacion, guardia y catch-up
+
+Peticion: explicar los dos motores (hecho en conversacion: Resonator = reesintesis
+aditiva por 64/128 osciladores seno; ResonatorBank = sintesis modal por 64/128
+biquads BP excitados por ruido coloreado + impulso) y ARREGLAR lo debil, mas una
+investigacion de mejoras en cuatro ejes. Verificacion: `build.bat tests` 22/22.
+
+**Arreglados hoy (Source/DSP):**
+
+- **Resonator.cpp — normalizacion inflada por parciales mudos.** Un parcial sobre
+  la guardia ponia `phaseIncrements=0` pero su amplitud seguia en `totalAmplitude`
+  -> el nivel total caia con modelos brillantes/agudos. Ahora la rama muda anula
+  TAMBIEN `tempAmps[i]` (paridad con el banco, que ya lo hacia).
+- **ResonatorBank.cpp — mismo defecto, orden inverso.** El banco acumulaba
+  `totalAmplitude` ANTES de `updateFilterCoefficients` (que anula los parciales
+  fuera de guardia): los mudos inflaban el denominador igual. El total ahora se
+  suma DESPUES, desde `partialAmplitudes_v` (cubre main+unison de un vistazo).
+- **DspSafety.h — `kNyquistMargin = 0.45f` compartida.** Las guardias discrepaban
+  (0.45 additive vs 0.48 banco). El 0.48 es PELIGROSO para un biquad peak: con w
+  cerca de pi, alpha=sin(w)/(2Q) y el redondeo puede empujar el polo fuera del
+  circulo unitario. Los tres sitios usan la constante; rationale en su cabecera.
+- **AdditiveVoice/NeurotikVoice — catch-up de smoothers por `skip()`.** Ambas
+  voces avanzaban smoothers con bucles manuales de `getNextValue()` (hasta 31x9
+  llamadas por sub-bloque de 32) dentro del loop de render. El sustrato compartido
+  (`abd::dsp::LinearSmoothedValue`) ya trae `skip(n)` O(1) para exactamente esto.
+  Matiz de semantica: las llamadas del bloque anterior ya avanzaron el smoother,
+  asi que por sub-bloque toca avanzar `thisBlockSamples-1`, no `thisBlockSamples`
+  (el codigo viejo sobre-avanzaba una muestra de control por bloque; inaudible,
+  pero el skip queda exacto).
+
+**Hallazgos apuntados al ROADMAP (Fase 8.3/Fase 9), sin tocar:**
+
+- `unisonSpread` es un parametro MUERTO: expuesto en APVTS y WebUI
+  (contracts/sections.js), guardado en Resonator (`setUnison`), usado NUNCA en el
+  render. La capa unison suena igual en cualquier posicion del knob. O se
+  implementa (spread -> semitonos: parcial i a `f*(1+detune*(1+spread*i/64))`) o
+  se retira del contrato.
+- Ambos motores son MONO por voz: la imagen estereo sale de la capa unison
+  (0.707) y del chorus global. El `unisonSpread` real (parcial i desviado
+  +/-spread*i/64 por canal L/R) seria el stereo-widening barato que falta.
+- `ModelMaker/SpectralAnalyzer`: analiza SOLO los primeros 8192 muestras
+  (windowed sobre un buffer probablemente no envasado), muestrea la magnitud en
+  la frecuencia armonica EXACTA (sin busqueda del pico en ±2 bins) y deja
+  `frequencyOffsets` a cero con un TODO. La mitad del modelo que morphean los
+  motores nunca se genera. Mejoras apuntadas: analisis multiframe con
+  seleccion por magnitud media, peak-picking local, offsets reales, y curvature/
+  parabolic-interpolation para precision sub-bin.
+- Telemetria: el frame lleva spectral/envelopes/lfos/modulation/morph; no lleva
+  forma de onda. El scope apuntado en 8.3 exige un campo nuevo (`wave[]`)
+  — cambarlo con la SSOT del exportador del canal.
