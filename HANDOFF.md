@@ -3467,3 +3467,46 @@ investigacion de mejoras en cuatro ejes. Verificacion: `build.bat tests` 22/22.
 - Telemetria: el frame lleva spectral/envelopes/lfos/modulation/morph; no lleva
   forma de onda. El scope apuntado en 8.3 exige un campo nuevo (`wave[]`)
   — cambarlo con la SSOT del exportador del canal.
+
+## 2026-09-21 (t): los fixes del motor pasan la paridad bit-exacta (build completo)
+
+Confirmacion de la entrada (s): tras `build.bat` COMPLETO (10:16), el paso WASM
+recompilo los cuatro ficheros tocados (Resonator, ResonatorBank y las dos voces)
+y la paridad WASM<->nativo salio **bit-exacta 9/9** (44.1/48/96 kHz x bloques
+64/128/512, maxUlp=0, 184.320 muestras).
+
+La matriz que pinta el cambio fino es la de independencia de tamano de bloque
+(128 vs 64/512, bit-exacta en los 5 escenarios x 3 SR): es la que NO perdonaria
+una desalineacion de la rejilla de control de 32 en el catch-up por `skip()` —
+si `skip(thisBlockSamples-1)` desalineara, ahi saltaria. No salto. Smoke OK y
+artefactos sincronizados con `WebUI/public/worklet`, byte-identicos al commit
+`8299a95` (rebuild determinista; arbol limpio tras el build).
+
+Detalle coherente con el fix, no una regresion: a 96 kHz los peaks de
+D_modmatrix (0.37) y E_modelo_espectral (0.29) bajan respecto a 44.1/48 —
+menos parciales por debajo de 0.45*SR con la normalizacion ya sin los mudos.
+Paridad mantenida en los tres SR.
+
+## 2026-09-21 (u): auditoria applyGain sobre datos externos en las rutas WASM
+
+Revision cruzada ABDNeural/ABDEep tras la leccion CZ101 1.2.1 (applyGainRamp de
+JUCE real, vectorizado bajo -O3 -msimd128, escribio fuera de la region emmalloc
+cuando el AudioBuffer envolvia datos externos del heap de JS).
+
+- ABDNeural: el patron EXISTE (DspEngineFacade::process envuelve outL/outR de
+  JS con setDataToReferTo y por ahi llega masterLevelSmoother.applyGain en
+  applyGlobalFX) pero esta BLINDADO por tres hechos: (1) el AudioBuffer y el
+  SmoothedValue son el port abd::dsp (DspCore.h), escalar por diseno — su
+  FloatVectorOperations lo documenta (intrinsics solo con
+  JUCE_USE_SSE_INTRINSICS/NEON/VDSP, que nadie define); (2) el build WASM es
+  -O2 sin -msimd128 (wasm/CMakeLists.txt); (3) no hay ni un applyGainRamp en
+  Source. juce_dsp SI enlaza en el build, pero ningun modulo del motor llama a
+  sus rutinas de buffer sobre el buffer del facade. Guardia documental anadida
+  en el facade: prohibido aplicar rutinas de buffer de JUCE real sobre ese
+  buffer; si el build gana -msimd128, auditar antes de enlazar.
+- ABDEep: el patron NO existe. Su WasmBridge usa un AudioBuffer PROPIO y
+  estatico (heap del WASM), el resultado sale por memcpy a los punteros de JS,
+  compila JUCE real pero SIN -msimd128 (-O3), y su unico applyGain
+  (SynthEngine.cpp:236, master gain) opera sobre el buffer propio. Sin accion.
+- Criterio de suite (vigilado por la paridad bit-exacta): los tres hechos que
+  blindan ABDNeural son convenciones, no contratos pinados.
