@@ -75,6 +75,14 @@ namespace NEURONiK::DSP::Runtime
         float* channels[] = { left, right };
         buffer.setDataToReferTo(channels, 2, numSamples);
         buffer.clear();
+        // LECCION CZ101 1.2.1: 'buffer' envuelve memoria EXTERNA (heap de JS
+        // via _malloc). Sobre este buffer SOLO rutinas del port abd::dsp
+        // (DspCore.h), escalares por diseno. Prohibido applyGain/applyGainRamp
+        // de JUCE REAL (juce_dsp enlaza en este build): su ruta intrinseca
+        // vectorizada escribio fuera de la region emmalloc en CZ101. Idem
+        // juce::dsp::AudioBlock y FloatVectorOperations de JUCE real. Si este
+        // build gana -msimd128 algun dia, auditar TODO bucle sobre datos
+        // externos antes de enlazarlo (patron: rampa escalar a mano).
 
         midiBuffer.clear();
         if (events != nullptr && eventCount > 0)
