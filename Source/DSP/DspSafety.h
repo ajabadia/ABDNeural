@@ -59,6 +59,20 @@
 namespace NEURONiK::DSP {
 
 /**
+ * Shared Nyquist guard for the two synthesis engines (Resonator and
+ * ResonatorBank). Partials at or above sampleRate*kNyquistMargin are muted
+ * AND excluded from normalisation: below this line a partial still renders
+ * audibly; above it a biquad degenerates (alpha -> 0) and a sine oscillator
+ * aliases. Margin instead of 0.5 to keep a safety band from the true limit.
+ *
+ * History: they disagreed (0.45 additive vs 0.48 bank). The bank value 0.48
+ * is TOO CLOSE to 0.5: a peak-gain biquad at 0.48*SR has alpha=sin(w)/(2Q),
+ * w close to pi, and rounding can push its pole outside the unit circle
+ * (self-oscillation). 0.45 keeps all engines on the same, safer line.
+ */
+inline constexpr float kNyquistMargin = 0.45f;
+
+/**
  * Validates and clamps an audio parameter to a safe range.
  * In Debug: Asserts if value is invalid.
  * In Release: Clamps silently and optionally logs warning.

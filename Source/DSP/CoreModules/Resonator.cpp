@@ -205,10 +205,18 @@ void Resonator::updateHarmonicsFromModels(float morphX, float morphY) noexcept
         float stretchedHarmonic = std::exp(lnTable[i] * (1.0f + stretchingAmount * 0.5f));
         float partialFreq = (baseFrequency * stretchedHarmonic * shiftAmount) + morphedOffset;
 
-        if (partialFreq < static_cast<float>(sampleRate * 0.45) && tempAmps[i] > 0.0001f)
+        // FIX (2026-09-21): un parcial sobre Nyquist queda mudo (phaseIncrements=0),
+        // pero su amplitud seguia contando en la normalizacion -> el nivel total
+        // bajaba con modelos brillantes/agudos. Ahora se anula tambien su amplitud
+        // (misma semantica que ResonatorBank) y la guardia usa la constante
+        // compartida kNyquistMargin (antes 0.45 aqui frente a 0.48 en el banco).
+        if (partialFreq < static_cast<float>(sampleRate * kNyquistMargin) && tempAmps[i] > 0.0001f)
             phaseIncrements[i] = partialFreq / static_cast<float>(sampleRate);
         else
+        {
             phaseIncrements[i] = 0.0f;
+            tempAmps[i] = 0.0f; // fuera de la normalizacion: paridad con el banco
+        }
     }
 
     float invNorm = (totalAmplitude > 0.0001f) ? (1.0f / totalAmplitude) : 0.0f;

@@ -58,7 +58,7 @@ void ResonatorBank::loadModel(const NEURONiK::Common::SpectralModel& model, int 
 void ResonatorBank::updateFilterCoefficients(int i, float partialFreq, float q, float amp, float detuneVal) noexcept
 {
     // Layer 1 (Main)
-    if (partialFreq < static_cast<float>(sampleRate * 0.48) && partialFreq > 10.0f)
+    if (partialFreq < static_cast<float>(sampleRate * kNyquistMargin) && partialFreq > 10.0f)
     {
         float omega = dsp::MathConstants<float>::twoPi * partialFreq / static_cast<float>(sampleRate);
         float cosW = std::cos(omega);
@@ -77,7 +77,7 @@ void ResonatorBank::updateFilterCoefficients(int i, float partialFreq, float q, 
         if (std::abs(detuneVal) > 0.0001f)
         {
             float freqUnison = partialFreq * (1.0f + detuneVal);
-            if (freqUnison < static_cast<float>(sampleRate * 0.48))
+            if (freqUnison < static_cast<float>(sampleRate * kNyquistMargin))
             {
                 float omegaU = dsp::MathConstants<float>::twoPi * freqUnison / static_cast<float>(sampleRate);
                 float cosWU = std::cos(omegaU);
@@ -123,7 +123,6 @@ void ResonatorBank::updateParameters(float morphX, float morphY, float resonance
     modelChanged = false;
 
     float q = 1.0f + (res * res * 199.0f);
-    float totalAmplitude = 0.0f;
     float tempAmps[64];
 
     for (int i = 0; i < 64; ++i)
@@ -132,7 +131,6 @@ void ResonatorBank::updateParameters(float morphX, float morphY, float resonance
         float ampTop = lerp(models[0].amplitudes[i], models[1].amplitudes[i], mx);
         float ampBottom = lerp(models[2].amplitudes[i], models[3].amplitudes[i], mx);
         tempAmps[i] = lerp(ampTop, ampBottom, my);
-        totalAmplitude += tempAmps[i];
 
         float freqOffsetTop = lerp(models[0].frequencyOffsets[i], models[1].frequencyOffsets[i], mx);
         float freqOffsetBottom = lerp(models[2].frequencyOffsets[i], models[3].frequencyOffsets[i], mx);
@@ -141,6 +139,14 @@ void ResonatorBank::updateParameters(float morphX, float morphY, float resonance
 
         updateFilterCoefficients(i, partialFreq, q, tempAmps[i], det);
     }
+
+    // FIX (2026-09-21): el total se acumula DESPUES de updateFilterCoefficients
+    // (que anula la amplitud de los parciales sobre la guardia de Nyquist); antes
+    // se sumaban ANTES y los mudos inflaban el denominador -> nivel caido con
+    // modelos brillantes (asimetria gemela a la corregida hoy en Resonator).
+    float totalAmplitude = 0.0f;
+    for (int i = 0; i < 64; ++i)
+        totalAmplitude += partialAmplitudes_v[i];
 
     float invNorm = (totalAmplitude > 0.001f) ? (1.0f / totalAmplitude) : 0.0f;
     for (int i = 0; i < 128; ++i)
