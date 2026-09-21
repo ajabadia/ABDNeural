@@ -92,15 +92,13 @@ bool NeurotikVoice::renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int s
         res = dsp::jlimit(0.0f, 1.0f, res + modResonance);
         detune = dsp::jlimit(0.0f, 0.1f, detune + modUnison);
 
-        // FIX: Catch up the smoothers (fix for 32x lag)
-        if (thisBlockSamples > 1) {
-             for(int k=1; k<thisBlockSamples; ++k) {
-                 morphXSmoother.getNextValue();
-                 morphYSmoother.getNextValue();
-                 resonanceSmoother.getNextValue();
-                 unisonDetuneSmoother.getNextValue();
-             }
-        }
+        // Smoothers: los avanzados del bloque anterior ya pagaron su avance;
+        // aqui se salta thisBlockSamples-1 con skip() — O(1) frente al bucle
+        // manual de getNextValue() que habia (misma semantica, sin CPU extra).
+        morphXSmoother.skip(thisBlockSamples - 1);
+        morphYSmoother.skip(thisBlockSamples - 1);
+        resonanceSmoother.skip(thisBlockSamples - 1);
+        unisonDetuneSmoother.skip(thisBlockSamples - 1);
 
         resonatorBank.updateParameters(mX, mY, res, detune);
 

@@ -164,17 +164,9 @@ bool AdditiveVoice::renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int s
     resonator.updateHarmonicsFromModels(startMorphX, startMorphY);
     resonator.prepareEntropy(numSamples);
 
-    for (int i = 1; i < numSamples; ++i) {
-        morphXSmoother.getNextValue(); morphYSmoother.getNextValue();
-        inharmonicitySmoother.getNextValue(); roughnessSmoother.getNextValue();
-        paritySmoother.getNextValue(); shiftSmoother.getNextValue();
-        rollOffSmoother.getNextValue();
-        unisonDetuneSmoother.getNextValue(); unisonSpreadSmoother.getNextValue();
-    }
-
     // 2. Render Audio Logic (Inner Loop)
     dsp::ScopedNoDenormals noDenormals; // Local safety for feedback loops
-    
+
     // Process in sub-blocks for control rate smoothing and buffer safety
     static constexpr int kSubBlockSize = 32;
 
@@ -182,6 +174,21 @@ bool AdditiveVoice::renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int s
     {
         int thisBlockSamples = std::min(kSubBlockSize, numSamples - start);
         float tempBuffer[kSubBlockSize];
+
+        // Smoothers de espectro: se avanzan UNA vez por sub-bloque (valor de
+        // inicio) y se saltan los restantes con skip() — O(1) en vez del bucle
+        // de getNextValue() que habia (hasta 31x9 llamadas por sub-bloque). Las
+        // llamadas del bloque anterior ya avanzaron el smoother: aqui toca
+        // avanzar thisBlockSamples-1, no thisBlockSamples.
+        morphXSmoother.skip(thisBlockSamples - 1);
+        morphYSmoother.skip(thisBlockSamples - 1);
+        inharmonicitySmoother.skip(thisBlockSamples - 1);
+        roughnessSmoother.skip(thisBlockSamples - 1);
+        paritySmoother.skip(thisBlockSamples - 1);
+        shiftSmoother.skip(thisBlockSamples - 1);
+        rollOffSmoother.skip(thisBlockSamples - 1);
+        unisonDetuneSmoother.skip(thisBlockSamples - 1);
+        unisonSpreadSmoother.skip(thisBlockSamples - 1);
 
         for (int i = 0; i < thisBlockSamples; ++i)
         {
