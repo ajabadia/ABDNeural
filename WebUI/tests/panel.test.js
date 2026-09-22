@@ -30,6 +30,10 @@ import { createPanel } from '../src/ui/panel.js';
 import { createVisual } from '../src/ui/visuals.js';
 import { contractSummary, defaultNormalizedState } from '../src/contracts/parameters.js';
 
+// El cajon de MODELOS delega la carga de ranuras aqui (la vista se crea UNA
+// vez; el handler es el del montaje vivo, como en app.js).
+let drawerOnLoad = null;
+
 /** Ids exactos que comprueba el selftest de GENERAL del host. */
 const HOST_GENERAL_IDS = [
   'engineType',
@@ -56,6 +60,7 @@ const BANDS_WITH_CONTROLS = BANDS.map((band) => band.map((section) => {
       ? createVisual(
         drawerSpec.id,
         drawerSpec.parameterIds.map(describeControl).filter(Boolean),
+        { onLoad: (slot) => drawerOnLoad?.(slot) },
       )
       : null,
     visual: visualSpec
@@ -80,6 +85,8 @@ function makeState(overrides = {}) {
 }
 
 function mountPanel(handlers = {}) {
+  drawerOnLoad = handlers.onLoad ?? null;
+
   const panel = createPanel({
     bands: BANDS_WITH_CONTROLS,
     baselineId: 'masterLevel',
@@ -599,5 +606,248 @@ describe('panel / caja LFO (frontal + cajon)', () => {
 
     document.querySelector('[data-drawer-trigger="lfo"]').click();
     expect(panel.drawers.get('lfo').isOpen()).toBe(true);
+  });
+});
+describe('panel / recorrido E2E del cajon GLOBAL & MASTER (EDITAR -> drawer -> Freeze)', () => {
+  it('el EDIT de la ficha abre su cajon, el Freeze se conmuta alli y sobrevive al cierre', () => {
+    const onChange = vi.fn();
+    const panel = mountPanel({ onChange });
+    const drawer = panel.drawers.get('globalFull');
+
+    // 0. Estado inicial: cajon cerrado y las celdas YA en el documento (el
+    //    contenido NO se reconstruye al abrir: contrato de src/ui/drawer.js).
+    expect(drawer.isOpen()).toBe(false);
+    const freezeCell = drawer.body.querySelector('[data-parameter-id="freezeResonator"]');
+    expect(freezeCell).not.toBeNull();
+
+    // 1. El EDIT (lapiz) de la ficha abre SU cajon.
+    document.querySelector('[data-drawer-trigger="globalFull"]').click();
+    expect(drawer.isOpen()).toBe(true);
+    expect(drawer.element.classList.contains('drawer--open')).toBe(true);
+    expect(drawer.element.getAttribute('aria-hidden')).toBe('false');
+
+    // 2. El cajon apila TODOS los ids menos el control base (8 celdas n1..n8);
+    //    masterLevel solo existe en la ficha (contrato 8.1 paso 2c).
+    expect(drawer.body.querySelectorAll('.drawer-slot')).toHaveLength(8);
+    expect(drawer.body.querySelector('[data-parameter-id="masterLevel"]')).toBeNull();
+
+    // 3. Freeze Resonator: Off -> On con un click real en el toggle compartido.
+    const freezeButton = freezeCell.querySelector('.abd-toggle');
+    expect(freezeButton.getAttribute('aria-pressed')).toBe('false');
+
+    freezeButton.click();
+    expect(onChange).toHaveBeenCalledWith('freezeResonator', 1);
+    expect(freezeButton.getAttribute('aria-pressed')).toBe('true');
+
+    // 4. Los otros dos congelados siguen Off y se conmutan a la vez.
+    const filterButton = drawer.body
+      .querySelector('[data-parameter-id="freezeFilter"] .abd-toggle');
+    expect(filterButton.getAttribute('aria-pressed')).toBe('false');
+
+    filterButton.click();
+    expect(onChange).toHaveBeenLastCalledWith('freezeFilter', 1);
+    // El primero no se despierta por el segundo (independencia de toggles).
+    expect(freezeButton.getAttribute('aria-pressed')).toBe('true');
+
+    // 5. ESC cierra el cajon; el DOM persiste y al reabrir el Freeze sigue On.
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(drawer.isOpen()).toBe(false);
+    expect(freezeButton.getAttribute('aria-pressed')).toBe('true');
+
+    document.querySelector('[data-drawer-trigger="globalFull"]').click();
+    expect(drawer.isOpen()).toBe(true);
+    expect(drawer.body.querySelector('[data-parameter-id="freezeResonator"] .abd-toggle')
+      .getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('el paint del procesador (round-trip) enciende el toggle SIN notificar', () => {
+    const onChange = vi.fn();
+    const panel = mountPanel({ onChange });
+    const state = makeState();
+
+    panel.paint(state);
+
+    const button = panel.drawers.get('globalFull').body
+      .querySelector('[data-parameter-id="freezeResonator"] .abd-toggle');
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+
+    // El procesador confirma el congelado: setValue silencioso (sin onChange).
+    panel.paint({ ...state, parameters: { ...state.parameters, freezeResonator: 1 } });
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
+describe('panel / recorrido E2E de los cuatro cajones con EDIT', () => {
+  // El reparto del lienzo DECLARA estos cajones; si se anade uno nuevo, su
+  // recorrido de usuario (EDIT -> cajon -> editar) tiene que vivir aqui.
+  const EDITABLE_DRAWERS = ['models', 'lfo', 'modMatrix', 'globalFull'];
+
+  it('inventario: exactamente los cuatro cajones con trigger EDIT', () => {
+    mountPanel();
+
+    const triggers = [...document.querySelectorAll('[data-drawer-trigger]')]
+      .map((el) => el.dataset.drawerTrigger);
+
+    expect(triggers).toEqual(EDITABLE_DRAWERS);
+    // El badge del trigger es siempre EDIT (lapiz compartido): las fichas
+    // respiran; lo que cambia es el aria-label completo.
+    for (const id of EDITABLE_DRAWERS) {
+      const trigger = document.querySelector(`[data-drawer-trigger="${id}"]`);
+      expect(trigger.textContent).toContain('EDIT');
+      expect(trigger.getAttribute('aria-label')).toBeTruthy();
+    }
+  });
+
+  it('MODELOS: EDIT abre el detalle, la ranura cargada se habilita y CARGAR pide la carga', () => {
+    const onLoad = vi.fn();
+    const panel = mountPanel({ onLoad });
+    const drawer = panel.drawers.get('models');
+
+    expect(drawer.isOpen()).toBe(false);
+    // En el lienzo SOLO el pad XY; el detalle (espectral + ranuras) es del cajon.
+    expect(document.querySelectorAll('[data-section-id="models"] .model-slots__row'))
+      .toHaveLength(0);
+
+    document.querySelector('[data-drawer-trigger="models"]').click();
+    expect(drawer.isOpen()).toBe(true);
+
+    const body = drawer.body;
+    expect(body.querySelectorAll('.model-slots__row')).toHaveLength(4);
+
+    // Sin puente: CARGAR muerto. Con puente + ranura cargada: habilitado y pide.
+    const load0 = body.querySelector('[data-slot="0"] .model-slots__load');
+    panel.paint(makeState({ bridgeAvailable: false }));
+    expect(load0.disabled).toBe(true);
+
+    panel.paint(makeState({
+      bridgeAvailable: true,
+      models: [{ slot: 0, name: 'Campana', isValid: true, amplitudes: [], frequencyOffsets: [] }],
+    }));
+    expect(load0.disabled).toBe(false);
+    load0.click();
+    expect(onLoad).toHaveBeenCalledWith(0);
+
+    // ESC cierra y el estado de las ranuras no se toca (DOM estable).
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(drawer.isOpen()).toBe(false);
+    expect(body.querySelector('[data-slot="0"] .model-slots__name').textContent).toBe('Campana');
+  });
+
+  it('LFO: el cajon recibe SOLO forma/sync/division (el frontal no se replica) y se edita', () => {
+    const onChange = vi.fn();
+    const panel = mountPanel({ onChange });
+    const drawer = panel.drawers.get('lfo');
+
+    document.querySelector('[data-drawer-trigger="lfo"]').click();
+    expect(drawer.isOpen()).toBe(true);
+
+    const ids = [...drawer.body.querySelectorAll('[data-parameter-id]')]
+      .map((el) => el.dataset.parameterId);
+
+    // Los cuatro del frontal viven en el LIENZO (un control, un nodo DOM).
+    for (const frontal of ['lfo1RateHz', 'lfo1Depth', 'lfo2RateHz', 'lfo2Depth']) {
+      expect(ids).not.toContain(frontal);
+      expect(document.querySelector(`[data-section-id="lfo"] [data-parameter-id="${frontal}"]`))
+        .not.toBeNull();
+    }
+    // En el cajon: las ondas (Segmented LED) y sync + division de cada LFO.
+    expect(ids).toEqual([
+      'lfo1Waveform', 'lfo1SyncMode', 'lfo1RhythmicDivision',
+      'lfo2Waveform', 'lfo2SyncMode', 'lfo2RhythmicDivision',
+    ]);
+
+    // Edicion real: onda 0 -> 2 (Saw Up), 2/5 normalizado en el contrato.
+    const wave = drawer.body
+      .querySelector('[data-parameter-id="lfo1Waveform"] .abd-segmented');
+    expect(wave.classList.contains('abd-segmented--led')).toBe(true);
+    expect(wave.querySelectorAll('button')).toHaveLength(6);
+
+    [...wave.querySelectorAll('button')][2].click();
+    expect(onChange).toHaveBeenCalledWith('lfo1Waveform', 2 / 5);
+  });
+
+  it('MATRIZ: cuatro rutas, edicion fuente->destino y cantidad por teclado del knob', () => {
+    const onChange = vi.fn();
+    const panel = mountPanel({ onChange });
+    const drawer = panel.drawers.get('modMatrix');
+
+    document.querySelector('[data-drawer-trigger="modMatrix"]').click();
+    expect(drawer.isOpen()).toBe(true);
+
+    // Una fila RUTA n por ruta, con sus tres campos EN ORDEN del contrato.
+    const rows = [...drawer.body.querySelectorAll('.drawer-slot')];
+    expect(rows).toHaveLength(4);
+    const ids = rows.flatMap((row) =>
+      [...row.querySelectorAll('[data-parameter-id]')].map((el) => el.dataset.parameterId));
+
+    expect(ids).toEqual([
+      'mod1Source', 'mod1Destination', 'mod1Amount',
+      'mod2Source', 'mod2Destination', 'mod2Amount',
+      'mod3Source', 'mod3Destination', 'mod3Amount',
+      'mod4Source', 'mod4Destination', 'mod4Amount',
+    ]);
+    // La ficha del lienzo queda sin celdas (solo resumen + EDIT).
+    expect(document.querySelectorAll('[data-section-id="modMatrix"] [data-parameter-id]'))
+      .toHaveLength(0);
+
+    // Edicion 1: fuente de la RUTA 2 a LFO 2 (indice 2 -> 2/7).
+    const select = drawer.body
+      .querySelector('[data-slot="2"] [data-parameter-id="mod2Source"] select');
+    select.value = '2';
+    select.dispatchEvent(new Event('change'));
+    expect(onChange).toHaveBeenCalledWith('mod2Source', 2 / 7);
+
+    // Edicion 2: cantidad de la RUTA 1 con el knob (teclado, el gesto accesible).
+    const dial = drawer.body
+      .querySelector('[data-slot="1"] [data-parameter-id="mod1Amount"] .abd-knob__dial');
+    dial.focus();
+    dial.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+    const fired = onChange.mock.calls.filter(([id]) => id === 'mod1Amount');
+    expect(fired.length).toBeGreaterThan(0);
+    const [id, value] = fired.at(-1);
+    expect(id).toBe('mod1Amount');
+    expect(value).toBeGreaterThan(0);
+    expect(value).toBeLessThanOrEqual(1);
+  });
+
+  it('GLOBAL: los tres congelados viven en el cajon y conmutan de forma independiente', () => {
+    const onChange = vi.fn();
+    const panel = mountPanel({ onChange });
+    const drawer = panel.drawers.get('globalFull');
+
+    document.querySelector('[data-drawer-trigger="globalFull"]').click();
+    expect(drawer.isOpen()).toBe(true);
+
+    const body = drawer.body;
+    expect(body.querySelectorAll('.drawer-slot')).toHaveLength(8);
+    const toggles = ['freezeResonator', 'freezeFilter', 'freezeEnvelopes']
+      .map((id) => body.querySelector(`[data-parameter-id="${id}"] .abd-toggle`));
+
+    expect(toggles.every((b) => b.getAttribute('aria-pressed') === 'false')).toBe(true);
+    toggles[0].click();
+    toggles[2].click();
+    expect(onChange).toHaveBeenCalledWith('freezeResonator', 1);
+    expect(onChange).toHaveBeenCalledWith('freezeEnvelopes', 1);
+    // El del medio no se despierta (aislamiento de estado).
+    expect(toggles[1].getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('aislamiento: un cajon abierto no deja el turno abierto al cerrarse otro', () => {
+    const panel = mountPanel();
+    const models = panel.drawers.get('models');
+    const global = panel.drawers.get('globalFull');
+
+    document.querySelector('[data-drawer-trigger="models"]').click();
+    expect(models.isOpen()).toBe(true);
+
+    document.querySelector('[data-drawer-trigger="globalFull"]').click();
+    expect(global.isOpen()).toBe(true);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    // ESC cierra AMBOS (listener global) o solo el activo, pero no queda ninguno
+    // abierto sin foco: el estado de vista no puede divergir del DOM.
+    const open = EDITABLE_DRAWERS
+      .filter((id) => panel.drawers.get(id).isOpen());
+    expect(open.length).toBeLessThanOrEqual(1);
   });
 });
