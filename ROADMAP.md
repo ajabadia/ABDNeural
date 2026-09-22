@@ -1045,6 +1045,9 @@ sigue siendo la salida natural si una sección crece una fila de más (el repart
 - [ ] **Visualización en vivo**: `SpectralVisualizer`, scope flotante y `XYPad` (morph X/Y).
       Requiere un canal de datos de solo lectura nativo→web a ~30-60 Hz, con presupuesto de
       CPU medido y sin asignar en el hilo de audio (snapshot con `AudioThreadSnapshot`).
+      El SCOPE exige ademas un campo `wave[]` en el frame de telemetria (auditado
+      2026-09-21: hoy el frame lleva spectral/envelopes/lfos/modulation/morph pero
+      NO forma de onda) — cambiar con la SSOT del exportador del canal.
   - [x] **El XYPad ya está** (2026-09-20, SIN el canal): la ficha MODELOS A–D monta el pad
         dibujado con los nombres en esquinas; edita y refleja morphX/morphY por el puente de
         parámetros que ya existía. El espectral y el scope sí necesitan el canal de lectura.
@@ -1125,6 +1128,11 @@ C4996 de JUCE 8 se resolvió el 2026-09-20: export migrado a AudioFormatWriterOp
       `f_i * (1 + detune * (1 + spread * i / 64))`, que ademas abre el camino del
       ensanche estereo por capa unison) o se retira del contrato SSOT. Mientras
       tanto es un parametro mentiroso en la UI.
+      RECOMENDACION (2026-09-21): IMPLEMENTAR, no retirar — es la llave del
+      widening estereo por voz (parcial i desviado `+spread*i/64` en L y
+      `-spread*i/64` en R de la capa unison), el unico hueco real de imagen que
+      tiene la suite (voces mono + chorus global). Coste bajo: solo el bucle de
+      `updateHarmonics` por canal; la formula ya esta apuntada arriba.
 
 - [ ] **Decidir el alojamiento**: segunda página del MISMO bundle WebUI (ruta aparte; la
       bancada ya sirve `WebUI/dist`) vs app Vite aparte en el workspace. Por defecto, página
