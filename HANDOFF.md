@@ -3510,3 +3510,47 @@ cuando el AudioBuffer envolvia datos externos del heap de JS).
   (SynthEngine.cpp:236, master gain) opera sobre el buffer propio. Sin accion.
 - Criterio de suite (vigilado por la paridad bit-exacta): los tres hechos que
   blindan ABDNeural son convenciones, no contratos pinados.
+
+## 2026-09-22 (v): ENV 1 y ENV 2 como fuentes de la matriz — la envolvente del filtro sale del armario
+
+La antigua ficha FILTRO & ENVOLVENTE se separa (FILTRO en la banda del motor,
+ENVOLVENTES junto a MODELOS A-D) y las dos envolventes entran en la matriz:
+**ENV 1 (amplitud) = fuente 6, ENV 2 (filtro) = fuente 7**, anadidas AL FINAL
+de `getModSources()` porque los choice se guardan por indice (insertar en
+medio re-mapearia presets guardados). Tres piezas coordinadas:
+
+- **Preset nuevo:** defaults `mod1Source`=6 -> destino 1 (Osc Level) y
+  `mod2Source`=7 -> destino 10 (Filter Cutoff), amounts 1.0. Toda ruta nueva
+  nace con las envolventes cableadas por la matriz, visibles y editables.
+- **Preset existente:** `insertEnvModRoutes` (PresetMigration, desde
+  PresetManager al cargar) inserta las dos rutas en la primera ranura libre
+  (mod1, luego mod2; solo si source y destino son 0/Off; sin sitio, nada).
+  El sonido es IDENTICO: en el DSP "sin ruta" = factor de routing 1.0
+  (sentinela en las voces) — el cableado hard-wired de siempre, ahora
+  VISIBLE y editable. `filterEnvAmount` sigue como profundidad; su default
+  paso 0 -> 1.0 porque con 0 la ruta insertada nacia MUDA (0 x amount = 0),
+  defecto que la prueba de escala del destino destapo (sonda C++ nativa con
+  analisis de centroide: la ruta escala proporcional al amount y es coherente
+  con la del LFO en el mismo destino, ~±18 kHz maximos; NO se reajusto el
+  DSP). La migracion NO toca el valor guardado del knob.
+- **DSP:** reemplazo dentro del sumatorio, bit-exacto con amount 1.0 (ENV2:
+  `fEnv x (fEnvAmount x amount) x 18000 Hz`; ENV1 sobre el nivel del VCA).
+  Nuevos destinos 12/13 (Flt Attack/Decay, solo responden a ENV 2). Nota
+  estructural: ENV2->Cutoff solo actua en el motor ADITIVO (NeurotikVoice no
+  tiene filtro ni envolvente de filtro — mejorable, apuntado en 9).
+
+**Reparto del lienzo (estado tras las mudanzas 8.3):** tres bandas de 12
+carriles — OSCILADOR 6 + RESONADOR 2 + FILTRO 4 / ENVOLVENTES 5 + MODELOS 2 +
+EFECTOS 5 (MODELOS al centro, solo el pad XY en el lienzo; espectral y 4
+ranuras en el cajon) / LFO 2 + MATRIZ 6 + GLOBAL & MASTER 4. Los 70 ids
+siguen en SU seccion: store, recuento y cobertura intactos.
+
+**Prueba:** PresetRoundTripTest "ENV route migration" (inserta 2, indices
+6->1 y 7->10, amounts 1.0, ningun otro parametro tocado, ranuras ocupadas ->
+0, knob sobrevive); paridad WASM<->nativo **bit-exacta 9/9** con los defaults
+nuevos; ctest nativo 22/22; suite WebUI 221/221; selftest E2E de seis
+direcciones OK contra la pagina nueva. Ademas del dia: formas de onda LFO
+decididas (fila LED con glifos + nombres cortos canonicos de waveforms.js —
+comparativa montada en el cajon real; con nombres largos, RANDOM S&H truncaba)
+y NumberBox universal (ABDEep -> @abdsynths/shared) para masterBPM y
+midiChannel en el cajon de GLOBAL & MASTER.

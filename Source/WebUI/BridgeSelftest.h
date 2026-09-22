@@ -769,7 +769,10 @@ private:
      */
     static juce::String scriptOpenMatrixDrawer()
     {
-        const auto trigger = juce::String ("'[") + SelftestPage::drawerTriggerAttribute + "]'";
+        // Calificado: con MODELOS en el centro (8.3) hay MAS de un cajon y el
+        // primero del DOM ya no es el de la matriz.
+        const auto trigger = juce::String ("'[") + SelftestPage::drawerTriggerAttribute
+                           + "=\"modMatrix\"]'";
         const auto open = juce::String ("'.") + SelftestPage::openDrawerClass + "'";
         const auto slot = juce::String ("'.") + SelftestPage::drawerSlotClass + "'";
         const auto veil = juce::String ("'.") + SelftestPage::visibleBackdropClass + "'";

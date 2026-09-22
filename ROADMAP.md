@@ -524,9 +524,9 @@ una barra de menú File/Edit/Help.
 |---|---|---|---|
 | Tab GENERAL | `UI/ParameterPanel.cpp` (276) | **Sí** (ficha GLOBAL & MASTER del lienzo, con cajón desde 8.3; el fader MASTER queda visible en su ficha) | 8.2 |
 | Tab RESONATOR | `UI/Panels/OscillatorPanel.cpp` (216) | **Sí** (fichas RESONADOR y MODELOS A–D) | 8.2: el bloque MODEL queda cubierto (los 9 knobs del motor, repartidos entre OSCILADOR y RESONADOR; el XYPad como `morphX`/`morphY`; y las ranuras `loadA..loadD` en la ficha MODELOS A–D) |
-| Tab FILTER/ENV | `UI/Panels/FilterEnvPanel.cpp` (114) + `UI/EnvelopeVisualizer.h` | **Sí** (ficha FILTRO & ENVOLVENTE) | 8.2: falta la curva ADSR dibujada |
+| Tab FILTER/ENV | `UI/Panels/FilterEnvPanel.cpp` (114) + `UI/EnvelopeVisualizer.h` | **Sí** (2026-09-22, separada en DOS fichas: FILTRO — 3 knobs en la banda del motor tras el RESONADOR — y ENVOLVENTES — las dos ADSR + curvas, junto a MODELOS A–D) | Hecho: la curva ADSR (8.2) y la separación 8.3; la envolvente del filtro es la ENV 2 de la matriz (fuentes 6/7) |
 | Tab FX | `UI/Panels/FXPanel.cpp` (169) | **Sí** (ficha EFECTOS) | 8.2 |
-| Tab LFO/MOD | `UI/Panels/ModulationPanel.cpp` (189) | **Sí** (fichas LFO 1 & 2 y MATRIZ DE MODULACIÓN) | 8.2 |
+| Tab LFO/MOD | `UI/Panels/ModulationPanel.cpp` (189) | **Sí** (fichas LFO 1 & 2 — frontal rate+depth 2×2, cajón EDIT con forma/sync/división, formas de onda como fila LED con glifos — y MATRIZ DE MODULACIÓN al cajón con resumen) | 8.2; las SALIDAS de los LFO ya son fuentes 1/2 de la matriz, y las envolventes entraron como fuentes 6/7 (2026-09-22) |
 | Tab BROWSER | `UI/Browser/PresetBrowser.{h,cpp}` + `PresetListModels.h` | **Solo una barra** select+save | 8.3: bancos/categorías, lista, búsqueda, **tags** con sugerencias, metadatos, LOAD/SAVE AS/DELETE, LOAD BANK/SAVE BANK |
 | Preset rápido (combo + SAVE + DEL) | `UI/Panels/PresetPanel.cpp` (124) | Parcial | Se subsume en el navegador (una sola superficie de presets) |
 | **MIDI Learn por control** (mouseUp sobre el control) + persistencia | `UI/MidiLearner.{h,cpp}` + `Main/MidiMappingManager` | No | 8.3: acción del bridge ("aprende el próximo CC", cancelar, borrar) y mapeo/guardado en el procesador |
@@ -901,6 +901,13 @@ sigue siendo la salida natural si una sección crece una fila de más (el repart
   queda de 8.2 es lo que no es "un parámetro" (8.3), más estos flecos abiertos:
   **el anillo del valor modulado** (fila de arriba de la tabla: el dato existe en el procesador,
   pero NO viaja en el cable — ver el fleco abierto más abajo).
+- [x] **Reparto del lienzo tras las mudanzas 8.3 (estado 2026-09-22).** Tres bandas de fichas
+      (carriles, suma comprobada por test): **OSCILADOR 6 + RESONADOR 2 + FILTRO 4** (12),
+      **ENVOLVENTES 5 + MODELOS A–D 2 + EFECTOS 5** (12; MODELOS al centro entre envolventes
+      y efectos — el morfeo es el corazón del motor — y en el lienzo solo el pad XY, el
+      espectral y las 4 ranuras viven en el cajón), **LFO 2 + MATRIZ 6 + GLOBAL & MASTER 4**
+      (12, fondo). Los cajones EDIT (MODELOS, LFO, MATRIZ, GLOBAL) parten el detalle sin
+      mover los 70 controles: cada id sigue en SU sección, el store y la cobertura no cambian.
 - [x] **Curva ADSR en la ficha FILTRO & ENVOLVENTE (2026-09-19).** `src/ui/envelopeCurve.js`
       (matemática pura + pintor SVG) dibuja la envolvente de amplitud desde los cuatro `env*`, y va
       en la **celda libre** de la ficha (11 controles en 6x2): el encaje no cambia, y un test lo
@@ -992,6 +999,36 @@ sigue siendo la salida natural si una sección crece una fila de más (el repart
       (controlador + mensaje aditivo tipo `midiNoteState` + poll del host en C++, estado en el store,
       y el anillo como opción del `Knob` compartido) y por eso queda fuera de esta pasada: dibujar el
       anillo con la CANTIDAD del slot no sería el valor modulado, sería otra cosa con el mismo nombre.
+
+- [x] **Separación FILTRO / ENVOLVENTES y ENV 1/ENV 2 como fuentes de la matriz (2026-09-22).**
+      La antigua ficha FILTRO & ENVOLVENTE (11 controles) se parte en DOS: **FILTRO**
+      (`filterCutoff`, `filterRes`, `filterEnvAmount` — banda del motor, tras el RESONADOR) y
+      **ENVOLVENTES** (las dos ADSR completas + sus curvas dibujadas, junto a MODELOS A–D). La
+      envolvente del filtro deja de estar enterrada: **ENV 1 (amplitud) y ENV 2 (filtro) son las
+      fuentes 6 y 7 de la matriz** — añadidas AL FINAL de `getModSources()` a propósito, porque
+      los choices se guardan por índice y insertar en medio re-mapearía los presets guardados.
+      Tres piezas y su prueba:
+      - **Preset NUEVO:** `mod1Source` default = 6 (ENV 1 → destino 1, Osc Level) y `mod2Source`
+        default = 7 (ENV 2 → destino 10, Filter Cutoff), amounts 1.0: toda ruta nueva nace con
+        las envolventes cableadas, visibles y editables en la matriz.
+      - **Preset EXISTENTE:** `insertEnvModRoutes` (`PresetMigration`, invocada desde
+        `PresetManager` al cargar) inserta ENV1→Level y ENV2→Cutoff en la primera ranura libre
+        (mod1, luego mod2; solo si source y destino están a 0/Off). Sin sitio, no toca nada. El
+        sonido es IDÉNTICO: en el DSP "sin ruta" = factor de routing 1.0 (sentinela en
+        `AdditiveVoice`/`NeurotikVoice`), exactamente el cableado hard-wired de siempre — la
+        migración solo lo hace VISIBLE y editable. `filterEnvAmount` sigue vivo como profundidad
+        (y su default pasó 0 → 1.0: con 0 la ruta insertada nacía MUDA — 0 × amount = 0 —,
+        defecto que la prueba de escala destapó; solo presets nuevos, la migración no toca el
+        valor guardado). Nuevos destinos 12/13 (Flt Attack/Decay) responden solo a ENV 2.
+      - **DSP:** ambas voces aplican los factores con semántica de REEMPLAZO dentro del
+        sumatorio (ENV2: `fEnv × (fEnvAmount × amount) × 18000 Hz` sobre el cutoff; ENV1 sobre el
+        nivel del VCA) — amount 1.0 reproduce el sonido de siempre, bit-exacto.
+      - **Prueba:** `PresetRoundTripTest` añade la sección "ENV route migration" (inserta 2,
+        índices 6→1 y 7→10, amounts 1.0, ningún otro parámetro tocado, ranuras ocupadas → 0,
+        `filterEnvAmount` sobrevive); paridad WASM↔nativo bit-exacta 9/9 y selftest E2E de seis
+        direcciones en verde tras el cambio de defaults. Nota estructural: ENV2→Cutoff solo
+        actúa en el motor aditivo (NeurotikVoice no tiene filtro ni envolvente de filtro —
+        mejorable, apuntado en 9).
 
 **8.3 Lo que no es "un parámetro"** (aquí está el grueso del trabajo)
 - [ ] **Presets**: navegador con lista/categorías, guardar, renombrar, borrar y estado del
