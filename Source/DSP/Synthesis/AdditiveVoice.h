@@ -30,7 +30,9 @@ public:
         float oscLevel = 1.0f;
         float attack = 10.0f, decay = 100.0f, sustain = 0.7f, release = 500.0f;
         float filterCutoff = 20000.0f, filterRes = 0.1f;
-        float fEnvAmount = 0.0f;
+        // 1.0 (espeja el default del APVTS): la ruta por defecto
+        // ENV 2 -> Filter Cutoff nace cantando (pluck clasico).
+        float fEnvAmount = 1.0f;
         float fAttack = 10.0f, fDecay = 100.0f, fSustain = 0.7f, fRelease = 500.0f;
         float resonatorRollOff = 1.0f;
         float resonatorParity = 0.5f;

@@ -84,11 +84,23 @@ public:
     float modAmpSustain = 0.0f;
     float modAmpRelease = 0.0f;
 
+    // FACTOR de routing de las rutas ENV -> destino, a control rate. La matriz
+    // SOBREESCRIBE con el amount (asignacion, no suma); resetModulations los
+    // deja a 1.0 == el cableado legacy de siempre (la envolvente entra entera).
+    // amount 0.0 = envolvente silenciada de verdad; la voz multiplica por el
+    // factor (ver AdditiveVoice/NeurotikVoice).
+    float modEnvLevel = 1.0f;     // ENV 1 -> Osc Level (escala el VCA)
+    float modEnvCutoff = 1.0f;    // ENV 2 -> Filter Cutoff (escala la env del filtro)
+    float modEnvFltAttack = 0.0f; // ENV 2 -> Flt Attack (retrig ADSR filtro, aditivo)
+    float modEnvFltDecay = 0.0f;  // ENV 2 -> Flt Decay (retrig ADSR filtro, aditivo)
+
     virtual void resetModulations() {
         modLevel = modCutoff = modResonance = modFilterRes = modMorphX = modMorphY = 0.0f;
         modInharmonicity = modRoughness = modParity = modShift = modRolloff = modUnison = 0.0f;
         modExciteNoise = modExciteColor = modImpulseMix = 0.0f;
         modAmpAttack = modAmpDecay = modAmpSustain = modAmpRelease = 0.0f;
+        modEnvLevel = modEnvCutoff = 1.0f; // factores de routing (legacy)
+        modEnvFltAttack = modEnvFltDecay = 0.0f;
     }
     
     /** Resets the internal state of the voice. */

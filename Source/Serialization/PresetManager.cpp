@@ -181,6 +181,11 @@ void PresetManager::loadPresetFromFile(const juce::File& file)
             // stops a re-save from writing the dead ids back to the file.
             migratePresetState(state, valueTreeState.processor);
 
+            // Los presets previos a ENV1/ENV2 cableaban las envolventes dentro de
+            // la voz; hacer visible ese cableado en la matriz no cambia el sonido
+            // ("no route" == depth 1.0 en el DSP).
+            insertEnvModRoutes(state);
+
             valueTreeState.replaceState(state);
             currentPresetName = file.getFileNameWithoutExtension();
             sendChangeMessage();

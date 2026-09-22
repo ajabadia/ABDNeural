@@ -132,8 +132,10 @@ bool NeurotikVoice::renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int s
              // Envelope
              float env = ampEnvelope.processSample();
              
+             // ENV 1 -> Osc Level por matriz (ver IVoice.h): modEnvLevel es el
+             // FACTOR de routing (reset 1.0; la matriz lo sobrescribe con el amount).
              float levelMod = dsp::jlimit(0.0f, 2.0f, currentParams.level + modLevel);
-             float finalSample = voiceSample * env * currentVelocity * levelMod;
+             float finalSample = voiceSample * env * modEnvLevel * currentVelocity * levelMod;
              
              // Write to temp buffer
              tempBuffer[i] = finalSample;

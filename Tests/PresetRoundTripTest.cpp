@@ -347,6 +347,76 @@ int main()
                "the processor reports its current parameter ids");
     }
 
+    // --- 7. Migration inserts the ENV routes a pre-ENV preset lacks ----------
+    std::cout << "\nENV route migration\n";
+
+    {
+        // Un preset ANTERIOR a las fuentes ENV: mod1/mod2 vacios (Off -> Off).
+        auto legacy = apvts.copyState();
+        setReal (apvts, State::IDs::mod1Source, 0.0f); // choice 0 = Off
+        setReal (apvts, State::IDs::mod1Destination, 0.0f);
+        setReal (apvts, State::IDs::mod1Amount, 0.0f);
+        setReal (apvts, State::IDs::mod2Source, 0.0f);
+        setReal (apvts, State::IDs::mod2Destination, 0.0f);
+        setReal (apvts, State::IDs::mod2Amount, 0.0f);
+        setReal (apvts, State::IDs::filterEnvAmount, 0.6f); // el knob SIGUE vivo
+        legacy = apvts.copyState();
+
+        const auto pristine = legacy.createCopy(); // el arbol ANTES de migrar
+        const int inserted = Serialization::insertEnvModRoutes (legacy);
+        check (inserted == 2, "a legacy preset gets both ENV routes inserted");
+
+        const int src1 = (int) legacy.getChildWithProperty ("id", juce::var (State::IDs::mod1Source)).getProperty ("value");
+        const int dst1 = (int) legacy.getChildWithProperty ("id", juce::var (State::IDs::mod1Destination)).getProperty ("value");
+        const float amt1 = (float) (double) legacy.getChildWithProperty ("id", juce::var (State::IDs::mod1Amount)).getProperty ("value");
+        const int src2 = (int) legacy.getChildWithProperty ("id", juce::var (State::IDs::mod2Source)).getProperty ("value");
+        const int dst2 = (int) legacy.getChildWithProperty ("id", juce::var (State::IDs::mod2Destination)).getProperty ("value");
+        const float amt2 = (float) (double) legacy.getChildWithProperty ("id", juce::var (State::IDs::mod2Amount)).getProperty ("value");
+
+        check (src1 == 6 && dst1 == 1, "route 1 = ENV 1 -> Osc Level (indices de getModSources/getModDestinationTable)");
+        check (std::abs (amt1 - 1.0f) < 1.0e-6, "route 1 amount = 1.0 (profundidad nominal)");
+        check (src2 == 7 && dst2 == 10, "route 2 = ENV 2 -> Filter Cutoff");
+        check (std::abs (amt2 - 1.0f) < 1.0e-6, "route 2 amount = 1.0");
+
+        // La migracion solo toca las tres properties de cada ruta insertada:
+        // el resto del arbol es IDENTICO a como estaba antes de migrar. (No se
+        // compara contra el estado vivo: apvts.copyState() solo escribe el value
+        // de un parametro cuando alguien lo ha tocado — flush perezoso — y el
+        // resto de hijos nacen a 0 en el arbol.)
+        const auto known = Serialization::currentParameterIds (*layout.processor);
+        int touched = 0;
+        for (int i = 0; i < legacy.getNumChildren(); ++i)
+        {
+            const auto child = legacy.getChild (i);
+            const auto id = child.getProperty ("id").toString();
+            if (! known.contains (id)) continue;
+
+            const bool isEnvRoute = id == State::IDs::mod1Source || id == State::IDs::mod1Destination || id == State::IDs::mod1Amount
+                                 || id == State::IDs::mod2Source || id == State::IDs::mod2Destination || id == State::IDs::mod2Amount;
+            if (isEnvRoute) continue;
+
+            const auto was = pristine.getChildWithProperty ("id", juce::var (id));
+            if (was.getProperty ("value") != child.getProperty ("value"))
+                ++touched;
+        }
+        check (touched == 0, "no other parameter is touched by the migration");
+        check (std::abs (readReal (apvts, State::IDs::filterEnvAmount) - 0.6f) < 1.0e-4,
+               "filterEnvAmount survives as the depth knob (0.6)");
+
+        // RANURAS OCUPADAS: sin sitio libre, la migracion no inserta nada.
+        auto full = apvts.copyState();
+        setReal (apvts, State::IDs::mod1Source, 1.0f); // choice 1 = LFO 1
+        setReal (apvts, State::IDs::mod2Source, 2.0f); // choice 2 = LFO 2
+        full = apvts.copyState();
+        check (Serialization::insertEnvModRoutes (full) == 0,
+               "no free slot: nothing is inserted (same sound, sentinel keeps the wiring)");
+
+        // Estado actual: ya trae las rutas por defecto, no inserta nada.
+        auto current = apvts.copyState();
+        check (Serialization::insertEnvModRoutes (current) == 0,
+               "a preset that already routes ENVs is left alone");
+    }
+
     directory.deleteRecursively();
 
     std::cout << '\n' << (failures == 0 ? "All checks passed." : "Checks failed.") << '\n';

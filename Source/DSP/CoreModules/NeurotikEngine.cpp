@@ -62,13 +62,17 @@ void NeurotikEngine::updateParameters()
 
 void NeurotikEngine::applyModulation()
 {
-    float sources[6] = { 
+    // Las fuentes ENV (6/7) se resuelven per-voz dentro de los casos
+    // per-note: aqui valen 0 y nunca entran por el camino LFO.
+    float sources[8] = { 
         0.0f,                   // Off
         lfo1Value.load(),       // LFO 1
         lfo2Value.load(),       // LFO 2
         0.0f,                   // PB
         0.0f,                   // MW
-        0.0f                    // AT
+        0.0f,                   // AT
+        0.0f,                   // ENV 1: per-voz (VCA)
+        0.0f                    // ENV 2: per-voz (ADSR del filtro)
     };
 
     for (auto& v : voices) v->resetModulations();
@@ -87,9 +91,16 @@ void NeurotikEngine::applyModulation()
         if (route.destination >= 0 && route.destination < 64)
             lastModulations[route.destination] += rawMod;
         
+        // Dest logic. Casos PER-NOTE (1, 10): LFOs suman como siempre; rutas
+        // ENV entregan la suma de amounts a la voz (reemplazo, ver arriba).
         switch (route.destination)
         {
-            case 1: for (auto& v : voices) v->modLevel += rawMod; break;
+            case 1:
+                if (route.source == 6)
+                    for (auto& v : voices) v->modEnvLevel = route.amount; // factor (sobrescribe)
+                else
+                    for (auto& v : voices) v->modLevel += rawMod;
+                break;
             case 2: for (auto& v : voices) v->modInharmonicity += rawMod; break;
             case 3: for (auto& v : voices) v->modRoughness += rawMod; break;
             case 4: for (auto& v : voices) v->modMorphX += rawMod; break;
@@ -98,8 +109,22 @@ void NeurotikEngine::applyModulation()
             case 7: for (auto& v : voices) v->modAmpDecay += rawMod; break;
             case 8: for (auto& v : voices) v->modAmpSustain += rawMod; break;
             case 9: for (auto& v : voices) v->modAmpRelease += rawMod; break;
-            case 10: for (auto& v : voices) v->modCutoff += rawMod * 18000.0f; break; 
+            case 10:
+                if (route.source == 7)
+                    for (auto& v : voices) v->modEnvCutoff = route.amount; // factor (sobrescribe)
+                else
+                    for (auto& v : voices) v->modCutoff += rawMod * 18000.0f; 
+                break;
             case 11: for (auto& v : voices) v->modFilterRes += rawMod; break; 
+            // Destinos de la ADSR del filtro (12/13): solo responden a ENV 2.
+            case 12:
+                if (route.source == 7)
+                    for (auto& v : voices) v->modEnvFltAttack += route.amount;
+                break;
+            case 13:
+                if (route.source == 7)
+                    for (auto& v : voices) v->modEnvFltDecay += route.amount;
+                break;
             case 17: currentGlobalParams.saturationAmt += rawMod; break;
             case 18: currentGlobalParams.delayTime += rawMod; break; 
             case 19: currentGlobalParams.delayFB += rawMod; break;

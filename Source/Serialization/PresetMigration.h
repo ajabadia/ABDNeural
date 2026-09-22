@@ -35,4 +35,18 @@ int migratePresetState (juce::ValueTree& state, const juce::AudioProcessor& proc
 /** @brief Ids the given processor currently exposes, for diagnostics and tests. */
 juce::StringArray currentParameterIds (const juce::AudioProcessor& processor);
 
+/**
+ * @brief Inserts the ENV 1/ENV 2 modulation routes a pre-ENV preset lacks.
+ * @details Before envelopes became modulation sources, the VCA envelope and the
+ *          filter envelope were hard-wired: the DSP treats "no ENV route" as
+ *          routing depth 1.0 (sentinel in AdditiveVoice/NeurotikVoice), so the
+ *          two routes this inserts (ENV 1 -> Osc Level, ENV 2 -> Filter Cutoff,
+ *          both amount 1.0) only make the existing wiring VISIBLE and editable
+ *          in the matrix. An empty route (source 0 and destination 0) is fair
+ *          game: slot 1 is preferred, then 2. Without a free slot nothing is
+ *          inserted and the preset keeps sounding identical (sentinel 1.0).
+ * @returns the number of routes inserted (0..2).
+ */
+int insertEnvModRoutes (juce::ValueTree& state);
+
 } // namespace NEURONiK::Serialization

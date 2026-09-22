@@ -197,6 +197,15 @@ inline juce::StringArray getModDestinations()
     return labels;
 }
 
+inline juce::StringArray getModSources()
+{
+    // ENV 1 (amplitud) y ENV 2 (filtro) al FINAL: los choice se guardan por
+    // indice y anadir en medio re-mapearia los presets guardados (6/7 son
+    // indices nuevos, nunca usados antes).
+    return { "Off", "LFO 1", "LFO 2", "Pitch Bend", "Mod Wheel", "Aftertouch",
+             "ENV 1", "ENV 2" };
+}
+
 inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
@@ -225,7 +234,9 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::envRelease, "Release", juce::NormalisableRange<float>(0.01f, 5.0f, 0.0f, 0.5f), 0.5f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::filterCutoff, "Cutoff", juce::NormalisableRange<float>(20.0f, 20000.0f, 0.0f, 0.3f), 20000.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::filterRes, "Resonance", juce::NormalisableRange<float>(0.0f, 1.0f), 0.1f));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::filterEnvAmount, "Filter Env Amount", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f));
+    // 1.0: la ruta por defecto ENV 2 -> Filter Cutoff (insertada al crear preset)
+    // nace CANTANDO (pluck clasico); la migracion NO toca el valor guardado.
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::filterEnvAmount, "Filter Env Amount", juce::NormalisableRange<float>(-1.0f, 1.0f), 1.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::filterAttack, "Filter Attack", juce::NormalisableRange<float>(0.001f, 5.0f, 0.0f, 0.5f), 0.01f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::filterDecay, "Filter Decay", juce::NormalisableRange<float>(0.001f, 5.0f, 0.0f, 0.5f), 0.1f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::filterSustain, "Filter Sustain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.7f));
@@ -282,15 +293,23 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     // Derived from the one table (getModDestinationTable), never re-typed here: a
     // destination added there shows up in every mod slot, in the same order.
     const auto modDestinations = getModDestinations();
-    juce::StringArray modSources = { "Off", "LFO 1", "LFO 2", "Pitch Bend", "Mod Wheel", "Aftertouch" };
+    // SSOT: la lista de fuentes sale de getModSources() (8 items, con las ENV
+    // al final): los defaults 6/7 de abajo son indices VALIDOS de esta lista.
+    const juce::StringArray modSources = getModSources();
 
-    params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::mod1Source, "Mod 1 Source", modSources, 0));
-    params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::mod1Destination, "Mod 1 Dest", modDestinations, 0));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::mod1Amount, "Mod 1 Amount", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f));
+    // Defaults del PRESET NUEVO (las envolventes viajan por la matriz):
+    // mod1 = ENV 1 -> Osc Level (profundidad nominal 1.0) y mod2 = ENV 2 ->
+    // Filter Cutoff (1.0). Indices de choice: env1=6, env2=7 en getModSources();
+    // Osc Level=1, Filter Cutoff=10 en getModDestinationTable(). Los presets
+    // guardados llegan por PresetMigration, que inserta las mismas rutas en
+    // una ranura libre (o no toca nada si no hay sitio: mismo sonido).
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::mod1Source, "Mod 1 Source", modSources, 6));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::mod1Destination, "Mod 1 Dest", modDestinations, 1));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::mod1Amount, "Mod 1 Amount", juce::NormalisableRange<float>(-1.0f, 1.0f), 1.0f));
 
-    params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::mod2Source, "Mod 2 Source", modSources, 0));
-    params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::mod2Destination, "Mod 2 Dest", modDestinations, 0));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::mod2Amount, "Mod 2 Amount", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::mod2Source, "Mod 2 Source", modSources, 7));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::mod2Destination, "Mod 2 Dest", modDestinations, 10));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::mod2Amount, "Mod 2 Amount", juce::NormalisableRange<float>(-1.0f, 1.0f), 1.0f));
 
     params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::mod3Source, "Mod 3 Source", modSources, 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::mod3Destination, "Mod 3 Dest", modDestinations, 0));
@@ -301,11 +320,6 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::mod4Amount, "Mod 4 Amount", juce::NormalisableRange<float>(-1.0f, 1.0f), 0.0f));
 
     return { params.begin(), params.end() };
-}
-
-inline juce::StringArray getModSources()
-{
-    return { "Off", "LFO 1", "LFO 2", "Pitch Bend", "Mod Wheel", "Aftertouch" };
 }
 
 } // namespace NEURONiK::State

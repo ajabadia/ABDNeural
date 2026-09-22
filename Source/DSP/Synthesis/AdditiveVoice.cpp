@@ -118,8 +118,11 @@ void AdditiveVoice::updateParameters()
                               currentParams.sustain, 
                               currentParams.release);
                               
-    filterEnvelope.setParameters(currentParams.fAttack,
-                                 currentParams.fDecay,
+    // Destinos 12/13 (Flt Attack/Decay por matriz): solo ENV 2 llega aqui
+    // (la engine solo escribe modEnvFltAttack/Decay con source==7), en la
+    // misma mecanica que la ADSR amp.
+    filterEnvelope.setParameters(currentParams.fAttack + modEnvFltAttack,
+                                 currentParams.fDecay + modEnvFltDecay,
                                  currentParams.fSustain,
                                  currentParams.fRelease);
 
@@ -198,15 +201,22 @@ bool AdditiveVoice::renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int s
             float rawSample = resonator.processSample(i + start);
             float fEnv = filterEnvelope.processSample();
             
-            float targetCutoff = currentCutoff + modCutoff + (fEnv * currentParams.fEnvAmount * 18000.0f);
+            // ENV 2 -> Filter Cutoff por matriz (ver IVoice.h): modEnvCutoff es
+            // el FACTOR de routing (reset 1.0; la matriz lo sobrescribe con el
+            // amount). El knob Filter Env Amount sigue siendo la profundidad; la
+            // ruta modula cuanta env entra.
+            const float env2Depth = currentParams.fEnvAmount * modEnvCutoff;
+            float targetCutoff = currentCutoff + modCutoff + (fEnv * env2Depth * 18000.0f);
             filter.setCutoff(dsp::jlimit(20.0f, 20000.0f, targetCutoff));
             filter.setResonance(currentRes);
             
             float filteredSample = filter.processSample(rawSample);
             float envValue = ampEnvelope.processSample();
+            // ENV 1 -> Osc Level por matriz (ver IVoice.h): modEnvLevel es el
+            // FACTOR de routing (reset 1.0; la matriz lo sobrescribe con el amount).
             float levelMod = dsp::jlimit(0.0f, 2.0f, currentParams.oscLevel + modLevel);
             
-            tempBuffer[i] = filteredSample * envValue * currentVelocity * levelMod;
+            tempBuffer[i] = filteredSample * envValue * modEnvLevel * currentVelocity * levelMod;
         }
         
         // Sanitize
