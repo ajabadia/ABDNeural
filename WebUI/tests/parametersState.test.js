@@ -99,3 +99,37 @@ describe('describeControl / divergences', () => {
     expect(summary.screen.implemented + summary.screen.divergent).toBe(summary.screen.total);
   });
 });
+
+describe('ENV wiring defaults (preset nuevo)', () => {
+  // El cableado ENV 1/ENV 2 por matriz (8.3) vive en el CONTRATO generado:
+  // un regenerado que mueva estos defaults rompe presets nuevos en silencio
+  // (ENV 2 muda con amount 0). Pin contra el artefacto, no contra constantes.
+  it('ENV 1 arranca cableada al nivel del oscilador (fuente 6 -> destino 1)', () => {
+    const d = getDescriptor('mod1Source');
+
+    expect(d.defaultChoiceIndex).toBe(6); // 6 = ENV 1 en getModSources()
+  });
+
+  it('ENV 2 arranca cableada al cutoff del filtro (fuente 7 -> destino 10)', () => {
+    const d = getDescriptor('mod2Source');
+
+    expect(d.defaultChoiceIndex).toBe(7); // 7 = ENV 2
+  });
+
+  it('el knob de profundidad de la envolvente del filtro nace audible (1.0)', () => {
+    const d = getDescriptor('filterEnvAmount');
+
+    expect(d.defaultValue).toBe(1);
+    expect(d.defaultNormalized).toBe(1);
+  });
+
+  it('defaultState siembra los tres y el estado pasa la validacion', () => {
+    const ids = ['mod1Source', 'mod2Source', 'filterEnvAmount'];
+    const state = defaultState(ids);
+
+    expect(state.mod1Source).toBe(6);
+    expect(state.mod2Source).toBe(7);
+    expect(state.filterEnvAmount).toBe(1);
+    expect(validateState(ids, state)).toEqual([]);
+  });
+});
