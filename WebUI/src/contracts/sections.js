@@ -44,10 +44,14 @@
  */
 export const CANVAS = {
   width: 1440,
-  // 900 hasta 8.3: el pad XY dibujado de la ficha MODELOS pide cuerpo propio
-  // (SECTION_VISUALS['model-slots'].minBodyHeight) y su banda pasa a cerrarla
-  // ella. La CSS declara el MISMO numero (--abd-canvas-h, test de geometria).
-  height: 990,
+  // 900 hasta el pad dibujado (8.3), 990 con el bloque compuesto de MODELOS,
+  // 728 con la ficha al CENTRO (solo pad en el lienzo). La separacion
+  // FILTRO/ENVOLVENTES + la caja LFO (8.3) lo llevan a 892: la banda del
+  // fondo ahora la manda el FRONTAL del LFO (2 filas de rate+depth); la
+  // matriz y el global son armazon de cajon. La CSS declara el MISMO numero
+  // (--abd-canvas-h, test de geometria); el fit-stage escala en ventanas
+  // menores.
+  height: 892,
   /** Carriles de la rejilla horizontal; las bandas suman exactamente esto. */
   lanes: 12,
 };
@@ -98,25 +102,37 @@ export const GEOMETRY = {
  * cuerpo de su ficha, que en el lienzo ya no tiene celdas porque las suyas viven en
  * el cajon). Se alimenta de los 12 ids de la matriz.
  *
- * `model-slots` son las cuatro ranuras de modelo espectral A-D (los loadA..loadD del
- * panel nativo). NO son parametros: no tienen id en el APVTS y sus botones piden al
- * HOST un fichero, asi que `parameterIds` va vacio y la ficha no ocupa celda. El dato
- * que pinta (nombre cargado por ranura) llega por el puente en `modelsState`.
+ * `model-pad` es el pad XY de la ficha MODELOS (morphX/morphY, 8.3): en el lienzo
+ * va SOLO el pad, porque la ficha vive en el centro del synthe y su cuerpo es el
+ * que cierra su banda.
+ *
+ * `model-slots` es el DETALLE del cajon de la ficha MODELOS: las cuatro ranuras de
+ * modelo espectral A-D (los loadA..loadD del panel nativo) y el espectral de
+ * parciales en vivo. NO son parametros: no tienen id en el APVTS y sus botones
+ * piden al HOST un fichero, asi que `parameterIds` va vacio. El dato que pintan
+ * (nombre cargado por ranura) llega por el puente en `modelsState`.
  */
 export const SECTION_VISUALS = {
   'amp-envelope': {
     id: 'amp-envelope',
     parameterIds: ['envAttack', 'envDecay', 'envSustain', 'envRelease'],
   },
+  // El pad SOLO: es lo que vive en la ficha del lienzo (el cuerpo de la ficha
+  // lo cierra su minBodyHeight). Edita morphX/morphY, que la ficha OSCILADOR
+  // ya pinta como knobs (misma declaracion de fuente).
+  'model-xy': {
+    id: 'model-xy',
+    parameterIds: ['morphX', 'morphY'],
+    // Cuerpo del pad en el lienzo: es lo que cierra su banda (antes lo cerraba
+    // el bloque compuesto de ranuras + pad).
+    minBodyHeight: 150,
+  },
+  // El detalle del cajon: espectral de parciales en vivo + las cuatro ranuras
+  // A-D. Los morph van en `parameterIds` porque el espectral se alimenta del
+  // mismo morfeo; las ranuras, como siempre, del estado del puente.
   'model-slots': {
     id: 'model-slots',
-    // El pad XY dibujado (8.3) edita morphX/morphY, que la ficha OSCILADOR ya
-    // pinta como knobs: la vista declara de que se alimenta, como la curva ADSR.
     parameterIds: ['morphX', 'morphY'],
-    // Cuerpo que pide la vista (ranuras compactas + pad 150 + estado). Con cero
-    // filas de celdas es LO QUE CIERRA su banda (ver cardHeight): antes la
-    // cerraba el LFO con sus dos filas.
-    minBodyHeight: 256,
   },
   'mod-summary': {
     id: 'mod-summary',
@@ -182,41 +198,34 @@ export const SECTIONS = [
     ids: ['resonatorRes', 'resonatorRolloff', 'resonatorParity', 'resonatorShift'],
   },
   {
-    id: 'lfo',
-    title: 'LFO 1 & 2',
-    subtitle: 'Forma, tempo y profundidad',
+    id: 'filter',
+    title: 'FILTRO',
+    subtitle: 'Filtro multimodo',
+    // SEPARACION 8.3: la antigua FILTRO & ENVOLVENTE se parte en dos fichas.
+    // El filtro se queda en la banda del motor (tras el resonador) con sus
+    // 3 controles en una fila; filterEnvAmount es la profundidad de la ruta
+    // ENV 2 -> Filter Cutoff de la matriz.
     span: 4,
-    columns: 5,
-    ids: [
-      'lfo1Waveform',
-      'lfo1RateHz',
-      'lfo1SyncMode',
-      'lfo1RhythmicDivision',
-      'lfo1Depth',
-      'lfo2Waveform',
-      'lfo2RateHz',
-      'lfo2SyncMode',
-      'lfo2RhythmicDivision',
-      'lfo2Depth',
-    ],
+    columns: 4,
+    ids: ['filterCutoff', 'filterRes', 'filterEnvAmount'],
   },
   {
-    id: 'filterEnv',
-    title: 'FILTRO & ENVOLVENTE',
-    subtitle: 'Envolvente de amplitud · filtro multimodo',
+    id: 'envelopes',
+    title: 'ENVOLVENTES',
+    subtitle: 'ENV 1 amplitud · ENV 2 filtro',
+    // SEPARACION 8.3: las DOS envolventes juntas (la de amplitud y la del
+    // filtro, antes enterrada como filterAttack..filterRelease). Las curvas
+    // se editan AQUI; lo que MODULAN se conecta en la MATRIZ (ENV 1 y ENV 2
+    // son fuentes 6 y 7 desde la separacion). Hereda la rejilla 6x2 y la
+    // celda libre de la curva ADSR de la antigua ficha.
     span: 5,
     columns: 6,
-    // La curva va en la celda que sobra (11 controles en 6x2), asi que el encaje
-    // de la ficha no cambia: sigue siendo la misma rejilla de dos filas.
     visual: 'amp-envelope',
     ids: [
       'envAttack',
       'envDecay',
       'envSustain',
       'envRelease',
-      'filterCutoff',
-      'filterRes',
-      'filterEnvAmount',
       'filterAttack',
       'filterDecay',
       'filterSustain',
@@ -224,11 +233,36 @@ export const SECTIONS = [
     ],
   },
   {
+    id: 'models',
+    title: 'MODELOS A–D',
+    subtitle: 'Parciales del motor',
+    span: 2,
+    columns: 1,
+    // MUDANZA 8.3: la ficha se ADELANTA al centro del synthe (entre FILTRO &
+    // ENVOLVENTE y EFECTOS, el morfeo es el corazon del motor) y en el lienzo
+    // queda SOLO el pad XY (visual `model-xy`). El detalle (espectral en vivo
+    // + las cuatro ranuras) vive en el cajon: visual `model-slots`, que el
+    // panel monta DENTRO del cajon (ver ui/panel.js) con los mismos handlers
+    // que el interface (mismas variables, sin duplicar estado).
+    visual: 'model-xy',
+    drawer: {
+      badge: '4 RANURAS',
+      trigger: 'EDIT',
+      // El detalle es una VISTA (model-slots), no celdas del APVTS: el panel
+      // la monta entera en el cuerpo del cajon y el flujo de controles no la
+      // toca (ver buildCard).
+      visual: 'model-slots',
+    },
+    ids: [],
+  },
+  {
     id: 'fx',
     title: 'EFECTOS',
     subtitle: 'Saturación · delay · chorus · reverb',
-    span: 7,
+    span: 5,
     columns: 6,
+    // MUDANZA 8.3: pierde un carril, el que gana MODELOS al adelantarse al
+    // centro. Sin cajon: 12 controles en la rejilla 6x2, solo mas estrechos.
     ids: [
       'fxSaturation',
       'fxDelayTime',
@@ -244,16 +278,36 @@ export const SECTIONS = [
       'fxReverbMix',
     ],
   },
+
   {
-    id: 'models',
-    title: 'MODELOS A–D',
-    subtitle: 'Parciales del motor',
+    id: 'lfo',
+    title: 'LFO 1 & 2',
+    subtitle: 'Forma, tempo y profundidad',
+    // CAJA 8.3: en el lienzo quedan rate + depth de cada LFO (2x2); forma,
+    // sync y division viven en el cajon (EDIT). Su SALIDA ya es de matriz
+    // (LFO 1 y LFO 2 son las fuentes 1 y 2): la profundidad del LFO es el
+    // trim de su fuente y las rutas concretas se editan en la MATRIZ.
     span: 2,
-    columns: 1,
-    // Ranuras del MOTOR, no parametros: la ficha no tiene celdas (ver
-    // SECTION_VISUALS['model-slots']), asi que no entra en el encaje de los 70.
-    visual: 'model-slots',
-    ids: [],
+    columns: 2,
+    drawer: {
+      badge: '4 LFO',
+      trigger: 'EDIT',
+      // Los cuatro del frontal NO se replican en el cajon (un control, un
+      // nodo DOM; patron masterLevel en GLOBAL & MASTER).
+      frontal: ['lfo1RateHz', 'lfo1Depth', 'lfo2RateHz', 'lfo2Depth'],
+    },
+    ids: [
+      'lfo1RateHz',
+      'lfo1Depth',
+      'lfo2RateHz',
+      'lfo2Depth',
+      'lfo1Waveform',
+      'lfo1SyncMode',
+      'lfo1RhythmicDivision',
+      'lfo2Waveform',
+      'lfo2SyncMode',
+      'lfo2RhythmicDivision',
+    ],
   },
   {
     id: 'modMatrix',
@@ -264,9 +318,12 @@ export const SECTIONS = [
     // Sus 12 celdas viven en el cajón (ver la cabecera): en el lienzo queda el
     // resumen de las 4 rutas y el botón. `groups` es la agrupación con la que el
     // cajón las pinta (una fila por ruta) y el test exige que sea, en orden, `ids`.
+    // Banda con GLOBAL & MASTER (la mudanza de MODELOS al centro las deja solas).
+    // El trigger es EDIT con icono: es el PRIMER `data-drawer-trigger` del DOM y
+    // el selftest del host lo usa como ancla del cajón de la matriz.
     drawer: {
       badge: '4 RUTAS',
-      trigger: 'EDITAR',
+      trigger: 'EDIT',
       groups: [
         ['mod1Source', 'mod1Destination', 'mod1Amount'],
         ['mod2Source', 'mod2Destination', 'mod2Amount'],
@@ -301,12 +358,17 @@ export const SECTIONS = [
     id: 'globalFull',
     title: 'GLOBAL & MASTER',
     subtitle: 'Tempo, MIDI, congelados y aleatorio',
+    // Con la caja LFO (2) la banda del fondo es de TRES: LFO + matriz (6)
+    // + global (4). El master sigue en la primera celda de su rejilla.
     span: 4,
-    columns: 5,
+    columns: 4,
     action: 'randomize',
     drawer: {
       badge: '8 GLOBAL',
-      trigger: 'EDITAR',
+      // Los desplegables del cajon son los MISMO select que pinta el lienzo
+      // cuando su ficha los tiene (misma variable, mismo DOM por id), asi que
+      // no hay estado que sincronizar: es el mismo nodo repartido en dos sitios.
+      trigger: 'EDIT',
       // Sin `groups`: el cajon apila en una columna (patron global, no el de
       // rutas de la matriz) TODOS los ids menos el control base: masterLevel
       // lo pinta buildCard en la ficha (es el `input[type=range]` que consulta
@@ -369,7 +431,14 @@ export const BANDS = (() => {
  * en el lienzo lo pone la banda, al estirarse como cualquier ficha).
  */
 export function rowsOf(section) {
-  if (section.drawer) return 0;
+  // Una ficha de cajon no aporta filas... salvo que tenga FRONTAL (caja
+  // LFO): sus controles SI viven en la rejilla del lienzo y empujan el
+  // encaje igual que una ficha normal.
+  if (section.drawer) {
+    return section.drawer.frontal
+      ? Math.ceil(section.drawer.frontal.length / section.columns)
+      : 0;
+  }
 
   return Math.ceil(section.ids.length / section.columns);
 }

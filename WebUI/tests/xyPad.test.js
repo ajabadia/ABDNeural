@@ -141,23 +141,43 @@ describe('xyPad / wiring de morphX-morphY', () => {
   });
 });
 
-describe('xyPad / compuesto en la vista model-slots', () => {
+describe('xyPad / las dos vistas de MODELOS (mudanza al centro, 8.3)', () => {
   let host;
 
   beforeEach(() => { host = makeHost(); });
 
-  it('createVisual monta pad + ranuras como UNA vista', () => {
+  it('model-xy: SOLO el pad en el lienzo (la ficha del centro)', () => {
+    const onEdit = vi.fn();
+    const view = createVisual('model-xy', [], { onEdit });
+    host.append(view.element);
+
+    // La vista del lienzo es el pad pelado: ni ranuras ni espectral.
+    expect(view.element.dataset.visual).toBe('model-xy');
+    expect(view.element.querySelectorAll('.model-slots__row')).toHaveLength(0);
+    expect(view.element.querySelector('.abd-xypad__pad')).not.toBeNull();
+
+    // El mismo paint del interface mueve las esquinas y edita los morph...
+    view.paint({ morphX: 0.5, morphY: 0.5 }, { bridgeAvailable: false });
+    view.element.querySelector('.abd-xypad__pad').dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    expect(onEdit.mock.calls).toEqual([['morphX', 0.51, 'end']]);
+
+    view.destroy();
+    expect(host.querySelector('.abd-xypad')).toBeNull();
+  });
+
+  it('model-slots: espectral + ranuras para el CAJON (mismos handlers)', () => {
     const onLoad = vi.fn();
     const onEdit = vi.fn();
     const view = createVisual('model-slots', [], { onLoad, onEdit });
     host.append(view.element);
 
-    expect(view.element.className).toBe('model-block');
+    expect(view.element.className).toBe('model-block model-block--drawer');
     expect(view.element.querySelectorAll('.model-slots__row')).toHaveLength(4);
-    expect(view.element.querySelector('.abd-xypad__pad')).not.toBeNull();
+    // El pad vive en el LIENZO: el detalle del cajon no monta otro.
+    expect(view.element.querySelector('.abd-xypad__pad')).toBeNull();
 
-    // Cada mitad lee lo suyo del mismo paint: ranuras del puente (habilitadas
-    // con host) y esquinas del pad.
+    // Las ranuras leen su estado del mismo paint del puente.
     view.paint({ morphX: 0.5, morphY: 0.5 }, {
       bridgeAvailable: true,
       models: [
@@ -168,21 +188,15 @@ describe('xyPad / compuesto en la vista model-slots', () => {
       ],
     });
 
-    expect(view.element.querySelector('[data-corner="tl"]').textContent).toBe('Piano');
+    expect(view.element.querySelector('[data-slot="0"] .model-slots__name').textContent).toBe('Piano');
     expect(view.element.querySelector('[data-slot="0"] .model-slots__load').disabled).toBe(false);
 
     view.element.querySelector('[data-slot="0"] .model-slots__load').click();
     expect(onLoad).toHaveBeenCalledWith(0);
 
-    // La edición del pad sale por onEdit hacia el store (el y no cambia: solo x).
-    view.element.querySelector('.abd-xypad__pad').dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
-    expect(onEdit.mock.calls).toEqual([['morphX', 0.51, 'end']]);
-
     // La semantica de destroy de las vistas es VACIAR (el elemento lo cuelga el
-    // panel): lo que no puede quedar es el pad compartido ni una ranura viva.
+    // panel): no queda una ranura viva.
     view.destroy();
-    expect(host.querySelector('.abd-xypad')).toBeNull();
     expect(view.element.querySelector('.model-slots__row')).toBeNull();
   });
 });

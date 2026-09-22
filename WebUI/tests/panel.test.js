@@ -44,11 +44,20 @@ const HOST_GENERAL_IDS = [
 const BANDS_WITH_CONTROLS = BANDS.map((band) => band.map((section) => {
   const controls = section.ids.map(describeControl).filter(Boolean);
   const visualSpec = section.visual ? SECTION_VISUALS[section.visual] : null;
+  // La vista de DETALLE del cajon (MODELOS: espectral + ranuras) se resuelve
+  // igual que la del lienzo: mismos handlers vacios, mismo catalogo.
+  const drawerSpec = section.drawer?.visual ? SECTION_VISUALS[section.drawer.visual] : null;
 
   return {
     ...section,
     controls,
     action: section.action ? SECTION_ACTIONS[section.action] ?? null : null,
+    drawerVisual: drawerSpec
+      ? createVisual(
+        drawerSpec.id,
+        drawerSpec.parameterIds.map(describeControl).filter(Boolean),
+      )
+      : null,
     visual: visualSpec
       ? createVisual(
         visualSpec.id,
@@ -203,12 +212,22 @@ describe('panel / lienzo único', () => {
       // reparto es el mismo, cambia donde vive la celda. El cajon SIN grupos
       // (GLOBAL & MASTER) excluye ademas el control base: masterLevel lo pinta
       // buildCard en la ficha (es el range nativo que consulta el host).
-      const scope = section.drawer
-        ? `#drawer-${section.id} [data-parameter-id]`
-        : `[data-section-id="${section.id}"] [data-parameter-id]`;
+      // Con FRONTAL (caja LFO) las celdas viven en los DOS sitios: las del
+      // frontal en la ficha del lienzo y el resto en el cajon. El orden de la
+      // union es el del reparto (frontal primero, detalle despues).
+      const frontal = section.drawer?.frontal ?? null;
+      const scope = frontal
+        ? `[data-section-id="${section.id}"] [data-parameter-id], #drawer-${section.id} [data-parameter-id]`
+        : section.drawer
+          ? `#drawer-${section.id} [data-parameter-id]`
+          : `[data-section-id="${section.id}"] [data-parameter-id]`;
+      // Orden del DOM: los nodos del cajon van antes que los de la ficha.
       const expected = section.drawer?.groups
         ? section.ids
-        : section.ids.filter((id) => id !== 'masterLevel');
+        : [
+            ...section.ids.filter((id) => !frontal?.includes(id) && id !== 'masterLevel'),
+            ...(frontal ?? []),
+          ];
       const ids = [...document.querySelectorAll(scope)].map((cell) => cell.dataset.parameterId);
 
       // En el cajon el orden es el de las rutas (fuente, destino, cantidad), que es
@@ -227,11 +246,11 @@ describe('panel / lienzo único', () => {
     expect(countOf('.cell--knob')).toBe(45);
     expect(countOf('.cell--baseline')).toBe(1);
     expect(countOf('.cell--toggle')).toBe(5);
-    // 19 choices: 16 desplegables + 3 segmentados (motor y los dos sync de LFO,
-    // el set SEGMENTED_CHOICES de controls.js). Ambos son familia COMPARTIDA:
-    // si alguien vuelve a construir uno inline, esto cae.
-    expect(countOf('.cell--choice .abd-select__field')).toBe(16);
-    expect(countOf('.cell--choice .abd-segmented__group')).toBe(3);
+    // 19 choices: 13 desplegables + 5 segmentados (motor, syncs, ondas LED) +
+    // 1 NumberBox (midiChannel; masterBPM cuenta como knob en el recuento de
+    // celdas). Familia COMPARTIDA: si alguien construye uno inline, esto cae.
+    expect(countOf('.cell--choice .abd-select__field')).toBe(13);   // 16: dos ondas (LED) + midiChannel (NumberBox)
+    expect(countOf('.cell--choice .abd-segmented__group')).toBe(5);   // 3 del lienzo (motor, syncs) + las dos ondas LED de los cajones
     expect(countOf('.cell--knob') + countOf('.cell--baseline')
       + countOf('.cell--toggle') + countOf('.cell--choice')).toBe(70);
   });
@@ -291,7 +310,7 @@ describe('panel / lienzo único', () => {
 
     const dials = document.querySelectorAll('.cell--knob .abd-knob__dial[role="slider"]');
 
-    expect(dials).toHaveLength(45);
+    expect(dials).toHaveLength(44);   // 45 menos masterBPM (NumberBox)
 
     for (const dial of dials) expect(dial.tabIndex).toBe(0);
   });
@@ -406,16 +425,17 @@ describe('panel / ficha de cajon (matriz de modulacion)', () => {
 
     expect(summary).not.toBeNull();
     expect(summary.querySelectorAll('.mod-summary__row')).toHaveLength(4);
-    // Sin rutas configuradas, fuente y destino son "Off" (el default del contrato).
-    expect(summary.querySelector('.mod-summary__source').textContent).toBe('Off');
-    expect(summary.querySelector('.mod-summary__destination').textContent).toBe('Off');
+    // El default del contrato ya SON rutas: ENV 1 -> Osc Level (cableado ENV
+    // 1/2 por matriz) y la primera fila del resumen lo refleja.
+    expect(summary.querySelector('.mod-summary__source').textContent).toBe('ENV 1');
+    expect(summary.querySelector('.mod-summary__destination').textContent).toBe('Osc Level');
 
     // Ahora con una ruta: LFO 1 -> Filter Cutoff. Los ids salen del propio resumen.
     panel.paint({
       ...state,
       parameters: {
         ...state.parameters,
-        mod1Source: 1 / 5,       // "LFO 1" de 6 opciones
+        mod1Source: 1 / 7,        // "LFO 1" de 8 opciones (Off, LFO 1/2, PB, MW, AT, ENV 1/2)
         mod1Destination: 10 / 27, // "Filter Cutoff"
       },
     });
@@ -431,7 +451,7 @@ describe('panel / vista de la ficha (curva ADSR)', () => {
   it('se monta en FILTRO & ENVOLVENTE sin contar como celda de parametro', () => {
     mountPanel();
 
-    const card = document.querySelector('.card[data-section-id="filterEnv"]');
+    const card = document.querySelector('.card[data-section-id="envelopes"]');
     const curve = card.querySelector('[data-visual="amp-envelope"]');
 
     expect(curve).not.toBeNull();
@@ -464,22 +484,36 @@ describe('panel / vista de la ficha (curva ADSR)', () => {
   });
 });
 
-describe('panel / vista de la ficha (ranuras de modelo A–D)', () => {
-  it('se monta en su ficha sin contar como celda de parametro', () => {
+describe('panel / la ficha MODELOS (pad en el lienzo, detalle en el cajon)', () => {
+  it('el pad vive en su ficha del lienzo, sin contar como celda de parametro', () => {
     mountPanel();
 
     const card = document.querySelector('.card[data-section-id="models"]');
-    const view = card.querySelector('[data-visual="model-slots"]');
+    const view = card.querySelector('[data-visual="model-xy"]');
 
     expect(view).not.toBeNull();
-    expect(view.querySelectorAll('.model-slots__row')).toHaveLength(4);
     // No es una celda: el lienzo sigue teniendo 70 celdas de PARAMETRO.
     expect(document.querySelectorAll('.cell')).toHaveLength(SECTION_PARAMETER_IDS.length);
   });
 
+  it('las ranuras viven en el CAJON de la ficha (mismo DOM, mismas variables)', () => {
+    const panel = mountPanel();
+    const view = () => panel.drawers.get('models').body.querySelector('[data-visual="model-slots"]');
+
+    // El detalle esta montado UNA vez en el cajon: siempre en el documento (el
+    // selftest del host y la suite cuentan celdas aunque el cajon este cerrado).
+    expect(panel.drawers.has('models')).toBe(true);
+    expect(view().querySelectorAll('.model-slots__row')).toHaveLength(4);
+    expect(document.querySelectorAll('.cell')).toHaveLength(SECTION_PARAMETER_IDS.length);
+
+    // El trigger de la ficha abre SU cajon.
+    document.querySelector('[data-drawer-trigger="models"]').click();
+    expect(panel.drawers.get('models').isOpen()).toBe(true);
+  });
+
   it('recibe el ESTADO del store, no solo los parametros (vive fuera del APVTS)', () => {
     const panel = mountPanel();
-    const view = () => document.querySelector('[data-visual="model-slots"]');
+    const view = () => panel.drawers.get('models').body.querySelector('[data-visual="model-slots"]');
 
     // Sin host: no hay a quien pedir la carga, asi que los botones no se pueden pulsar.
     panel.paint(makeState());
@@ -533,5 +567,37 @@ describe('panel / acciones de ficha (RANDOM)', () => {
 
     button.click();
     expect(onAction).toHaveBeenCalledWith('randomize');
+  });
+});
+
+describe('panel / caja LFO (frontal + cajon)', () => {
+  it('el frontal vive en el lienzo, el resto en el cajon, y no hay duplicados', () => {
+    const panel = mountPanel();
+
+    const card = document.querySelector('.card[data-section-id="lfo"]');
+    const frontalIds = ['lfo1RateHz', 'lfo1Depth', 'lfo2RateHz', 'lfo2Depth'];
+
+    // Los cuatro del frontal estan en la rejilla de la ficha (lienzo)...
+    for (const id of frontalIds)
+      expect(card.querySelector(`[data-parameter-id="${id}"]`)).not.toBeNull();
+
+    // ...una sola vez en todo el documento (el cajon no recibe copia).
+    for (const id of frontalIds)
+      expect(document.querySelectorAll(`[data-parameter-id="${id}"]`)).toHaveLength(1);
+
+    // El cajon lleva los seis del detalle (forma, sync, division x2).
+    const drawerBody = panel.drawers.get('lfo').body;
+    const drawerIds = [...drawerBody.querySelectorAll('[data-parameter-id]')].map((el) => el.dataset.parameterId);
+    expect(drawerIds).toEqual(['lfo1Waveform', 'lfo1SyncMode', 'lfo1RhythmicDivision', 'lfo2Waveform', 'lfo2SyncMode', 'lfo2RhythmicDivision']);
+
+    // Y el lienzo sigue teniendo exactamente 70 celdas de parametro.
+    expect(document.querySelectorAll('.cell')).toHaveLength(SECTION_PARAMETER_IDS.length);
+  });
+
+  it('el trigger EDIT de la ficha abre SU cajon', () => {
+    const panel = mountPanel();
+
+    document.querySelector('[data-drawer-trigger="lfo"]').click();
+    expect(panel.drawers.get('lfo').isOpen()).toBe(true);
   });
 });

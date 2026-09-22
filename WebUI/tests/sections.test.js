@@ -118,36 +118,45 @@ describe('sections / encaje en el lienzo', () => {
   });
 
   it('las fichas CON celdas miden lo mismo (rejilla regular)', () => {
-    // Las tres fichas SIN celdas quedan fuera: las dos de vistas (MODELOS: sus
-    // cuatro ranuras son del motor; la de cajon de la MATRIZ: sus controles viven
-    // en el panel lateral) y la de cajon de GLOBAL & MASTER (mudanza 8.3: en el
-    // lienzo solo queda su control base, el master). Ninguna aporta filas: su
-    // alto lo pone la banda al estirarlas y el encaje lo marca su companera.
+    // Las fichas SIN filas quedan fuera: las dos de vistas (MODELOS: sus cuatro
+    // ranuras son del motor; la de cajon de la MATRIZ: sus controles viven en el
+    // panel lateral) y las dos de cajon (GLOBAL & MASTER: solo su control base;
+    // LFO: los suyos viven en el FRONTAL, que SI aporta filas y va aparte).
     const cellCards = SECTIONS.filter((section) => section.ids.length > 0 && !section.drawer);
     const cellLessCards = SECTIONS.filter((section) => section.ids.length === 0 || section.drawer);
-    const heights = new Set(cellCards.map(cardHeight));
+    const twoRow = cellCards.filter((section) => rowsOf(section) === 2);
+    const heights = new Set(twoRow.map(cardHeight));
 
-    expect(cellLessCards.map((section) => section.id)).toEqual(['models', 'modMatrix', 'globalFull']);
+    expect(cellLessCards.map((section) => section.id)).toEqual(['models', 'lfo', 'modMatrix', 'globalFull']);
     expect(cellCards.length).toBe(SECTIONS.length - cellLessCards.length);
+    // Todas las de dos filas miden lo mismo; FILTRO (una fila) es la excepcion
+    // declarada de la separacion 8.3 y es MAS BAJA.
     expect(heights.size).toBe(1);
+    const filter = SECTIONS.find((section) => section.id === 'filter');
+    expect(rowsOf(filter)).toBe(1);
+    expect(cardHeight(filter)).toBeLessThan(cardHeight(twoRow[0]));
   });
 
-  it('la ficha de MODELOS son cuatro ranuras del MOTOR, no celdas del APVTS', () => {
-    const card = SECTIONS.find((section) => section.visual === 'model-slots');
-    const visual = SECTION_VISUALS['model-slots'];
+  it('la ficha de MODELOS: en el CENTRO, solo el pad; las ranuras en su cajon', () => {
+    const card = SECTIONS.find((section) => section.id === 'models');
+    const padVisual = SECTION_VISUALS[card.visual];
+    const drawerVisual = SECTION_VISUALS[card.drawer.visual];
 
-    expect(card?.id).toBe('models');
-    expect(visual).toBeTruthy();
+    // La vista del lienzo es SOLO el pad (morphX/morphY con las esquinas A-D);
+    // el detalle (espectral + ranuras) vive en el cajon (mismos handlers).
+    expect(card.visual).toBe('model-xy');
+    expect(padVisual).toBeTruthy();
+    expect(card.drawer.visual).toBe('model-slots');
+    expect(drawerVisual).toBeTruthy();
 
-    // La ficha no tiene celdas; su vista alimenta el pad con los morph que ya
-    // pinta la ficha OSCILADOR (mismo contrato, ninguna celda nueva)...
+    // La ficha no tiene celdas; el pad alimenta los morph que ya pinta la
+    // ficha OSCILADOR (mismo contrato, ninguna celda nueva)...
     expect(card.ids).toEqual([]);
-    expect(visual.parameterIds).toEqual(['morphX', 'morphY']);
-    for (const id of visual.parameterIds)
+    expect(padVisual.parameterIds).toEqual(['morphX', 'morphY']);
+    for (const id of drawerVisual.parameterIds)
       expect(SECTION_PARAMETER_IDS).toContain(id);
-    // ...y declara el cuerpo que cierra su banda (el pad dibujado, 8.3).
-    expect(visual.minBodyHeight).toBeGreaterThan(0);
-    // ...asi que no aporta filas al encaje (el lienzo sigue midiendo lo mismo).
+    // ...y su cuerpo (150) es el que cierra su banda.
+    expect(padVisual.minBodyHeight).toBeGreaterThan(0);
     expect(rowsOf(card)).toBe(0);
     expect(canvasHeight()).toBeLessThanOrEqual(CANVAS.height);
     // Una columna: la vista llena el cuerpo de la ficha, no reparte celdas.
@@ -158,18 +167,19 @@ describe('sections / encaje en el lienzo', () => {
     expect(SECTION_PARAMETER_IDS).not.toContain('models');
     expect(SECTION_PARAMETER_IDS).not.toContain('model-slots');
 
-    // Comparte banda con la matriz y GLOBAL & MASTER (mudanza 8.3: el LFO se
-    // fue a los carriles que dejo libre la ficha global en la banda superior).
-    // El reparto de esa banda es una decision, no un accidente.
+    // La mudanza al centro (8.3): entre FILTRO & ENVOLVENTE y EFECTOS, con los
+    // carriles que reparten sus vecinos (5 + 2 + 5). Es una decision, no un
+    // accidente.
     const band = BANDS.find((candidate) => candidate.includes(card));
 
-    expect(band.map((section) => section.id)).toEqual(['models', 'modMatrix', 'globalFull']);
+    expect(band.map((section) => section.id)).toEqual(['envelopes', 'models', 'fx']);
+    expect(band.map((section) => section.span)).toEqual([5, 2, 5]);
   });
 
-  it('la ficha de cajon no aporta filas al lienzo y su banda la estira', () => {
-    const drawerSection = SECTIONS.find((section) => section.drawer);
+  it('la MATRIZ: cajon por rutas, resumen en el lienzo, banda con GLOBAL', () => {
+    const drawerSection = SECTIONS.find((section) => section.id === 'modMatrix');
+    const models = SECTIONS.find((section) => section.id === 'models');
 
-    expect(drawerSection?.id).toBe('modMatrix');
     // Cero filas: sus 12 celdas no empujan el encaje.
     expect(rowsOf(drawerSection)).toBe(0);
     expect(cardHeight(drawerSection)).toBeLessThan(cardHeight(SECTIONS[0]));
@@ -177,22 +187,27 @@ describe('sections / encaje en el lienzo', () => {
     expect(drawerSection.ids).toHaveLength(12);
     expect(SECTION_PARAMETER_IDS).toContain('mod1Source');
 
-    // Y su banda la cierra la ficha MODELOS desde 8.3: el pad dibujado pide mas
-    // cuerpo (minBodyHeight) que las dos filas del LFO.
+    // Banda del fondo: LFO + matriz + global (la caja LFO entra con los
+    // carriles que GLOBAL deja al ceder dos).
     const band = BANDS.find((candidate) => candidate.includes(drawerSection));
 
+    expect(band.map((section) => section.id)).toEqual(['lfo', 'modMatrix', 'globalFull']);
     expect(band.reduce((total, section) => total + section.span, 0)).toBe(CANVAS.lanes);
-    expect(Math.max(...band.map(cardHeight))).toBe(cardHeight(SECTIONS.find((s) => s.id === 'models')));
+    // El alto de la banda lo manda el LFO: su FRONTAL (2 filas) es lo mas alto
+    // (la matriz y el global son armazon de cajon).
+    const lfo = SECTIONS.find((section) => section.id === 'lfo');
+    expect(Math.max(...band.map(cardHeight))).toBe(cardHeight(lfo));
+    expect(models).toBeTruthy();
   });
 
-  it('las rutas del cajon son, en orden, los ids de la ficha', () => {
-    const section = SECTIONS.find((candidate) => candidate.drawer);
+  it('las rutas del cajon de la MATRIZ son, en orden, los ids de la ficha', () => {
+    const section = SECTIONS.find((candidate) => candidate.id === 'modMatrix');
 
     expect(section.drawer.groups.flat()).toEqual(section.ids);
   });
 
   it('el resumen del lienzo se alimenta de los mismos ids que el cajon, en el mismo orden', () => {
-    const section = SECTIONS.find((candidate) => candidate.drawer);
+    const section = SECTIONS.find((candidate) => candidate.id === 'modMatrix');
     const visual = SECTION_VISUALS[section.visual];
 
     expect(section.visual).toBe('mod-summary');
@@ -206,7 +221,7 @@ describe('sections / encaje en el lienzo', () => {
     const card = SECTIONS.find((section) => section.visual === 'amp-envelope');
     const visual = SECTION_VISUALS['amp-envelope'];
 
-    expect(card?.id).toBe('filterEnv');
+    expect(card?.id).toBe('envelopes');
     expect(visual).toBeTruthy();
 
     // Se alimenta de parametros que la ficha YA pinta (no inventa ids)
@@ -219,6 +234,44 @@ describe('sections / encaje en el lienzo', () => {
 
     // No es una celda de parametro: el lienzo sigue teniendo 70
     expect(SECTION_PARAMETER_IDS).not.toContain('amp-envelope');
+    expect(SECTION_PARAMETER_IDS).toHaveLength(70);
+  });
+
+  it('la caja LFO: frontal rate+depth en el lienzo, el resto en el cajon', () => {
+    const lfo = SECTIONS.find((section) => section.id === 'lfo');
+
+    expect(lfo.drawer).toBeTruthy();
+    expect(lfo.drawer.trigger).toBe('EDIT');
+    // El frontal es SUBCONJUNTO de ids (mismas variables, no duplicado) y son
+    // los cuatro primeros: rate y depth de cada LFO.
+    expect(lfo.drawer.frontal).toEqual(['lfo1RateHz', 'lfo1Depth', 'lfo2RateHz', 'lfo2Depth']);
+    for (const id of lfo.drawer.frontal)
+      expect(lfo.ids).toContain(id);
+    expect(lfo.ids.slice(0, 4)).toEqual(lfo.drawer.frontal);
+    // El resto (forma, sync, division) vive SOLO en el cajon.
+    expect(lfo.ids.slice(4)).toEqual(['lfo1Waveform', 'lfo1SyncMode', 'lfo1RhythmicDivision', 'lfo2Waveform', 'lfo2SyncMode', 'lfo2RhythmicDivision']);
+    // El frontal SI empuja el encaje: 4 controles en 2 columnas = 2 filas
+    // (la rejilla 2x2 de rate+depth, un LFO por fila).
+    expect(rowsOf(lfo)).toBe(2);
+    expect(lfo.ids.length).toBe(10); // 4 frontal (incluidos) + 6 de cajon
+  });
+
+  it('la separacion FILTRO / ENVOLVENTES reparte la antigua ficha sin perder ids', () => {
+    const filter = SECTIONS.find((section) => section.id === 'filter');
+    const envelopes = SECTIONS.find((section) => section.id === 'envelopes');
+
+    // Los 11 ids de la antigua FILTRO & ENVOLVENTE, repartidos sin duplicados.
+    const union = [...filter.ids, ...envelopes.ids];
+    expect(new Set(union).size).toBe(union.length);
+    expect(union.sort()).toEqual([
+      'envAttack', 'envDecay', 'envSustain', 'envRelease',
+      'filterAttack', 'filterCutoff', 'filterDecay', 'filterEnvAmount',
+      'filterRelease', 'filterRes', 'filterSustain',
+    ].sort());
+    // La profundidad de la env del filtro es del FILTRO (knob de su banda).
+    expect(filter.ids).toContain('filterEnvAmount');
+    // Las ADSR completas viven en ENVOLVENTES; la curva sigue en su celda libre.
+    expect(envelopes.ids).toEqual(['envAttack', 'envDecay', 'envSustain', 'envRelease', 'filterAttack', 'filterDecay', 'filterSustain', 'filterRelease']);
     expect(SECTION_PARAMETER_IDS).toHaveLength(70);
   });
 

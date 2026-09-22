@@ -37,6 +37,8 @@ const MORPH_IDS = { x: 'morphX', y: 'morphY' };
 export function createXyPad({ onEdit = null } = {}) {
   const element = document.createElement('div');
   element.className = 'xy-pad';
+  // Consultable como vista de ficha (el espectral y las ranuras lo hacen).
+  element.dataset.visual = 'model-xy';
 
   let dragging = false;
 

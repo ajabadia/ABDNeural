@@ -59,6 +59,15 @@ const root = document.getElementById('app');
 const store = createParameterStore({ ids: SCREEN_PARAMETER_IDS });
 
 /**
+ * View-models de los parámetros que pide la vista de DETALLE de un cajón (los
+ * mismos `describeControl` que el interface: si el catálogo y el contrato se
+ * separan, se pinta con lo que hay y se nota en consola).
+ */
+function drawerVisualControls(visualSpec) {
+  return visualSpec.parameterIds.map(describeControl).filter(Boolean);
+}
+
+/**
  * Las bandas del lienzo con sus controles ya resueltos contra el contrato. El
  * reparto (qué ids van en cada ficha) es de `contracts/sections.js`; aquí solo se
  * convierte en view-models. Un id que no esté en el contrato se descarta en vez
@@ -76,6 +85,21 @@ const bands = BANDS.map((band) => band.map((section) => {
   if (visualSpec && visualControls.length !== visualSpec.parameterIds.length)
     console.warn(`visual "${visualSpec.id}": el catalogo pide id(s) que el contrato no tiene`);
 
+  // El detalle del cajón (MODELOS: espectral + ranuras) es una vista del MISMO
+  // catálogo que el interface, con los MISMOS handlers (store, puente, morfeo):
+  // mismas variables, cero estado duplicado. El panel la cuelga en el cajón y
+  // la repinta con el snapshot del lienzo.
+  const drawerVisualSpec = section.drawer?.visual
+    ? SECTION_VISUALS[section.drawer.visual]
+    : null;
+  const drawerVisual = drawerVisualSpec
+    ? createVisual(drawerVisualSpec.id, drawerVisualControls(drawerVisualSpec), {
+      onLoad: (slot) => store.loadModel(slot),
+      onEdit: (id, value, phase) => store.pushParameter(id, value, phase),
+      onTelemetry: store.onTelemetry,
+    })
+    : null;
+
   return {
     ...section,
     controls,
@@ -85,6 +109,7 @@ const bands = BANDS.map((band) => band.map((section) => {
     // Y una vista puede necesitar algo que NO es un parametro: las ranuras de modelo
     // A-D piden al host cargar un fichero (la pagina no tiene sistema de ficheros).
     // El handler viaja por aqui para que el panel siga sin saber que dibuja cada una.
+    drawerVisual,
     visual: visualSpec
       ? createVisual(visualSpec.id, visualControls, {
         onLoad: (slot) => store.loadModel(slot),

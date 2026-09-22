@@ -321,6 +321,18 @@ export function createPanel({ bands, baselineId, handlers = {} }) {
 }
 
 /**
+ * Icono lápiz de los triggers de cajón. Espejo EXACTO de
+ * `ABDSharedAssets/icons/edit.svg` (la SSOT del catálogo): inline y no `<img>`
+ * porque el inline hereda `currentColor` y el icono se tiñe con el acento del
+ * tema, igual que el texto del botón. Cuando el paquete compartido publique un
+ * módulo de iconos inline, este espejo se sustituye por el import.
+ */
+const PENCIL_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"'
+  + ' width="10" height="10" fill="none" stroke="currentColor" stroke-width="2"'
+  + ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+  + '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>';
+
+/**
  * Una ficha: cabecera con título/subtítulo y rejilla de celdas.
  *
  * Una ficha de CAJÓN (section.drawer) se pinta en dos sitios a la vez: en el lienzo
@@ -373,6 +385,10 @@ function buildCard(section, context) {
     trigger.className = 'card__action';
     trigger.dataset.drawerTrigger = section.id;
     trigger.textContent = section.drawer.trigger;
+    // Icono lápiz del catálogo compartido (mismo trazo en toda la suite). El
+    // texto visible queda corto (EDIT) y la etiqueta accesible completa.
+    trigger.insertAdjacentHTML('beforeend', PENCIL_ICON_SVG);
+    trigger.setAttribute('aria-label', `${section.drawer.trigger} ${section.title}`);
     trigger.title = `${section.title}: se edita en el cajón lateral`;
     trigger.addEventListener('click', () => drawer.open());
 
@@ -383,8 +399,22 @@ function buildCard(section, context) {
   body.className = 'card__body';
 
   // La rejilla de columnas la impone el reparto SOLO en el lienzo: una ficha de
-  // cajón deja que su vista resumen llene el cuerpo (su ancho no reparte celdas).
-  if (! drawer) body.style.gridTemplateColumns = `repeat(${section.columns}, minmax(0, 1fr))`;
+  // cajon deja que su vista resumen llene el cuerpo (su ancho no reparte celdas)
+  // ...salvo que tenga FRONTAL (caja LFO): sus controles viven en el lienzo y
+  // necesitan su rejilla (la clase card--drawer la fuerza a una columna).
+  if (! drawer || section.drawer.frontal) {
+    body.style.gridTemplateColumns = `repeat(${section.columns}, minmax(0, 1fr))`;
+    if (drawer) body.classList.add('card__body--frontal');
+  }
+
+  // Vista de DETALLE del cajón (MODELOS A–D): no son celdas del APVTS, así que
+  // el bucle de controles no las toca — la página monta la vista (con sus
+  // handlers al store, los MISMOS que el interface) y aquí solo se cuelga y se
+  // repinta con el mismo snapshot que el lienzo.
+  if (drawer?.body && section.drawerVisual) {
+    drawer.body.append(section.drawerVisual.element);
+    context.visuals.push(section.drawerVisual);
+  }
 
   // Destino de cada celda: el cuerpo de la ficha, o su hueco en el cajón. Un
   // cajón CON `groups` (la matriz) monta una fila por ruta; SIN `groups`
@@ -393,7 +423,11 @@ function buildCard(section, context) {
     ? (section.drawer.groups
         ? buildSlotRows(section, drawer.body)
         : buildSlotColumn(
-            section.ids.filter((id) => id !== context.baselineId),
+            // FRONTAL primero (caja LFO): esos controles viven en el lienzo
+            // y el cajon no recibe copia (patron masterLevel en GLOBAL).
+            section.ids.filter(
+              (id) => !section.drawer.frontal?.includes(id) && id !== context.baselineId,
+            ),
             drawer.body,
           ))
     : null;

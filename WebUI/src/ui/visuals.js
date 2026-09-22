@@ -50,30 +50,42 @@ export function createVisual(visualId, controls, options = {}) {
   // lienzo va el resumen (y el cajón da el detalle).
   if (visualId === 'mod-summary') return createModSummary({ controls });
 
-  // La ficha MODELOS A–D es COMPUESTA: el pad XY dibujado (morphX/morphY con los
-  // nombres en las esquinas) encima de las cuatro ranuras. El bloque MODEL del
-  // panel nativo era exactamente esto: un pad y sus cuatro cargas. Ambas mitades
-  // leen lo suyo del MISMO paint (parámetros + modelsState).
+  // La ficha MODELOS A-D vive en el CENTRO del synthe (mudanza 8.3) y en el
+  // lienzo solo lleva el pad XY (morphX/morphY con los nombres en las esquinas):
+  // es el corazon del motor y no necesita mas en pantalla.
+  if (visualId === 'model-xy') {
+    const pad = createXyPad({ onEdit: options.onEdit ?? null });
+
+    return {
+      element: pad.element,
+      paint(parameters, state) {
+        pad.paint(parameters, state);
+      },
+      destroy() {
+        pad.destroy();
+      },
+    };
+  }
+
+  // El detalle del cajon de MODELOS: espectral de parciales en vivo (telemetria,
+  // nunca snapshots: un snapshot no debe congelar las barras) encima de las
+  // cuatro ranuras. La mitad que el interface no ensena: mismos handlers, mismo
+  // puente, mismas variables que el interface.
   if (visualId === 'model-slots') {
     const slots = createModelSlots({ onLoad: options.onLoad ?? null });
-    const pad = createXyPad({ onEdit: options.onEdit ?? null });
     const spectral = createSpectral({ onFrame: options.onTelemetry ?? null });
 
     const element = document.createElement('div');
-    element.className = 'model-block';
-    element.append(pad.element, spectral.element, slots.element);
+    element.className = 'model-block model-block--drawer';
+    element.append(spectral.element, slots.element);
 
     return {
       element,
       paint(parameters, state) {
-        pad.paint(parameters, state);
-        // El espectral NO pinta con snapshots: sus barras viven en el canal de
-        // telemetría y un snapshot no debe congelarlas.
         slots.paint(parameters, state);
       },
       destroy() {
         spectral.destroy();
-        pad.destroy();
         slots.destroy();
       },
     };

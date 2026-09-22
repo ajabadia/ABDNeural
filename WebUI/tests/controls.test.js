@@ -46,8 +46,8 @@ describe('controls / tipo por descriptor', () => {
   });
 
   it('el desplegable lleva las opciones del contrato, en orden', () => {
-    const descriptor = describeControl('lfo1Waveform');
-    const select = build('lfo1Waveform').element.querySelector('select');
+    const descriptor = describeControl('mod1Destination');
+    const select = build('mod1Destination').element.querySelector('select');
 
     expect([...select.options].map((option) => option.textContent)).toEqual(descriptor.options);
   });
@@ -64,7 +64,7 @@ describe('controls / tipo por descriptor', () => {
 
   it('cada elección sale con el ÍNDICE del control y el contrato la normaliza', () => {
     const onChange = vi.fn();
-    const control = build('lfo1Waveform', { onChange });
+    const control = build('mod1Source', { onChange });
 
     document.body.append(control.element);
 
@@ -72,7 +72,7 @@ describe('controls / tipo por descriptor', () => {
     field.value = '2';   // el modelo del control es el índice, no 0..1
     field.dispatchEvent(new Event('change'));
 
-    expect(onChange).toHaveBeenCalledWith('lfo1Waveform', 2 / 5);
+    expect(onChange).toHaveBeenCalledWith('mod1Source', 2 / 7);
   });
 
   it('marca los parámetros que el motor no consume', () => {
@@ -91,8 +91,8 @@ describe('controls / valores en las dos escalas', () => {
     document.body.append(control.element);
     control.setNormalized(0.5);
 
-    // masterBPM es un rango real: se lee en unidades reales, no en 0..1.
-    expect(control.element.querySelector('.cell__readout').textContent).toMatch(/[0-9]/);
+    // masterBPM es un rango real: el NumberBox lo muestra en BPM (0.5 -> 210).
+    expect(control.element.querySelector('.abd-numberbox__field').value).toBe('210');
     expect(onChange).not.toHaveBeenCalled();
   });
 
@@ -108,15 +108,15 @@ describe('controls / valores en las dos escalas', () => {
 
   it('elegir una opción sale normalizado, en la codificación del APVTS', () => {
     const onChange = vi.fn();
-    const control = build('lfo1Waveform', { onChange });
+    const control = build('mod1Source', { onChange });
 
     document.body.append(control.element);
 
     const select = control.element.querySelector('select');
-    select.value = '3';   // opción 3 de 6 -> 3/5
+    select.value = '2';   // opción 2 de la lista del contrato
     select.dispatchEvent(new Event('change'));
 
-    expect(onChange).toHaveBeenCalledWith('lfo1Waveform', 3 / 5);
+    expect(onChange).toHaveBeenCalledWith('mod1Source', 2 / 7);
   });
 
   it('el desplegable se reposiciona desde el estado normalizado', () => {
@@ -125,7 +125,7 @@ describe('controls / valores en las dos escalas', () => {
     document.body.append(control.element);
     control.setNormalized(1);   // último canal: índice 16 de 17
 
-    expect(control.element.querySelector('select').value).toBe('16');
+    expect(control.element.querySelector('.abd-numberbox__field').value).toBe('16');
   });
 });
 
@@ -240,8 +240,12 @@ describe('controls / presentación segmented (listas de dos)', () => {
   });
 
   it('las listas largas y las gateadas siguen siendo Select', () => {
-    // lfo1Waveform (6 opciones) y mod1Destination (28, gateada): desplegable.
-    expect(mount('lfo1Waveform').element.querySelector('select')).not.toBeNull();
+    // lfo1Waveform salio del Select: las ondas van al mueble LED con glifos
+    // (WAVEFORM_CHOICES). mod1Destination (28 opciones, gateada) sigue Select.
+    const wave = mount('lfo1Waveform');
+
+    expect(wave.element.querySelector('select')).toBeNull();
+    expect(wave.element.querySelector('.abd-segmented--led')).not.toBeNull();
     expect(mount('mod1Destination').element.querySelector('select')).not.toBeNull();
   });
 

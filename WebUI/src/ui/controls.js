@@ -27,7 +27,7 @@
  *   - toggle o desplegable: un solo handleChange (el store lo cierra como 'end').
  */
 
-import { Knob, Segmented, Select, Toggle } from '@abdsynths/shared/components';
+import { Knob, NumberBox, Segmented, Select, Toggle, WAVEFORM_GLYPHS, WAVEFORM_NAMES } from '@abdsynths/shared/components';
 
 import { describeControl } from '../contracts/parameters.js';
 import { GEOMETRY } from '../contracts/sections.js';
@@ -55,6 +55,11 @@ export const KINDS = {
  * fuentes/destinos) no — siguen en `Select`, que además regala scroll nativo
  * para 28 destinos. Si alguna ficha gana anchura, promocionar aquí es una línea.
  */
+const WAVEFORM_CHOICES = new Set([
+  'lfo1Waveform',
+  'lfo2Waveform',
+]);
+
 const SEGMENTED_CHOICES = new Set([
   'engineType',     // NEURONiK | Neurotik
   'lfo1SyncMode',   // Free | Tempo Sync
@@ -96,13 +101,19 @@ export function createParameterControl(control, handlers = {}) {
   // Presentación: las listas cortas del set SEGMENTED_CHOICES se montan como
   // selector segmentado (opciones siempre visibles); el resto sigue Select.
   // El kind de la celda sigue siendo 'choice' (mismo parámetro, otro mueble).
-  const api = kind === KINDS.knob
-    ? buildKnob(control, element, handlers)
-    : kind === KINDS.toggle
-      ? buildToggle(control, element, handlers)
-      : SEGMENTED_CHOICES.has(control.id)
-        ? buildSegmented(control, element, handlers)
-        : buildChoice(control, element, handlers);
+  // Las cajas numericas van POR ID (masterBPM es float y el knob se lo
+  // llevaria por kind): explicitas antes del ruteo por kind.
+  const api = NUMBERBOX_CHOICES.has(control.id)
+    ? buildNumberbox(control, element, handlers)
+    : kind === KINDS.knob
+      ? buildKnob(control, element, handlers)
+      : kind === KINDS.toggle
+        ? buildToggle(control, element, handlers)
+        : WAVEFORM_CHOICES.has(control.id)
+          ? buildWaveformSegmented(control, element, handlers)
+          : SEGMENTED_CHOICES.has(control.id)
+            ? buildSegmented(control, element, handlers)
+            : buildChoice(control, element, handlers);
 
   return {
     element,
@@ -145,6 +156,94 @@ function buildKnob(control, element, handlers) {
     destroy() {
       knob.destroy();
       readout.remove();
+    },
+  };
+}
+
+/**
+ * Cajas numericas del cajon GLOBAL & MASTER (y cualquier entero/real suelto).
+ * BPM viaja como float real (20-400) y el canal MIDI como choice de 17
+ * (Omni + 1-16): el NumberBox guarda el valor REAL y la conversion vive aqui,
+ * en la frontera — mismo reparto que el resto de la familia.
+ */
+const NUMBERBOX_CHOICES = new Set([
+  'masterBPM',
+  'midiChannel',
+]);
+
+function buildNumberbox(control, element, handlers) {
+  const isChannel = control.id === 'midiChannel';
+  // Canal MIDI: el indice del contrato ES el canal (0 = Omni, 1-16).
+  // BPM: real del contrato (20-400), entero convencional.
+  const toReal = (normalized) =>
+    (isChannel
+      ? choiceIndexFromNormalized(control, normalized)
+      : realFromNormalized(control, normalized));
+  const fromReal = (real) =>
+    (isChannel
+      ? normalizedFromChoiceIndex(control, real)
+      : normalizedFromReal(control, real));
+
+  const box = new NumberBox(element, {
+    id: `control-${control.id}`,
+    label: control.label,
+    value: toReal(0),
+    min: isChannel ? 0 : Math.round(control.min),
+    max: isChannel ? 16 : Math.round(control.max),
+    step: 1,
+    integer: true,
+    unit: isChannel ? '' : 'bpm',
+    // Canal 0 = Omni (eleccion del contrato); BPM tal cual.
+    format: isChannel ? (v) => (v === 0 ? 'Omni' : `${v}`) : null,
+    onChange: (real) => handlers.onChange?.(control.id, fromReal(real)),
+  });
+
+  return {
+    setNormalized(normalized) {
+      box.setValue(toReal(normalized));
+    },
+
+    destroy() {
+      box.destroy();
+    },
+  };
+}
+
+/**
+ * Formas de onda LFO -> Segmented compartido en su variante LED con glifos.
+ *
+ * Decision de mueble (QA de la demo compartida): seis opciones iguales se
+ * distinguen por el estado ENCENDIDO, no por leer texto — el pad oscuro con
+ * la marca que se ilumina (accent + halo) se lee de un vistazo y separa esta
+ * fila de los segmentados de texto (motor/sync). El orden de los glifos es el
+ * del contrato (waveforms.js, mismo indice que `choices`).
+ */
+function buildWaveformSegmented(control, element, handlers) {
+  // Nombres CORTOS canonicos (S&H, no RANDOM S&H): a ancho de cajon el largo
+  // trunca. El nombre completo del contrato vive en la nota (tooltip).
+  const glyphed = control.options.map((label, index) => ({
+    label: WAVEFORM_NAMES[index] ?? label,
+    glyph: WAVEFORM_GLYPHS[index] ?? '',
+    note: label !== (WAVEFORM_NAMES[index] ?? label) ? label : '',
+  }));
+
+  const segmented = new Segmented(element, {
+    id: `control-${control.id}`,
+    label: control.label,
+    variant: 'led',
+    options: glyphed,
+    value: 0,
+    onChange: (index) =>
+      handlers.onChange?.(control.id, normalizedFromChoiceIndex(control, index)),
+  });
+
+  return {
+    setNormalized(normalized) {
+      segmented.setValue(choiceIndexFromNormalized(control, normalized));
+    },
+
+    destroy() {
+      segmented.destroy();
     },
   };
 }
