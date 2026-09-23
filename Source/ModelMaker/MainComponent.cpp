@@ -70,6 +70,17 @@ MainComponent::MainComponent()
     noteCombo.addItem("F#", 8); noteCombo.addItem("G", 9); noteCombo.addItem("G#", 10);
     noteCombo.addItem("A", 11); noteCombo.addItem("A#", 12); noteCombo.addItem("B", 13);
     noteCombo.setSelectedId(1); // Auto
+
+    // FASE 10.4: cuantos frames temporales produce el analisis (1 = estatico).
+    addAndMakeVisible(framesCombo);
+    framesCombo.addItem("1 frame (estatico)", 1);
+    framesCombo.addItem("2 frames", 2);
+    framesCombo.addItem("3 frames", 3);
+    framesCombo.addItem("4 frames", 4);
+    framesCombo.addItem("6 frames", 6);
+    framesCombo.addItem("8 frames", 8);
+    framesCombo.setSelectedId(1);
+
     noteCombo.onChange = [this] { updateFreqFromRootNote(); };
 
     addAndMakeVisible(octaveCombo);
@@ -439,9 +450,20 @@ void MainComponent::analyzeAudio()
     performAnalysis(f0);
 }
 
+int MainComponent::selectedFrameCount() const
+{
+    const int id = framesCombo.getSelectedId();
+    return id > 1 ? id : 1;
+}
+
 void MainComponent::performAnalysis(float f0)
 {
-    currentModel = analyzer.analyze(loadedAudio, loadedSampleRate, f0);
+    // FASE 10.4: el analisis temporal produce N frames cuando el usuario lo
+    // pide; con 1 frame la llamada es equivalente al analisis estatico.
+    const int nFrames = selectedFrameCount();
+    currentModel = (nFrames <= 1)
+        ? analyzer.analyze(loadedAudio, loadedSampleRate, f0)
+        : analyzer.analyzeTemporal(loadedAudio, loadedSampleRate, f0, nFrames);
     
     // Prepare Preview
     previewResonator.loadModel(currentModel, 0); // Load into slot A
@@ -456,18 +478,60 @@ void MainComponent::exportModel()
 {
     // Serialize to JSON
     juce::DynamicObject* modelObj = new juce::DynamicObject();
-    
+
+    // FASE 10.1: el escritor acota los offsets a media banda (|offset| <=
+    // 0.5*gap, gap = frameSpanHz o el armonico unitario si no hay span): el
+    // camino corto del sampler (FrameSampler.h) basta con UNA envoltura y
+    // los extremos z=0/z=1 se copian bit-exactos. La raiz y frames[0] salen
+    // del MISMO bucle clampeado: son identicos siempre.
+    const float span = currentModel.frameSpanHz;
+
     juce::Array<juce::var> amps;
     juce::Array<juce::var> offsets;
-    
+
     for (int i = 0; i < 64; ++i)
     {
+        const float gap = span > 0.0f ? span : (float) (i + 1);
         amps.add(currentModel.amplitudes[i]);
-        offsets.add(currentModel.frequencyOffsets[i]);
+        offsets.add(juce::jlimit(-0.5f * gap, 0.5f * gap, currentModel.frequencyOffsets[i]));
     }
-    
+
     modelObj->setProperty("amplitudes", amps);
     modelObj->setProperty("frequencyOffsets", offsets);
+
+    // FASE 10.1 (plan 3): formato v2 SIEMPRE. El frame canonico viaja en la
+    // raiz (v1 compatible: un plugin viejo lo lee sin enterarse de "frames")
+    // y tambien como frames[0]; los frames extra acompanan cuando el modelo
+    // es temporal. Estatico => frames con UN elemento.
+    {
+        juce::Array<juce::var> frames;
+        juce::DynamicObject::Ptr frame0 = new juce::DynamicObject();
+        frame0->setProperty("amplitudes", amps);
+        frame0->setProperty("frequencyOffsets", offsets);
+        frames.add(frame0.get());
+
+        for (int f = 1; f < currentModel.frameCount; ++f)
+        {
+            juce::Array<juce::var> fAmps, fOffs;
+            for (int i = 0; i < 64; ++i)
+            {
+                const float gap = span > 0.0f ? span : (float) (i + 1);
+                fAmps.add(currentModel.ampAt(f, i));
+                fOffs.add(juce::jlimit(-0.5f * gap, 0.5f * gap, currentModel.offsetAt(f, i)));
+            }
+            juce::DynamicObject::Ptr frameObj = new juce::DynamicObject();
+            frameObj->setProperty("amplitudes", fAmps);
+            frameObj->setProperty("frequencyOffsets", fOffs);
+            frames.add(frameObj.get());
+        }
+
+        modelObj->setProperty("format", 2);
+        modelObj->setProperty("frames", frames);
+
+        if (span > 0.0f)
+            modelObj->setProperty("frameSpanHz", span);
+    }
+
     modelObj->setProperty("name", fileNameLabel.getText());
     modelObj->setProperty("description", "Created with NEURONiK Model Maker");
 
@@ -580,6 +644,7 @@ void MainComponent::resized()
 
     // Right side: Analysis & Pitch
     analyzeButton.setBounds(footerArea.removeFromRight(juce::roundToInt(120.0f * scaleX)).reduced(0, juce::roundToInt(2.0f * scaleY)));
+    framesCombo.setBounds(footerArea.removeFromRight(juce::roundToInt(110.0f * scaleX)).reduced(0, juce::roundToInt(8.0f * scaleY)));
     footerArea.removeFromRight(juce::roundToInt(20.0f * scaleX));
     
     // Pitch & Note

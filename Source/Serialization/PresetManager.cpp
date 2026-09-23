@@ -56,6 +56,47 @@ Common::SpectralModel PresetManager::loadModelFromFile(const juce::File& file)
             }
 
             model.isValid = true;
+
+            // FASE 10.1: frameSpanHz (dimension real de la envoltura de camino
+            // corto). Opcional: sin el (v1) el sampler usa el fallback
+            // armonico unitario, como siempre hizo.
+            if (!modelObject->getProperty ("frameSpanHz").isVoid())
+                model.frameSpanHz = static_cast<float> (
+                    static_cast<double> (modelObject->getProperty ("frameSpanHz")));
+
+            // FASE 10: frames temporales (formato v2). Opcional: sin "frames"
+            // (v1) el modelo queda estatico. Con "frames", el elemento [0] es
+            // el canonico ya leido; los demas llenan extraAmps/extraOffsets.
+            // Un frame recortado NO invalida el modelo: se trunca frameCount
+            // (los frames parciales se ignoran, el sonido de siempre no cambia).
+            if (const auto* frames = modelObject->getProperty ("frames").getArray())
+            {
+                const int maxFrames = Common::SpectralModel::kMaxFrames;
+                int count = 0;
+
+                for (int f = 1; f < frames->size() && count < maxFrames - 1; ++f)
+                {
+                    const auto* frameObj = (*frames)[f].getDynamicObject();
+                    if (frameObj == nullptr) break;
+
+                    const auto* fAmps = frameObj->getProperty ("amplitudes").getArray();
+                    const auto* fOffs = frameObj->getProperty ("frequencyOffsets").getArray();
+                    if (fAmps == nullptr || fOffs == nullptr
+                            || fAmps->size() < 64 || fOffs->size() < 64) break;
+
+                    for (int i = 0; i < 64; ++i)
+                    {
+                        model.extraAmps[(size_t) count][(size_t) i] =
+                            static_cast<float> (static_cast<double> ((*fAmps)[i]));
+                        model.extraOffsets[(size_t) count][(size_t) i] =
+                            static_cast<float> (static_cast<double> ((*fOffs)[i]));
+                    }
+                    ++count;
+                }
+
+                model.frameCount = 1 + count;
+            }
+
             return model;
         }
     }

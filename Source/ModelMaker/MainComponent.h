@@ -58,6 +58,7 @@ private:
 
     // Footer Controls
     juce::Label pitchLabel;
+    juce::ComboBox framesCombo;   // FASE 10.4: frames temporales del analisis
     juce::TextEditor pitchEditor;
     juce::ComboBox noteCombo;
     juce::ComboBox octaveCombo;
@@ -87,6 +88,7 @@ private:
     void loadFile();
     void analyzeAudio();
     void performAnalysis(float f0);
+    int  selectedFrameCount() const;
     void exportModel();
     void startRecording();
     void stopRecording();
