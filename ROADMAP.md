@@ -1128,6 +1128,38 @@ C4996 de JUCE 8 se resolvió el 2026-09-20: export migrado a AudioFormatWriterOp
       `f_i * (1 + detune * (1 + spread * i / 64))`, que ademas abre el camino del
       ensanche estereo por capa unison) o se retira del contrato SSOT. Mientras
       tanto es un parametro mentiroso en la UI.
+
+### Fase 10 (IMPLEMENTADA 2026-09-23) — Modelos temporales: N frames + morphZ
+
+Diseño completo en `docs/ARCHITECTURE/TEMPORAL_MODELS_PLAN.MD` (2026-09-22). El salto
+al paradigma Neuron: cada slot A-D guarda N frames temporales (1..16, default 1 =
+modelo estático bit-compat) y un tercer eje `morphZ` interpola los frames de cada slot
+ANTES del morfeo bilineal XY (Z-primero: el gesto temporal nunca inventa timbres fuera
+de los slots). UI: sin pad 3D — morphZ es knob en el drawer EDITAR de MODELOS y destino
+NUEVO de la matriz de modulación (LFO2 = animación cíclica, ENV2 = evolución por nota,
+mod-wheel = NUKE). Formato `.neuronikmodel` v2 compatible (v1 sigue leyéndose; v2 se
+lee como v1 por los plugins viejos). Piezas delicadas: emparejamiento de parciales
+entre frames (greedy por cercanía) y presupuesto de 8 KB por slot (16 frames x 64 x 2
+floats). Plan de fases 10.1-10.5 con verificación por fase en el documento.
+Predecesores ya en producción: analizador multiframe sub-bin (cerrado 2026-09-22) y
+modo bow del motor modal.
+
+Implementado (2026-09-23): 10.1 struct+serialización v2+sampleFrame (extremos
+bit-exactos, camino corto envuelto por frameSpanHz, roundtrip en ModelMakerRoundTripTest);
+10.2 morphZ en motor (smoother por voz, destino 28 de la matriz, FrameSamplerTest 11/11,
+paridad WASM-nativo 9/9 bit-exacta con defaults); 10.3 WebUI (contrato 72 parámetros,
+knob MORPH-Z en el cajón de MODELOS, suite 233/233); 10.4 analizador temporal
+(analyzeTemporal: N frames por ventanas del fichero, emparejador por índice, normalización
+global que conserva el decaimiento, combo FRAMES en la GUI del ModelMaker,
+TemporalAnalysisTest 14/14, sonda con WAVs reales CZ101 → 4 frames v2 → recarga).
+Cierre del 10.5 (2026-09-23): el anillo z ya vive en el pad XY de MODELOS (aro SVG en la
+capa de wiring de NEURONiK: gesto por ángulo 0..360°, teclado ±0.01/±0.1/Home/End, paint sin
+eco; 5 pins en tests/xyPad.test.js, suite 238/238, gesto y teclado verificados en vivo sobre
+el dist) y el encaje se cerró por el camino B: morphX/morphY dejan las celdas del oscilador
+(el pad XY es su único control del lienzo), RESONADOR agrupa el cuarteto modal (resonancia,
+impulso, bow) y el knob MORPH-Z vive en el cajón EDIT. El modelo de ejemplo temporal está
+generado (CZ-BASS1-temporal, 4 frames, vía sonda) y queda pendiente de incluirse en los
+assets del selftest.
       RECOMENDACION (2026-09-21): IMPLEMENTAR, no retirar — es la llave del
       widening estereo por voz (parcial i desviado `+spread*i/64` en L y
       `-spread*i/64` en R de la capa unison), el unico hueco real de imagen que

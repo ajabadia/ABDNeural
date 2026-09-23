@@ -3554,3 +3554,114 @@ decididas (fila LED con glifos + nombres cortos canonicos de waveforms.js —
 comparativa montada en el cajon real; con nombres largos, RANDOM S&H truncaba)
 y NumberBox universal (ABDEep -> @abdsynths/shared) para masterBPM y
 midiChannel en el cajon de GLOBAL & MASTER.
+## 2026-09-22 (w): el fondo del binario de plugin en dieta — tile en vez de master
+
+El binario del plugin embebia `bg_neutral.webp` (1.95 MB) via BinaryData; los fuentes
+embebidos (`BinaryData*.cpp` de build-reference/JuceLibraryCode) sumaban **8.1 MB**.
+El tile seamless `bg_tile512.webp` (341 KB, lossless, costura 0.000, cero banding —
+seccion 4b de STYLES_GUIDE en @abdsynths/shared) sustituye al master como fondo del
+dist: los fuentes embebidos bajan a **2.69 MB (-5.4 MB, -67%)**, verificado recompilando
+el plugin completo. La variante `--full` (master) queda como asset externo, no embebido.
+
+**Decision de pipeline:** el dist de la WebUI ahora solo lleva `bg_tile512-*.webp` (341 KB)
+y el paso BinaryData del CMake recoge solo lo que el dist usa. Cualquier synth de la
+suite que embeba su WebUI hereda la misma reduccion importando `@abdsynths/shared`
+(asset + backgrounds.css).
+
+## 2026-09-23 (m): FASE 10 completa — el ModelMaker ya produce modelos temporales (Neuron-parity)
+
+La Fase 10 del plan temporal (`docs/ARCHITECTURE/TEMPORAL_MODELS_PLAN.MD`) queda implementada
+de punta a punta: la cadena ModelMaker → SpectralModel → morfeo XY → renderizadores es ahora
+temporal, el salto al paradigma Neuron que apuntaba la investigación.
+
+- **10.1 struct + formato v2**: `SpectralModel` guarda N frames (1..16; frame 0 canónico en
+  `amplitudes`/`frequencyOffsets`, extras en `extraAmps`/`extraOffsets`, `frameSpanHz` del
+  análisis). Escritor v2 SIEMPRE (`format: 2` + `frames` + `frameSpanHz`, offsets acotados a
+  media banda); lector recupera frames y span; un plugin viejo lee v2 como v1.
+- **10.2 morphZ en el motor**: parámetro 0..1 (default 0 = bit-compat), smoother por voz,
+  muestreo de frames por sub-bloque con caché, **destino 28 de la matriz de modulación**
+  (LFO2 = animación cíclica, ENV2 = gesto por nota).
+- **10.3 WebUI**: contrato regenerado (72 parámetros, 0 sin enrutar), knob MORPH-Z en el cajón
+  EDIT de MODELOS; encaje del camino B (morphX/Y solo en el pad, bow en RESONADOR).
+- **10.4 analizador temporal**: `SpectralAnalyzer::analyzeTemporal()` — N ventanas repartidas
+  por el fichero, cada frame mide la rejilla n·f0 sobre SU espectro (emparejamiento por índice;
+  la ventana de media banda f0 garantiza que el parcial k nunca invade al vecino),
+  normalización GLOBAL que conserva la evolución de nivel (el decaimiento es el gesto).
+  Combo FRAMES (1/2/3/4/6/8) en la GUI; 1 frame = camino estático de siempre (equivalencia
+  bit a bit verificada).
+- **10.5 docs**: esta entrada y la marca IMPLEMENTADA en ROADMAP. Pendiente cosmético: anillo z
+  en el pad y modelo de ejemplo para el selftest.
+
+Verificación: `NEURONiK_TemporalAnalysisTest` 14/14 (equivalencia, emparejador con bloques
+escalonados ±9 Hz a ±0.02 Hz, decaimiento 1.000→0.125 conservado, roundtrip v2 completo con
+semántica z honesta: z=0.5 con 3 frames ES el frame 1); ctest 26/26; suite WebUI 233/233;
+sonda CLI (`NEURONiK_ModelMakerRealWavProbe`, registrada en CMake sin add_test) con WAVs reales
+de CZ101: 3 patches → f0 correcta (123.8 Hz, la sub-octava de 62 Hz descartada con DFT de
+red armónica), inharmonicidad real (49-64 offsets >1cent, hasta 53.8 Hz), y 4 frames v2 →
+recarga con evolución real entre frames. Paridad WASM-nativo 9/9 bit-exacta vigente (los
+escenarios no usan frames).
+
+## 2026-09-23 (n): sonda CLI del ModelMaker — el análisis verificado en producción
+
+`NEURONiK_ModelMakerRealWavProbe` (`Tests/ModelMakerRealWavProbe.cpp`, bloque propio en
+`CMakeLists.txt` clonando el set `NEURONIK_SOURCES` del roundtrip, sin `add_test`: es sonda de
+verificación, no test de ctest). El ModelMaker es app GUI sin CLI, así que la sonda enlaza los
+mismos ficheros de producción que la GUI y conduce su flujo exacto, headless:
+
+```text
+WAV → detectPitch → analyze / analyzeTemporal
+    → serialización v2 (dialecto idéntico a exportModel, clamps incluidos)
+    → PresetManager::loadModelFromFile → sampleFrame
+    → engine real (loadModel por FIFO + getCurrentModel)
+```
+
+Uso:
+
+```bash
+cmake --build build-reference --config Release --target NEURONiK_ModelMakerRealWavProbe
+./build-reference/Release/NEURONiK_ModelMakerRealWavProbe.exe ../ABDCZ101/DOCS/patches/CZ-BASS1.wav ...
+```
+
+Métricas de la última verificación (2026-09-23, WAVs reales de CZ101, mono 16-bit/44.1k):
+
+| WAV      | f0       | centroide   | parciales | offset máx | v2 estático | temporal (4 frames) | pico min |
+|----------|----------|-------------|-----------|------------|-------------|---------------------|----------|
+| CZ-BASS1 | 123.8 Hz | parcial 6.8  | 49/64     | 53.8 Hz    | 6146 B      | 15770 B             | 0.171    |
+| CZ-HAMOG | 123.8 Hz | parcial 10.4 | 64/64     | 32.3 Hz    | 6488 B      | 16824 B             | 0.735    |
+| CZ-PAD1  | 123.8 Hz | parcial 2.6  | 17/64     | 24.8 Hz    | 5517 B      | 14408 B             | 0.374    |
+
+`RESULT: OK` en los tres: el ciclo completo WAV→modelo→recarga→sampleFrame→engine cierra y el
+frame 0 queda bit-igual al bloque canónico (compatibilidad v1 intacta). Hallazgos que la sonda
+destapó: el HPS acierta la octava (la sub-octava de 62 Hz de BASS1/HAMOG se descartó con DFT
+directo —sin red armónica propia, era coloración—), la inharmonicidad real viaja en los offsets
+(el antiguo TODO de la fase 9 está muerto) y `frameSpanHz` llega con la dimensión correcta
+(= f0 del análisis, 123.82 Hz en BASS1). El decaimiento entre frames se conserva
+(pico 1.000 → 0.171 en BASS1): la normalización global respeta el gesto temporal.
+
+Los modelos generados quedan en `build-reference/probe-models/` (artefactos de verificación,
+no commiteados).
+
+## 2026-09-23 (o): el anillo de morphZ en el pad XY — el tercer eje gana su superficie
+
+- **Aro SVG** sobre el pad compartido (que no se toca: su contrato lo pinean los tests del
+  paquete), en la capa de wiring de NEURONiK (`WebUI/src/ui/xyPad.js`): pista tenue, arco
+  relleno por `stroke-dasharray` con `pathLength=100` (1 unidad = 1% de z) y hit-area que
+  captura solo el trazo — el arrastre XY interior queda intacto (pin dedicado).
+- **Gesto coordinado**: drag por ángulo (0 arriba → 360° = z=1) con el mismo protocolo
+  begin/change/end que morphX/Y; el knob MORPH-Z del cajón EDIT y el aro comparten el
+  parámetro — un control, un nodo.
+- **Teclado + a11y**: role=slider "Morph Z", flechas ±0.01, PageUp/Down ±0.1, Home/End 0/1.
+El aro es la superficie visible del mismo eje que alimenta el **destino 28** de la
+  matriz de modulación (LFO2 = ciclo, ENV2 = gesto por nota) sobre el modelo temporal
+  de N frames (entrada (m)): aro, knob y matriz son vistas del único parámetro `morphZ`.
+
+- **Encaje del camino B cerrado**: morphX/morphY salen de las celdas del oscilador (el pad XY
+  es su único control del lienzo), RESONADOR agrupa el cuarteto modal (resonancia, impulso,
+  bow) y OSCILADOR vuelve a 12 celdas en 6×2.
+
+Verificación en verde: suite WebUI **238/238** (5 pins nuevos del aro en `tests/xyPad.test.js`:
+montaje accesible, gesto completo con las tres fases, aislamiento del pad, teclado y paint sin
+eco). En vivo sobre el dist servido: drag de 180° deja el store en `morphZ:0.5` con el aro al
+50% ("Morph Z 50%" en el slider accesible) y una flecha arriba lo mueve a `morphZ:0.01` con el
+arco repintado — la ruta teclado→tienda→footer JSON confirmada en producción.
+
