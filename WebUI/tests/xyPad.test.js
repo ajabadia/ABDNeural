@@ -200,3 +200,130 @@ describe('xyPad / las dos vistas de MODELOS (mudanza al centro, 8.3)', () => {
     expect(view.element.querySelector('.model-slots__row')).toBeNull();
   });
 });
+
+describe('xyPad / el anillo exterior de morph-Z (FASE 10)', () => {
+  let host;
+
+  beforeEach(() => { host = makeHost(); });
+
+  /** stub del rect del svg del aro (jsdom no tiene layout) */
+  function stubRingRect(svg, size = 100) {
+    svg.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: size, bottom: size, width: size, height: size });
+  }
+
+  it('monta el aro como slider accesible independiente (0..1, dasharray a 0)', () => {
+    const view = createXyPad({});
+    host.append(view.element);
+
+    const ring = view.element.querySelector('.xy-pad__zring');
+    expect(ring).not.toBeNull();
+    expect(ring.getAttribute('role')).toBe('slider');
+    expect(ring.getAttribute('aria-label')).toBe('Morph Z');
+    expect(ring.getAttribute('aria-valuemin')).toBe('0');
+    expect(ring.getAttribute('aria-valuemax')).toBe('1');
+    expect(ring.getAttribute('aria-valuenow')).toBe('0');
+
+    const fill = ring.querySelector('.zring-fill');
+    expect(fill.getAttribute('stroke-dasharray')).toBe('0 100');
+
+    view.destroy();
+  });
+
+  it('un drag del aro es UN gesto de morphZ con fase completa (ángulo -> valor)', () => {
+    const onEdit = vi.fn();
+    const view = createXyPad({ onEdit });
+    host.append(view.element);
+
+    const svg = view.element.querySelector('.xy-pad__zring svg');
+    stubRingRect(svg, 100);
+
+    // pointerdown a la derecha del centro: angulo 90° -> z = 0.25
+    svg.dispatchEvent(pointer('pointerdown', 100, 50));
+    svg.dispatchEvent(pointer('pointerup', 100, 50));
+
+    const phases = onEdit.mock.calls.map(([, , phase]) => phase);
+    expect(phases).toEqual(['begin', 'change', 'end']);
+
+    const change = onEdit.mock.calls.find(([, , phase]) => phase === 'change');
+    expect(change[0]).toBe('morphZ');
+    expect(change[1]).toBeCloseTo(0.25, 5);
+
+    view.destroy();
+  });
+
+  it('el interior NO es del aro: los hits solo capturan el trazo (el pad sigue intacto)', () => {
+    const view = createXyPad({});
+    host.append(view.element);
+
+    const hit = view.element.querySelector('.zring-hit');
+    expect(hit).not.toBeNull();
+    // la regla CSS del paquete: pointer-events solo en el trazo
+    expect(hit.style.pointerEvents).toBe('');
+
+    view.destroy();
+  });
+
+  it('teclado: flechas ±0.01, PageUp/Down ±0.1, Home/End 0/1 — como END y solo si cambió', () => {
+    const onEdit = vi.fn();
+    const view = createXyPad({ onEdit });
+    host.append(view.element);
+
+    const ring = view.element.querySelector('.xy-pad__zring');
+
+    ring.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+    ring.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp', bubbles: true }));
+
+    // 0.01 + 0.1 = 0.11: dos pasos, dos END
+    expect(onEdit.mock.calls).toEqual([
+      ['morphZ', 0.01, 'end'],
+      ['morphZ', 0.11, 'end'],
+    ]);
+
+    onEdit.mockClear();
+    // End -> 1; y un segundo End no viaja (no cambió: dedupe honesto)
+    ring.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    ring.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    expect(onEdit.mock.calls).toEqual([['morphZ', 1, 'end']]);
+
+    // Home -> 0
+    ring.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    expect(onEdit.mock.calls[1]).toEqual(['morphZ', 0, 'end']);
+
+    // aria sigue al valor
+    expect(ring.getAttribute('aria-valuenow')).toBe('0');
+
+    view.destroy();
+  });
+
+  it('paint pinta el aro sin eco y no pega con el dedo durante un drag del aro', () => {
+    const onEdit = vi.fn();
+    const view = createXyPad({ onEdit });
+    host.append(view.element);
+
+    const ring = view.element.querySelector('.xy-pad__zring');
+    const fill = ring.querySelector('.zring-fill');
+
+    // snapshot con morphZ=0.4: el aro se pinta, no hay eco al store
+    view.paint({ morphX: 0, morphY: 0, morphZ: 0.4 }, {});
+    expect(fill.getAttribute('stroke-dasharray')).toBe('40 100');
+    expect(onEdit).not.toHaveBeenCalled();
+
+    // drag del aro: el snapshot NO mueve el aro (no se pega con el dedo)
+    const svg = view.element.querySelector('.xy-pad__zring svg');
+    stubRingRect(svg, 100);
+    svg.dispatchEvent(pointer('pointerdown', 100, 50)); // z -> 0.25
+    expect(fill.getAttribute('stroke-dasharray')).toBe('25 100');
+
+    view.paint({ morphX: 0, morphY: 0, morphZ: 0.8 }, {});
+    expect(fill.getAttribute('stroke-dasharray')).toBe('25 100');
+
+    svg.dispatchEvent(pointer('pointerup', 100, 50));
+
+    // al soltar, el snapshot vuelve a mandar
+    view.paint({ morphX: 0, morphY: 0, morphZ: 0.8 }, {});
+    expect(fill.getAttribute('stroke-dasharray')).toBe('80 100');
+
+    view.destroy();
+  });
+});
