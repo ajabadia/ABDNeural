@@ -27,6 +27,8 @@
 
 #include "../Source/ModelMaker/Analysis/SpectralAnalyzer.h"
 #include "../Source/Common/SpectralModel.h"
+#include "../Source/DSP/FrameSampler.h"
+#include "../Source/Serialization/PresetManager.h"
 #include "../Source/Main/NEURONiKProcessor.h"
 #include "../Source/State/ParameterDefinitions.h"
 #include "../Source/WebUI/BridgeAdapters.h"
@@ -149,24 +151,60 @@ namespace
 
     /**
      * @brief El dialecto JSON EXACTO que la GUI del ModelMaker escribe en
-     *        exportModel(): {amplitudes[64], frequencyOffsets[64], name,
-     *        description}. Si la herramienta cambia de dialecto, aqui se nota.
+     *        exportModel() desde la FASE 10.1: formato v2 SIEMPRE — la raiz
+     *        v1 (amplitudes/frequencyOffsets) + "frames" (UN elemento cuando
+     *        el modelo es estatico) + "frameSpanHz" si el analisis lo trajo,
+     *        con los offsets acotados a media banda como el escritor real.
+     *        Si la herramienta cambia de dialecto, aqui se nota.
      */
     bool writeModelJson (const juce::File& file, const NEURONiK::Common::SpectralModel& model,
                          const juce::String& name)
     {
         juce::DynamicObject::Ptr modelObj = new juce::DynamicObject();
+        const float span = model.frameSpanHz;
+
         juce::Array<juce::var> amps;
         juce::Array<juce::var> offsets;
 
         for (int i = 0; i < 64; ++i)
         {
+            const float gap = span > 0.0f ? span : (float) (i + 1);
             amps.add (model.amplitudes[(size_t) i]);
-            offsets.add (model.frequencyOffsets[(size_t) i]);
+            offsets.add (juce::jlimit (-0.5f * gap, 0.5f * gap, model.frequencyOffsets[(size_t) i]));
         }
 
         modelObj->setProperty ("amplitudes", amps);
         modelObj->setProperty ("frequencyOffsets", offsets);
+
+        juce::Array<juce::var> frames;
+        juce::DynamicObject::Ptr frame0 = new juce::DynamicObject();
+        frame0->setProperty ("amplitudes", amps);
+        frame0->setProperty ("frequencyOffsets", offsets);
+        frames.add (frame0.get());
+
+        for (int f = 1; f < model.frameCount; ++f)
+        {
+            juce::Array<juce::var> fAmps, fOffs;
+
+            for (int i = 0; i < 64; ++i)
+            {
+                const float gap = span > 0.0f ? span : (float) (i + 1);
+                fAmps.add (model.ampAt (f, i));
+                fOffs.add (juce::jlimit (-0.5f * gap, 0.5f * gap, model.offsetAt (f, i)));
+            }
+
+            juce::DynamicObject::Ptr frameObj = new juce::DynamicObject();
+            frameObj->setProperty ("amplitudes", fAmps);
+            frameObj->setProperty ("frequencyOffsets", fOffs);
+            frames.add (frameObj.get());
+        }
+
+        modelObj->setProperty ("format", 2);
+        modelObj->setProperty ("frames", frames);
+
+        if (span > 0.0f)
+            modelObj->setProperty ("frameSpanHz", span);
+
         modelObj->setProperty ("name", name);
         modelObj->setProperty ("description", "Created with NEURONiK Model Maker");
 
@@ -364,6 +402,210 @@ int main()
         check (bridgeName == modelFiles[0].getFileNameWithoutExtension(),
                "el nombre que viajaria a la ficha A-D es el del fichero (" + bridgeName + ")");
     }
+
+    // --- 7. FASE 10.1: modelo temporal — contrato v2 de punta a punta ----------
+    //       El modelo de 3 frames del plan 3: f0 -> f1 CRUZA el borde del
+    //       armonico (+0.45*span -> -0.45*span, camino corto del sampler), y
+    //       f2 lleva un offset patologico para el clamp del escritor.
+    std::cout << "\nTemporal (v2)\n";
+    {
+        Common::SpectralModel tri;
+        tri.isValid = true;
+        tri.frameCount = 3;
+        tri.frameSpanHz = f0;
+
+        for (int i = 0; i < 64; ++i)
+        {
+            tri.amplitudes[(size_t) i] = 1.0f;
+            tri.frequencyOffsets[(size_t) i] = 0.45f * f0;    // +198 Hz
+            tri.extraAmps[0][(size_t) i] = 0.0f;
+            tri.extraOffsets[0][(size_t) i] = -0.45f * f0;    // -198 Hz
+            tri.extraAmps[1][(size_t) i] = 0.0f;
+            tri.extraOffsets[1][(size_t) i] = -0.45f * f0;
+        }
+
+        tri.extraOffsets[1][5] = 3.5f * f0;                   // patologico: clamp
+
+        const auto triFile = dir.getChildFile ("Temporal 3F.neuronikmodel");
+        check (writeModelJson (triFile, tri, "Temporal 3F"), "export v2 del modelo de 3 frames");
+
+        // El JSON v2 lleva format, los frames y el span.
+        {
+            const auto parsed = juce::JSON::parse (triFile);
+            const auto* obj = parsed.getDynamicObject();
+            const auto* frames = obj != nullptr ? obj->getProperty ("frames").getArray() : nullptr;
+            check (obj != nullptr && (int) obj->getProperty ("format") == 2
+                       && frames != nullptr && frames->size() == 3,
+                   "el JSON v2 lleva format=2 y los 3 frames");
+            check (obj != nullptr
+                       && std::abs ((double) obj->getProperty ("frameSpanHz") - (double) f0) < 1.0e-4,
+                   "el JSON v2 lleva frameSpanHz (la f0 del analisis)");
+        }
+
+        const auto loaded = Serialization::PresetManager::loadModelFromFile (triFile);
+        check (loaded.isValid && loaded.frameCount == 3,
+               "el lector recupera los 3 frames (frameCount=3)");
+        check (std::abs (loaded.frameSpanHz - f0) < 1.0e-4, "el lector recupera frameSpanHz");
+
+        bool exact = true;
+
+        for (int i = 0; i < 64 && exact; ++i)
+            exact = std::abs (loaded.amplitudes[(size_t) i] - 1.0f) < 1.0e-6
+                        && std::abs (loaded.frequencyOffsets[(size_t) i] - 0.45f * f0) < 1.0e-6
+                        && std::abs (loaded.extraAmps[0][(size_t) i]) < 1.0e-6
+                        && std::abs (loaded.extraOffsets[0][(size_t) i] + 0.45f * f0) < 1.0e-6
+                        && std::abs (loaded.extraAmps[1][(size_t) i]) < 1.0e-6;
+
+        check (exact, "roundtrip exacto de amplitudes y offsets frame a frame");
+        check (std::abs (loaded.extraOffsets[1][5] - 0.5f * f0) < 1.0e-4,
+               "el offset patologico sale clampado a media banda (0.5*span)");
+
+        // sampleFrame sobre el modelo CARGADO: extremos bit-exactos (copia del
+        // frame almacenado, sin redondeo de lerp) y camino corto entre frames.
+        {
+            Common::SpectralModel out;
+            Common::sampleFrame (loaded, 0.0f, out);
+            bool extremesOk = std::abs (out.amplitudes[0] - 1.0f) < 1.0e-6
+                                  && std::abs (out.frequencyOffsets[0] - 0.45f * f0) < 1.0e-6;
+            Common::sampleFrame (loaded, 1.0f, out);
+            extremesOk = extremesOk
+                                  && std::abs (out.amplitudes[0]) < 1.0e-6
+                                  && std::abs (out.frequencyOffsets[0] + 0.45f * f0) < 1.0e-6;
+            check (extremesOk, "sampleFrame z=0 y z=1 devuelven los frames extremos (copia bit-exacta)");
+
+            Common::sampleFrame (loaded, 0.25f, out);
+            // f0(+198) -> f1(-198): el delta -396 envuelve por el span (440) a
+            // +44; z=0.25 => 198 + 44*0.5 = 220 = el armonico siguiente a medias.
+            // Sin camino corto daria 0.0: un salto de 220 Hz en la direccion
+            // equivocada.
+            check (std::abs (out.amplitudes[0] - 0.5f) < 1.0e-6
+                       && std::abs (out.frequencyOffsets[0] - 0.5f * f0) < 1.0e-3,
+                   "sampleFrame z=0.25 interpola por camino corto (cruce de borde: +220 Hz)");
+        }
+
+        // Compat hacia atras: un "plugin v1" ignora "frames" y lee la raiz.
+        {
+            const auto parsed = juce::JSON::parse (triFile);
+            const auto* obj = parsed.getDynamicObject();
+            const auto* amps = obj != nullptr ? obj->getProperty ("amplitudes").getArray() : nullptr;
+            check (amps != nullptr && amps->size() == 64
+                       && std::abs ((double) amps->getUnchecked (0) - 1.0) < 1.0e-6,
+                   "un lector v1 sigue leyendo el fichero v2 (frame 0 viaja en la raiz)");
+        }
+
+        // Estatico con el escritor v2 SIEMPRE: frames con UN elemento y el
+        // lector devuelve el modelo estatico de siempre (bit-igual al analisis).
+        {
+            Common::SpectralModel stat;
+            stat.isValid = true;
+            stat.frameSpanHz = f0;
+
+            for (int i = 0; i < 64; ++i)
+            {
+                stat.amplitudes[(size_t) i] = model.amplitudes[(size_t) i];
+                stat.frequencyOffsets[(size_t) i] = model.frequencyOffsets[(size_t) i];
+            }
+
+            const auto statFile = dir.getChildFile ("Static v2.neuronikmodel");
+            check (writeModelJson (statFile, stat, "Static v2"), "export v2 del modelo estatico");
+
+            const auto parsed = juce::JSON::parse (statFile);
+            const auto* obj = parsed.getDynamicObject();
+            const auto* frames = obj != nullptr ? obj->getProperty ("frames").getArray() : nullptr;
+            check (frames != nullptr && frames->size() == 1,
+                   "el escritor v2 emite frames con UN elemento cuando es estatico");
+
+            const auto back = Serialization::PresetManager::loadModelFromFile (statFile);
+            check (back.isValid && back.frameCount == 1
+                       && modelsEqual (model, back.amplitudes, back.frequencyOffsets, 1.0e-4f),
+                   "el modelo estatico v2 se lee como el estatico de siempre");
+        }
+
+        // La ranura A acepta el modelo temporal: el FIFO transporta el struct
+        // COMPLETO (frames incluidos) hasta el motor.
+        {
+            NEURONiKProcessor audio;
+            audio.setRateAndBufferSizeDetails (sampleRate, blockSize);
+            audio.prepareToPlay (sampleRate, blockSize);
+
+            check (audio.loadModel (triFile, 0),
+                   "la ranura A acepta el modelo temporal (struct completo por el FIFO)");
+
+            std::array<float, 64> slotAmps {}, slotOffs {};
+            bool slotValid = false;
+            audio.getCurrentModel (0, slotAmps, slotOffs, slotValid);
+            check (slotValid && std::abs (slotAmps[0] - 1.0f) < 1.0e-3,
+                   "el frame 0 del modelo temporal es visible en la ranura");
+        }
+    }
+
+    // --- 8. FASE 10.4: el analizador MULTIFRAME REAL de punta a punta ---------
+    //       El mismo camino de la GUI con el combo FRAMES: bloques de seno con
+    //       inharmonicidad escalonada -> analyzeTemporal -> export v2 -> lector
+    //       -> el ENGINE recibe los N frames (el FIFO transporta el struct
+    //       completo; la ranura expone el frame 0, el motor consume todos).
+    std::cout << "\nAnalyzer temporal (v2 multiframe real)\n";
+    {
+        constexpr int nBlocks = 3;
+        const float steps[nBlocks] = { 0.0f, 9.0f, -9.0f };
+        constexpr int fftSize = 8192; // SpectralAnalyzer::fftSize
+
+        juce::AudioBuffer<float> temporal (1, nBlocks * fftSize);
+        for (int b = 0; b < nBlocks; ++b)
+            for (int i = 0; i < fftSize; ++i)
+            {
+                const double w = 2.0 * juce::MathConstants<double>::pi
+                                * (double) (f0 + steps[b]) / sampleRate;
+                temporal.setSample (0, b * fftSize + i, (float) (0.6 * std::sin (w * (double) i)));
+            }
+
+        const auto model = analyzer.analyzeTemporal (temporal, sampleRate, f0, nBlocks);
+        check (model.frameCount == nBlocks && model.isValid,
+               "analyzeTemporal produce 3 frames validos del audio sintetico");
+
+        // Export v2 con el dialecto de la GUI (mismo escritor del paso 7).
+        const auto temporalFile = dir.getChildFile ("Analyzer Temporal.neuronikmodel");
+        check (writeModelJson (temporalFile, model, "Analyzer Temporal"),
+               "export v2 del modelo temporal del analizador real");
+
+        // Roundtrip: el lector recupera TODOS los frames con sus offsets.
+        const auto back = Serialization::PresetManager::loadModelFromFile (temporalFile);
+        check (back.isValid && back.frameCount == nBlocks,
+               "el lector recupera los 3 frames del analisis real");
+
+        bool offsetsOk = true;
+        for (int fr = 0; fr < nBlocks; ++fr)
+        {
+            const float got = fr == 0 ? back.frequencyOffsets[(size_t) 0]
+                                      : back.offsetAt (fr, 0);
+            offsetsOk &= std::abs (got - steps[fr]) < 1.0f;
+        }
+        check (offsetsOk,
+               "los offsets de los frames sobreviven el ciclo (emparejador real)");
+
+        // El ENGINE real: la ranura acepta el modelo temporal del analizador.
+        {
+            NEURONiKProcessor audio;
+            audio.setRateAndBufferSizeDetails (sampleRate, blockSize);
+            audio.prepareToPlay (sampleRate, blockSize);
+
+            check (audio.loadModel (temporalFile, 0),
+                   "el engine acepta el modelo temporal del analizador real");
+
+            std::array<float, 64> slotAmps {}, slotOffs {};
+            bool slotValid = false;
+            audio.getCurrentModel (0, slotAmps, slotOffs, slotValid);
+            check (slotValid && std::abs (slotAmps[0] - model.amplitudes[0]) < 1.0e-3,
+                   "la ranura expone el frame 0 del analisis temporal real");
+        }
+
+        // Y el sampler consume el modelo recargado (z=0.5 = frame 1).
+        Common::SpectralModel frame;
+        Common::sampleFrame (back, 0.5f, frame);
+        check (std::abs (frame.frequencyOffsets[(size_t) 0] - back.offsetAt (1, 0)) < 1.0e-6f,
+               "sampleFrame(z=0.5) entrega el frame 1 del modelo recargado");
+    }
+
 
     std::cout << '\n' << (failures == 0 ? "All checks passed." : "Checks failed.") << '\n';
     return failures == 0 ? 0 : 1;

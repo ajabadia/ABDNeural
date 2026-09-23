@@ -773,6 +773,150 @@ target_link_libraries(NEURONiK_ModelMakerRoundTripTest PRIVATE
 
 add_test(NAME NEURONiK_ModelMakerRoundTripTest COMMAND NEURONiK_ModelMakerRoundTripTest)
 
+# Sonda CLI de produccion del ModelMaker (2026-09-23): la GUI es WIN32 sin
+# CLI, asi que esta sonda enlaza los MISMOS ficheros de produccion
+# (SpectralAnalyzer + PresetManager + set del plugin) y conduce el flujo real
+# WAV -> detectPitch -> analyze -> export v2 -> loadModelFromFile ->
+# sampleFrame contra WAVs reales. Sin add_test: es sonda, no test de ctest.
+add_executable(NEURONiK_ModelMakerRealWavProbe
+    Tests/ModelMakerRealWavProbe.cpp
+    Source/ModelMaker/Analysis/SpectralAnalyzer.cpp
+    Source/WebUI/ParameterBridge.cpp
+    ${NEURONIK_STATE_TEST_SOURCES}
+)
+
+target_include_directories(NEURONiK_ModelMakerRealWavProbe PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Main"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/UI"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/Panels"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/ModelMaker/Analysis"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Serialization"
+)
+
+target_compile_definitions(NEURONiK_ModelMakerRealWavProbe PRIVATE
+    JucePlugin_Name="NEURONiK"
+)
+
+target_link_libraries(NEURONiK_ModelMakerRealWavProbe PRIVATE
+    juce::juce_audio_basics
+    juce::juce_audio_formats
+    juce::juce_audio_processors
+    juce::juce_audio_utils
+    juce::juce_core
+    juce::juce_data_structures
+    juce::juce_dsp
+    juce::juce_graphics
+    juce::juce_gui_basics
+    juce::juce_gui_extra
+    NEURONiK_Common
+)
+
+# El analizador del ModelMaker en aislado: multiframe, peak-picking +-2 bins
+# e interpolacion sub-bin (frequencyOffsets ya no es un TODO). El A/B musical
+# del analizador: que la tabla y los offsets respondan a la FUENTE, no al azar
+# de una sola ventana.
+add_executable(NEURONiK_SpectralAnalyzerTest
+    Tests/SpectralAnalyzerTest.cpp
+    Source/ModelMaker/Analysis/SpectralAnalyzer.cpp
+)
+
+target_include_directories(NEURONiK_SpectralAnalyzerTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/ModelMaker/Analysis"
+)
+
+target_link_libraries(NEURONiK_SpectralAnalyzerTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_core
+    juce::juce_dsp
+    NEURONiK_Common
+)
+
+add_test(NAME NEURONiK_SpectralAnalyzerTest COMMAND NEURONiK_SpectralAnalyzerTest)
+# FASE 10.4: el emparejador del analisis temporal — un seno con vibrato
+# (offset sub-bin que evoluciona) debe producir frames que SIGUEN el vibrato.
+# El flujo completo temporal: analyzeTemporal -> export v2 (GUI) -> lector.
+add_executable(NEURONiK_TemporalAnalysisTest
+    Tests/TemporalAnalysisTest.cpp
+    Source/ModelMaker/Analysis/SpectralAnalyzer.cpp
+    Source/WebUI/ParameterBridge.cpp
+    ${NEURONIK_STATE_TEST_SOURCES}
+)
+
+target_include_directories(NEURONiK_TemporalAnalysisTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Main"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/UI"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/Panels"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/ModelMaker/Analysis"
+)
+
+target_compile_definitions(NEURONiK_TemporalAnalysisTest PRIVATE
+    JucePlugin_Name="NEURONiK"
+)
+
+target_link_libraries(NEURONiK_TemporalAnalysisTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_audio_formats
+    juce::juce_audio_processors
+    juce::juce_audio_utils
+    juce::juce_core
+    juce::juce_data_structures
+    juce::juce_dsp
+    juce::juce_graphics
+    juce::juce_gui_basics
+    juce::juce_gui_extra
+    NEURONiK_Common
+)
+
+add_test(NAME NEURONiK_TemporalAnalysisTest COMMAND NEURONiK_TemporalAnalysisTest)
+
+# FASE 10: modelos temporales — sampleFrame + morphZ en el motor real
+# (z=0 frame canonico bit-exacto; z=1 frame temporal; el knob es inertel
+# con modelos estaticos, que es la garantia de compatibilidad de la fase).
+add_executable(NEURONiK_FrameSamplerTest
+    Tests/FrameSamplerTest.cpp
+    ${NEURONIK_DSP_SOURCES}
+)
+
+target_include_directories(NEURONiK_FrameSamplerTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+)
+
+target_link_libraries(NEURONiK_FrameSamplerTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_core
+    juce::juce_dsp
+    NEURONiK_Common
+)
+
+add_test(NAME NEURONiK_FrameSamplerTest COMMAND NEURONiK_FrameSamplerTest)
+# El modo bow del motor modal: sostenido con arco (ganancia plena) frente al
+# legacy impulso+ruido, con el motor real. Pin de compatibilidad incluido
+# (bow=0 conserva el nivel historico del sostenido).
+add_executable(NEURONiK_NeurotikBowTest
+    Tests/NeurotikBowTest.cpp
+    ${NEURONIK_DSP_SOURCES}
+)
+
+target_include_directories(NEURONiK_NeurotikBowTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+)
+
+target_link_libraries(NEURONiK_NeurotikBowTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_core
+    juce::juce_dsp
+    NEURONiK_Common
+)
+
+add_test(NAME NEURONiK_NeurotikBowTest COMMAND NEURONiK_NeurotikBowTest)
+
 # Parameter bridge: same real layout APVTS as the contract, no WebView2 — the
 # transport is a recording lambda, so the protocol is testable without a window.
 add_executable(NEURONiK_ParameterBridgeTest

@@ -24,10 +24,12 @@
 namespace
 {
     // Pinned so adding or removing a parameter is a deliberate, visible change.
-    constexpr int EXPECTED_PARAMETER_COUNT = 70;
+    // FASE 10: 70 historicos + oscExciteBow + morphZ = 72.
+    constexpr int EXPECTED_PARAMETER_COUNT = 72;
     // Audited against the real references in Source/, not against an assumption:
     // see the DSP_PARAMETERS.md section "Estado de implementación DSP".
-    constexpr int EXPECTED_IMPLEMENTED_COUNT = 65;
+    // FASE 10: 65 historicos + oscExciteBow + morphZ = 67.
+    constexpr int EXPECTED_IMPLEMENTED_COUNT = 67;
     constexpr int EXPECTED_UI_ONLY_COUNT = 4;
     constexpr int EXPECTED_NOT_ROUTED_COUNT = 1;
 
@@ -357,8 +359,10 @@ int main()
     // mod slot means. Pinning the labels makes a reorder a deliberate, visible act.
     const auto& destinations = getModDestinationTable();
 
-    check (destinations.size() == 28,
-           "the destination table still has 28 entries ("
+    // FASE 10: "Morph Z" se anade al FINAL (indice 28): los choice de la
+    // matriz guardan indice de preset, insertar en medio los re-mapearia.
+    check (destinations.size() == 29,
+           "the destination table still has 29 entries ("
                + juce::String (destinations.size()) + ")");
 
     const char* expectedLabels[] =
@@ -369,10 +373,11 @@ int main()
         "Flt Attack", "Flt Decay", "Flt Sustain", "Flt Release",
         "Saturation", "Delay Time", "Delay FB",
         "Odd/Even Bal", "Spectral Shift", "Harm Roll-off",
-        "Excite Noise", "Excite Color", "Impulse Mix", "Res Bank Res", "Unison Detune"
+        "Excite Noise", "Excite Color", "Impulse Mix", "Res Bank Res", "Unison Detune",
+        "Morph Z"
     };
 
-    if (destinations.size() == 28)
+    if (destinations.size() == 29)
     {
         bool labelsStable = true;
 
@@ -478,7 +483,8 @@ int main()
                "Neuronik-only destinations: " + neuronikOnly.trim());
         check (neurotikOnly.trim() == "23 24 25 26",
                "Neurotik-only destinations: " + neurotikOnly.trim());
-        check (both == 12, "engine independent destinations: " + juce::String (both));
+        // FASE 10: Morph Z (28) es del motor neutro => 12 + 1 = 13.
+        check (both == 13, "engine independent destinations: " + juce::String (both));
     }
 
     // Lists that do not depend on the engine must stay ungated: gating them would
