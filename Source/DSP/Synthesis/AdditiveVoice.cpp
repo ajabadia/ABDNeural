@@ -38,6 +38,7 @@ void AdditiveVoice::prepare(double sampleRate, int samplesPerBlock)
     resSmoother.reset(sampleRate, 0.02);
     morphXSmoother.reset(sampleRate, 0.02);
     morphYSmoother.reset(sampleRate, 0.02);
+    morphZSmoother.reset(sampleRate, 0.02);
     inharmonicitySmoother.reset(sampleRate, 0.02);
     roughnessSmoother.reset(sampleRate, 0.02);
     paritySmoother.reset(sampleRate, 0.02);
@@ -51,6 +52,7 @@ void AdditiveVoice::prepare(double sampleRate, int samplesPerBlock)
     resSmoother.setCurrentAndTargetValue(pendingParams.filterRes);
     morphXSmoother.setCurrentAndTargetValue(pendingParams.morphX);
     morphYSmoother.setCurrentAndTargetValue(pendingParams.morphY);
+    morphZSmoother.setCurrentAndTargetValue(pendingParams.morphZ);
     inharmonicitySmoother.setCurrentAndTargetValue(pendingParams.inharmonicity);
     roughnessSmoother.setCurrentAndTargetValue(pendingParams.roughness);
     paritySmoother.setCurrentAndTargetValue(pendingParams.resonatorParity);
@@ -84,6 +86,7 @@ void AdditiveVoice::noteOn(int midiNoteNumber, float velocity)
     resSmoother.setCurrentAndTargetValue(pendingParams.filterRes);
     morphXSmoother.setCurrentAndTargetValue(pendingParams.morphX);
     morphYSmoother.setCurrentAndTargetValue(pendingParams.morphY);
+    morphZSmoother.setCurrentAndTargetValue(pendingParams.morphZ);
     inharmonicitySmoother.setCurrentAndTargetValue(pendingParams.inharmonicity);
     roughnessSmoother.setCurrentAndTargetValue(pendingParams.roughness);
     paritySmoother.setCurrentAndTargetValue(pendingParams.resonatorParity);
@@ -130,6 +133,7 @@ void AdditiveVoice::updateParameters()
     resSmoother.setTargetValue(currentParams.filterRes);
     morphXSmoother.setTargetValue(currentParams.morphX);
     morphYSmoother.setTargetValue(currentParams.morphY);
+    morphZSmoother.setTargetValue(currentParams.morphZ);
     inharmonicitySmoother.setTargetValue(currentParams.inharmonicity);
     roughnessSmoother.setTargetValue(currentParams.roughness);
     paritySmoother.setTargetValue(currentParams.resonatorParity);
@@ -150,6 +154,7 @@ bool AdditiveVoice::renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int s
     // Update DSP modules once per block
     float startMorphX = dsp::jlimit(0.0f, 1.0f, morphXSmoother.getNextValue() + modMorphX);
     float startMorphY = dsp::jlimit(0.0f, 1.0f, morphYSmoother.getNextValue() + modMorphY);
+    float startMorphZ = dsp::jlimit(0.0f, 1.0f, morphZSmoother.getNextValue() + modMorphZ);
     float startInharmonicity = dsp::jlimit(0.0f, 1.0f, inharmonicitySmoother.getNextValue() + modInharmonicity);
     float startRoughness = dsp::jlimit(0.0f, 1.0f, roughnessSmoother.getNextValue() + modRoughness);
     float startParity = dsp::jlimit(0.0f, 1.0f, paritySmoother.getNextValue() + modParity);
@@ -164,6 +169,7 @@ bool AdditiveVoice::renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int s
     resonator.setShift(startShift);
     resonator.setRollOff(startRollOff);
     resonator.setUnison(startDetune, startSpread);
+    resonator.setMorphZ(startMorphZ);
     resonator.updateHarmonicsFromModels(startMorphX, startMorphY);
     resonator.prepareEntropy(numSamples);
 
@@ -185,6 +191,7 @@ bool AdditiveVoice::renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int s
         // avanzar thisBlockSamples-1, no thisBlockSamples.
         morphXSmoother.skip(thisBlockSamples - 1);
         morphYSmoother.skip(thisBlockSamples - 1);
+        morphZSmoother.skip(thisBlockSamples - 1);
         inharmonicitySmoother.skip(thisBlockSamples - 1);
         roughnessSmoother.skip(thisBlockSamples - 1);
         paritySmoother.skip(thisBlockSamples - 1);
@@ -268,6 +275,7 @@ void AdditiveVoice::reset()
     resSmoother.setCurrentAndTargetValue(pendingParams.filterRes);
     morphXSmoother.setCurrentAndTargetValue(pendingParams.morphX);
     morphYSmoother.setCurrentAndTargetValue(pendingParams.morphY);
+    morphZSmoother.setCurrentAndTargetValue(pendingParams.morphZ);
     inharmonicitySmoother.setCurrentAndTargetValue(pendingParams.inharmonicity);
     roughnessSmoother.setCurrentAndTargetValue(pendingParams.roughness);
     paritySmoother.setCurrentAndTargetValue(pendingParams.resonatorParity);

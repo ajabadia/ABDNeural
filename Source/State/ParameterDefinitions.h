@@ -34,10 +34,12 @@ namespace IDs {
     // existed as a promise. Old presets that still contain it load normally, and the
     // child is dropped the next time they are saved (see PresetManager migration).
     static constexpr const char* morphX           = "morphX";
+    static constexpr const char* morphZ           = "morphZ";
     static constexpr const char* morphY           = "morphY";
     static constexpr const char* oscExciteNoise   = "oscExciteNoise";
     static constexpr const char* excitationColor  = "excitationColor";
     static constexpr const char* impulseMix       = "impulseMix";
+    static constexpr const char* oscExciteBow     = "oscExciteBow";
     static constexpr const char* resonatorRes     = "resonatorRes";
     static constexpr const char* unisonDetune     = "unisonDetune";
     static constexpr const char* unisonSpread     = "unisonSpread";
@@ -175,6 +177,9 @@ inline const std::vector<ModDestination>& getModDestinationTable()
         { "Impulse Mix",    IDs::impulseMix },
         { "Res Bank Res",   IDs::resonatorRes },
         { "Unison Detune",  IDs::unisonDetune },
+        // APPEND siempre: los choice de la matriz guardan INDICE de preset
+        // (insertar en medio re-mapearia presets guardados).
+        { "Morph Z",        IDs::morphZ },
     };
 
     return table;
@@ -221,9 +226,16 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::oscRoughness, "Roughness", juce::NormalisableRange<float>(0.0f, 0.5f), 0.0f)); // Range reduced
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::morphX, "Morph X", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::morphY, "Morph Y", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
+    // Morph Z (FASE 10): eje temporal sobre los frames del modelo. Default 0.0
+    // = frame canonico => bit-compatible con todo el legado (paridad A-E).
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::morphZ, "Morph Z", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::oscExciteNoise, "Excite Noise", juce::NormalisableRange<float>(0.0f, 1.0f), 0.1f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::excitationColor, "Excite Color", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::impulseMix, "Impulse Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 0.8f));
+    // Bow (arco continuo): default 0.0 = comportamiento bit-compatible con
+    // lo existente (impulso+ruido); con >0 el sostenido canta con ganancia
+    // plena (modo arco), arreglando el gain staging de las notas largas.
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::oscExciteBow, "Bow Excite", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::resonatorRes, "Res Bank Resonance", juce::NormalisableRange<float>(0.5f, 1.0f, 0.0f, 0.4f), 0.99f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::unisonDetune, "Spectral Detune", juce::NormalisableRange<float>(0.0f, 0.1f, 0.0f, 0.5f), 0.01f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::unisonSpread, "Spectral Spread", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));

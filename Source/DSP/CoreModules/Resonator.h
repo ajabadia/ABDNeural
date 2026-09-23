@@ -36,8 +36,20 @@ public:
 
     void loadModel(const SpectralModel& model, int slot) noexcept;
 
+    /**
+     * FASE 10: eje temporal. z en 0..1 mapea [frame0..frameN-1] de CADA slot
+     * (modelos estaticos no aportan: su z no tiene efecto). El refresco del
+     * cache es O(128) por slot y SOLO cuando z cambia (latch), llamado desde
+     * updateHarmonicsFromModels.
+     */
+    void setMorphZ (float z) noexcept
+    {
+        morphZ = juce::jlimit (0.0f, 1.0f, z);
+    }
+
     // --- Real-time safe processing ---
     void updateHarmonicsFromModels(float morphX, float morphY) noexcept;
+    const SpectralModel& frameForSlot (int slot) noexcept;
     void setStretching(float amount) noexcept;
     void setEntropy(float amount) noexcept;
     void setParity(float amount) noexcept;
@@ -78,6 +90,14 @@ private:
     
     // Four models for 2D morphing (A, B, C, D)
     std::array<SpectralModel, 4> models;
+
+    // FASE 10: cache de frames muestreados (lo que realmente morfean los
+    // bucles). frameCacheValid=false obliga a refrescar (loadModel/z nuevo).
+    std::array<SpectralModel, 4> frameCache;
+    float morphZ = 0.0f;
+    float lastMorphZ = -1.0f;
+    float lastConsumedZ = -1.0f;
+    bool  frameCacheValid = false;
 
     float baseFrequency = 440.0f;
     double sampleRate = 48000.0;

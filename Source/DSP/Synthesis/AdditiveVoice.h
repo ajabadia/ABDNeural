@@ -39,6 +39,7 @@ public:
         float resonatorShift = 1.0f;
         float morphX = 0.5f;
         float morphY = 0.5f;
+        float morphZ = 0.0f; // FASE 10: frame canonico por defecto
         float inharmonicity = 0.0f;
         float roughness = 0.0f;
         float unisonDetune = 0.01f;
@@ -93,6 +94,7 @@ private:
     dsp::LinearSmoothedValue<float> resSmoother;
     dsp::LinearSmoothedValue<float> morphXSmoother;
     dsp::LinearSmoothedValue<float> morphYSmoother;
+    dsp::LinearSmoothedValue<float> morphZSmoother;
     dsp::LinearSmoothedValue<float> inharmonicitySmoother;
     dsp::LinearSmoothedValue<float> roughnessSmoother;
     dsp::LinearSmoothedValue<float> paritySmoother;

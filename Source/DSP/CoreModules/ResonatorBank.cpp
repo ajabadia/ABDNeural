@@ -9,6 +9,7 @@
 
 #include "DspCore.h"
 #include "ResonatorBank.h"
+#include "../FrameSampler.h"
 #include "../DspSafety.h"
 #include "../Utils/SIMDWrapper.h"
 #include <cmath>
@@ -104,6 +105,18 @@ void ResonatorBank::updateFilterCoefficients(int i, float partialFreq, float q, 
     }
 }
 
+const NEURONiK::Common::SpectralModel& ResonatorBank::frameForSlot (int slot) noexcept
+{
+    if (!frameCacheValid || morphZ != lastMorphZ)
+    {
+        for (int s = 0; s < 4; ++s)
+            NEURONiK::Common::sampleFrame (models[(size_t) s], morphZ, frameCache[(size_t) s]);
+        lastMorphZ = morphZ;
+        frameCacheValid = true;
+    }
+    return frameCache[(size_t) slot];
+}
+
 void ResonatorBank::updateParameters(float morphX, float morphY, float resonance, float detune) noexcept
 {
     float mx = dsp::jlimit(0.0f, 1.0f, morphX);
@@ -111,7 +124,7 @@ void ResonatorBank::updateParameters(float morphX, float morphY, float resonance
     float res = dsp::jlimit(0.0f, 1.0f, resonance);
     float det = dsp::jlimit(-1.0f, 1.0f, detune);
 
-    bool anythingChanged = modelChanged || 
+    bool anythingChanged = modelChanged || (morphZ != lastConsumedZ) ||
                           (mx != lastMorphX) || (my != lastMorphY) ||
                           (res != lastRes) || (det != lastDetune) ||
                           (baseFrequency != lastBaseFreq);
@@ -119,6 +132,7 @@ void ResonatorBank::updateParameters(float morphX, float morphY, float resonance
     if (!anythingChanged) return;
 
     lastMorphX = mx; lastMorphY = my; lastRes = res; lastDetune = det;
+    lastConsumedZ = morphZ;
     lastBaseFreq = baseFrequency;
     modelChanged = false;
 
@@ -128,12 +142,17 @@ void ResonatorBank::updateParameters(float morphX, float morphY, float resonance
     for (int i = 0; i < 64; ++i)
     {
         float harmonicNumber = static_cast<float>(i + 1);
-        float ampTop = lerp(models[0].amplitudes[i], models[1].amplitudes[i], mx);
-        float ampBottom = lerp(models[2].amplitudes[i], models[3].amplitudes[i], mx);
+        const auto& mA = frameForSlot (0);
+        const auto& mB = frameForSlot (1);
+        const auto& mC = frameForSlot (2);
+        const auto& mD = frameForSlot (3);
+
+        float ampTop = lerp(mA.amplitudes[i], mB.amplitudes[i], mx);
+        float ampBottom = lerp(mC.amplitudes[i], mD.amplitudes[i], mx);
         tempAmps[i] = lerp(ampTop, ampBottom, my);
 
-        float freqOffsetTop = lerp(models[0].frequencyOffsets[i], models[1].frequencyOffsets[i], mx);
-        float freqOffsetBottom = lerp(models[2].frequencyOffsets[i], models[3].frequencyOffsets[i], mx);
+        float freqOffsetTop = lerp(mA.frequencyOffsets[i], mB.frequencyOffsets[i], mx);
+        float freqOffsetBottom = lerp(mC.frequencyOffsets[i], mD.frequencyOffsets[i], mx);
         float freqOffset = lerp(freqOffsetTop, freqOffsetBottom, my);
         float partialFreq = (baseFrequency * harmonicNumber) + freqOffset;
 

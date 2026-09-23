@@ -50,6 +50,7 @@ NEURONiKProcessor::NEURONiKProcessor()
     #define LOAD_PARAM(id) parameterChanged(IDs::id, apvts.getRawParameterValue(IDs::id)->load())
     LOAD_PARAM(morphX);
     LOAD_PARAM(morphY);
+    LOAD_PARAM(morphZ);
     LOAD_PARAM(oscLevel);
     LOAD_PARAM(envAttack);
     LOAD_PARAM(envDecay);
@@ -281,6 +282,7 @@ void NEURONiKProcessor::synchronizeEngineParameters()
         vParams.fRelease = apvts.getRawParameterValue(IDs::filterRelease)->load() * 1000.0f;
         vParams.morphX = apvts.getRawParameterValue(IDs::morphX)->load();
         vParams.morphY = apvts.getRawParameterValue(IDs::morphY)->load();
+        vParams.morphZ = apvts.getRawParameterValue(IDs::morphZ)->load();
         vParams.inharmonicity = apvts.getRawParameterValue(IDs::oscInharmonicity)->load();
         vParams.roughness = apvts.getRawParameterValue(IDs::oscRoughness)->load();
         vParams.resonatorParity = apvts.getRawParameterValue(IDs::resonatorParity)->load();
@@ -306,9 +308,11 @@ void NEURONiKProcessor::synchronizeEngineParameters()
         ntParams.release = apvts.getRawParameterValue(IDs::envRelease)->load() * 1000.0f;
         ntParams.morphX = apvts.getRawParameterValue(IDs::morphX)->load();
         ntParams.morphY = apvts.getRawParameterValue(IDs::morphY)->load();
+        ntParams.morphZ = apvts.getRawParameterValue(IDs::morphZ)->load();
         ntParams.excitationNoise = apvts.getRawParameterValue(IDs::oscExciteNoise)->load();
         ntParams.excitationColor = apvts.getRawParameterValue(IDs::excitationColor)->load();
         ntParams.impulseMix = apvts.getRawParameterValue(IDs::impulseMix)->load();
+        ntParams.bowExcite = apvts.getRawParameterValue(IDs::oscExciteBow)->load();
         ntParams.resonatorResonance = apvts.getRawParameterValue(IDs::resonatorRes)->load();
         ntParams.unisonDetune = apvts.getRawParameterValue(IDs::unisonDetune)->load();
         ntParams.unisonSpread = apvts.getRawParameterValue(IDs::unisonSpread)->load();

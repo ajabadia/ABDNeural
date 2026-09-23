@@ -136,6 +136,7 @@ void NeurotikEngine::applyModulation()
             case 25: for (auto& v : voices) v->modImpulseMix += rawMod; break;
             case 26: for (auto& v : voices) v->modResonance += rawMod; break;
             case 27: for (auto& v : voices) v->modUnison += rawMod; break;
+            case 28: for (auto& v : voices) v->modMorphZ += rawMod; break;
             default: break;
         }
     }

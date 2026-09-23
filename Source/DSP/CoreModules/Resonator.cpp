@@ -10,6 +10,7 @@
 
 #include "../DspCore.h"
 #include "Resonator.h"
+#include "../FrameSampler.h"
 #include "../DspSafety.h"
 #include "../Utils/SIMDWrapper.h"
 #include <cmath>
@@ -138,13 +139,27 @@ void Resonator::setUnison(float detune, float spread) noexcept
     unisonSpread = dsp::jlimit(0.0f, 1.0f, spread);
 }
 
+const SpectralModel& Resonator::frameForSlot (int slot) noexcept
+{
+    // Refresco bajo demanda: O(128) por slot SOLO si el cache esta invalidado
+    // (loadModel) o z cambio desde el ultimo morfeo.
+    if (!frameCacheValid || morphZ != lastMorphZ)
+    {
+        for (int s = 0; s < 4; ++s)
+            sampleFrame (models[(size_t) s], morphZ, frameCache[(size_t) s]);
+        lastMorphZ = morphZ;
+        frameCacheValid = true;
+    }
+    return frameCache[(size_t) slot];
+}
+
 void Resonator::updateHarmonicsFromModels(float morphX, float morphY) noexcept
 {
     morphX = dsp::jlimit(0.0f, 1.0f, morphX);
     morphY = dsp::jlimit(0.0f, 1.0f, morphY);
 
     // Optimization: check if anything meaningful changed
-    bool anythingChanged = modelChanged || 
+    bool anythingChanged = modelChanged || (morphZ != lastConsumedZ) ||
                           (morphX != lastMorphX) || (morphY != lastMorphY) ||
                           (baseFrequency != lastBaseFreq) || (stretchingAmount != lastStrecth) ||
                           (parityAmount != lastParity) || (shiftAmount != lastShift) ||
@@ -154,6 +169,7 @@ void Resonator::updateHarmonicsFromModels(float morphX, float morphY) noexcept
 
     // Update latches
     lastMorphX = morphX; lastMorphY = morphY;
+    lastConsumedZ = morphZ;
     lastBaseFreq = baseFrequency; lastStrecth = stretchingAmount;
     lastParity = parityAmount; lastShift = shiftAmount;
     lastRollOff = rollOffAmount; lastUnisonDetune = unisonDetune;
@@ -161,10 +177,10 @@ void Resonator::updateHarmonicsFromModels(float morphX, float morphY) noexcept
 
     float totalAmplitude = 0.0f;
 
-    const SpectralModel* mA = &models[0];
-    const SpectralModel* mB = &models[1];
-    const SpectralModel* mC = &models[2];
-    const SpectralModel* mD = &models[3];
+    const SpectralModel* mA = &frameForSlot (0);
+    const SpectralModel* mB = &frameForSlot (1);
+    const SpectralModel* mC = &frameForSlot (2);
+    const SpectralModel* mD = &frameForSlot (3);
 
     bool bActive = std::accumulate(models[1].amplitudes.begin(), models[1].amplitudes.end(), 0.0f) > 0.001f;
     bool cActive = std::accumulate(models[2].amplitudes.begin(), models[2].amplitudes.end(), 0.0f) > 0.001f;

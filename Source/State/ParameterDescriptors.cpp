@@ -300,6 +300,7 @@ ParameterEngine engineCoverageFor (const juce::String& id)
     if (id == IDs::oscExciteNoise
         || id == IDs::excitationColor
         || id == IDs::impulseMix
+        || id == IDs::oscExciteBow
         || id == IDs::resonatorRes)
         return ParameterEngine::neurotik;
 

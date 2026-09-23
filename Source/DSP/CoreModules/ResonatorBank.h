@@ -48,8 +48,12 @@ public:
     void setBaseFrequency(float hz) noexcept;
     void loadModel(const NEURONiK::Common::SpectralModel& model, int slot) noexcept;
 
+    /** FASE 10: eje temporal (mismo contrato que Resonator::setMorphZ). */
+    void setMorphZ (float z) noexcept { morphZ = juce::jlimit (0.0f, 1.0f, z); }
+
     // --- Real-time safe processing ---
     void updateParameters(float morphX, float morphY, float resonance, float detune) noexcept;
+    const NEURONiK::Common::SpectralModel& frameForSlot (int slot) noexcept;
     
     float processSample(float excitation) noexcept;
     void reset() noexcept;
@@ -62,6 +66,13 @@ private:
     std::array<ResonatorBiquad, 128> resonators;
     std::array<float, 64> partialAmplitudes;
     std::array<NEURONiK::Common::SpectralModel, 4> models;
+
+    // FASE 10: cache de frames muestreados (mismo esquema que Resonator).
+    std::array<NEURONiK::Common::SpectralModel, 4> frameCache;
+    float morphZ = 0.0f;
+    float lastMorphZ = -1.0f;
+    float lastConsumedZ = -1.0f;
+    bool  frameCacheValid = false;
 
     float baseFrequency = 440.0f;
     double sampleRate = 48000.0;

@@ -33,9 +33,12 @@ public:
         float attack = 10.0f, decay = 100.0f, sustain = 0.7f, release = 500.0f;
         float resonatorResonance = 0.99f;
         float morphX = 0.5f, morphY = 0.5f;
+        float morphZ = 0.0f; // FASE 10: frame canonico por defecto
         float excitationNoise = 1.0f;
         float excitationColor = 0.5f; // 0.0 (Brown) to 1.0 (Violet?)
         float impulseMix = 0.0f;     // Mix between noise and impulse
+        float bowExcite = 0.0f;      // Bow (arco continuo): excitation sostenida
+                                     // con ganancia plena. 0 = legacy (impulso+ruido)
         float unisonDetune = 0.01f;
         float unisonSpread = 0.5f;
     };
@@ -83,6 +86,9 @@ private:
     // Excitation state
     float lastNoiseSample = 0.0f;
     float impulseTrigger = 0.0f;
+    // Bow (arco continuo): oscilador de banda de friccion
+    float bowPhase = 0.0f;
+    double voiceSampleRate = 44100.0;
 
     // MPE State
     float mpePitchBend = 0.0f;
@@ -92,6 +98,7 @@ private:
     // Smoothers
     dsp::LinearSmoothedValue<float> morphXSmoother;
     dsp::LinearSmoothedValue<float> morphYSmoother;
+    dsp::LinearSmoothedValue<float> morphZSmoother;
     dsp::LinearSmoothedValue<float> resonanceSmoother;
     dsp::LinearSmoothedValue<float> unisonDetuneSmoother;
 

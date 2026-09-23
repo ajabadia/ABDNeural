@@ -15,6 +15,7 @@
 #include "../DspSafety.h"
 #include <algorithm>
 #include <array>
+#include <cmath>
 
 namespace NEURONiK::DSP::Synthesis {
 
@@ -24,15 +25,18 @@ NeurotikVoice::NeurotikVoice (int voiceIndex)
     // voz para que el ruido de excitacion no se correlacione entre voces.
     random.setSeed ((dsp::uint64) (0x9E3779B9u + 7919u * (dsp::uint32) voiceIndex));
     lastNoiseSample = 0.0f;
+    bowPhase = 0.0f;
 }
 
 void NeurotikVoice::prepare(double sampleRate, int /*samplesPerBlock*/)
 {
     resonatorBank.setSampleRate(sampleRate);
     ampEnvelope.setSampleRate(sampleRate);
+    voiceSampleRate = sampleRate;
 
     morphXSmoother.reset(sampleRate, 0.02);
     morphYSmoother.reset(sampleRate, 0.02);
+    morphZSmoother.reset(sampleRate, 0.02);
     resonanceSmoother.reset(sampleRate, 0.02);
     unisonDetuneSmoother.reset(sampleRate, 0.02);
 }
@@ -46,6 +50,7 @@ void NeurotikVoice::noteOn(int midiNoteNumber, float velocity)
     resonatorBank.setBaseFrequency(baseFreq);
     resonatorBank.reset(); // Crucial: Clear ANY history/denormals from previous note
     impulseTrigger = 1.0f;
+    bowPhase = 0.0f; // el arco arranca de fase cero con cada nota (reproducible)
 
     // Refresh parameters immediately for the new note
     updateParameters(); 
@@ -53,6 +58,7 @@ void NeurotikVoice::noteOn(int midiNoteNumber, float velocity)
     // Snap smoothers to target (using the just-updated currentParams)
     morphXSmoother.setCurrentAndTargetValue(currentParams.morphX);
     morphYSmoother.setCurrentAndTargetValue(currentParams.morphY);
+    morphZSmoother.setCurrentAndTargetValue(currentParams.morphZ);
     resonanceSmoother.setCurrentAndTargetValue(currentParams.resonatorResonance);
     unisonDetuneSmoother.setCurrentAndTargetValue(currentParams.unisonDetune);
 
@@ -83,12 +89,14 @@ bool NeurotikVoice::renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int s
         // Get START values
         float mX = morphXSmoother.getNextValue();
         float mY = morphYSmoother.getNextValue();
+        float mZ = morphZSmoother.getNextValue();
         float res = resonanceSmoother.getNextValue();
         float detune = unisonDetuneSmoother.getNextValue();
 
         // Apply Modulations from IVoice
         mX = dsp::jlimit(0.0f, 1.0f, mX + modMorphX);
         mY = dsp::jlimit(0.0f, 1.0f, mY + modMorphY);
+        mZ = dsp::jlimit(0.0f, 1.0f, mZ + modMorphZ);
         res = dsp::jlimit(0.0f, 1.0f, res + modResonance);
         detune = dsp::jlimit(0.0f, 0.1f, detune + modUnison);
 
@@ -97,9 +105,11 @@ bool NeurotikVoice::renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int s
         // manual de getNextValue() que habia (misma semantica, sin CPU extra).
         morphXSmoother.skip(thisBlockSamples - 1);
         morphYSmoother.skip(thisBlockSamples - 1);
+        morphZSmoother.skip(thisBlockSamples - 1);
         resonanceSmoother.skip(thisBlockSamples - 1);
         unisonDetuneSmoother.skip(thisBlockSamples - 1);
 
+        resonatorBank.setMorphZ(mZ);
         resonatorBank.updateParameters(mX, mY, res, detune);
 
         // 2. Render Audio Logic (Inner Loop)
@@ -107,6 +117,24 @@ bool NeurotikVoice::renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int s
         
         for (int i = 0; i < thisBlockSamples; ++i)
         {
+             // Bow (arco continuo): banda de friccion a la altura de la
+             // fundamental. La tonalidad la pone el banco resonante; esto
+             // solo alimenta. Ganancia plena por si mismo: el sostenido
+             // deja de ser ruido resonado a -49 dBFS.
+             float bowExcite = dsp::jlimit(0.0f, 1.0f, currentParams.bowExcite);
+             float bowWave = 0.0f;
+             if (bowExcite > 0.0001f)
+             {
+                 bowPhase += (float) dsp::jlimit(0.0, 0.5, baseFreq / voiceSampleRate);
+                 if (bowPhase >= 1.0f) bowPhase -= 1.0f;
+                 const float x = bowPhase * 2.0f - 1.0f;
+                 bowWave = 4.0f * x * (1.0f - std::abs(x)); // parabolic sine
+
+                 // El arco sustituye al impulso en su proporcion (crossfade):
+                 // a bowExcite=1 el impulso percusivo desaparece del excitador.
+                 impulseTrigger = impulseTrigger * (1.0f - bowExcite);
+             }
+
              // Noise Generation
              float rawNoise = (random.nextFloat() * 2.0f - 1.0f);
              float alpha = dsp::jlimit(0.01f, 0.99f, currentParams.excitationColor + modExciteColor);
@@ -122,6 +150,11 @@ bool NeurotikVoice::renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int s
              // Mix Impulse and Noise
              float excitation = (coloredNoise * (1.0f - iMix)) + (impulseTrigger * iMix);
              excitation *= exciteAmt;
+
+             // El arco entra por su propio camino (fuera del legacy): suma
+             // con ganancia plena, sin pasar por exciteAmt (el nivel del
+             // ruido, 0.1 por defecto). Bit-compat con bowExcite = 0.
+             excitation += bowWave;
              
              // Clear impulse after use
              impulseTrigger = 0.0f;
@@ -189,6 +222,7 @@ void NeurotikVoice::updateParameters()
 
     morphXSmoother.setTargetValue(currentParams.morphX);
     morphYSmoother.setTargetValue(currentParams.morphY);
+    morphZSmoother.setTargetValue(currentParams.morphZ);
     resonanceSmoother.setTargetValue(currentParams.resonatorResonance);
     unisonDetuneSmoother.setTargetValue(currentParams.unisonDetune);
 }

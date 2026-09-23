@@ -66,6 +66,7 @@ public:
     float modFilterRes = 0.0f; // Filter or Resonator
     float modMorphX = 0.0f;
     float modMorphY = 0.0f;
+    float modMorphZ = 0.0f; // FASE 10: eje temporal (frames del modelo)
     float modInharmonicity = 0.0f;
     float modRoughness = 0.0f;
     float modParity = 0.0f;
