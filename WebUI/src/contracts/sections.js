@@ -118,8 +118,8 @@ export const SECTION_VISUALS = {
     parameterIds: ['envAttack', 'envDecay', 'envSustain', 'envRelease'],
   },
   // El pad SOLO: es lo que vive en la ficha del lienzo (el cuerpo de la ficha
-  // lo cierra su minBodyHeight). Edita morphX/morphY, que la ficha OSCILADOR
-  // ya pinta como knobs (misma declaracion de fuente).
+  // lo cierra su minBodyHeight). Edita morphX/morphY: UN control UN nodo — la
+  // capa del pad es la unica declaracion visual (camino B, FASE 10).
   'model-xy': {
     id: 'model-xy',
     parameterIds: ['morphX', 'morphY'],
@@ -169,6 +169,11 @@ export const SECTION_ACTIONS = {
  */
 export const SECTIONS = [
   {
+    // CAMINO B (FASE 10): morphX/morphY dejan las celdas — el pad `model-xy`
+    // de MODELOS ya los edita en el lienzo y `model-slots` los pinta en el
+    // cajon (misma declaracion de fuente, un control un nodo). Su hueco lo
+    // ocupan los tres shaping del motor ADITIVO (rolloff/parity/shift), que
+    // estaban de visita en RESONADOR: aqui es donde pertenecen.
     id: 'oscillator',
     title: 'OSCILADOR',
     subtitle: 'Motor espectral · excitación · unísono',
@@ -179,11 +184,11 @@ export const SECTIONS = [
       'oscLevel',
       'oscInharmonicity',
       'oscRoughness',
-      'morphX',
-      'morphY',
+      'resonatorRolloff',
+      'resonatorParity',
+      'resonatorShift',
       'oscExciteNoise',
       'excitationColor',
-      'impulseMix',
       'unisonEnabled',
       'unisonDetune',
       'unisonSpread',
@@ -195,7 +200,8 @@ export const SECTIONS = [
     subtitle: 'Banco de resonadores',
     span: 2,
     columns: 2,
-    ids: ['resonatorRes', 'resonatorRolloff', 'resonatorParity', 'resonatorShift'],
+    // El banco modal y su excitacion: resonancia, impulso y arco (FASE 10).
+    ids: ['resonatorRes', 'impulseMix', 'oscExciteBow'],
   },
   {
     id: 'filter',
@@ -253,7 +259,11 @@ export const SECTIONS = [
       // toca (ver buildCard).
       visual: 'model-slots',
     },
-    ids: [],
+    // MORPH-Z (FASE 10): tercer eje temporal de los frames. Ficha con cajon =>
+    // su celda vive SOLO en el cajon (bajo la vista de ranuras), el lienzo se
+    // queda con el pad. El anillo del pad puede modularlo desde la matriz
+    // (destino 28), que es el gesto Neuron por excelencia.
+    ids: ['morphZ'],
   },
   {
     id: 'fx',

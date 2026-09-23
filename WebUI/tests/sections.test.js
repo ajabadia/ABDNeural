@@ -43,7 +43,10 @@ function cssPixels(name) {
 }
 
 describe('sections / cobertura del contrato', () => {
-  it('cubre los 70 parámetros del contrato, sin repetir ninguno', () => {
+  it('cubre el contrato: 70 celdas propias, sin repetir ninguna', () => {
+    // FASE 10 (camino B): 72 del APVTS = 70 con celda en el reparto (morphZ
+    // entra al cajon de MODELOS) + 2 que el pad `model-xy` edita con un gesto
+    // coordinado (morphX/morphY dejaron de ser celdas).
     expect(SECTION_PARAMETER_IDS).toHaveLength(70);
     expect(new Set(SECTION_PARAMETER_IDS).size).toBe(70);
   });
@@ -56,9 +59,15 @@ describe('sections / cobertura del contrato', () => {
 
   it('cubre TODOS los ids del contrato (ninguno se queda sin control)', () => {
     // La lista de referencia es la del propio contrato, no una copia a mano.
+    // Un control tambien puede ser una VISTA: el pad de MODELOS edita
+    // morphX/morphY (camino B), asi que cuentan como cubiertos.
+    const covered = new Set([
+      ...SECTION_PARAMETER_IDS,
+      ...Object.values(SECTION_VISUALS).flatMap((visual) => visual.parameterIds),
+    ]);
     const missing = PARAMETERS
       .map((descriptor) => descriptor.id)
-      .filter((id) => !SECTION_PARAMETER_IDS.includes(id));
+      .filter((id) => !covered.has(id));
 
     expect(missing).toEqual([]);
   });
@@ -149,12 +158,14 @@ describe('sections / encaje en el lienzo', () => {
     expect(card.drawer.visual).toBe('model-slots');
     expect(drawerVisual).toBeTruthy();
 
-    // La ficha no tiene celdas; el pad alimenta los morph que ya pinta la
-    // ficha OSCILADOR (mismo contrato, ninguna celda nueva)...
-    expect(card.ids).toEqual([]);
+    // MORPH-Z vive aqui (FASE 10): ficha con cajon => su celda SOLO en el
+    // cajon, bajo la vista de ranuras; el lienzo se queda con el pad.
+    expect(card.ids).toEqual(['morphZ']);
     expect(padVisual.parameterIds).toEqual(['morphX', 'morphY']);
+    // morphX/morphY (camino B) ya no son celdas: existen en el contrato y el
+    // pad es su control.
     for (const id of drawerVisual.parameterIds)
-      expect(SECTION_PARAMETER_IDS).toContain(id);
+      expect(getDescriptor(id)).not.toBeNull();
     // ...y su cuerpo (150) es el que cierra su banda.
     expect(padVisual.minBodyHeight).toBeGreaterThan(0);
     expect(rowsOf(card)).toBe(0);
@@ -162,7 +173,8 @@ describe('sections / encaje en el lienzo', () => {
     // Una columna: la vista llena el cuerpo de la ficha, no reparte celdas.
     expect(card.columns).toBe(1);
 
-    // Y las 70 celdas siguen siendo 70: una ranura no es una mas.
+    // 70 celdas propias (morphZ incluido; morphX/morphY viven en el pad):
+    // una ranura no es una mas.
     expect(SECTION_PARAMETER_IDS).toHaveLength(70);
     expect(SECTION_PARAMETER_IDS).not.toContain('models');
     expect(SECTION_PARAMETER_IDS).not.toContain('model-slots');
@@ -232,7 +244,7 @@ describe('sections / encaje en el lienzo', () => {
     // de que anadir la curva no mueva ni una fila del lienzo.
     expect(card.ids.length + 1).toBeLessThanOrEqual(card.columns * rowsOf(card));
 
-    // No es una celda de parametro: el lienzo sigue teniendo 70
+    // No es una celda de parametro: el reparto sigue teniendo 70
     expect(SECTION_PARAMETER_IDS).not.toContain('amp-envelope');
     expect(SECTION_PARAMETER_IDS).toHaveLength(70);
   });

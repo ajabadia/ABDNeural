@@ -544,8 +544,65 @@ body {
 .spectral[data-active="false"] .spectral__bar { opacity: 0.35; }
 
 .xy-pad {
+  position: relative;  /* ancla del aro morph-Z (absolute) */
   display: grid;
   place-items: center;
+}
+
+/* --- anillo morph-Z (tercer eje del pad, FASE 10) ------------------------- */
+
+/*
+ * Aro SVG centrado sobre el pad compartido: 0 en las 12, horario, 1 = vuelta
+ * completa (morphZ es ciclico temporal: LFO2 lo anima en bucle). Solo los
+ * trazos capturan el puntero — el interior sigue siendo superficie del pad.
+ * Tokens del tema (accent): el aro cambia con el modo claro/oscuro gratis.
+ */
+.xy-pad__zring {
+  position: absolute;
+  inset: -7px;
+  border-radius: 50%;
+  outline: none;
+}
+
+.xy-pad__zring svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.xy-pad__zring circle {
+  fill: none;
+}
+
+.xy-pad__zring .zring-track {
+  stroke: rgb(var(--color-accent-rgb) / 0.18);
+  stroke-width: 2.5;
+  pointer-events: none;
+}
+
+/* hit-area: SOLO el trazo (11 unidades del viewBox, ancho de dedo) */
+.xy-pad__zring .zring-hit {
+  stroke: transparent;
+  stroke-width: 11;
+  pointer-events: stroke;
+  cursor: grab;
+}
+
+.xy-pad__zring .zring-hit:active { cursor: grabbing; }
+
+.xy-pad__zring .zring-fill {
+  stroke: var(--color-accent);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  pointer-events: none;
+  transition: stroke-dasharray 60ms linear;
+}
+
+/* focus visible solo por teclado (same a11y family rule) */
+.xy-pad__zring:focus-visible {
+  box-shadow: 0 0 0 2px rgb(var(--color-accent-rgb) / 0.45);
 }
 
 /* --- cajón lateral (patrón ABDMS2000 / ABDEep / ABDCZ101) ----------------- */

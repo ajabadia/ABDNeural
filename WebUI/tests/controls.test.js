@@ -25,10 +25,13 @@ afterEach(() => {
 });
 
 describe('controls / tipo por descriptor', () => {
-  it('reparte los 70 en monos de la familia compartida', () => {
+  it('reparte el contrato en monos de la familia compartida', () => {
     const kinds = PARAMETERS.map((descriptor) => kindForControl(descriptor));
 
-    expect(kinds.filter((kind) => kind === KINDS.knob)).toHaveLength(46);
+    // 72 del contrato = 48 knobs + 5 toggles + 19 choices. Entre los knobs
+    // hay 46 celdas del reparto + masterLevel (baseline: el host lo monta como
+    // range nativo, pero SU TIPO es float/knob) + MORPH-Z (FASE 10).
+    expect(kinds.filter((kind) => kind === KINDS.knob)).toHaveLength(48);
     expect(kinds.filter((kind) => kind === KINDS.toggle)).toHaveLength(5);
     expect(kinds.filter((kind) => kind === KINDS.choice)).toHaveLength(19);
   });
@@ -176,7 +179,7 @@ describe('controls / gating por motor', () => {
     const onChange = vi.fn();
     const control = mount('mod1Destination', { onChange });
 
-    control.setNormalized(23 / 27);   // "Excite Noise", del otro motor
+    control.setNormalized(23 / 28);   // "Excite Noise", del otro motor (28 = Morph Z, anadido al final)
     control.setEngine(NEURONIK);
 
     const field = control.element.querySelector('select');
