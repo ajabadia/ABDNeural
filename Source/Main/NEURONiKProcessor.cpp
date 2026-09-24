@@ -2,6 +2,10 @@
 
 #include "../DSP/CoreModules/RhythmicDivision.h"
 #include "NEURONiKEditor.h"
+// Presets y modelos de fabrica (banco CZ101) embebidos:
+// installFactoryModels()/installFactoryPresets() los escriben a
+// Documents/NEURONiK/{Models,Presets}/ en el arranque.
+#include <NeuronikFactoryModels.h>
 #include "../State/ParameterDefinitions.h"
 #include "../DSP/CoreModules/NeuronikEngine.h"
 #include "../DSP/CoreModules/NeurotikEngine.h"
@@ -11,6 +15,127 @@
 
 using namespace NEURONiK::State;
 
+namespace
+{
+/**
+ * Modelos de fabrica (banco CZ101): el binario lleva los seis .neuronikmodel
+ * generados por la sonda del ModelMaker desde los WAV reales del banco. Los
+ * presets de fabrica referencian los ficheros por modelPath<slot>, asi que el
+ * plugin escribe el material en Documents/NEURONiK/Models/ en el arranque y
+ * UNICAMENTE si falta (nunca regraba: el usuario puede sustituirlos por sus
+ * propios modelos y el plugin los respeta).
+ */
+void installFactoryModels()
+{
+    const auto modelsDir = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
+                               .getChildFile ("NEURONiK")
+                               .getChildFile ("Models");
+    modelsDir.createDirectory();
+
+    // Regla de simbolos JUCE (patron BridgeSelftest.h): punto -> `_`,
+    // guiones fuera; el tamano viaja en la constante <simbolo>Size.
+    struct FactoryModel
+    {
+        const char* name;
+        const char* data;
+        int size;
+    };
+
+    const FactoryModel factory[] = {
+        { "CZ-BASS1.neuronikmodel",
+          NeuronikFactoryModels::CZBASS1_neuronikmodel,
+          NeuronikFactoryModels::CZBASS1_neuronikmodelSize },
+        { "CZ-HAMOG.neuronikmodel",
+          NeuronikFactoryModels::CZHAMOG_neuronikmodel,
+          NeuronikFactoryModels::CZHAMOG_neuronikmodelSize },
+        { "CZ-PAD1.neuronikmodel",
+          NeuronikFactoryModels::CZPAD1_neuronikmodel,
+          NeuronikFactoryModels::CZPAD1_neuronikmodelSize },
+        { "CZ-SWEP1.neuronikmodel",
+          NeuronikFactoryModels::CZSWEP1_neuronikmodel,
+          NeuronikFactoryModels::CZSWEP1_neuronikmodelSize },
+        { "CZ-RRISE-temporal.neuronikmodel",
+          NeuronikFactoryModels::CZRRISEtemporal_neuronikmodel,
+          NeuronikFactoryModels::CZRRISEtemporal_neuronikmodelSize },
+        { "CZ-BASS1-temporal.neuronikmodel",
+          NeuronikFactoryModels::CZBASS1temporal_neuronikmodel,
+          NeuronikFactoryModels::CZBASS1temporal_neuronikmodelSize },
+    };
+
+    for (const auto& model : factory)
+    {
+        const auto target = modelsDir.getChildFile (model.name);
+        if (target.existsAsFile())
+            continue; // del usuario o de una instalacion anterior: no se toca
+
+        juce::FileOutputStream out (target);
+        if (out.openedOk())
+        {
+            out.write (model.data, (size_t) model.size);
+            out.flush();
+        }
+    }
+}
+
+/**
+ * Presets de fabrica (banco CZ101): los seis presets generados OFFLINE por
+ * Tests/FactoryPresetGenerator.cpp viajan embebidos con el marcador
+ * {{FACTORY_MODELS}} en modelPath0 — un preset guarda rutas ABSOLUTAS y el
+ * binario es comun a todas las maquinas, asi que el marcador se sustituye por
+ * el directorio real de modelos al instalar. FLAT en Presets/ (getAllPresets
+ * no es recursivo: en una subcarpeta no aparecerian en el navegador) y solo
+ * si falta: nunca se regraba lo que el usuario ya tiene.
+ */
+void installFactoryPresets()
+{
+    const auto base = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
+                          .getChildFile ("NEURONiK");
+    const auto modelsDir = base.getChildFile ("Models");
+    const auto presetsDir = base.getChildFile ("Presets");
+    presetsDir.createDirectory();
+
+    struct FactoryPreset
+    {
+        const char* name;
+        const char* data;
+        int size;
+    };
+
+    const FactoryPreset factory[] = {
+        { "CZ-BASS1.neuronikpreset",
+          NeuronikFactoryModels::CZBASS1_neuronikpreset,
+          NeuronikFactoryModels::CZBASS1_neuronikpresetSize },
+        { "CZ-HAMOG.neuronikpreset",
+          NeuronikFactoryModels::CZHAMOG_neuronikpreset,
+          NeuronikFactoryModels::CZHAMOG_neuronikpresetSize },
+        { "CZ-PAD1.neuronikpreset",
+          NeuronikFactoryModels::CZPAD1_neuronikpreset,
+          NeuronikFactoryModels::CZPAD1_neuronikpresetSize },
+        { "CZ-SWEP1.neuronikpreset",
+          NeuronikFactoryModels::CZSWEP1_neuronikpreset,
+          NeuronikFactoryModels::CZSWEP1_neuronikpresetSize },
+        { "CZ-RRISE-temporal.neuronikpreset",
+          NeuronikFactoryModels::CZRRISEtemporal_neuronikpreset,
+          NeuronikFactoryModels::CZRRISEtemporal_neuronikpresetSize },
+        { "CZ-BASS1-temporal.neuronikpreset",
+          NeuronikFactoryModels::CZBASS1temporal_neuronikpreset,
+          NeuronikFactoryModels::CZBASS1temporal_neuronikpresetSize },
+    };
+
+    for (const auto& preset : factory)
+    {
+        const auto target = presetsDir.getChildFile (preset.name);
+        if (target.existsAsFile())
+            continue; // del usuario o de una instalacion anterior: no se toca
+
+        const auto xml = juce::String::fromUTF8 (preset.data, preset.size)
+                             .replace ("{{FACTORY_MODELS}}/", modelsDir.getFullPathName()
+                                       + juce::File::getSeparatorString());
+        target.replaceWithText (xml);
+    }
+}
+} // namespace
+
 NEURONiKProcessor::NEURONiKProcessor()
     : apvts(*this, nullptr, "Parameters", createParameterLayout()),
       midiFifo(1024),
@@ -18,6 +143,8 @@ NEURONiKProcessor::NEURONiKProcessor()
 {
     presetManager = std::make_unique<NEURONiK::Serialization::PresetManager>(apvts);
     midiMappingManager = std::make_unique<NEURONiK::Main::MidiMappingManager>(apvts);
+    installFactoryModels();
+    installFactoryPresets();
     int initialEngineType = (int)apvts.getRawParameterValue(IDs::engineType)->load();
     if (initialEngineType == 0)
         engine = std::make_unique<NEURONiK::DSP::NeuronikEngine>();

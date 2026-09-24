@@ -342,6 +342,7 @@ if(NEURONIK_WEBUI_ASSETS)
 
             target_link_libraries(${_neuronik_ui_target} PRIVATE
                 NEURONiK_WebUIAssets
+                NEURONiK_FactoryModels
                 ABDShared::WebView2Bridge
             )
 
@@ -647,6 +648,28 @@ target_link_libraries(NEURONiK_PresetRoundTripTest PRIVATE
 
 add_test(NAME NEURONiK_PresetRoundTripTest COMMAND NEURONiK_PresetRoundTripTest)
 
+# Factory presets CZ101: la herramienta OFFLINE que escribe
+# Assets/Presets/*.neuronikpreset (el APVTS real por defecto + modelPath0 con
+# el marcador {{FACTORY_MODELS}}). Es el material que despues embebe
+# NEURONiK_FactoryModels y que installFactoryPresets() instala en Documents.
+# Sin add_test: regenerar pisa ficheros versionados (es una herramienta, como
+# la sonda RealWav, no una prueba de ctest).
+add_executable(NEURONiK_FactoryPresetGenerator
+    Tests/FactoryPresetGenerator.cpp
+    Source/Serialization/PresetManager.cpp
+    Source/Serialization/PresetMigration.cpp
+)
+
+target_include_directories(NEURONiK_FactoryPresetGenerator PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/State"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Serialization"
+)
+
+target_link_libraries(NEURONiK_FactoryPresetGenerator PRIVATE
+    NEURONiK_ParameterContract
+)
+
 # State persistence: the DAW-session round trip (getStateInformation /
 # setStateInformation) needs the REAL processor, so it compiles the same source
 # set as the WebView2 bench (plugin sources minus the .rc) plus the bridge.
@@ -677,6 +700,7 @@ target_compile_definitions(NEURONiK_StatePersistenceTest PRIVATE
 )
 
 target_link_libraries(NEURONiK_StatePersistenceTest PRIVATE
+    NEURONiK_FactoryModels
     juce::juce_audio_basics
     juce::juce_audio_processors
     juce::juce_audio_utils
@@ -718,6 +742,7 @@ target_compile_definitions(NEURONiK_ModelSlotTest PRIVATE
 )
 
 target_link_libraries(NEURONiK_ModelSlotTest PRIVATE
+    NEURONiK_FactoryModels
     juce::juce_audio_basics
     juce::juce_audio_processors
     juce::juce_audio_utils
@@ -759,6 +784,7 @@ target_compile_definitions(NEURONiK_ModelMakerRoundTripTest PRIVATE
 )
 
 target_link_libraries(NEURONiK_ModelMakerRoundTripTest PRIVATE
+    NEURONiK_FactoryModels
     juce::juce_audio_basics
     juce::juce_audio_processors
     juce::juce_audio_utils
@@ -800,6 +826,7 @@ target_compile_definitions(NEURONiK_ModelMakerRealWavProbe PRIVATE
 )
 
 target_link_libraries(NEURONiK_ModelMakerRealWavProbe PRIVATE
+    NEURONiK_FactoryModels
     juce::juce_audio_basics
     juce::juce_audio_formats
     juce::juce_audio_processors
@@ -812,6 +839,58 @@ target_link_libraries(NEURONiK_ModelMakerRealWavProbe PRIVATE
     juce::juce_gui_extra
     NEURONiK_Common
 )
+
+# Factory presets CZ101 - VERIFICACION ACUSTICA (ctest): un preset de fabrica
+# suena a la FUENTE. Instalacion en Documents, carga real del preset embebido
+# en el processor, render a 48 kHz y dos cheats de cents con el harness DFT de
+# la sonda (Hann 8192, top-8, mediana <= 35): render vs modelo (contrato
+# siempre) y modelo vs WAV del banco (contrato si CMake inyecta
+# NEURONiK_CZ101_WAV_DIR porque ../ABDCZ101/DOCS/patches existe).
+add_executable(NEURONiK_FactoryPresetAudioTest
+    Tests/FactoryPresetAudioTest.cpp
+    Source/ModelMaker/Analysis/SpectralAnalyzer.cpp
+    Source/WebUI/ParameterBridge.cpp
+    ${NEURONIK_STATE_TEST_SOURCES}
+)
+
+target_include_directories(NEURONiK_FactoryPresetAudioTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Main"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/UI"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/Panels"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/State"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Serialization"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/WebUI"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/ModelMaker/Analysis"
+)
+
+target_compile_definitions(NEURONiK_FactoryPresetAudioTest PRIVATE
+    JucePlugin_Name="NEURONiK"
+)
+
+set(NEURONIK_CZ101_WAV_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../ABDCZ101/DOCS/patches")
+if(EXISTS "${NEURONIK_CZ101_WAV_DIR}/CZ-BASS1.wav")
+    target_compile_definitions(NEURONiK_FactoryPresetAudioTest PRIVATE
+        NEURONiK_CZ101_WAV_DIR="${NEURONIK_CZ101_WAV_DIR}")
+endif()
+
+target_link_libraries(NEURONiK_FactoryPresetAudioTest PRIVATE
+    NEURONiK_FactoryModels
+    juce::juce_audio_basics
+    juce::juce_audio_formats
+    juce::juce_audio_processors
+    juce::juce_audio_utils
+    juce::juce_core
+    juce::juce_data_structures
+    juce::juce_dsp
+    juce::juce_graphics
+    juce::juce_gui_basics
+    juce::juce_gui_extra
+    NEURONiK_Common
+)
+
+add_test(NAME NEURONiK_FactoryPresetAudioTest COMMAND NEURONiK_FactoryPresetAudioTest)
 
 # El analizador del ModelMaker en aislado: multiframe, peak-picking +-2 bins
 # e interpolacion sub-bin (frequencyOffsets ya no es un TODO). El A/B musical
@@ -884,6 +963,7 @@ target_compile_definitions(NEURONiK_TemporalAnalysisTest PRIVATE
 )
 
 target_link_libraries(NEURONiK_TemporalAnalysisTest PRIVATE
+    NEURONiK_FactoryModels
     juce::juce_audio_basics
     juce::juce_audio_formats
     juce::juce_audio_processors
@@ -1061,6 +1141,35 @@ endif()
 
 
 # ============================================================================
+# MODELOS DE FABRICA (banco CZ101 real): los seis .neuronikmodel generados por
+# la sonda del ModelMaker (ModelMakerRealWavProbe) desde los WAV del banco
+# (ABDCZ101/DOCS/patches). Viajan EMBEBIDOS y el processor los INSTALLA en
+# Documents/NEURONiK/Models/ en el arranque (installFactoryModels): los
+# presets de fabrica referencian esos ficheros por modelPath<slot>, el mismo
+# mecanismo de siempre, y un usuario que borre Documents los recupera solo.
+# Los SEIS presets (Assets/Presets, generados offline por
+# Tests/FactoryPresetGenerator.cpp) viajan en el MISMO binario:
+# installFactoryPresets() los escribe a Documents/NEURONiK/Presets/ (flat,
+# getAllPresets no es recursivo) sustituyendo {{FACTORY_MODELS}} por ese
+# directorio de modelos.
+juce_add_binary_data(NEURONiK_FactoryModels
+    HEADER_NAME "NeuronikFactoryModels.h"
+    NAMESPACE "NeuronikFactoryModels"
+    SOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Models/CZ-BASS1.neuronikmodel"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Models/CZ-HAMOG.neuronikmodel"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Models/CZ-PAD1.neuronikmodel"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Models/CZ-SWEP1.neuronikmodel"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Models/CZ-RRISE-temporal.neuronikmodel"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Models/CZ-BASS1-temporal.neuronikmodel"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Presets/CZ-BASS1.neuronikpreset"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Presets/CZ-HAMOG.neuronikpreset"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Presets/CZ-PAD1.neuronikpreset"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Presets/CZ-SWEP1.neuronikpreset"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Presets/CZ-RRISE-temporal.neuronikpreset"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Presets/CZ-BASS1-temporal.neuronikpreset"
+)
+
 # WEBVIEW2 BENCH (bancada de la WebUI + panel nativo)
 # ============================================================================
 
