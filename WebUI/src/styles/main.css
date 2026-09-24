@@ -605,102 +605,13 @@ body {
   box-shadow: 0 0 0 2px rgb(var(--color-accent-rgb) / 0.45);
 }
 
-/* --- cajón lateral (patrón ABDMS2000 / ABDEep / ABDCZ101) ----------------- */
-
+/* --- cajón lateral: BASE del mueble en @abdsynths/shared (widgets.css) ----- */
 /*
- * `position: fixed` y colgado del documento, como en los hermanos. Abrir y cerrar
- * es una clase: las celdas se montaron una vez (ver ui/drawer.js) y el lienzo no se
- * reconstruye, así que no hay estado que perder al abrir.
+ * El mueble base (backdrop, .drawer, header/badge/título/cierre, body) vive en el
+ * paquete; aquí solo la composición local. La ESTABILIDAD es contrato de esta
+ * página: las celdas se montan UNA vez (ver ui/panel.js) y abrir/cerrar es una
+ * clase — el lienzo no se reconstruye, no hay estado que perder al abrir.
  */
-.drawer-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgb(4 8 14 / 55%);
-  backdrop-filter: blur(3px);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease-out;
-  z-index: 20;
-}
-
-.drawer-backdrop--visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.drawer {
-  position: fixed;
-  top: 0;
-  right: 0;
-  height: 100%;
-  width: min(640px, 92vw);
-  display: grid;
-  grid-template-rows: auto 1fr;
-  box-sizing: border-box;
-  background: var(--color-panel-bg, #0f1620);
-  border-left: 1px solid var(--color-panel-border-strong, rgb(0 195 255 / 45%));
-  box-shadow: -12px 0 32px rgb(0 0 0 / 55%);
-  transform: translateX(100%);
-  transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1);
-  z-index: 30;
-}
-
-.drawer--open {
-  transform: translateX(0);
-}
-
-.drawer__header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--color-panel-border, rgb(0 195 255 / 20%));
-}
-
-.drawer__badge {
-  padding: 2px 6px;
-  font-size: var(--text-2xs, 7px);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--color-panel-bg, #0f1620);
-  background: var(--color-accent, #00c3ff);
-  border-radius: 3px;
-}
-
-.drawer__title {
-  margin: 0;
-  font-size: var(--text-md, 10px);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--color-text-main, #f0f7ff);
-}
-
-.drawer__close {
-  margin-left: auto;
-  width: 24px;
-  height: 24px;
-  font: inherit;
-  font-size: var(--text-sm, 9px);
-  color: var(--color-text-muted, #7e9bb5);
-  background: transparent;
-  border: 1px solid var(--color-panel-border, rgb(0 195 255 / 20%));
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.drawer__close:hover {
-  color: var(--color-panel-bg, #0f1620);
-  background: var(--color-accent, #00c3ff);
-}
-
-.drawer__body {
-  display: grid;
-  gap: 8px;
-  align-content: start;
-  padding: 12px;
-  overflow-y: auto;
-}
-
 /* Una fila por ruta: distintivo + los tres campos de la ruta. */
 .drawer-slot {
   display: grid;

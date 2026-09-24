@@ -26,7 +26,8 @@ import { AUDIO_OWNER, audioOwnerLabel } from '../audio/policy.js';
 import { displayText, realFromNormalized } from '../contracts/paramValue.js';
 import { KEYS_TAB } from '../contracts/screens.js';
 import { createParameterControl } from './controls.js';
-import { createDrawer } from './drawer.js';
+// Cajon compartido de la familia (contenido estable: sin re-render al abrir).
+import { createDrawer } from '@abdsynths/shared/components';
 import { ThemeSwitcher } from '@abdsynths/shared/components';
 
 /**

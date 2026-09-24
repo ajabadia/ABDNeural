@@ -615,7 +615,7 @@ describe('panel / recorrido E2E del cajon GLOBAL & MASTER (EDITAR -> drawer -> F
     const drawer = panel.drawers.get('globalFull');
 
     // 0. Estado inicial: cajon cerrado y las celdas YA en el documento (el
-    //    contenido NO se reconstruye al abrir: contrato de src/ui/drawer.js).
+    //    contenido NO se reconstruye al abrir: contrato del cajon compartido).
     expect(drawer.isOpen()).toBe(false);
     const freezeCell = drawer.body.querySelector('[data-parameter-id="freezeResonator"]');
     expect(freezeCell).not.toBeNull();
@@ -625,6 +625,8 @@ describe('panel / recorrido E2E del cajon GLOBAL & MASTER (EDITAR -> drawer -> F
     expect(drawer.isOpen()).toBe(true);
     expect(drawer.element.classList.contains('drawer--open')).toBe(true);
     expect(drawer.element.getAttribute('aria-hidden')).toBe('false');
+    // El velo acompana al cajon abierto (clase del mueble compartido).
+    expect(drawer.backdrop.classList.contains('drawer-backdrop--visible')).toBe(true);
 
     // 2. El cajon apila TODOS los ids menos el control base (8 celdas n1..n8);
     //    masterLevel solo existe en la ficha (contrato 8.1 paso 2c).

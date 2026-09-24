@@ -115,7 +115,7 @@ describe('WebUI entry contract', () => {
   it('la matriz de modulacion se edita en el cajon y no en la rejilla del lienzo', () => {
     // El panel monta las celdas de una ficha de cajon DENTRO del cajon (y el lienzo
     // se queda con el resumen): si alguien devuelve la matriz al lienzo, cae aqui.
-    expect(panel).toContain("import { createDrawer } from './drawer.js'");
+    expect(panel).toContain("import { createDrawer } from '@abdsynths/shared/components'");
     expect(panel).toContain('const drawer = section.drawer ? drawerFor(section, context) : null;');
     expect(panel).toContain('(slotOf?.get(control.id) ?? body).append(cell.element);');
     expect(panel).toContain('context.drawers.set(section.id, drawer);');
