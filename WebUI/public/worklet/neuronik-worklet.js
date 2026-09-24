@@ -30,11 +30,20 @@
 import createModule from './neuronik_dsp.js';
 
 const EVENT_TYPE = { NOTE_ON: 0, NOTE_OFF: 1, PITCH_BEND: 2, CHANNEL_PRESSURE: 3 };
+
+/** ModMatrix destination the page's z-ring visualises (engine enum: 28 = Morph Z). */
+const MORPH_Z_DESTINATION = 28;
 const EVENT_BYTES = 24; // Runtime::Event: 4xi32 + f32 + i32 (static_assert'd)
 const MAX_EVENTS_PER_BLOCK = 16;
 
 /** Field 2 (bpm) is a double inside GlobalParams: written through the f64 view. */
 const BPM_FIELD = 2;
+// Fields whose GlobalParams member is a C++ int (DspTypes.h): written via
+// Int32 — an f32 write leaves the IEEE bit pattern (2.0 -> 0x40000000),
+// which the engine reads as garbage (route.source -> jlimit clamps it away).
+// Order-sensitive with the bridge layout: lfo{1,2}.{waveform,syncMode,
+// rhythmicDivision} and modMatrix[r].{source,destination}; amounts are float.
+const INT_FIELDS = new Set([12, 14, 15, 17, 19, 20, 22, 23, 25, 26, 28, 29, 31, 32]);
 const DEFAULT_BPM = 120.0;
 
 class NeuronikProcessor extends AudioWorkletProcessor {
@@ -64,7 +73,9 @@ class NeuronikProcessor extends AudioWorkletProcessor {
   async initialize() {
     try {
       if (!this.wasmBinary)
-        throw new Error('no wasmBinary in processorOptions');      const Module = await createModule ({
+        throw new Error('no wasmBinary in processorOptions');
+      console.log('[worklet-dbg] wasmBinary bytes=', this.wasmBinary.byteLength);
+      const Module = await createModule ({
         // Arrow (not a method shorthand + .bind): a MethodDefinition cannot be
         // a MemberExpression target, so `method(){}.bind(this)` never parses —
         // the worklet module would fail to load. Lexical this = the processor.
@@ -76,14 +87,22 @@ class NeuronikProcessor extends AudioWorkletProcessor {
         },
       });
 
+      console.log('[worklet-dbg] modulo creado');
+      // El glue de este build no publica HEAPU8/HEAPF32 en el Module; derivarlas
+      // desde la memoria exportada (HEAP32 si esta asignado explicitamente).
+      if (!Module.HEAPU8) Module.HEAPU8 = new Uint8Array (Module.HEAP32.buffer);
+      if (!Module.HEAPF32) Module.HEAPF32 = new Float32Array (Module.HEAP32.buffer);
       this.module = Module;
       this.allocateBuffers();
+      console.log('[worklet-dbg] buffers asignados, init sr=', this.sampleRate);
       Module._neuronikInit (this.sampleRate, 128);
+      console.log('[worklet-dbg] _neuronikInit OK');
 
       // Mirror the C++ default state: the facade applies whatever bytes the
       // JS side sends, and zeros would mean masterLevel 0 (silence). The page
       // immediately overwrites these with the generated contract defaults.
       this.applyGpMirror();
+
 
       this.ready = true;
       this.port.postMessage({
@@ -92,7 +111,10 @@ class NeuronikProcessor extends AudioWorkletProcessor {
         globalParamsSize: this.gpSize,
         paramsFieldCount: this.paramsFieldCount,
       });
+      console.log('[worklet-dbg] initialize COMPLETO (ready posteado)');
     } catch (error) {
+
+      console.log('[worklet-dbg] EXCEPCION:', error?.stack ?? String(error));
       this.initError = String(error?.message ?? error);
       this.port.postMessage({ type: 'neuronik:error', error: this.initError });
     }
@@ -136,6 +158,7 @@ class NeuronikProcessor extends AudioWorkletProcessor {
     this.gpMirror = new ArrayBuffer (this.gpSize);
     this.gpF32 = new Float32Array (this.gpMirror);
     this.gpF64 = new Float64Array (this.gpMirror);
+    this.gpI32 = new Int32Array (this.gpMirror);
 
     this.leftView = null;
     this.rightView = null;
@@ -160,6 +183,11 @@ class NeuronikProcessor extends AudioWorkletProcessor {
     }
 
     const f32Offset = byteOffset / 4;
+    if (INT_FIELDS.has (fieldIndex)) {
+      // C++ int member: store the integer value, never its f32 bit pattern.
+      if (Number.isInteger (f32Offset)) this.gpI32[f32Offset] = Math.round (Number (value));
+      return;
+    }
     if (Number.isInteger (f32Offset)) this.gpF32[f32Offset] = Number (value);
   }
 
@@ -339,12 +367,16 @@ class NeuronikProcessor extends AudioWorkletProcessor {
     left.set (this.leftView);
     if (right !== left) right.set (this.rightView);
 
+    if (this.blockCounter === 0) console.log('[worklet-dbg] process(): primer bloque ejecutado');
     // Lightweight telemetry for the page (~every 21 ms at 128/48k x 32).
     if ((++this.blockCounter & 31) === 0) {
       this.port.postMessage ({
         type: 'neuronik:meter',
         voices: this.module._neuronikNumActiveVoices(),
         lfo1: this.module._neuronikGetLfo (0),
+        // Destino 28 (morphZ): contribucion CON SIGNO de la matriz — el anillo
+        // exterior del pad la suma a la base para pintar la posicion real.
+        morphZMod: this.module._neuronikGetMod (MORPH_Z_DESTINATION),
       });
     }
 

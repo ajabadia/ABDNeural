@@ -35,8 +35,8 @@ const CXX_DEFAULTS = {
 };
 
 describe('CONTRACT_TO_GP_FIELD', () => {
-  it('cubre exactamente los 21 campos contract-reachables (sin bpm)', () => {
-    expect(Object.keys (CONTRACT_TO_GP_FIELD).length).toBe (21);
+  it('cubre exactamente los 33 campos contract-reachables (sin bpm)', () => {
+    expect(Object.keys (CONTRACT_TO_GP_FIELD).length).toBe (33);
     expect(Object.values (CONTRACT_TO_GP_FIELD)).not.toContain (2); // bpm f64 slot
   });
 
@@ -102,9 +102,9 @@ describe('gpFieldsFromState', () => {
     expect (fields.length).toBe (1);
   });
 
-  it('defaultGpFields entrega los 21 campos con los defaults del contrato', () => {
+  it('defaultGpFields entrega los 33 campos con los defaults del contrato', () => {
     const fields = defaultGpFields();
-    expect (fields.length).toBe (21);
+    expect (fields.length).toBe (33);
 
     const byField = new Map (fields);
     expect (byField.get (0)).toBeCloseTo (CXX_DEFAULTS.masterLevel, 4);

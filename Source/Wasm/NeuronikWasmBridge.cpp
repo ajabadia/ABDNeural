@@ -235,4 +235,15 @@ WASM_EXPORT float neuronikGetLfo (int index)
     return inst.facade != nullptr ? inst.engine->getLfoValue (index) : 0.0f;
 }
 
+/** Modulation contribution for one destination (visualization feed: the z-ring). */
+WASM_EXPORT float neuronikGetMod (int targetIndex)
+{
+    auto& inst = instance();
+    if (inst.engine == nullptr) return 0.0f;
+
+    float mods[64] {};
+    inst.engine->getModulationValues (mods, 64);
+    return (targetIndex >= 0 && targetIndex < 64) ? mods[targetIndex] : 0.0f;
+}
+
 } // extern "C"

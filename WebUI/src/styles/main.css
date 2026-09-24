@@ -600,6 +600,19 @@ body {
   transition: stroke-dasharray 60ms linear;
 }
 
+/* arco de modulacion (destino 28): de la base al valor efectivo — el mismo
+   lenguaje que el halo del knob (--color-mod-ring, fallback accent) */
+.xy-pad__zring .zring-mod {
+  stroke: var(--color-mod-ring, var(--color-accent, #00c3ff));
+  stroke-width: 4.5;
+  opacity: 0.45;
+  stroke-linecap: round;
+  pointer-events: none;
+  transition:
+    stroke-dasharray 60ms linear,
+    stroke-dashoffset 60ms linear;
+}
+
 /* focus visible solo por teclado (same a11y family rule) */
 .xy-pad__zring:focus-visible {
   box-shadow: 0 0 0 2px rgb(var(--color-accent-rgb) / 0.45);

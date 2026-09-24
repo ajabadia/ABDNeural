@@ -39,6 +39,7 @@ import { audioOwnerFor } from './audio/policy.js';
 import {
   isAudioEngineReady,
   onAudioEngineChange,
+  onWorkletMorphZ,
   panicWorklet,
   pushEngineToWorklet,
   pushMidiToWorklet,
@@ -128,6 +129,14 @@ const bands = BANDS.map((band) => band.map((section) => {
 let paint = () => {};
 let engineSnapshot = { status: 'idle', error: null, sampleRate: 0, voices: 0 };
 
+// La vista del pad XY (ficha MODELOS) queda a mano para el feed del worklet:
+// en standalone (sin bridge) es el meter del worklet quien pinta su anillo z
+// con la modulacion del destino 28; en plugin lo hace la telemetria nativa.
+const canvasMorphZView = bands
+  .flat()
+  .find((section) => section.visual?.element?.dataset.visual === 'model-xy')
+  ?.visual ?? null;
+
 if (root) {
   const panel = createPanel({
     bands,
@@ -160,6 +169,11 @@ if (root) {
   // Anillos de modulacion: el frame de telemetria suma sobre cada destino;
   // el mapa de knobs lo alimenta la misma coleccion que pinta los snapshots.
   const modRings = createModulationRings(panel.knobsById);
+
+  // Anillo morphZ del pad en standalone: el meter del worklet trae la
+  // contribucion del destino 28 (en plugin la trae el frame de telemetria
+  // nativo, que visuals.js consume del canal bridge). Mismo destino, dos caminos.
+  onWorkletMorphZ((mod) => canvasMorphZView?.setZMod(mod));
 
   const renderAudio = () => panel.paintAudio({ owner, ...engineSnapshot });
 

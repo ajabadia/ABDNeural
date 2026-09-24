@@ -17,6 +17,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createVisual } from '../src/ui/visuals.js';
 import { createXyPad } from '../src/ui/xyPad.js';
 
+import { MOD_DESTINATIONS } from '../generated/parameters.generated.js';
+
 function makeHost() {
   const host = document.createElement('div');
   document.body.appendChild(host);
@@ -323,6 +325,115 @@ describe('xyPad / el anillo exterior de morph-Z (FASE 10)', () => {
     // al soltar, el snapshot vuelve a mandar
     view.paint({ morphX: 0, morphY: 0, morphZ: 0.8 }, {});
     expect(fill.getAttribute('stroke-dasharray')).toBe('80 100');
+
+    view.destroy();
+  });
+});
+
+describe('xyPad / anillo morphZ con la modulación en vivo (destino 28)', () => {
+  let host;
+
+  beforeEach(() => { host = makeHost(); });
+
+  // Mismo SSOT que producción: el índice de telemetría se lee del contrato.
+  const MORPH_Z_TARGET = MOD_DESTINATIONS.findIndex(
+    (destination) => destination?.parameterId === 'morphZ');
+
+  function frameWith(contribution) {
+    const modulation = new Array(MORPH_Z_TARGET + 1).fill(0);
+    modulation[MORPH_Z_TARGET] = contribution;
+    return { modulation };
+  }
+
+  it('setZMod pinta el arco base->efectivo y no viaja al store', () => {
+    const onEdit = vi.fn();
+    const view = createXyPad({ onEdit });
+    host.append(view.element);
+
+    view.paint({ morphX: 0, morphY: 0, morphZ: 0.25 }, {});
+    view.setZMod(0.5); // efectivo 0.75: arco de 0.25 a 0.75
+
+    const mod = view.element.querySelector('.zring-mod');
+    expect(mod.getAttribute('stroke-dashoffset')).toBe('-25');
+    expect(mod.getAttribute('stroke-dasharray')).toBe('50 100');
+    // telemetría es pintura: ningún gesto hacia el store
+    expect(onEdit).not.toHaveBeenCalled();
+
+    view.destroy();
+  });
+
+  it('contribución negativa: el arco corre hacia atrás (efectivo < base)', () => {
+    const view = createXyPad({});
+    host.append(view.element);
+
+    view.paint({ morphX: 0, morphY: 0, morphZ: 0.25 }, {});
+    view.setZMod(-0.25); // efectivo 0
+
+    const mod = view.element.querySelector('.zring-mod');
+    expect(mod.getAttribute('stroke-dashoffset')).toBe('0');
+    expect(mod.getAttribute('stroke-dasharray')).toBe('25 100');
+
+    view.destroy();
+  });
+
+  it('el efectivo se clamp a 0..1 (la misma matemática de la voz)', () => {
+    const view = createXyPad({});
+    host.append(view.element);
+
+    view.paint({ morphX: 0, morphY: 0, morphZ: 0.9 }, {});
+    view.setZMod(0.5); // efectivo clamp a 1: arco de 0.9 a 1
+
+    const mod = view.element.querySelector('.zring-mod');
+    expect(mod.getAttribute('stroke-dashoffset')).toBe('-90');
+    expect(mod.getAttribute('stroke-dasharray')).toBe('10 100');
+
+    view.destroy();
+  });
+
+  it('sin modulación el arco es invisible y el aro base manda', () => {
+    const view = createXyPad({});
+    host.append(view.element);
+
+    view.paint({ morphX: 0, morphY: 0, morphZ: 0.4 }, {});
+    view.setZMod(0);
+
+    const mod = view.element.querySelector('.zring-mod');
+    expect(mod.getAttribute('stroke-dasharray')).toBe('0 100');
+    const fill = view.element.querySelector('.zring-fill');
+    expect(fill.getAttribute('stroke-dasharray')).toBe('40 100');
+
+    view.destroy();
+  });
+
+  it('la telemetría nativa alimenta el aro vía onTelemetry de la vista', () => {
+    let notify = null;
+    const unsubs = [];
+    const view = createVisual('model-xy', [], {
+      onTelemetry: (cb) => { notify = cb; return () => unsubs.push(1); },
+    });
+    host.append(view.element);
+
+    notify(frameWith(0.5));
+
+    const mod = view.element.querySelector('.zring-mod');
+    expect(mod.getAttribute('stroke-dasharray')).toBe('50 100');
+
+    view.destroy();
+    expect(unsubs.length).toBe(1); // destroy cancela la suscripción
+  });
+
+  it('frames sin destino morphZ o sin campo modulation no envenenan el aro', () => {
+    let notify = null;
+    const view = createVisual('model-xy', [], {
+      onTelemetry: (cb) => { notify = cb; return () => {}; },
+    });
+    host.append(view.element);
+
+    notify({});                    // frame sin modulation
+    notify({ modulation: [0.1] }); // índice del destino fuera del array
+
+    const mod = view.element.querySelector('.zring-mod');
+    expect(mod.getAttribute('stroke-dasharray')).toBe('0 100');
 
     view.destroy();
   });

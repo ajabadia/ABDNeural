@@ -52,6 +52,20 @@ export const CONTRACT_TO_GP_FIELD = {
   lfo2SyncMode: 19,
   lfo2RhythmicDivision: 20,
   lfo2Depth: 21,
+  // Matriz de modulacion (4 rutas x 3 campos): fields 22..33 en el layout
+  // documentado del bridge — el orden EXACTO de GlobalParams.modMatrix[r].
+  mod1Source: 22,
+  mod1Destination: 23,
+  mod1Amount: 24,
+  mod2Source: 25,
+  mod2Destination: 26,
+  mod2Amount: 27,
+  mod3Source: 28,
+  mod3Destination: 29,
+  mod3Amount: 30,
+  mod4Source: 31,
+  mod4Destination: 32,
+  mod4Amount: 33,
 };
 
 /** GlobalParams C++ defaults (DspTypes.h) as REAL units, per field index. */
@@ -75,6 +89,11 @@ export const GP_FIELD_DEFAULTS = {
 const DISCRETE_FIELD_IDS = new Set([
   'lfo1Waveform', 'lfo1SyncMode', 'lfo1RhythmicDivision',
   'lfo2Waveform', 'lfo2SyncMode', 'lfo2RhythmicDivision',
+  // La matriz son ranuras enteras de GlobalParams: choice -> indice directo.
+  'mod1Source', 'mod1Destination',
+  'mod2Source', 'mod2Destination',
+  'mod3Source', 'mod3Destination',
+  'mod4Source', 'mod4Destination',
 ]);
 
 /** engineType choice -> engine index (contract + bridge agree: 0 = NEURONiK, 1 = Neurotik). */

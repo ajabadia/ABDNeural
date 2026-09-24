@@ -48,6 +48,9 @@ class FakePort {
     this.posted.push(message);
   }
 
+  /** MessagePort semantics: addEventListener alone never starts delivery. */
+  start() { this.started = true; }
+
   /** Simulate the worklet talking back. */
   emit(data) {
     for (const fn of [...this.listeners]) fn({ data });

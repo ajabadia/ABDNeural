@@ -26,6 +26,11 @@ import { createModelSlots } from './modelSlots.js';
 import { createModSummary } from './modSummary.js';
 import { createXyPad } from './xyPad.js';
 
+import { MOD_DESTINATIONS } from '../../generated/parameters.generated.js';
+
+/** Indice de telemetria del destino Morph Z (leido del contrato, no copiado). */
+const MORPH_Z_TARGET = MOD_DESTINATIONS.findIndex((d) => d?.parameterId === 'morphZ');
+
 /**
  * @param {string} visualId  id del catálogo SECTION_VISUALS
  * @param {object[]} controls  view-models de los parámetros que pide esa vista
@@ -56,12 +61,33 @@ export function createVisual(visualId, controls, options = {}) {
   if (visualId === 'model-xy') {
     const pad = createXyPad({ onEdit: options.onEdit ?? null });
 
+    // El anillo exterior (morphZ) vive de la TELEMETRIA: frame.modulation[t]
+    // es la contribucion con signo que la matriz acumula sobre el destino.
+    // En standalone el feed es el meter del worklet (app.js lo enchufa a la
+    // misma vista via setZMod): dos caminos, un solo destino.
+    const stopTelemetry = options.onTelemetry && MORPH_Z_TARGET >= 0
+      ? options.onTelemetry((frame) => {
+        const modulation = Array.isArray(frame?.modulation) ? frame.modulation : [];
+        const contribution = modulation[MORPH_Z_TARGET];
+
+        if (typeof contribution === 'number')
+          pad.setZMod(contribution);
+      })
+      : null;
+
     return {
       element: pad.element,
       paint(parameters, state) {
         pad.paint(parameters, state);
       },
+      // Feed standalone (meter del worklet, destino 28): app.js enchufa
+      // onWorkletMorphZ aqui. En plugin lo hace la telemetria nativa
+      // (onTelemetry, arriba) — mismo pad, dos caminos.
+      setZMod(mod) {
+        pad.setZMod(mod);
+      },
       destroy() {
+        stopTelemetry?.();
         pad.destroy();
       },
     };

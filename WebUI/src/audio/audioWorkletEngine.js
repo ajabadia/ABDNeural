@@ -50,6 +50,17 @@ export function onAudioEngineChange(listener) {
   listeners.push (listener);
 }
 
+/**
+ * Modulation contribution for the Morph Z destination (worklet meter feed).
+ * Standalone only: inside the plugin the native telemetry frame carries it
+ * (frame.modulation[28]) and the worklet never starts.
+ */
+const morphZModListeners = [];
+
+export function onWorkletMorphZ(listener) {
+  morphZModListeners.push (listener);
+}
+
 let context = null;
 let node = null;
 
@@ -98,11 +109,15 @@ export async function startAudioEngine() {
       },
     });
 
+    // Connect BEFORE waiting for ready: Chrome does not dispatch worklet
+    // port messages until the node is pulled by the render graph, so waiting
+    // first deadlocks (ready never arrives) even though the worklet is live.
+    // Without a user gesture the context stays suspended and the pull is inert.
+    node.connect (context.destination);
+
     const ready = await waitForReady (node, 8000);
     if (!ready.ok)
       throw new Error (ready.error ?? 'el worklet no reporto ready');
-
-    node.connect (context.destination);
     // Con un gesto real (click en SOUND ON) esto arranca el reloj de audio;
     // sin gesto queda pending y el contexto sigue suspended (inocuo).
     await context.resume();
@@ -133,7 +148,9 @@ function waitForReady(workletNode, timeoutMs) {
 
       if (type === 'neuronik:ready') {
         clearTimeout (timer);
-        workletNode.port.removeEventListener ('message', onMessage);
+        // Kept attached: this listener is also the page consumer of
+        // 'neuronik:meter' (voices + morphZMod fan-out). Removing it here
+        // silences telemetry right after the handshake.
         resolve ({ ok: true });
       } else if (type === 'neuronik:error') {
         clearTimeout (timer);
@@ -141,9 +158,14 @@ function waitForReady(workletNode, timeoutMs) {
         resolve ({ ok: false, error: event.data.error });
       } else if (type === 'neuronik:meter') {
         audioEngineState.voices = event.data.voices;
+        if (typeof event.data.morphZMod === 'number')
+          for (const listener of morphZModListeners) listener (event.data.morphZMod);
       }
     }
 
+    // MessagePort semantics: addEventListener alone never delivers queued
+    // messages — the port must be started (start() or an onmessage setter).
+    workletNode.port.start ();
     workletNode.port.addEventListener ('message', onMessage);
   });
 }

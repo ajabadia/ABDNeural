@@ -31,7 +31,11 @@
  *   - teclado: role=slider con flechas (±0.01), PageUp/Down (±0.1) y
  *     Home/End (0/1), cada paso viaja como `end` y SOLO si cambió;
  *   - paint pinta el aro sin eco y, durante un drag del aro, un snapshot del
- *     host no lo mueve (misma regla que el pulgar del pad).
+ *     host no lo mueve (misma regla que el pulgar del pad);
+ *   - telemetría: `setZMod(contribution)` pinta el ARCO de modulación del aro
+ *     (de la base al valor EFECTIVO, color --color-mod-ring de la familia):
+ *     la posición real del motor cuando la matriz (p.ej. LFO2 -> destino 28)
+ *     mueve el eje. Es pintura, nunca estado: no viaja al store.
  */
 
 import { XYPad } from '@abdsynths/shared/components';
@@ -51,7 +55,9 @@ function ringSvg() {
     <circle class="zring-track" cx="50" cy="50" r="47"></circle>
     <circle class="zring-hit"   cx="50" cy="50" r="47"></circle>
     <circle class="zring-fill"  cx="50" cy="50" r="47" pathLength="100"
-            transform="rotate(-90 50 50)"></circle>`;
+            transform="rotate(-90 50 50)"></circle>
+    <circle class="zring-mod"   cx="50" cy="50" r="47" pathLength="100"
+            transform="rotate(-90 50 50)" stroke-dasharray="0 100"></circle>`;
   return svg;
 }
 
@@ -135,6 +141,7 @@ export function createXyPad({ onEdit = null } = {}) {
   // ------------------------- anillo morph-Z -------------------------------
 
   let zValue = 0;
+  let zMod = 0; // contribucion con signo de la matriz sobre morphZ (telemetria)
   let zDragging = false;
 
   const ring = document.createElement('div');
@@ -152,9 +159,25 @@ export function createXyPad({ onEdit = null } = {}) {
   element.appendChild(ring);
 
   const zFill = svg.querySelector('.zring-fill');
+  const zModFill = svg.querySelector('.zring-mod');
 
   function renderZ() {
     zFill.setAttribute('stroke-dasharray', `${zValue * 100} 100`);
+
+    // arco de modulacion: de la base al valor EFECTIVO que ve el motor
+    // (clamp 0..1, la misma matematica de la voz). El trazo SIEMPRE corre
+    // horario: el lado del arco lo decide cual de los dos angulos es menor.
+    // Arco en unidades enteras de guion (pathLength=100): resolucion visual
+    // 3.6 grados, cero coma flotante (0.9+0.5 clamp a 1 -> arco EXACTO de 10).
+    const snap = (v) => Math.round(v * 100);
+    const baseInt = Math.max(0, Math.min(100, snap(zValue)));
+    const effInt = Math.min(100, Math.max(0, baseInt + snap(zMod)));
+    const startInt = Math.min(baseInt, effInt);
+    const spanInt = Math.abs(effInt - baseInt);
+
+    zModFill.setAttribute('stroke-dashoffset', `${-startInt}`);
+    zModFill.setAttribute('stroke-dasharray', `${spanInt} 100`);
+
     ring.setAttribute('aria-valuenow', `${zValue}`);
     ring.setAttribute('aria-valuetext', `Morph Z ${Math.round(zValue * 100)}%`);
   }
@@ -165,6 +188,14 @@ export function createXyPad({ onEdit = null } = {}) {
     renderZ();
 
     if (notify) onEdit?.(MORPH_IDS.z, zValue, 'end');
+  }
+
+  /** Telemetria del destino 28 (solo pintura): contribucion con signo, normalizada. */
+  function setZMod(modAmount) {
+    const amount = Number(modAmount);
+
+    zMod = Number.isFinite(amount) ? Math.min(1, Math.max(-1, amount)) : 0;
+    renderZ();
   }
 
   /** ángulo -> valor: 0 en las 12, horario, 1 = vuelta completa. */
@@ -243,6 +274,7 @@ export function createXyPad({ onEdit = null } = {}) {
   return {
     element,
     pad,
+    setZMod,
 
     /**
      * Repinta desde el snapshot: valor de los dos morph (silencioso: nada de
