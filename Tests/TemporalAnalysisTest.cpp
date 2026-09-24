@@ -93,8 +93,10 @@ int main()
     // ---------- 2. El emparejador: bloques escalonados ----------
     {
         // 5 ventanas EXACTAS (num = 5*fftSize): la rejilla de frames del
-        // analizador cae en los inicios de bloque. Cada bloque un seno puro
-        // con offset distinto: la expectativa por frame es EXACTA.
+        // analizador cae en los inicios de bloque. FASE 10.6: cada bloque
+        // lleva ARMONICOS estables a n*(f0+d) (n=1..6) — la raiz por frame
+        // (HPS) captura la desviacion d y el frame se mide contra SU rejilla
+        // (offsets ~0), que es el contrato del remapeo de rejilla.
         constexpr int nBlocks = 5;
         const float steps[nBlocks] = { 0.0f, 9.0f, 3.0f, -6.0f, -9.0f };
 
@@ -102,9 +104,14 @@ int main()
         for (int b = 0; b < nBlocks; ++b)
             for (int i = 0; i < fftSize; ++i)
             {
-                const double w = 2.0 * juce::MathConstants<double>::pi
-                                 * (double) (f0 + steps[b]) / sr;
-                audio.setSample (0, b * fftSize + i, (float) (0.6 * std::sin (w * (double) i)));
+                double s = 0.0;
+                for (int n = 1; n <= 6; ++n)
+                {
+                    const double w = 2.0 * juce::MathConstants<double>::pi
+                                     * (double) ((f0 + steps[b]) * n) / sr;
+                    s += std::sin (w * (double) i) / (double) n;
+                }
+                audio.setSample (0, b * fftSize + i, (float) (0.6 * s / 2.45));
             }
 
         const auto model = analyzer.analyzeTemporal (audio, sr, f0, nBlocks);
@@ -112,16 +119,24 @@ int main()
         check (model.isValid, "el modelo temporal queda valido");
         check (std::abs (model.frameSpanHz - f0) < 1.0e-4f, "frameSpanHz = f0 del analisis");
 
+        // FASE 10.6: frame 0 (canonico) se mide contra la f0 GLOBAL: su
+        // offset del parcial 1 ES la desviacion del bloque. Frames 1+ se
+        // miden contra SU rejilla (f0+d): offset ~0 y f0Frame = f0+d.
         bool follows = true;
         for (int fr = 0; fr < nBlocks; ++fr)
         {
             const float got = fr == 0 ? model.frequencyOffsets[0]
                                       : model.extraOffsets[(size_t) fr - 1][0];
-            std::printf ("    frame %d: offset=%+.2f Hz (bloque %+.1f Hz)\n",
-                         fr, (double) got, (double) steps[fr]);
-            follows &= std::abs (got - steps[fr]) < 1.0f; // precision sub-bin de la fase 9
+            const float want = (fr == 0) ? steps[fr] : 0.0f;
+            const float f0Frame = (fr == 0) ? model.frameSpanHz
+                                            : model.f0At (fr);
+            std::printf ("    frame %d: offset=%+.2f Hz (want %+.1f)  f0Frame=%.2f (bloque %+.1f)\n",
+                         fr, (double) got, (double) want, (double) f0Frame, (double) steps[fr]);
+            // Precision del HPS por ventana: ~0.3 bin (1.7 Hz a 220 Hz).
+            follows &= std::abs (got - want) < 2.5f;
+            follows &= std::abs (f0Frame - (f0 + steps[fr])) < 3.5f;
         }
-        check (follows, "cada frame mide el offset de SU bloque (emparejador por indice)");
+        check (follows, "cada frame lleva su rejilla: offset 0 y f0Frame=f0+d (emparejador 10.6)");
     }
 
     // ---------- 3. Evolucion de nivel (normalizacion GLOBAL) ----------

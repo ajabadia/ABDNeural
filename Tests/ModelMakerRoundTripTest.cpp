@@ -196,6 +196,9 @@ namespace
             juce::DynamicObject::Ptr frameObj = new juce::DynamicObject();
             frameObj->setProperty ("amplitudes", fAmps);
             frameObj->setProperty ("frequencyOffsets", fOffs);
+            // FASE 10.6: la raiz del frame viaja en el v2 (como la GUI).
+            if (const float f0k = model.f0At (f); f0k > 0.0f)
+                frameObj->setProperty ("frameF0", f0k);
             frames.add (frameObj.get());
         }
 
@@ -554,9 +557,16 @@ int main()
         for (int b = 0; b < nBlocks; ++b)
             for (int i = 0; i < fftSize; ++i)
             {
-                const double w = 2.0 * juce::MathConstants<double>::pi
-                                * (double) (f0 + steps[b]) / sampleRate;
-                temporal.setSample (0, b * fftSize + i, (float) (0.6 * std::sin (w * (double) i)));
+                // FASE 10.6: armonicos estables a n*(f0+d) — la raiz por
+                // frame (HPS) captura d y el frame se mide contra SU rejilla.
+                double s = 0.0;
+                for (int n = 1; n <= 6; ++n)
+                {
+                    const double w = 2.0 * juce::MathConstants<double>::pi
+                                    * (double) ((f0 + steps[b]) * n) / sampleRate;
+                    s += std::sin (w * (double) i) / (double) n;
+                }
+                temporal.setSample (0, b * fftSize + i, (float) (0.6 * s / 2.45));
             }
 
         const auto model = analyzer.analyzeTemporal (temporal, sampleRate, f0, nBlocks);
@@ -573,15 +583,37 @@ int main()
         check (back.isValid && back.frameCount == nBlocks,
                "el lector recupera los 3 frames del analisis real");
 
+        // FASE 10.6: frame 0 (canonico) conserva el offset del bloque contra
+        // la f0 global; frames 1+ se miden contra SU rejilla: offset ~0 y
+        // f0Frame = f0+d. El ciclo export/recarga debe preservar ambas cosas.
         bool offsetsOk = true;
         for (int fr = 0; fr < nBlocks; ++fr)
         {
             const float got = fr == 0 ? back.frequencyOffsets[(size_t) 0]
                                       : back.offsetAt (fr, 0);
-            offsetsOk &= std::abs (got - steps[fr]) < 1.0f;
+            const float want = (fr == 0) ? steps[fr] : 0.0f;
+            offsetsOk &= std::abs (got - want) < 2.5f; // precision HPS (~0.3 bin)
         }
         check (offsetsOk,
-               "los offsets de los frames sobreviven el ciclo (emparejador real)");
+               "los offsets de los frames sobreviven el ciclo (emparejador real, rejilla propia)");
+
+        // FASE 10.6: las raices por frame sobreviven el ciclo (export v2 ->
+        // recarga) y el frame interpolado z=0.5 lleva el ratio del tramo.
+        {
+            bool f0Ok = true;
+            for (int fr = 1; fr < back.frameCount; ++fr)
+                f0Ok &= std::abs (back.f0At (fr) - model.f0At (fr)) < 1.0e-4f
+                        && back.f0At (fr) > 0.0f;
+            check (f0Ok, "las f0 por frame sobreviven el ciclo (extraF0 viaja en el v2)");
+
+            Common::SpectralModel mid;
+            Common::sampleFrame (back, 0.5f, mid);
+            const float wantF0 = 0.5f * (back.f0At (0) + back.f0At (1));
+            const bool midOk = mid.frameF0 > 0.0f
+                               && std::abs (mid.frameF0 - wantF0)
+                                      < 0.05f * juce::jmax (wantF0, 1.0f);
+            check (midOk, "sampleFrame(z=0.5) interpola la raiz (ratio de rejilla presente)");
+        }
 
         // El ENGINE real: la ranura acepta el modelo temporal del analizador.
         {

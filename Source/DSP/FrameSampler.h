@@ -45,12 +45,14 @@ inline void sampleFrame (const SpectralModel& src, float z, SpectralModel& out) 
     {
         out.amplitudes = src.amplitudes;             // ruta v1: copia trivial
         out.frequencyOffsets = src.frequencyOffsets;
+        out.frameF0 = 0.0f;                          // estatico: sin remapeo
         return;
     }
 
     // Extremos: copia directa del frame (bit-exacto, sin redondeo de lerp).
-    if (z <= 0.0f) { copyFrame (src, 0, out); return; }
-    if (z >= 1.0f) { copyFrame (src, n - 1, out); return; }
+    // En los extremos el snapshot ES el frame: sin remapeo (frameF0 = 0).
+    if (z <= 0.0f) { copyFrame (src, 0, out); out.frameF0 = 0.0f; return; }
+    if (z >= 1.0f) { copyFrame (src, n - 1, out); out.frameF0 = 0.0f; return; }
 
     const float t = juce::jlimit (0.0f, 1.0f, z) * (float) (n - 1);
     const int i0 = (int) t;
@@ -60,6 +62,17 @@ inline void sampleFrame (const SpectralModel& src, float z, SpectralModel& out) 
     const float* a1   = src.ampsOf (i0 + 1);
     const float* off0 = src.offsetsOf (i0);
     const float* off1 = src.offsetsOf (i0 + 1);
+
+    // FASE 10.6: la raiz por frame se interpola en dominio LOG (musical:
+    // el camino D4->E5 de un barrido es lineal en semitonos, no en Hz) y
+    // viaja como ratio (f0_interpolada / f0_del_frame_0) para que el motor
+    // remapee la rejilla con UNA multiplicacion por parcial.
+    const float f0a = src.f0At (i0);
+    const float f0b = src.f0At (i0 + 1);
+    float ratio = 1.0f;
+    if (f0a > 0.0f && f0b > 0.0f)
+        ratio = std::exp2 ((std::log2 (f0b) - std::log2 (f0a)) * frac);
+    out.frameF0 = f0b > 0.0f ? f0a * ratio : 0.0f;
 
     const float span = src.frameSpanHz > 0.0f ? src.frameSpanHz : 0.0f;
 

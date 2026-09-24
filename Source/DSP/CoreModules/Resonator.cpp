@@ -219,7 +219,12 @@ void Resonator::updateHarmonicsFromModels(float morphX, float morphY) noexcept
         float morphedOffset = lerp(offsetTop, offsetBottom, morphY);
 
         float stretchedHarmonic = std::exp(lnTable[i] * (1.0f + stretchingAmount * 0.5f));
-        float partialFreq = (baseFrequency * stretchedHarmonic * shiftAmount) + morphedOffset;
+        // FASE 10.6: remapeo de rejilla por frame (modelos que cantan el
+        // pitch del WAV: ratio f0_frame/f0_canonica; 1.0 en estaticos).
+        const float gridRatio = (mA->frameF0 > 0.0f && mA->f0At(0) > 0.0f)
+                                    ? mA->frameF0 / mA->f0At(0)
+                                    : 1.0f;
+        float partialFreq = ((baseFrequency * stretchedHarmonic * shiftAmount) + morphedOffset) * gridRatio;
 
         // FIX (2026-09-21): un parcial sobre Nyquist queda mudo (phaseIncrements=0),
         // pero su amplitud seguia contando en la normalizacion -> el nivel total

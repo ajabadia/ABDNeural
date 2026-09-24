@@ -154,7 +154,12 @@ void ResonatorBank::updateParameters(float morphX, float morphY, float resonance
         float freqOffsetTop = lerp(mA.frequencyOffsets[i], mB.frequencyOffsets[i], mx);
         float freqOffsetBottom = lerp(mC.frequencyOffsets[i], mD.frequencyOffsets[i], mx);
         float freqOffset = lerp(freqOffsetTop, freqOffsetBottom, my);
-        float partialFreq = (baseFrequency * harmonicNumber) + freqOffset;
+        // FASE 10.6: remapeo de rejilla por frame (modelos que cantan el
+        // pitch del WAV; 1.0 en modelos estaticos/legado).
+        const float gridRatio = (mA.frameF0 > 0.0f && mA.f0At(0) > 0.0f)
+                                    ? mA.frameF0 / mA.f0At(0)
+                                    : 1.0f;
+        float partialFreq = ((baseFrequency * harmonicNumber) + freqOffset) * gridRatio;
 
         updateFilterCoefficients(i, partialFreq, q, tempAmps[i], det);
     }

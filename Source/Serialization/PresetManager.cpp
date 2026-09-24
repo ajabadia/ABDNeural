@@ -91,6 +91,9 @@ Common::SpectralModel PresetManager::loadModelFromFile(const juce::File& file)
                         model.extraOffsets[(size_t) count][(size_t) i] =
                             static_cast<float> (static_cast<double> ((*fOffs)[i]));
                     }
+                    // FASE 10.6: raiz del frame (opcional; 0 = la canonica).
+                    model.extraF0[(size_t) count] =
+                        static_cast<float> (static_cast<double> (frameObj->getProperty ("frameF0")));
                     ++count;
                 }
 

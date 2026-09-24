@@ -47,6 +47,13 @@ struct SpectralModel
     // 0 = desconocido (modelos sinteticos): el sampler usa el espaciado
     // armonico unitario n*f0. Dimensiona la envoltura de offsets (camino corto).
     float frameSpanHz = 0.0f;
+    // FASE 10.6: raiz POR FRAME en Hz (0 = la del frame canonico). Un modelo
+    // con frames f0 distintos "canta" el barrido de pitch del WAV original
+    // (CZ-RRISE): el motor remapea la rejilla n*base al renderizar.
+    std::array<float, kMaxFrames - 1> extraF0 {};
+    // FASE 10.6: raiz del ULTIMO snapshot (solo la rellena sampleFrame;
+    // 0 = sin remapeo: el modelo canonico/estatico no mueve la rejilla).
+    float frameF0 = 0.0f;
     bool isValid = false;
 
     int numFrames() const noexcept { return frameCount; }
@@ -73,6 +80,19 @@ struct SpectralModel
     float* offsetsOf (int frame) noexcept
     {
         return frame <= 0 ? frequencyOffsets.data() : extraOffsets[(size_t) frame - 1].data();
+    }
+
+    /** @brief Raiz (f0) del frame k en Hz. Frame 0 => frameSpanHz (canonico). */
+    float f0At (int frame) const noexcept
+    {
+        return frame <= 0 ? frameSpanHz : extraF0[(size_t) frame - 1];
+    }
+
+    /** @brief Fija la raiz del frame k (solo frames >= 1: el canonico es frameSpanHz). */
+    void setF0At (int frame, float f0Hz) noexcept
+    {
+        if (frame >= 1 && frame < kMaxFrames)
+            extraF0[(size_t) frame - 1] = f0Hz;
     }
 
     const float* ampsOf (int frame) const noexcept
