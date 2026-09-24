@@ -1140,7 +1140,7 @@ NUEVO de la matriz de modulación (LFO2 = animación cíclica, ENV2 = evolución
 mod-wheel = NUKE). Formato `.neuronikmodel` v2 compatible (v1 sigue leyéndose; v2 se
 lee como v1 por los plugins viejos). Piezas delicadas: emparejamiento de parciales
 entre frames (greedy por cercanía) y presupuesto de 8 KB por slot (16 frames x 64 x 2
-floats). Plan de fases 10.1-10.5 con verificación por fase en el documento.
+floats). Plan de fases 10.1-10.6 con verificación por fase en el documento.
 Predecesores ya en producción: analizador multiframe sub-bin (cerrado 2026-09-22) y
 modo bow del motor modal.
 
@@ -1157,9 +1157,46 @@ capa de wiring de NEURONiK: gesto por ángulo 0..360°, teclado ±0.01/±0.1/Hom
 eco; 5 pins en tests/xyPad.test.js, suite 238/238, gesto y teclado verificados en vivo sobre
 el dist) y el encaje se cerró por el camino B: morphX/morphY dejan las celdas del oscilador
 (el pad XY es su único control del lienzo), RESONADOR agrupa el cuarteto modal (resonancia,
-impulso, bow) y el knob MORPH-Z vive en el cajón EDIT. El modelo de ejemplo temporal está
-generado (CZ-BASS1-temporal, 4 frames, vía sonda) y queda pendiente de incluirse en los
-assets del selftest.
+impulso, bow) y el knob MORPH-Z vive en el cajón EDIT. El modelo de ejemplo temporal (CZ-BASS1-temporal,
+4 frames, vía sonda) está versionado en Assets/Models/ y EMBEBIDO como asset del plugin
+(NEURONiK_SelftestAssets): la dirección MODELOS del selftest del bridge carga ahora el
+modelo temporal v2 REAL en la ranura A (revalidado con el lector de producción antes de
+entrar en el engine) y los sintéticos estáticos en B-D — las seis direcciones en OK en
+las dos superficies (Standalone y bancada WebView2).
+
+Cierre del 10.6 (2026-09-23): frames con **f0 por frame** — el modelo "canta" el pitch del
+WAV. `SpectralModel` gana `extraF0[15]` (raíz por frame, frame 0 = canónico) y el sampler
+interpola la raíz en dominio log (el barrido es lineal en semitonos) entregando el ratio
+que el motor multiplica por parcial (`Resonator` y `ResonatorBank`: `partialFreq *=
+gridRatio`; 1.0 en modelos estáticos — bit-compat). Formato v2 con `frameF0` opcional por
+frame; analizador con `detectPitchFromSpectrum` (HPS por ventana, frame 0 conserva la raíz
+global). Verificado: ctest 26/26 (emparejador con armónicos estables, roundtrip de
+extraF0, sampler z=0.5 interpola la raíz), suite WebUI 233/233, y la aceptación con
+barrido monofónico sintético (293.7→440 Hz): el modelo temporal captura la trayectoria
+344.5→387.9→436.0 Hz y el motor la reproduce al mover morphZ.
+
+Hallazgo (2026-09-23): **CZ-RRISE no es polifonía** — material EN CAPAS sobre UNA rejilla
+(E1, 41.62 Hz: los 121 picos de 9 ventanas caben con residuo medio 2.8 cents; el "drone"
+son n=1..3 y la "voz líder" es la envolvente espectral trepando por n=7..15). Con una
+sola rejilla no es representable: la guardia de desviación de pitch del analizador (plegada
+en cents sobre (−600,+600] contra la raíz del análisis) lo reporta como material no
+cuasi-monotónico en vez de producir un modelo des-afinado en silencio, y la sonda lo
+exime del check acústico estático. El diseño de la Fase 11 (separación de capas:
+clustering coseno por envolvente, formato v2.1 de layers, morphZ2/3 por capa) vive en
+`DOCS/ARCHITECTURE/LAYER_SEPARATION_PLAN.MD`, con su §10 de investigación (NMF medido:
+estable pero no semántico sobre rejilla compartida; puerta de plegado de octava como
+discriminador mono/bi-rejilla).
+
+**Herramienta permanente — sonda CLI del ModelMaker** (`NEURONiK_ModelMakerRealWavProbe`,
+`Tests/ModelMakerRealWavProbe.cpp`, en CMake sin `add_test`: sonda de verificación, no
+test). Conduce headless el flujo EXACTO de producción (WAV → detectPitch →
+analyze/analyzeTemporal → serialización v2 → PresetManager → sampleFrame → engine real)
+y verifica en tres capas: (1) ciclo completo con el engine, (2) validación acústica con
+DFT independiente + check de sub-octava (`PROBE_HALVE_F0=1` como demo de disparo), (3)
+reporte de la guardia de desviación de pitch. Registro y métricas por WAV en HANDOFF
+entradas (n), (r) y (s). Es la vara de medir para cualquier cambio futuro del analizador
+o del formato: correrla sobre los cinco WAVs de CZ101 es la batería de no-regresión
+acústica de facto.
       RECOMENDACION (2026-09-21): IMPLEMENTAR, no retirar — es la llave del
       widening estereo por voz (parcial i desviado `+spread*i/64` en L y
       `-spread*i/64` en R de la capa unison), el unico hueco real de imagen que

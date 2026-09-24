@@ -3665,3 +3665,160 @@ eco). En vivo sobre el dist servido: drag de 180° deja el store en `morphZ:0.5`
 50% ("Morph Z 50%" en el slider accesible) y una flecha arriba lo mueve a `morphZ:0.01` con el
 arco repintado — la ruta teclado→tienda→footer JSON confirmada en producción.
 
+## 2026-09-23 (p): HPS refinado y guardia de maximo local — el estimador no cae a sub-armonicos ni fabrica parciales
+
+Defecto destapado por la sonda con material real: con una nota anclada en ~124 Hz y un
+sub-oscilador fuerte en 62 (firma de `CZ-SWEP1`: 62@0.39, 124@1.0, 186@0.56, 248 vacio),
+el producto HPS en 62 multiplica los tres parciales reales que comparten y el estimador
+cayia al sub-armonico. Ademas, `measurePartial` asignaba amplitud a huecos de la rejilla
+que caian en la falda de un parcial ajeno: parciales fantasma (uno a -1381 cents) que
+sostenian medianas "bonitas" de modelos des-afinados.
+
+Refinado en `SpectralAnalyzer` (nucleo unificado `detectPitchImpl`, compartido por
+`detectPitch` y `detectPitchFromSpectrum` — fin de la duplicacion de la 10.6):
+
+1. **Ancla por esbozo**: maximo crudo del espectro en rango musical con maximo local
+   +-1 bin, ANTES del producto.
+2. **Candidatura del producto restringida**: el HPS solo puede degradar el ancla UNA
+   octava abajo (candidato a +-60 cents de ancla/2, con soporte espectral >= -40 dB),
+   nunca hacia arriba (el modelo en Python destapo que con ventana amplia el producto
+   secuestra anclas correctas con crestas de fuga).
+3. **Escalera de octava musical**: impares vacios frente a 2f0 => x1/2 (sub-octava); y
+   regla nueva de fundamental debil (2f0 domina todo su entorno y la serie muere tras
+   el 3er parcial) => x2. Calibrada contra las escaleras medidas de los cinco WAVs.
+4. **Guardia de maximo local en `measurePartial`**: un hueco de la rejilla sobre la
+   falda de un parcial ajeno queda a cero (los vecinos inmediatos del espectro global
+   no pueden superarlo) — sin fantasma.
+
+Metricas de la sonda (`NEURONiK_ModelMakerRealWavProbe`, antes/despues del refinado):
+
+| WAV | antes | despues |
+|---|---|---|
+| CZ-SWEP1 | f0 **64.5 Hz** (sub-octava del real ~124), mediana -4.5 cents sostenida por fantasmas | f0 **124.8 Hz**, parcial 1 = **-3.5 cents**, mediana -11.0 cents sobre parciales REALES, hueco 248 = 0.000, frames temporales 123.4-124.2 Hz |
+| CZ-BASS1 / HAMOG / PAD1 | 123.8 Hz | sin cambio — modelos regenerados **byte-identicos** (el refinado es no-op sobre series completas) |
+| CZ-RRISE | f0 erronea 81.4 Hz | exencion de barrido con detecciones honestas **291.5 -> 624.2 Hz** (el barrido real de 14 semitonos) |
+
+Verificacion cruzada: pin permanente nuevo en `SpectralAnalyzerTest.cpp` (bloque
+"Fundamental debil con sub-octava fuerte": fuente sintetica con la firma exacta de SWEP1
+=> detecta 123.97 Hz y la tabla del modelo es la honesta: 124=1.000, 248=0.000 — la
+guardia en accion —, 372=0.060); ctest **26/26**; sonda `RESULT: OK` en los cinco con el
+check de sub-octava (`PROBE_HALVE_F0=1`) como guardia para material futuro; el analizador
+de produccion regenera los modelos tonales sin mover un byte (verificacion aparte del
+mismo dia). El matiz honesto: la mediana de SWEP1 empeora de cifra (-4.5 -> -11 cents)
+porque ahora se mide sobre la raiz verdadera con parciales reales — antes la cifra
+sostenia un modelo una octava abajo lleno de fantasmas.
+
+## 2026-09-23 (q): 10.6 cerrada — frames con f0 por frame, y RRISE resulto ser material en capas
+
+La Fase 10.6 hace que el modelo temporal "cante" el pitch del WAV: `SpectralModel`
+guarda la raiz de cada frame (`extraF0[15]`, frame 0 = canonico), el `FrameSampler`
+interpola la raiz en dominio log y entrega el ratio; el motor lo multiplica por parcial
+(`partialFreq *= gridRatio` en Resonator y ResonatorBank — 1.0 en estaticos, bit-compat).
+Formato v2 con `frameF0` opcional; analizador con HPS POR VENTANA
+(`detectPitchFromSpectrum`, frame 0 conserva la raiz global). Verificado: ctest 26/26
+(armonicos estables en el emparejador, roundtrip de extraF0, sampler que interpola la
+raiz en z=0.5), suite WebUI 233/233, aceptacion con barrido monofonico sintetico
+(293.7 -> 440 Hz): trayectoria capturada 344.5 -> 387.9 -> 436.0 Hz, reproducida por el
+motor con morphZ.
+
+El hallazgo: **CZ-RRISE no es polifonia — es material EN CAPAS sobre UNA rejilla** (E1,
+41.62 Hz; residuo medio 2.8 cents en los 121 picos de 9 ventanas; drone = n1..3
+persistente, "voz lider" = envolvente espectral que trepa por n7..15). Con una sola
+rejilla no es representable y la sonda lo decia con "ESTATICO no aplicable: barrido".
+Cierre del agujero: el analizador estatico ahora lleva **guardia de desviacion de pitch**
+(`measurePitchDeviation`: HPS por ventana, desviacion plegada en cents sobre (-600,+600]
+CONTRA LA RAIZ — los saltos de octava del estimador colapsan a 0, leccion de PAD1 —,
+umbral 150 cents), `analyzeTemporal` queda exenta (es la representacion legitima de los
+barridos). Superficie: sonda imprime "guardia: desviacion X cents"; GUI del ModelMaker
+avisa en naranja y BLOQUEA la export del estatico des-afinado; test permanente (vibrato
++-6 cents => guardia 0; chirp de una octava => dispara a 599 plegados). ctest 26/26 y las
+metricas canonicas de la sonda intactas (BASS1 49/64, HAMOG 64/64, PAD1 17/64, SWEP1
+61/64). El diseno de la Fase 11 (capas: clustering coseno, formato v2.1, morphZ2/3) y su
+investigacion NMF viven en `DOCS/ARCHITECTURE/LAYER_SEPARATION_PLAN.MD`.
+
+## 2026-09-23 (r): sonda — validación acústica y check de sub-octava (el modelo se verifica contra la fuente)
+
+Dos capas de verificación en `NEURONiK_ModelMakerRealWavProbe` (paso 4.5 del flujo, tras
+el sampler y antes del engine) que convierten la sonda en un verificador acústico de
+punta a punta: WAV → modelo → ¿suena a la fuente?
+
+**Validación acústica (`acousticCheck`)**: DFT INDEPENDIENTE del analizador (Goertzel por
+banda sobre el segmento de RMS máximo, ventana Hann de 8192, avance 1024 — no comparte
+FFT con el análisis). Para cada uno de los **top-8 parciales más fuertes** del modelo,
+busca el pico REAL del espectro en su banda (k·f0 ± f0/2, nunca invade al vecino) con
+interpolación parabólica sub-bin y compara la frecuencia del modelo contra la medida, en
+cents. Frecuencia **contractual** (mediana de los 8 > ±35 cents ⇒ des-afinado); amplitud
+informativa (el analizador promedia ventanas, la sonda mide una). Los top-8 y no todos:
+los parciales débiles caen en picos vecinos de fuentes con notas dobles (rejillas
+entrelazadas a ~62 Hz en el material CZ101) — naturaleza de la fuente, no del modelo; la
+mediana es la estadística robusta (un des-afinado sistemático la dispara, los vecinos
+sueltos no).
+
+**Check de sub-octava (escalera de energía)**: la mediana no distingue una raíz a la
+MITAD de la fundamental real (el modelo desplazado una octava abajo también reparte
+armónicos contra picos reales). La firma inequívoca: los IMPARES de la rejilla (f0, 3f0)
+caen entre parciales reales y quedan vacíos mientras 2f0 canta. Contrato:
+`m2 > 1e-6 && mOdd < 0.15·m2 && m3 < 0.15·m2` ⇒ FAIL "raiz sub-octava: f0 y 3f0 vacios
+frente a 2f0". La escalera completa (f0/2, f0, 2f0, 3f0 con pico real medido) se imprime
+siempre para diagnóstico. Verificado por conmutador `PROBE_HALVE_F0=1` (divide SOLO la f0
+de la escalera): SWEP1 con raíz halved → f0 43.1 Hz mag 2.0 / 2f0 61.9 mag 117.9 / 3f0
+107.7 mag 4.8 → **FAIL como debe**; producción sin el conmutador es no-op bit a bit.
+
+Métricas (2026-09-23, los cinco WAVs de CZ101, mono 16-bit/44.1k):
+
+| WAV | f0 | mediana | máx | escalera (f0/2 / f0 / 2f0 / 3f0) | veredicto |
+|---|---|---|---|---|---|
+| CZ-BASS1 | 124.2 Hz | **−3.4** | 229.0 (vecinos sueltos) | 212 / **525** / 98 / 59 — f0 dominante | OK |
+| CZ-HAMOG | 123.8 Hz | **−1.6** | 4.4 | 153 / **401** / 327 / 169 — serie llena | OK |
+| CZ-PAD1 | 124.6 Hz | **−0.1** | 3.1 | 0.5 / **1185** / 404 / 219 — sub vacía | OK |
+| CZ-SWEP1 | 124.8 Hz | **−11.0** | 212.9 | 118 / **302** / 2.9 / 92 — 2f0 real vacío (n4 es hueco de la fuente) | OK |
+| CZ-RRISE | 291.5 Hz | (−316.6 informativa) | — | no corre: exención de barrido | exento |
+
+La exención de barrido (10.6) antecede al check: RRISE imprime su trayectoria
+(291.5→624.2 Hz) y la mediana informativa sin fallar — el modelo temporal con f0 por
+frame es su representación legítima. El matiz de SWEP1: su "error de octava" histórico no
+era sub-octava del estimador (refinado en la entrada (p)) sino una fundamental débil con
+el armónico 2 cantando; el check queda como guardia permanente para material futuro.
+
+## 2026-09-23 (s): hallazgo de los barridos CZ — la trayectoria de pitch medida y lo que revela
+
+Metodología (DFT independiente del analizador): ventana Hann de 8192, picos = máximos
+locales con interpolación parabólica sub-bin; ajuste de rejilla armónica por mínimos
+cuadrados (barrido de f0 27.5–600 Hz). Es la vara de medir con la que se leyeron los dos
+barridos del banco CZ101.
+
+**CZ-RRISE (10 s)** — cresta dominante por ventana (t = 0 → 9.85 s):
+
+| t (s) | 0.00 | 1.23 | 2.46 | 3.69 | 4.92 | 6.15 | 7.38 | 8.61 | 9.85 |
+|---|---|---|---|---|---|---|---|---|---|
+| cresta (Hz) | 291 | 333 | 375 | 458 | 500 | 541 | 583 | 624 | 624 |
+
+Lee como un barrido de pitch de ~13.6 semitonos (291→624 Hz)… **y no lo es**: los 121
+picos de las 9 ventanas caben en UNA rejilla f0 = **41.62 Hz (E1)** con residuo medio
+**2.8 cents** (máx 4.3 Hz), índices n = 1..18 contiguos. La cresta migrante son los
+múltiplos n = 7→15 de la MISMA serie; el "drone" (42/83/125 Hz) es n = 1..3 persistente
+(mag de n1 por ventana: 307,133,177,312,145,165,308,156,154 — constante). Es decir:
+**envolvente espectral trepando por la escalera armónica de un drone de pitch fijo** —
+barrido de formante, no polifonía ni glissando. El estimador por ventana (suelo 50 Hz)
+persigue la cresta; por eso la sonda reporta "ESTATICO no aplicable: barrido" y la
+guardia del analizador mide 436 cents de desviación.
+
+**CZ-SWEP1 (4.6 s)** — pitch fijo: la cresta dominante vive en **124.1 Hz** (mag 302)
+todo el fichero (frames del analizador: 123.4–124.2 Hz). Su "sweep" es ESPECTRAL
+(filtro/formante sobre nota sostenida). La familia tonal (<800 Hz) ajusta a UNA rejilla
+f0 = **62.18 Hz** (residuo medio 4.4 cents, máx 7.7) con índices n = {1,2,3,5,6,7,9,10}:
+impares (familia del sub-oscilador a 62) y pares (familia de la nota a 124) —
+"dos rejillas entrelazadas" que son UNA serie con huecos. Por encima, el racimo del
+transitorio (1497–1938 Hz) son los armónicos n24–n31 de la misma rejilla (12/12 a
+<28 cents).
+
+Consecuencias ya materializadas: (1) el refinado del HPS (entrada (p)) ancla SWEP1 en su
+octava correcta (124.8 Hz) con la regla de fundamental débil; (2) la guardia de
+desviación de pitch (entrada (q)) convierte el des-afinado silencioso de RRISE en fallo
+claro con los cents impresos; (3) los modelos temporales con f0 por frame (10.6) son la
+representación legítima de los barridos — la aceptación con barrido monofónico sintético
+(293.7→440 Hz) capturó la trayectoria 344.5→387.9→436.0 Hz y el motor la reproduce con
+morphZ; (4) el diseño de la Fase 11 (capas) y la puerta de plegado de octava viven en
+`DOCS/ARCHITECTURE/LAYER_SEPARATION_PLAN.MD`. Regla práctica que deja el hallazgo: en
+material CZ101, **primero ajustar la rejilla, después leer la trayectoria** — una cresta
+migrante sobre una serie fija es timbre que evoluciona, no nota que se mueve.
