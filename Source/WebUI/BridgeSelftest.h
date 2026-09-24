@@ -1,6 +1,6 @@
 /**
  * @file BridgeSelftest.h
- * @brief El selftest de seis direcciones del puente, compartido por la bancada
+ * @brief El selftest de siete direcciones del puente, compartido por la bancada
  *        (WebView2) y el editor del plugin (Fase 8, ticket 8.1 paso 2c).
  *
  * El arnes nacio DENTRO de `Source/WebPilotHost.cpp` (la bancada), que era la
@@ -34,12 +34,22 @@
  *      suena": la otra mitad (que el motor SUENE ese modelo) se mide en
  *      `Tests/ModelSlotTest.cpp`, porque un proceso con ventana no puede medir
  *      su propia salida de audio sin pelearse con el hilo de audio del host.
+ *   6. ACCIONES: la accion de ficha de la pagina (RANDOM, la unica de
+ *      `SECTION_ACTIONS`) se pulsa como la pulsa un usuario —SU boton, con su
+ *      estado real— y el sorteo que hace el procesador se mide por su EFECTO, no
+ *      por su estadistica: el APVTS tiene que haberse movido y el pie de la
+ *      pagina —el estado NORMALIZADO que el host ya parsea— tiene que ensenar
+ *      esos MISMOS numeros. Es la vuelta entera del canal (pagina -> nativo ->
+ *      APVTS -> pagina) sobre una accion de ESTADO, que no viaja como edicion de
+ *      parametro. Como el cajon de la matriz se queda ABIERTO a proposito, y con
+ *      un modal delante la ficha no es alcanzable, la direccion lo cierra antes
+ *      por su velo: el clic de fuera, que es el gesto que daria un usuario.
  *
  * Las direcciones 0 y 5 las exige la unica pagina que hay: la WebUI del plugin. Hasta el
  * ticket 8.4 el arnes podia declarar una direccion NO APLICABLE cuando el dueno servia la
  * exportacion retirada del piloto (`WebPilot/out`, anterior a la ficha MODELOS A-D y al
  * cajon de la matriz): esa maquinaria se fue con el piloto, porque no queda una segunda
- * pagina a la que rebajar el liston. Las seis direcciones son obligatorias en las dos
+ * pagina a la que rebajar el liston. Las siete direcciones son obligatorias en las dos
  * superficies, y el veredicto no necesita matices.
  *
  * No mueve el raton: usa el MISMO canal que usaria un usuario, que es lo que hace
@@ -50,7 +60,10 @@
  * motor y CARGA modelos en las cuatro ranuras del
  * APVTS (`modelPath<slot>`) — esto ultimo solo donde la pagina publica la ficha,
  * que en la otra superficie no se toca ni el APVTS ni el disco —, asi que no es algo
- * que se le lance a la sesion de un DAW que importe. Los cuatro ficheros de prueba
+ * que se le lance a la sesion de un DAW que importe. La ultima direccion ADEMAS
+ * sortea el timbre entero: pone `randomStrength` a 1, los tres `freeze*` a 0 y pulsa
+ * el RANDOM de la pagina, asi que al terminar el APVTS no tiene los valores con los
+ * que empezo. Los cuatro ficheros de prueba
  * viven en el directorio temporal y se borran al terminar: no se toca ningun modelo
  * del usuario.
  *
@@ -76,13 +89,21 @@
 #include <cmath>
 #include <functional>
 #include <memory>
+#include <vector>
 
 #include <juce_core/juce_core.h>
 #include <juce_events/juce_events.h>
 
 #include "Main/NEURONiKProcessor.h"
 
+ // Modelo temporal real embebido (juce_add_binary_data en CMakeLists.txt):
+ // CZ-BASS1 analizado por la sonda del ModelMaker -> 4 frames v2.
+ #include "NeuronikSelftestAssets.h"
+
 #include "State/ParameterDefinitions.h"
+ // La TABLA del sorteo: la direccion 6 no escribe a mano que parametros tienen que
+ // moverse, los deriva del mismo sitio del que los saca el RANDOMIZE.
+ #include "State/ParameterRandomizer.h"
 
 namespace NEURONiK::WebUI
 {
@@ -116,10 +137,11 @@ namespace SelftestPage
      *  abrirlo); el script compone el selector `[atributo]`. */
     inline constexpr const char* drawerTriggerAttribute = "data-drawer-trigger";
 
-    /** Clase del cajon ABIERTO (`src/ui/drawer.js`); el script compone `.clase`. */
+    /** Clase del cajon ABIERTO (mueble compartido @abdsynths/shared); el script compone `.clase`. */
     inline constexpr const char* openDrawerClass = "drawer--open";
 
-    /** Clase del velo VISIBLE que acompana a un cajon abierto (`src/ui/drawer.js`): el
+    /** Clase del velo VISIBLE que acompana a un cajon abierto (mueble compartido
+     *  `@abdsynths/shared/components`): el
      *  cajon y su velo comparten id, y el script compone `.clase`. */
     inline constexpr const char* visibleBackdropClass = "drawer-backdrop--visible";
 
@@ -130,6 +152,14 @@ namespace SelftestPage
     /** Atributo que marca una CELDA de control; el script compone
      *  `[atributo="id"]` para elegir el control de un parametro concreto. */
     inline constexpr const char* parameterCellAttribute = "data-parameter-id";
+
+    /** Atributo que marca el BOTON de una accion de ficha (el panel lo escribe como
+     *  `dataset.action`); el script compone `[atributo="id"]`. */
+    inline constexpr const char* actionButtonAttribute = "data-action";
+
+    /** La accion de ficha RANDOM de `contracts/sections.js` (`SECTION_ACTIONS`): el
+     *  sorteo lo hace el procesador, la pagina solo lo pide. */
+    inline constexpr const char* randomizeAction = "randomize";
 
     /** Una fila de la ficha MODELOS A-D (una por ranura, con `data-slot`). */
     inline constexpr const char* modelSlotRow = ".model-slots__row";
@@ -153,7 +183,7 @@ namespace SelftestPage
 
 /**
  * @class BridgeSelftest
- * @brief La maquina de estados del selftest de seis direcciones.
+ * @brief La maquina de estados del selftest de siete direcciones.
  *
  * Uso, desde el dueno (editor del plugin o bancada):
  *
@@ -185,6 +215,11 @@ public:
 
     /** @brief Controles por ruta: fuente, destino y cantidad (ver `sections.js`). */
     static constexpr int numMatrixCellsPerSlot = 3;
+
+    /** @brief Objetivos del sorteo que la pagina NO publica en su pie: `morphX` y
+     *         `morphY` viven en el pad XY (`SECTION_VISUALS`), no en el estado que el
+     *         lienzo serializa, asi que faltar esos dos es lo esperado. */
+    static constexpr int numPadOnlyTargets = 2;
 
     BridgeSelftest (NEURONiKProcessor& processorToUse,
                     EvaluateFn evaluateToUse,
@@ -248,7 +283,7 @@ public:
     [[nodiscard]] bool passed() const noexcept { return allOk; }
 
 private:
-    enum class Stage { idle, waitForPage, matrix, models, nativeToPage, pageToNative, generalState, midi, done };
+    enum class Stage { idle, waitForPage, matrix, models, nativeToPage, pageToNative, generalState, midi, actions, done };
 
     /** @brief La bandera de vida que comparten el arnes y sus callbacks. */
     struct Lifetime { bool alive = true; };
@@ -290,6 +325,7 @@ private:
             case Stage::pageToNative: return "JS -> NATIVO";
             case Stage::generalState: return "GENERAL";
             case Stage::midi:         return "MIDI";
+            case Stage::actions:      return "ACCIONES";
             case Stage::done:         return "hecho";
         }
 
@@ -463,7 +499,27 @@ private:
         directory.deleteRecursively();
         directory.createDirectory();
 
-        for (int slot = 0; slot < 4; ++slot)
+        // Ranura A: modelo TEMPORAL real embebido (fase 10.5). Se escribe a
+        // fichero y se revalida con el lector de produccion ANTES de entrar en
+        // el engine: si el binario dejase de ser legible (formato v2 roto, swap
+        // de asset...), la direccion lo grita aqui y no da OK mudo.
+        {
+            const juce::File temporalFile = directory.getChildFile (modelName (0) + ".neuronikmodel");
+            temporalFile.replaceWithData (NeuronikSelftestAssets::CZBASS1temporal_neuronikmodel,
+                                          (size_t) NeuronikSelftestAssets::CZBASS1temporal_neuronikmodelSize);
+
+            const auto parsed = NEURONiK::Serialization::PresetManager::loadModelFromFile (temporalFile);
+            const bool temporalOk = parsed.isValid && parsed.frameCount == 4;
+            log (juce::String ("[selftest] MODELOS: asset temporal embebido -> ")
+                 + (temporalOk ? "OK (4 frames v2, " + juce::String (temporalFile.getFileName()) + ")"
+                               : "FAIL (formato v2 ilegible)"));
+
+            const auto loaded = processor.loadModel (temporalFile, 0);
+            log ("[selftest] MODELOS: " + temporalFile.getFileName() + " -> ranura 0: "
+                 + (loaded ? "cargado (temporal v2)" : "RECHAZADO"));
+        }
+
+        for (int slot = 1; slot < 4; ++slot)
         {
             juce::DynamicObject::Ptr model = new juce::DynamicObject();
             juce::Array<juce::var> amplitudes;
@@ -645,14 +701,185 @@ private:
                                      + " (nativo 0.5) -> " + (ok ? "OK" : "FAIL"));
                                 midiOk = ok;
 
-                                finish (matrixDirectionOk() && modelsDirectionOk() && nativeToPageOk
-                                            && pageToNativeOk && generalOk && midiOk);
+                                // ACCIONES va ULTIMA: su sorteo mueve los parametros
+                                // de su tabla entera, asi que detras de las direcciones
+                                // que miden valores concretos (GENERAL, MIDI) y nunca
+                                // delante, o las invalidaria.
+                                pressPageActions();
                             });
                         });
                     });
                 });
             });
         });
+    }
+
+    // ========================================================================
+    // 5. ACCIONES (la accion de ficha de la pagina: RANDOM)
+    // ========================================================================
+
+    /**
+     * @brief Pulsa el RANDOM de la pagina y comprueba que el sorteo SE VE.
+     *
+     * @details Tres cosas, en este orden y por una razon cada una:
+     *
+     *   1. el sorteo obedece a `randomStrength` y a los tres `freeze*`, asi que se
+     *      ponen en su posicion mas exigente (fuerza 1, nada congelado) por el
+     *      APVTS — el mismo camino que un preset. El arnes ya declara en su cabecera
+     *      que NO es neutro;
+     *   2. se pulsa el BOTON de la pagina, con su etiqueta y su estado leidos EN LA
+     *      PAGINA: si las acciones dejasen de habilitarse con host, esto lo dice. El
+     *      cajon de la matriz que la direccion 0 dejo ABIERTO se cierra antes por su
+     *      velo (el clic de fuera), porque con un modal delante la ficha no es
+     *      alcanzable por un usuario;
+     *   3. el EFECTO se mide dos veces: en el APVTS (su tabla entera tiene que haberse
+     *      movido) y en el pie de la pagina (los MISMOS numeros). Un sorteo roto mueve
+     *      cero; uno que no vuelve mueve el APVTS y deja el pie quieto.
+     *
+     * La tabla de objetivos sale de `State::getRandomizeTargets()`, no de una lista
+     * escrita aqui: si el RANDOMIZE cambia de opinion sobre QUE sortea, esta direccion
+     * mide lo nuevo sin tocar el arnes.
+     */
+    void pressPageActions()
+    {
+        stage = Stage::actions;
+
+        // Fuerza entera y ningun congelado: asi "el sorteo movio el APVTS" es una
+        // MEDIDA y no una casualidad (`readRandomizeStrength` recorta a 0..1 y
+        // `readFreezeFlags` lee > 0.5, o sea que 1 y 0 son los extremos).
+        setParameterReal (State::IDs::randomStrength, 1.0f);
+        setParameterReal (State::IDs::freezeResonator, 0.0f);
+        setParameterReal (State::IDs::freezeFilter, 0.0f);
+        setParameterReal (State::IDs::freezeEnvelopes, 0.0f);
+
+        beforeRandomize = readRandomizeValues();
+
+        // Las cuatro escrituras de arriba llegan a la pagina en el siguiente poll del
+        // dueno: mismo margen que las otras direcciones.
+        afterDelay (400, [this]
+        {
+            evaluate (scriptPressRandomize(), [this] (const juce::String& raw)
+            {
+                const auto parsed = juce::JSON::parse (raw);
+                const auto* object = parsed.getDynamicObject();
+                const auto field = [object] (const char* key)
+                {
+                    return object != nullptr ? object->getProperty (key) : juce::var();
+                };
+
+                const auto error = field ("error").toString();
+                const auto label = field ("label").toString();
+                const auto closed = static_cast<int> (field ("closed"));
+                const auto enabled = static_cast<int> (field ("enabled"));
+
+                // El sorteo corre en el PROCESADOR y su efecto vuelve por el mismo canal
+                // (parameterChanged) en el siguiente poll del dueno: el margen de
+                // siempre, que aqui cubre DOS saltos (pulsacion -> APVTS -> pagina).
+                afterDelay (600, [this, error, label, closed, enabled]
+                {
+                    const auto after = readRandomizeValues();
+                    const auto total = static_cast<int> (after.size());
+                    int moved = 0;
+
+                    for (size_t index = 0; index < after.size(); ++index)
+                        if (std::abs (after[index] - beforeRandomize[index]) > 1.0e-6f)
+                            ++moved;
+
+                    // Un objetivo puede caer, por azar, en el valor que ya tenia: la tabla
+                    // sortea dentro de su INTENCION y el parametro redondea a su intervalo.
+                    // Por eso se admite un par de quietos en vez de exigir los 23; un
+                    // sorteo roto mueve 0 o 1, asi que la separacion sigue siendo clara.
+                    const auto movedEnough = moved >= total - 2;
+
+                    evaluate (scriptReadRandomizeValues(),
+                              [this, error, label, closed, enabled, after, moved, total, movedEnough]
+                              (const juce::String& pageRaw)
+                    {
+                        const auto pageParsed = juce::JSON::parse (pageRaw);
+                        const auto* pageObject = pageParsed.getDynamicObject();
+                        const auto* pageValues = pageObject != nullptr
+                                                     ? pageObject->getProperty ("values").getDynamicObject()
+                                                     : nullptr;
+                        const auto& targets = State::getRandomizeTargets();
+
+                        const auto missing = pageObject != nullptr
+                                                 ? static_cast<int> (pageObject->getProperty ("missing"))
+                                                 : static_cast<int> (targets.size());
+                        int pageSeen = 0;
+                        int mismatched = 0;
+                        juce::String worst;
+
+                        for (size_t index = 0; index < targets.size() && index < after.size(); ++index)
+                        {
+                            const auto id = juce::String (targets[index].id);
+
+                            if (pageValues == nullptr || ! pageValues->hasProperty (id))
+                                continue;
+
+                            ++pageSeen;
+
+                            const auto pageValue = static_cast<double> (pageValues->getProperty (id));
+                            const auto nativeValue = static_cast<double> (after[index]);
+
+                            if (std::abs (pageValue - nativeValue) > 1.0e-3)
+                            {
+                                ++mismatched;
+
+                                if (worst.isEmpty())
+                                    worst = id + ": pagina " + juce::String (pageValue, 4)
+                                            + " vs APVTS " + juce::String (nativeValue, 4);
+                            }
+                        }
+
+                        // El pie no lo ensena todo y no tiene por que: su lista de ids es el
+                        // contrato de la PAGINA (los 70 del lienzo). Los dos objetivos del pad
+                        // XY no estan ahi, asi que se admite que falten esos DOS — y ninguno
+                        // mas: media tabla sin publicar es una pagina que dejo de enterarse.
+                        const auto pageOk = pageSeen > 0 && missing <= numPadOnlyTargets
+                                                && mismatched == 0;
+
+                        const auto ok = error.isEmpty() && enabled == 1 && closed == 1
+                                            && movedEnough && pageOk;
+
+                        log ("[selftest] ACCIONES: RANDOM de la pagina (\"" + label + "\""
+                             + (enabled == 1 ? ", habilitado" : ", DESHABILITADO")
+                             + ") con el cajon de la matriz "
+                             + (closed == 1 ? "cerrado" : "SIN CERRAR")
+                             + "; APVTS movido en " + juce::String (moved) + "/" + juce::String (total)
+                             + " objetivos; el pie publica " + juce::String (pageSeen)
+                             + " de esos ids (" + juce::String (missing) + " sin publicar, "
+                             + juce::String (numPadOnlyTargets) + " son del pad XY), "
+                             + juce::String (mismatched) + " discrepancia(s)"
+                             + (worst.isEmpty() ? juce::String() : " [" + worst + "]")
+                             + (error.isEmpty() ? juce::String() : "  [" + error + "]")
+                             + " -> " + (ok ? "OK" : "FAIL"));
+                        actionsOk = ok;
+
+                        finish (matrixDirectionOk() && modelsDirectionOk() && nativeToPageOk
+                                    && pageToNativeOk && generalOk && midiOk && actionsOk);
+                    });
+                });
+            });
+        });
+    }
+
+    /** @brief Valores NORMALIZADOS del APVTS para la tabla del sorteo, en su orden. */
+    std::vector<float> readRandomizeValues()
+    {
+        const auto& targets = State::getRandomizeTargets();
+        std::vector<float> values;
+
+        values.reserve (targets.size());
+
+        for (const auto& target : targets)
+        {
+            if (const auto* parameter = processor.getAPVTS().getParameter (target.id))
+                values.push_back (parameter->getValue());
+            else
+                values.push_back (-1.0f);   // la tabla y el APVTS los cruza su propio test
+        }
+
+        return values;
     }
 
     /** @brief Veredicto de MODELOS: los cuatro nombres de la ficha A-D, en la pagina. */
@@ -821,6 +1048,55 @@ private:
                " return el ? String(Number(el.value) / 127) : 'NO_MOD'; })()";
     }
 
+    /**
+     * @brief Pulsa el RANDOM de la ficha (SU boton) y devuelve, en JSON, que vio.
+     *
+     * El cajon de la matriz se queda ABIERTO a proposito desde la direccion 0, y con un
+     * modal delante la ficha no es alcanzable: primero se cierra por su VELO (el clic de
+     * fuera, el mismo gesto que daria un usuario) y se informa de si quedo cerrado.
+     * Despues se lee el boton de la accion —etiqueta y estado— ANTES de pulsarlo: un
+     * boton deshabilitado no dispara su listener, y eso es justo lo que hay que ver si la
+     * pagina deja de habilitar las acciones cuando no hay host.
+     */
+    static juce::String scriptPressRandomize()
+    {
+        const auto veil = juce::String ("'.") + SelftestPage::visibleBackdropClass + "'";
+        const auto open = juce::String ("'.") + SelftestPage::openDrawerClass + "'";
+        const auto button = juce::String ("'[") + SelftestPage::actionButtonAttribute
+                          + "=\"" + SelftestPage::randomizeAction + "\"]'";
+
+        return "(() => { try {"
+               "  const veil = document.querySelector(" + veil + ");"
+               "  if (veil) veil.click();"
+               "  const stillOpen = document.querySelector(" + open + ");"
+               "  const button = document.querySelector(" + button + ");"
+               "  if (!button) return JSON.stringify({ error: 'NO_RANDOM_BUTTON' });"
+               "  const seen = { closed: stillOpen ? 0 : 1, enabled: button.disabled ? 0 : 1,"
+               "                 label: button.textContent };"
+               "  button.click();"
+               "  return JSON.stringify(seen);"
+               " } catch (e) { return JSON.stringify({ error: e.message }); } })()";
+    }
+
+    /** @brief Lo que el pie de la pagina publica para la tabla del sorteo (JSON). */
+    static juce::String scriptReadRandomizeValues()
+    {
+        juce::StringArray ids;
+
+        for (const auto& target : State::getRandomizeTargets())
+            ids.add (juce::String ("'") + target.id + "'");
+
+        return "(() => { try {"
+               "  const state = JSON.parse(document.querySelector('"
+                    + juce::String (SelftestPage::stateCode) + "').textContent);"
+               "  const ids = [" + ids.joinIntoString (",") + "];"
+               "  const values = {}; let missing = 0;"
+               "  for (const id of ids) {"
+               "    if (typeof state[id] === 'number') values[id] = state[id]; else ++missing; }"
+               "  return JSON.stringify({ values: values, missing: missing });"
+               " } catch (e) { return 'RANDOM_FAIL: ' + e.message; } })()";
+    }
+
     static constexpr int numGeneralIds = (int) (sizeof (SelftestPage::generalIds)
                                                 / sizeof (SelftestPage::generalIds[0]));
 
@@ -845,9 +1121,11 @@ private:
     bool pageToNativeOk = false;
     bool generalOk = false;   // los 11 ids en la pagina + propagacion nativo -> pagina
     bool midiOk = false;      // nota de la pagina en el motor + rueda de nativo en la pagina
+    bool actionsOk = false;   // el RANDOM de la pagina movio el APVTS y volvio pintado
 
     double startedAtMs = 0.0;
     float modWheelPageValue = -1.0f;
+    std::vector<float> beforeRandomize;   // APVTS de la tabla del sorteo, antes de pulsar
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BridgeSelftest)
 };

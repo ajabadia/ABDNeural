@@ -97,7 +97,7 @@ notes:
 
 1.  **WebView2 bench (recommended)** — launches the `NEURONiK Web Pilot.exe` host: it serves `WebUI\dist` with the live JUCE<->WebUI bridge, exactly the same page the plugin embeds. (The "Web Pilot" name is documented cosmetic debt from the retired pilot; see `DOCS/PILOT_RETIRED.md`.)
 2.  **Browser only** — serves `WebUI\dist` at `http://localhost:8399`; without the bridge the page runs in LOCAL MODE (handy for debugging the UI on its own).
-3.  **Bridge selftest** — automated E2E over the real WebView2 channel in six directions (mod matrix, native→JS, JS→native, GENERAL, MIDI, models A–D); exit code 0 = OK.
+3.  **Bridge selftest** — automated E2E over the real WebView2 channel in seven directions (mod matrix, native→JS, JS→native, GENERAL, MIDI, models A–D, card actions/RANDOM); exit code 0 = OK.
 
 ## WebUI Development
 

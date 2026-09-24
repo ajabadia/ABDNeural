@@ -1,13 +1,14 @@
 /**
  * ABDNeural — anti-drift del contrato entre el selftest del puente y la pagina.
  *
- * El selftest de seis direcciones (`Source/WebUI/BridgeSelftest.h`) habla con la
+ * El selftest de siete direcciones (`Source/WebUI/BridgeSelftest.h`) habla con la
  * WebUI por unos anclajes concretos: el primer `input[type=range]`, el `<code>` del
  * pie de pagina, la pestana KEYS, la rueda de modulacion del teclado compartido, la
  * ficha MODELOS A-D (fila + nombre de cada ranura), el cajon lateral de la matriz
- * (disparador, cajon abierto, ruta y la celda de un parametro) y el helper de MIDI de
- * la pagina (`__pilotSendMidi`). Ademas comprueba que los 11 ids de la pestana GENERAL
- * esten en el estado de la pagina.
+ * (disparador, cajon abierto, ruta y la celda de un parametro), la accion de ficha
+ * (el boton por `data-action`, con RANDOM como unica accion hoy) y el helper de MIDI
+ * de la pagina (`__pilotSendMidi`). Ademas comprueba que los 11 ids de la pestana
+ * GENERAL esten en el estado de la pagina.
  *
  * Son un CONTRATO, no detalles: si alguien renombra un anclaje en el C++ o lo quita de
  * la pagina, el selftest deja de comprobar lo que cree que comprueba y aun asi puede
@@ -94,6 +95,8 @@ const expectedAnchors = {
   visibleBackdropClass: 'drawer-backdrop--visible',
   drawerSlotClass: 'drawer-slot',
   parameterCellAttribute: 'data-parameter-id',
+  actionButtonAttribute: 'data-action',
+  randomizeAction: 'randomize',
   modelSlotRow: '.model-slots__row',
   modelSlotName: '.model-slots__name',
   midiHelper: '__pilotSendMidi',
@@ -107,6 +110,17 @@ for (const [name, value] of Object.entries(expectedAnchors)) {
 
 const pageSources = listSources(path.join('WebUI', 'src'));
 const pageTests = listSources(path.join('WebUI', 'tests'));
+
+// FASE drawer compartido: el mueble vive en el paquete (hermano del repo).
+// Sus ficheros entran en el escaneo como dueños legitimos de anclajes.
+const sharedSources = [
+  '../ABDSharedAssets/components/drawer.js',
+  '../ABDSharedAssets/styles/components/widgets.css',
+].map((relative) => ({
+  relative,
+  text: fs.readFileSync(path.join(repositoryRoot, relative), 'utf8'),
+}));
+pageSources.push(...sharedSources);
 
 /**
  * Quien PUBLICA cada anclaje en la pagina (el contrato lo dice en su comentario), y
@@ -125,10 +139,17 @@ const anchorOwners = {
   // completos: el selector lo compone el script del arnes. El disparador ademas lo
   // ESCRIBE el panel como `dataset.drawerTrigger`, asi que su mitad es esa.
   drawerTriggerAttribute: { files: ['WebUI/src/ui/panel.js'], pageForm: 'dataset.drawerTrigger' },
-  openDrawerClass: { files: ['WebUI/src/ui/drawer.js'], pageForm: 'drawer--open' },
-  visibleBackdropClass: { files: ['WebUI/src/ui/drawer.js'], pageForm: 'drawer-backdrop--visible' },
+  // FASE drawer compartido: el dueño REAL de las clases es el componente
+  // compartido (constants OPEN_CLASS/BACKDROP_CLASS de drawer.js).
+  openDrawerClass: { files: ['../ABDSharedAssets/components/drawer.js'] },
+  visibleBackdropClass: { files: ['../ABDSharedAssets/components/drawer.js'] },
   drawerSlotClass: { files: ['WebUI/src/ui/panel.js'], pageForm: 'drawer-slot' },
   parameterCellAttribute: { files: ['WebUI/src/ui/panel.js'], pageForm: 'data-parameter-id' },
+  // El boton de la accion lo ESCRIBE el panel como `dataset.action`; la accion en si la
+  // declara la ficha en `sections.js` (catalogo -> ficha -> boton), asi que ahi se busca
+  // el vinculo real: la ficha que pide ESA accion.
+  actionButtonAttribute: { files: ['WebUI/src/ui/panel.js'], pageForm: 'dataset.action' },
+  randomizeAction: { files: ['WebUI/src/contracts/sections.js'], pageForm: "action: 'randomize'" },
   modelSlotRow: { files: ['WebUI/src/ui/modelSlots.js'], pageForm: 'model-slots__row' },
   modelSlotName: { files: ['WebUI/src/ui/modelSlots.js'], pageForm: 'model-slots__name' },
   midiHelper: { files: ['WebUI/src/contracts/paramStore.js'] },
@@ -178,7 +199,7 @@ if (cppGeneralIds.length > 0 && pageGeneralIds.length > 0
   console.error(`       pagina: ${pageGeneralIds.join(', ')}`);
 }
 
-// --- 5. Las seis direcciones son obligatorias --------------------------------------
+// --- 5. Las siete direcciones son obligatorias -------------------------------------
 //
 // Hasta el ticket 8.4 el arnes podia declarar una direccion NO APLICABLE cuando el
 // dueno servia la pagina retirada del piloto, que no llevaba ni la ficha MODELOS A-D

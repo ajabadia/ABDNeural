@@ -342,6 +342,7 @@ if(NEURONIK_WEBUI_ASSETS)
 
             target_link_libraries(${_neuronik_ui_target} PRIVATE
                 NEURONiK_WebUIAssets
+                NEURONiK_SelftestAssets
                 NEURONiK_FactoryModels
                 ABDShared::WebView2Bridge
             )
@@ -1110,13 +1111,13 @@ else()
     message(STATUS "node not found: NEURONiK_WebViewBridgeDirection test skipped")
 endif()
 
-# Selftest contract, C++ <-> pagina. El selftest de seis direcciones
+# Selftest contract, C++ <-> pagina. El selftest de siete direcciones
 # (WebUI/BridgeSelftest.h) consulta unos anclajes de la pagina (el primer
 # input[type=range], el <code> del pie, la pestana KEYS, la rueda de modulacion,
 # el cajon lateral de la matriz y la celda de un control, la ficha MODELOS A-D,
 # __pilotSendMidi) y comprueba los 11 ids de GENERAL: si un
 # lado se mueve sin el otro, el selftest deja de comprobar lo que dice comprobar y
-# puede dar OK. Tambien fija que las seis direcciones son OBLIGATORIAS: la maquinaria de
+# puede dar OK. Tambien fija que las siete direcciones son OBLIGATORIAS: la maquinaria de
 # "direccion no aplicable" se fue con el piloto retirado (ticket 8.4), y este test impide
 # que vuelva por la puerta de atras. Lo fija por los dos lados, como el contrato del
 # protocolo. Necesita node.
@@ -1141,6 +1142,25 @@ endif()
 
 
 # ============================================================================
+# SELFTEST ASSETS (modelo temporal real para el E2E del bridge)
+# ============================================================================
+
+# El modelo de ejemplo de la FASE 10 (CZ-BASS1 -> 4 frames v2 con f0 por frame),
+# generado por la sonda CLI del ModelMaker a partir del WAV real del banco CZ101
+# (ver ROADMAP Fase 10.5). Viaja EMBEBIDO para que el selftest del bridge
+# (BridgeSelftest.h, siete direcciones) cargue en la ranura A un modelo del
+# dialecto temporal REAL y la direccion MODELOS cubra tambien el formato v2:
+# frames, span y f0 por frame atravesando APVTS -> pagina.
+# NOTA: los assets van en el directorio del plugin (no en Tests/) porque el
+# generador de JUCE nombra los simbolos por contenido; el include lo consume
+# BridgeSelftest.h via NeuronikSelftestAssets.h.
+juce_add_binary_data(NEURONiK_SelftestAssets
+    HEADER_NAME "NeuronikSelftestAssets.h"
+    NAMESPACE "NeuronikSelftestAssets"
+    SOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Models/CZ-BASS1-temporal.neuronikmodel"
+)
+
 # MODELOS DE FABRICA (banco CZ101 real): los seis .neuronikmodel generados por
 # la sonda del ModelMaker (ModelMakerRealWavProbe) desde los WAV del banco
 # (ABDCZ101/DOCS/patches). Viajan EMBEBIDOS y el processor los INSTALLA en
@@ -1249,6 +1269,10 @@ target_link_libraries(NEURONiK_WebPilotHost PRIVATE
     # The contract library brings the real APVTS layout (createLayoutApvts), so the host
     # bridges exactly the parameters the plugin ships, not a hand written copy.
     NEURONiK_ParameterContract
+    # BridgeSelftest.h (address MODELS) loads the embedded temporal model.
+    NEURONiK_SelftestAssets
+    # installFactoryModels() (NEURONiKProcessor) writes the CZ101 bank models.
+    NEURONiK_FactoryModels
     juce::juce_core
     juce::juce_events
     juce::juce_graphics

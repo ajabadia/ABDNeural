@@ -282,7 +282,7 @@ if !ERRORLEVEL! neq 0 (
     set "EXIT_CODE=1"
     goto :finish
 )
-echo [OK] Plugin verificado (6 direcciones): MATRIZ, nativo-^>JS, JS-^>nativo, GENERAL, MIDI y MODELOS A-D.
+echo [OK] Plugin verificado (7 direcciones): MATRIZ, nativo-^>JS, JS-^>nativo, GENERAL, MIDI, MODELOS A-D y ACCIONES (RANDOM de la pagina).
 
 REM Solo si la bancada compilo y la pagina existe: sin pagina que cargar no hay E2E.
 REM La bancada sirve WebUI\dist (la MISMA pagina que embebe el plugin), asi que este
@@ -312,7 +312,7 @@ if !ERRORLEVEL! neq 0 (
     set "EXIT_CODE=1"
     goto :finish
 )
-echo [OK] Bancada verificada: las seis direcciones sobre la MISMA pagina del plugin.
+echo [OK] Bancada verificada: las siete direcciones sobre la MISMA pagina del plugin.
 
 echo.
 echo =======================================================
