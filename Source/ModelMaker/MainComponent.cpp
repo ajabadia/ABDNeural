@@ -50,6 +50,17 @@ MainComponent::MainComponent()
     fileNameLabel.setText("No file loaded", juce::dontSendNotification);
     fileNameLabel.setColour(juce::Label::textColourId, juce::Colours::grey);
     addAndMakeVisible(fileNameLabel);
+    pitchGuardLabel.setFont (juce::Font (13.0f));
+    pitchGuardLabel.setJustificationType (juce::Justification::centredLeft);
+    pitchGuardLabel.setColour (juce::Label::textColourId, juce::Colours::orange);
+    addAndMakeVisible (pitchGuardLabel);
+
+    // Indicador de rejilla detectada (f0 + residuo en cents del ajuste LS)
+    gridLabel.setFont (juce::Font (13.0f));
+    gridLabel.setJustificationType (juce::Justification::centredLeft);
+    gridLabel.setColour (juce::Label::textColourId, juce::Colours::cyan);
+    addAndMakeVisible (gridLabel);
+
 
     // Pitch UI
     addAndMakeVisible(pitchLabel);
@@ -301,6 +312,7 @@ void MainComponent::stopRecording()
         detectedFrequency = analyzer.detectPitch(loadedAudio, loadedSampleRate);
         pitchEditor.setText(juce::String(detectedFrequency, 2), juce::dontSendNotification);
         updateRootNoteFromFreq(detectedFrequency);
+        updateGridIndicator();
     }
 }
 
@@ -405,6 +417,7 @@ void MainComponent::loadFile()
                 // Auto Detect Pitch
                 detectedFrequency = analyzer.detectPitch(loadedAudio, loadedSampleRate);
                 pitchEditor.setText(juce::String(detectedFrequency, 2), juce::dontSendNotification);
+                updateGridIndicator();
 
                 analyzeButton.setEnabled(true);
                 playOriginalButton.setEnabled(true);
@@ -413,6 +426,36 @@ void MainComponent::loadFile()
             }
         }
     });
+}
+
+// 2026-09-24: INDICADOR DE REJILLA. Feedback inmediato tras cargar o
+// grabar material: la f0 del ajuste por minimos cuadrados y su residuo
+// RMS en cents sobre los picos de todas las ventanas. Verde <=15c (el
+// material es una rejilla), amarillo <=40c, naranja por encima.
+void MainComponent::updateGridIndicator()
+{
+    if (detectedFrequency <= 0.0f)
+    {
+        gridLabel.setText ({}, juce::dontSendNotification);
+        return;
+    }
+
+    const float resid = analyzer.lastGridResidualCents();
+    const int obs = analyzer.lastGridObservations();
+
+    juce::String text = "Rejilla: f0 " + juce::String (detectedFrequency, 2) + " Hz";
+    if (resid >= 0.0f)
+        text += "  |  residuo " + juce::String (resid, 1) + " cents  |  "
+                + juce::String (obs) + " picos";
+    else
+        text += "  |  residuo n/d (material insuficiente)";
+    gridLabel.setText (text, juce::dontSendNotification);
+
+    gridLabel.setColour (juce::Label::textColourId,
+                         resid < 0.0f     ? juce::Colours::grey
+                         : resid <= 15.0f ? juce::Colour (0xFF2ECC71)
+                         : resid <= 40.0f ? juce::Colours::yellow
+                                          : juce::Colours::orange);
 }
 
 void MainComponent::analyzeAudio()
@@ -444,6 +487,8 @@ void MainComponent::analyzeAudio()
              f0 = rawDetectF;
              pitchEditor.setText(juce::String(f0, 2), juce::dontSendNotification);
              updateRootNoteFromFreq(f0);
+             detectedFrequency = rawDetectF;
+             updateGridIndicator();
         }
     }
 
@@ -464,6 +509,23 @@ void MainComponent::performAnalysis(float f0)
     currentModel = (nFrames <= 1)
         ? analyzer.analyze(loadedAudio, loadedSampleRate, f0)
         : analyzer.analyzeTemporal(loadedAudio, loadedSampleRate, f0, nFrames);
+    // GUARDIA (2026-09-23): aviso cuando el material no es cuasi-monotonico y
+    // el modelo estatico saldria des-afinado. El analisis temporal (frames)
+    // sigue el pitch por ventana y no dispara la guardia.
+    if (nFrames <= 1)
+    {
+        const float guard = analyzer.lastPitchGuardCents();
+        pitchGuardLabel.setText (guard > 0.0f
+                                     ? "Pitch inestable (" + juce::String (guard, 0)
+                                           + " cents): el modelo estatico quedaria des-afinado; usa mas frames"
+                                     : juce::String(),
+                                 juce::dontSendNotification);
+    }
+    else
+    {
+        pitchGuardLabel.setText ({}, juce::dontSendNotification);
+    }
+
     
     // Prepare Preview
     previewResonator.loadModel(currentModel, 0); // Load into slot A
@@ -476,6 +538,20 @@ void MainComponent::performAnalysis(float f0)
 
 void MainComponent::exportModel()
 {
+
+    // GUARDIA (2026-09-23): bloquear la exportacion de un modelo estatico
+    // des-afinado (material con desviacion de pitch). El temporal exporta.
+    if (currentModel.frameCount <= 1 && analyzer.lastPitchGuardCents() > 0.0f)
+    {
+        juce::AlertWindow::showMessageBoxAsync (juce::AlertWindow::WarningIcon,
+            "Modelo des-afinado",
+            "El material tiene una desviacion de pitch de "
+                + juce::String (analyzer.lastPitchGuardCents(), 0)
+                + " cents: un modelo estatico no lo representa. Genera un modelo "
+                  "temporal (mas frames) o usa material cuasi-monotonico.");
+        return;
+    }
+
     // Serialize to JSON
     juce::DynamicObject* modelObj = new juce::DynamicObject();
 
@@ -522,6 +598,9 @@ void MainComponent::exportModel()
             juce::DynamicObject::Ptr frameObj = new juce::DynamicObject();
             frameObj->setProperty("amplitudes", fAmps);
             frameObj->setProperty("frequencyOffsets", fOffs);
+            // FASE 10.6: raiz del frame — el modelo "canta" el pitch del WAV.
+            if (const float f0k = currentModel.f0At(f); f0k > 0.0f)
+                frameObj->setProperty("frameF0", f0k);
             frames.add(frameObj.get());
         }
 
@@ -626,9 +705,10 @@ void MainComponent::resized()
     exportButton.setBounds(headerArea.removeFromRight(juce::roundToInt(120.0f * scaleX)).reduced(0, juce::roundToInt(4.0f * scaleY)));
     headerArea.removeFromRight(juce::roundToInt(20.0f * scaleX)); 
     loadButton.setBounds(headerArea.removeFromRight(juce::roundToInt(100.0f * scaleX)).reduced(0, juce::roundToInt(4.0f * scaleY)));
-    fileNameLabel.setBounds(headerArea); 
+    fileNameLabel.setBounds(headerArea);
+    pitchGuardLabel.setBounds(headerArea); 
 
-    area.removeFromTop(juce::roundToInt(20.0f * scaleY)); // Spacer
+    gridLabel.setBounds (area.removeFromTop (juce::roundToInt (20.0f * scaleY))); // fila: indicador de rejilla
 
     // Footer
     auto footerArea = area.removeFromBottom(juce::roundToInt(40.0f * scaleY));
@@ -663,6 +743,7 @@ void MainComponent::resized()
     pitchEditor.setFont(editorFont);
     // noteCombo and octaveCombo fonts are handled by LookAndFeel, ComboBox doesn't have setFont()
     fileNameLabel.setFont(juce::Font(juce::FontOptions(13.0f * scale)));
+    gridLabel.setFont(juce::Font(juce::FontOptions(13.0f * scale)));
 
     // Boxes (Split remaining space)
     auto boxHeight = area.getHeight() / 2 - juce::roundToInt(10.0f * scaleY);

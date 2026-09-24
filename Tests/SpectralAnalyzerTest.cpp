@@ -15,6 +15,9 @@
                       canal que antes era un TODO a cero.
                    4. Multiframe: un ataque fuerte al inicio NO domina ya el
                       modelo (las ventanas se reparten por todo el fichero).
+                 5. Fundamental debil con sub-octava fuerte (CZ-SWEP1): el
+                      HPS refinado no cae al sub-armonico (62 Hz) y pilla la
+                      nota del patch (124 Hz).
 
   ==============================================================================
 */
@@ -165,6 +168,123 @@ int main()
                                                      - mWithout.amplitudes[(size_t) k]));
         check (maxDiff < 0.25,
                "el ataque fuerte apenas mueve la tabla (maxDiff=" + juce::String ((float) maxDiff, 3) + " < 0.25)");
+    }
+
+    // --- 4. Fundamental debil con sub-octava fuerte (CZ-SWEP1) ---------------
+    std::cout << "\nFundamental debil (sub-octava fuerte)\n";
+    {
+        // Firma REAL del CZ-SWEP1 (medida por la sonda, serie de la raiz
+        // 62): sub-octava 62 (0.39), fundamental 124 (1.0, dominante),
+        // 186 (0.56), 248 practicamente vacio y migajas de banda ancha
+        // encima — la nota del patch vive en 124 con un sub-oscilador
+        // fuerte. El HPS clasico cae al sub-armonico (el producto en 62
+        // multiplica los tres parciales reales que comparten).
+        constexpr float f0Real = 124.0f;
+        struct Partial { float freq; float amp; };
+        constexpr Partial partials[] = {
+            {  62.0f, 0.39f }, { 124.0f, 1.00f }, { 186.0f, 0.56f },
+            { 248.0f, 0.05f }, { 372.0f, 0.06f },
+        };
+        juce::AudioBuffer<float> source (2, numSamples);
+        source.clear();
+        double peak = 0.0;
+        for (const auto& p : partials)
+            peak = juce::jmax (peak, (double) p.amp);
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const double t = (double) i / sampleRate;
+            double s = 0.0;
+            for (const auto& p : partials)
+                s += (double) p.amp
+                        * std::sin (2.0 * juce::MathConstants<double>::pi
+                                        * (double) p.freq * t);
+            const float v = (float) (0.6 * s / (1.9 * peak));
+            source.setSample (0, i, v);
+            source.setSample (1, i, v);
+        }
+
+        const auto detected = analyzer.detectPitch (source, sampleRate);
+        check (std::abs (detected - f0Real) < 5.0f,
+               "fundamental debil con sub-octava fuerte detecta la nota ("
+                   + juce::String (detected, 2) + " Hz ~ "
+                   + juce::String (f0Real, 1) + ")");
+
+        // Y el modelo se analiza contra la raiz correcta: la ventana de
+        // busqueda de cada parcial (mitad del espaciado - 1 bin) deja fuera
+        // tanto la sub-octava de 62 como el medio-entero de 186, asi que la
+        // tabla queda dominada por la fundamental, con el hueco de 248 casi
+        // vacio (guardia de maximo local: sin fantasmas de faldas ajenas) y
+        // el 3er parcial debil pero presente — el reparto REAL de la fuente.
+        const auto model = analyzer.analyze (source, sampleRate, detected);
+        check (model.amplitudes[(size_t) 0] > 0.8f
+                   && model.amplitudes[(size_t) 0] > model.amplitudes[(size_t) 1]
+                   && model.amplitudes[(size_t) 1] < 0.2f
+                   && model.amplitudes[(size_t) 2] > 0.03f,
+               "el modelo reproduce el reparto (fundamental dominante, hueco de "
+                   "248 casi vacio: 124=" + juce::String (model.amplitudes[(size_t) 0], 3)
+                   + " 248=" + juce::String (model.amplitudes[(size_t) 1], 3)
+                   + " 372=" + juce::String (model.amplitudes[(size_t) 2], 3) + ")");
+
+        // Y la via POR VENTANA (detectPitchFromSpectrum, la que alimenta
+        // analyzeTemporal) tambien cae de pie sobre la firma del patch:
+        // los frames detectan ~124 Hz y el modelo temporal no arrastra la
+        // sub-octava a su trayectoria frameF0. Es la ruta que producia
+        // 62.3 Hz en la ventana de cabecera antes del refinado.
+        const auto temporal = analyzer.analyzeTemporal (source, sampleRate, detected, 4);
+        check (temporal.numFrames() == 4, "el modelo temporal tiene los 4 frames pedidos");
+        check (std::abs (temporal.f0At (0) - f0Real) < 5.0f
+                   && std::abs (temporal.f0At (3) - f0Real) < 5.0f,
+               "la via por ventana detecta la nota en frames 0 y 3 ("
+                   + juce::String (temporal.f0At (0), 2) + " / "
+                   + juce::String (temporal.f0At (3), 2) + " Hz ~ 124)");
+
+
+    // --- 5. Guardia de desviacion de pitch --------------------------------
+    std::cout << "\nGuardia de desviacion de pitch\n";
+    {
+        // (a) Cuasi-monotonico: seno con vibrato suave (+-6 cents) en 220 Hz.
+        //     La guardia NO dispara: el modelo estatico es representable.
+        juce::AudioBuffer<float> steady (2, numSamples);
+        steady.clear();
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const double t = (double) i / sampleRate;
+            const double f = 220.0 * std::pow (2.0, 0.006 * std::sin (
+                2.0 * juce::MathConstants<double>::pi * 0.8 * t));
+            const double s = 0.5 * std::sin (2.0 * juce::MathConstants<double>::pi * f * t)
+                                 + 0.2 * std::sin (2.0 * juce::MathConstants<double>::pi * 2.0 * f * t);
+            const float v = (float) s;
+            steady.setSample (0, i, v);
+            steady.setSample (1, i, v);
+        }
+        analyzer.measurePitchDeviation (steady, sampleRate, 220.0f);
+        check (analyzer.lastPitchGuardCents() == 0.0f,
+               "material cuasi-monotonico: guardia a 0 ("
+                   + juce::String (analyzer.lastPitchGuardCents(), 1) + " cents)");
+
+        // (b) Barrido real: chirp exponencial de una octava (220 -> 440 Hz).
+        //     Una sola rejilla no lo describe: la guardia DISPARA y el
+        //     llamador sabe que el estatico saldria des-afinado.
+        juce::AudioBuffer<float> sweepBuf (2, numSamples);
+        sweepBuf.clear();
+        {
+            double phase = 0.0;
+            for (int i = 0; i < numSamples; ++i)
+            {
+                const double t = (double) i / sampleRate;
+                const double f = 220.0 * std::pow (2.0, t);
+                phase += 2.0 * juce::MathConstants<double>::pi * f / sampleRate;
+                const float v = (float) (0.5 * std::sin (phase)
+                                             + 0.12 * std::sin (2.0 * phase));
+                sweepBuf.setSample (0, i, v);
+                sweepBuf.setSample (1, i, v);
+            }
+        }
+        analyzer.measurePitchDeviation (sweepBuf, sampleRate, 220.0f);
+        check (analyzer.lastPitchGuardCents() > 150.0f,
+               "barrido de una octava dispara la guardia ("
+                   + juce::String (analyzer.lastPitchGuardCents(), 0) + " cents)");
+    }
     }
 
     std::cout << "\nRESULT: " << ((failures == 0) ? "OK" : "FAIL") << " (" << failures << " fallos)\n";

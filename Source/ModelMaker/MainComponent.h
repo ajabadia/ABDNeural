@@ -51,6 +51,8 @@ private:
     juce::MenuBarComponent menuBar;
     CustomButton loadButton;
     juce::Label fileNameLabel;
+    juce::Label pitchGuardLabel; // aviso de desviacion de pitch (guardia)
+    juce::Label gridLabel;       // indicador de rejilla detectada (f0 + residuo)
 
     // Visualizers
     GlassBox waveBox;
@@ -88,6 +90,7 @@ private:
     void loadFile();
     void analyzeAudio();
     void performAnalysis(float f0);
+    void updateGridIndicator();
     int  selectedFrameCount() const;
     void exportModel();
     void startRecording();

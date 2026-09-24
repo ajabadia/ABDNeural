@@ -835,6 +835,31 @@ target_link_libraries(NEURONiK_SpectralAnalyzerTest PRIVATE
 )
 
 add_test(NAME NEURONiK_SpectralAnalyzerTest COMMAND NEURONiK_SpectralAnalyzerTest)
+
+# El ajuste de rejilla por MINIMOS CUADRADOS de detectPitch con material
+# sintetico cuyo f0 se DESPLAZA entre ventanas: misma cabecera (220 Hz,
+# bitwise identica) en control y deriva, pero el LS lee la MEDIA de las
+# ventanas (230) y el residuo delata el desplazamiento. Ademas la via
+# temporal por frame, la guardia de material pobre (el ajuste se abstiene)
+# y el indicador n/d sin material.
+add_executable(NEURONiK_LeastSquaresGridTest
+    Tests/LeastSquaresGridTest.cpp
+    Source/ModelMaker/Analysis/SpectralAnalyzer.cpp
+)
+
+target_include_directories(NEURONiK_LeastSquaresGridTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/ModelMaker/Analysis"
+)
+
+target_link_libraries(NEURONiK_LeastSquaresGridTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_core
+    juce::juce_dsp
+    NEURONiK_Common
+)
+
+add_test(NAME NEURONiK_LeastSquaresGridTest COMMAND NEURONiK_LeastSquaresGridTest)
 # FASE 10.4: el emparejador del analisis temporal — un seno con vibrato
 # (offset sub-bin que evoluciona) debe producir frames que SIGUEN el vibrato.
 # El flujo completo temporal: analyzeTemporal -> export v2 (GUI) -> lector.
