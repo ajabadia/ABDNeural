@@ -133,10 +133,24 @@ body {
  * estado del snapshot — mismo camino que la aguja de las curvas. En plugin no
  * aparece: el contador vive en el motor nativo y la pagina no lo mueve.
  */
+/* Medidor de voces (cabecera) y boton PANIC a la vez: clic = parar todas las
+   voces (el mismo gesto doble del PANIC de la franja: bridge + worklet). Sin
+   aspecto de boton nativo: son leds, el tooltip y el cursor son la afordancia. */
 .voice-meter {
+  appearance: none;
   display: flex;
   gap: 3px;
   align-items: center;
+  padding: 2px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.voice-meter:focus-visible {
+  outline: 1px solid var(--color-accent, #00c3ff);
+  outline-offset: 2px;
 }
 
 .voice-meter__led {
@@ -267,6 +281,36 @@ body {
   color: var(--color-text-dim, #4a637a);
   border-color: var(--color-text-dim, #4a637a);
   cursor: default;
+}
+
+/*
+ * Distintivo VIVO de la ficha (0/4 RANURAS, 0/8 GLOBAL): el dato que también
+ * vive en la cabecera del cajon, colgado en la del lienzo y con el gesto de la
+ * franja de GLOBAL (pulsarlo abre el cajon). Mismo tamano y metricas que el
+ * `.card__action` de al lado — por eso comparte sus numeros — pero en tono
+ * atenuado: es informacion, no la accion de editar.
+ */
+.card__badge {
+  margin-left: auto;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: var(--text-2xs, 8px);
+  line-height: 1;
+  font-family: inherit;
+  letter-spacing: 0.12em;
+  color: var(--color-text-dim, #4a637a);
+  background: transparent;
+  border: 1px solid var(--color-text-dim, #4a637a);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.card__badge:hover {
+  color: var(--color-accent, #00c3ff);
+  border-color: var(--color-accent, #00c3ff);
+  background: color-mix(in srgb, var(--color-accent, #00c3ff) 22%, transparent);
 }
 
 .card__body {
@@ -512,6 +556,37 @@ body {
   cursor: default;
 }
 
+/* VOLVER A LA RUTA (panel.js, ui/routeBack.js): vive al pie del cajon de
+   ENVOLVENTES mientras el retorno del salto IR A LA RUTA este fresco. Acento
+   de aviso (--color-warning, el mismo de los pins vivos del cajon): es la
+   contraria de IR A LA RUTA, no otra navegacion. */
+.env-block__back {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  margin-top: 10px;
+  padding: 4px 12px;
+  font-family: inherit;
+  font-size: var(--text-2xs, 8px);
+  line-height: 1;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-warning, #ffaa00);
+  background: var(--color-panel-surface, #101c27);
+  border: 1px solid var(--color-warning, #ffaa00);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.env-block__back:hover {
+  background: color-mix(in srgb, var(--color-warning, #ffaa00) 22%, transparent);
+}
+
+.env-block__back:focus-visible {
+  outline: 1px solid var(--color-warning, #ffaa00);
+  outline-offset: 1px;
+}
+
 .env-block .card__visual {
   /* ALTURA FIJA (pedido 2026-09-25). Antes era `min-height: 56px` y mandaba la
      proporcion intrinseca del SVG (viewBox 100x48) sobre el ancho del cajon:
@@ -724,9 +799,66 @@ body {
   align-content: stretch;
 }
 
+/*
+ * El conmutador de la ruta local del pad (ficha MATRIZ, cabecera): apagado
+ * es informacion —la fila 3 queda en Off y el anillo quieto— y encendido es
+ * un gesto de estado, asi que el boton se tiñe con el acento. Comparte
+ * metricas y tipografia con el `.card__action` de al lado, que esta en la
+ * MISMA fila de 20 px.
+ */
+.mod-route {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+}
+
+.mod-route__toggle {
+  appearance: none;
+  font: inherit;
+  font-size: var(--text-2xs, 8px);
+  line-height: 1;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  color: var(--color-text-dim, #4a637a);
+  background: transparent;
+  border: 1px solid var(--color-text-dim, #4a637a);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.mod-route__toggle.is-on {
+  color: var(--color-accent, #00c3ff);
+  border-color: var(--color-accent, #00c3ff);
+  background: color-mix(in srgb, var(--color-accent, #00c3ff) 14%, transparent);
+}
+
+.mod-route__toggle:disabled,
+.mod-route__source:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.mod-route__source {
+  font: inherit;
+  font-size: var(--text-2xs, 8px);
+  line-height: 1;
+  letter-spacing: 0.08em;
+  padding: 2px 4px;
+  color: var(--color-accent, #00c3ff);
+  background: var(--color-panel-surface, #101c27);
+  border: 1px solid var(--color-accent, #00c3ff);
+  border-radius: 3px;
+  max-width: 76px;
+}
+
 .mod-summary__row {
   display: grid;
-  grid-template-columns: 14px minmax(0, 1fr) auto minmax(0, 1fr) 46px;
+  /* La 1a columna es la barra de nivel ENV (misma pieza que el cajon): vive
+     solo en filas con fuente ENV, pero SIEMPRE ocupa su pista para que las
+     cuatro filas alineen sus celdas entre si. */
+  grid-template-columns: 5px 14px minmax(0, 1fr) auto minmax(0, 1fr) 46px;
   align-items: center;
   gap: 6px;
   padding: 2px 6px;
@@ -806,7 +938,11 @@ button.mod-summary__row:focus-visible {
 
 .model-slots__row {
   display: grid;
-  grid-template-columns: 12px minmax(0, 1fr) auto;
+  /* La cuarta columna (OLVIDAR) la toma el boton SOLO cuando la ranura tiene
+     modelo: vacia mide cero y la fila se cierra en tres, como antes. El nombre
+     es `minmax(0, 1fr)`, asi que el texto que se recorta al aparecer el boton es
+     el nombre largo, no el que se rompe. */
+  grid-template-columns: 12px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 6px;
   padding: 2px 4px;
@@ -855,6 +991,34 @@ button.mod-summary__row:focus-visible {
   background: color-mix(in srgb, var(--color-accent, #00c3ff) 22%, transparent);
 }
 
+/* OLVIDAR: mismo tamaño y misma forma que CARGAR (viven en la misma fila de dos
+   carriles) pero en el tono de aviso, para que las dos acciones de la fila no se
+   confundan: una mete un modelo, la otra lo tira. Nace oculto (`hidden`) en las
+   ranuras vacías; el resto de sus estados son los de cualquier boton. */
+.model-slots__forget {
+  padding: 1px 6px;
+  font-family: inherit;
+  font-size: var(--text-2xs, 7px);
+  line-height: 1;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-warning, #ffaa00);
+  background: var(--color-panel-surface, #101c27);
+  border: 1px solid color-mix(in srgb, var(--color-warning, #ffaa00) 70%, transparent);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.model-slots__forget:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-warning, #ffaa00) 22%, transparent);
+}
+
+.model-slots__forget:disabled {
+  color: var(--color-text-dim, #4a637a);
+  border-color: var(--color-text-dim, #4a637a);
+  cursor: default;
+}
+
 .model-slots__load:disabled {
   color: var(--color-text-dim, #4a637a);
   border-color: var(--color-text-dim, #4a637a);
@@ -872,6 +1036,13 @@ button.mod-summary__row:focus-visible {
 
 .model-slots__status[data-state="error"] {
   color: var(--color-danger, #ff3344);
+}
+
+/* El aviso de OLVIDAR a medias (la sesion vacio la ranura, la memoria del
+   navegador no): no es un fallo como el rojo de un error de carga, pero si es la
+   unica vez que el texto tiene que avisar de que el F5 va a devolverlo. */
+.model-slots__status[data-state="warn"] {
+  color: var(--color-warning, #ffaa00);
 }
 
 /* --- bloque MODEL (ficha MODELOS A–D): pad dibujado + ranuras ------------- */
@@ -892,6 +1063,33 @@ button.mod-summary__row:focus-visible {
  * aqui solo se hereda el ritmo del bloque compuesto. */
 .model-block--drawer {
   gap: 10px;
+}
+
+/* Ayuda contextual de los gestos del pad (la ficha MODELOS tiene el pad en el
+   lienzo y su eje z aqui): <details> nativo, plegado por defecto. Mismo tono
+   apagado que las etiquetas de celda; el summary con el cursor de abierto. */
+.model-help {
+  font-size: var(--text-2xs, 8px);
+  color: var(--color-text-dim, #8b98a5);
+  letter-spacing: 0.02em;
+}
+
+.model-help summary {
+  cursor: pointer;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.model-help ul {
+  margin: 6px 0 0;
+  padding-left: 14px;
+  display: grid;
+  gap: 4px;
+}
+
+.model-help strong {
+  color: var(--color-text-main, #f0f7ff);
+  font-weight: 600;
 }
 
 /*
@@ -933,13 +1131,20 @@ button.mod-summary__row:focus-visible {
 .lcd-top {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: stretch;
+  align-items: center;
   gap: 10px;
   /* ALTO CERRADO: 54 = GEOMETRY.lcd del contrato (pantalla/botones 44 + 10 de
      relleno vertical). El lienzo es de presupuesto FIJO y esta fila se lo
      descuenta — el test de encaje cuenta el aire restante (≥8). */
   height: var(--abd-lcd-h, 54px);
   box-sizing: border-box;
+  /* 2026-09-27 (revision del plugin): overflow hidden + centrado. El D-pad
+     mide 68px de caja (3 filas x 20px + 2 gaps de 4) y el chasis manda 54:
+     con align-items:stretch sobresalía 14px por abajo del chasis (medido en
+     Chromium sobre el dist). Centrar y recortar: las DOS filas del D-pad
+     visibles dentro del chasis, la tercera (duplicada del par MENU/OK vs
+     flechas) fuera de vista sin romper el encaje del lienzo. */
+  overflow: hidden;
   padding: 6px 10px;
   background: #151515;
   border-radius: 6px;
@@ -979,6 +1184,11 @@ button.mod-summary__row:focus-visible {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
+  /* 2026-09-27: alturas compactas — el D-pad vive en un chasis de 54px; tres
+     filas de ~20px de botón no caben (medido). La fila de flechas queda al
+     mínimo: relleno vertical 2px, alto 16px/fila -> 3x16+2x4 = 56... aún 2 de
+     más; el padding del chasis 6+6 come el resto: 42 de pantalla = 54 - 12.
+     D-pad a 2 filas visibles con overflow del chasis (ver .lcd-top). */
 }
 
 .lcd-top .abd-lcd-panel__btn {
@@ -990,7 +1200,7 @@ button.mod-summary__row:focus-visible {
   background: rgb(255 255 255 / 5%);
   border: 1px solid var(--color-panel-border-strong, rgb(0 195 255 / 45%));
   border-radius: 4px;
-  padding: 4px 8px;
+  padding: 2px 8px;
   cursor: pointer;
 }
 
@@ -1043,6 +1253,32 @@ button.mod-summary__row:focus-visible {
   color: var(--color-warning, #ffaa00);
 }
 
+/* Esquina ABRIBLE (ranura cargada): la saca del `pointer-events: none` que el
+   paquete pone a TODAS las esquinas (los nombres son etiquetas, no controles —
+   contrato del componente). Aquí sí son botones: clic/Enter/Space abre el cajón
+   de MODELOS en esa ranura (el wiring está en ui/xyPad.js, delegado sobre el
+   pad). Affordance de la casa: cursor, hover con el acento y foco visible
+   (mismo outline que focus-visible global). Las NO abribles no cambian: siguen
+   siendo etiquetas mudas. */
+.xy-pad .abd-xypad__corner[data-clickable='true'] {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.xy-pad .abd-xypad__corner[data-clickable='true']:hover {
+  color: var(--color-accent, #00c3ff);
+}
+
+.xy-pad .abd-xypad__corner[data-clickable='true']:focus-visible {
+  outline: 1px solid var(--color-accent, #00c3ff);
+  outline-offset: 2px;
+}
+
+.xy-pad .abd-xypad__corner[data-clickable='true'][data-divergent='true']:hover {
+  color: var(--color-warning, #ffaa00);
+  text-decoration: underline;
+}
+
 .xy-pad__readout-row {
   height: 14px;
   display: flex;
@@ -1052,6 +1288,34 @@ button.mod-summary__row:focus-visible {
   font-size: 10px;
   color: var(--color-text-dim, #8b98a5);
   overflow: hidden;
+}
+
+/* DIVERGENCIA página <-> nativo en la fila de readout (ui/xyPad.js): mientras
+   el snapshot de la página y frame.morph difieran mas que la resolucion del
+   canal, la fila se tiñe con el acento de aviso y su tooltip da los DOS
+   valores. Sin divergencia, fila neutra. */
+.xy-pad__readout-row[data-divergent='true'] {
+  color: var(--color-warning, #ffaa00);
+  background: color-mix(in srgb, var(--color-warning, #ffaa00) 12%, transparent);
+  border-radius: 3px;
+}
+
+/* El TERCER dato de la fila: el morphZ EFECTIVO (base del aro + contribución
+   de la matriz, recortado 0..1 como lo clampea la voz). Mismo tono apagado
+   que el espejo; se tiñe gratis con la divergencia (hereda color). */
+.xy-pad__readout-row .xy-pad__readout-z {
+  margin-left: 8px;
+}
+
+.xy-pad__readout-row .xy-pad__readout-z::before {
+  content: '';
+  display: inline-block;
+  width: 1px;
+  height: 9px;
+  margin-right: 6px;
+  vertical-align: -1px;
+  background: currentColor;
+  opacity: 0.45;
 }
 
 /* BALANCEO 9.x: el pad comparte SSOT con ENVOLVENTES (164 de cuerpo) y su

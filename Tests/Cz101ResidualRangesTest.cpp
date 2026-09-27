@@ -9,16 +9,16 @@
 
                  El residuo no es un adorno: es el RMS en cents de los picos de
                  TODAS las ventanas contra la rejilla k*f0, o sea la respuesta a
-                 "¿este material ES una rejilla?". Medido sobre el banco:
+                 "¿este material ES una rejilla?". Medido sobre el banco
+                 (2026-09-27, CON filtro de sub-rejilla en el LS):
 
-                   TONALES (CZ-BASS1, CZ-HAMOG, CZ-PAD1) ..... VERDE
-                     4.5 - 7.1 cents: hay UNA f0 y los picos caen en ella.
-                   CZ-SWEP1 (fundamental debil con sub-octava)  AMARILLO
-                     25.2 cents: sigue siendo una rejilla, con estructura de
-                     sobra por debajo (el sub-armonico que la escalera no baja).
+                   TONALES (CZ-BASS1, CZ-HAMOG, CZ-PAD1, SWEP1) ..... VERDE
+                     4.5 - 11.1 cents: hay UNA f0 y los picos caen en ella
+                     (SWEP1: sin la sub-rejilla la inharmonicidad aparente cae
+                     de 25.2 cents a 11.1 y vuelve al verde).
                    CZ-RRISE (barrido de pitch) ................ NARANJA
-                     243.9 cents: NO hay UNA rejilla — y ademas LA GUARDIA
-                     DISPARA (548 cents), que es el caso en el que la UI enseña
+                     104.3 cents: NO hay UNA rejilla — y ademas LA GUARDIA
+                     DISPARA (429 cents), que es el caso en el que la UI enseña
                      el aviso de pitch con el residuo al lado.
 
                  Lo que se fija es el RANGO de cada material (regresion: si un
@@ -80,13 +80,17 @@ struct Expectation
     bool  firesPitchGuard;
 };
 
+// 2026-09-27: la sub-rejilla (rejas entrelazadas) ya no contamina el residuo:
+// SWEP1 pasa de 25.2 cents (amarillo) a 11.1 cents (verde) y RRISE de 243.9
+// a 104.3 (sigue naranja pero con la f0 corregida 293.35 Hz y solo 14 picos
+// de su propia rejilla; la guardia sigue disparando). El resto no cambia.
 const Expectation kExpected[] =
 {
     { "CZ-BASS1.wav",   2.0f,  12.0f, 100, "verde",    false },
     { "CZ-HAMOG.wav",   2.0f,  10.0f, 100, "verde",    false },
     { "CZ-PAD1.wav",    3.0f,  13.0f,  50, "verde",    false },
-    { "CZ-SWEP1.wav",  16.0f,  38.0f, 100, "amarillo", false },
-    { "CZ-RRISE.wav", 150.0f, 400.0f,  10, "naranja",  true  },
+    { "CZ-SWEP1.wav",   4.0f,  20.0f, 100, "verde",    false },
+    { "CZ-RRISE.wav",  60.0f, 160.0f,  10, "naranja",  true  },
 };
 
 constexpr int kNumExpected = (int) (sizeof (kExpected) / sizeof (kExpected[0]));

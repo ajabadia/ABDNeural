@@ -985,6 +985,30 @@ target_link_libraries(NEURONiK_LeastSquaresGridTest PRIVATE
 )
 
 add_test(NAME NEURONiK_LeastSquaresGridTest COMMAND NEURONiK_LeastSquaresGridTest)
+# 2026-09-27: BATERIA DE FAMILIAS DE OCTAVA (proto HPS) -- decision por RESIDUO
+# GLOBAL sobre TODAS las ventanas. Las tres familias {seed/2, seed, seed*2}
+# sinteticas (tono limpio, fund.debil que muere vs continua, dos alturas, semilla
+# desplazada y barrido) mas los WAV reales si el banco existe. Sin banco, salta.
+add_executable(NEURONiK_OctaveFamilyTest
+    Tests/OctaveFamilyTest.cpp
+    Source/ModelMaker/Analysis/SpectralAnalyzer.cpp
+)
+
+target_include_directories(NEURONiK_OctaveFamilyTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/ModelMaker/Analysis"
+)
+
+target_link_libraries(NEURONiK_OctaveFamilyTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_audio_formats
+    juce::juce_core
+    juce::juce_dsp
+    NEURONiK_Common
+)
+
+add_test(NAME NEURONiK_OctaveFamilyTest COMMAND NEURONiK_OctaveFamilyTest)
+
 
 # 2026-09-25: LOS RANGOS DEL RESIDUO con los CINCO WAV reales del banco CZ101
 # (../ABDCZ101/DOCS/patches, la misma ruta que inyecta el test acustico de
@@ -1326,6 +1350,109 @@ if(NEURONIK_NODE_EXECUTABLE)
 else()
     message(STATUS "node not found: NEURONiK_WebUiSelftestContract test skipped")
 endif()
+
+# Worklet WASM sync guard: por HASH (SHA256) build-wasm <-> public/worklet <-> dist/worklet.
+# Hace fallar ctest y el build si el DSP que sirve la WebUI (y que embebe el plugin) quedo viejo.
+# La comparacion vive en Tests/workletSyncTest.mjs y la comparten build.bat y build_wasm.bat.
+if(NEURONIK_NODE_EXECUTABLE)
+    add_test(NAME NEURONiK_WorkletSync
+        COMMAND ${NEURONIK_NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/Tests/workletSyncTest.mjs"
+    )
+else()
+    message(STATUS "node not found: NEURONiK_WorkletSync test skipped")
+endif()
+
+# Ruta local del pad: en MODO LOCAL (navegador, sin host) la pagina siembra una ruta
+# de la MATRIZ a Morph Z (LFO 2 -> Morph Z) para que el anillo del pad baile con el LFO.
+# Este test la lleva al MOTOR REAL (build-wasm) por el MISMO camino que la pagina -el store
+# y el mapeo contrato -> GlobalParams del worklet- y mide _neuronikGetMod(28): barrido de los
+# dos signos a ~1 s de periodo, con control negativo en Off. Sin build-wasm avisa y pasa
+# (clone limpio sin WASM compilado: mismo skip que NEURONiK_WorkletSync).
+if(NEURONIK_NODE_EXECUTABLE)
+    add_test(NAME NEURONiK_LocalMorphZRoute
+        COMMAND ${NEURONIK_NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/Tests/localMorphZRouteTest.mjs"
+    )
+else()
+    message(STATUS "node not found: NEURONiK_LocalMorphZRoute test skipped")
+endif()
+
+# Memoria local de las ranuras: en MODO LOCAL (navegador, sin host) no hay preset que
+# devuelva los modelos a sus cuatro ranuras -el plugin los recupera por `modelPath<slot>`-,
+# asi que la pagina RECUERDA en localStorage el TEXTO crudo de lo que se cargo. Este test
+# recorre el camino completo (el store real, con un localStorage de mentira porque Node no
+# lo tiene) y comprueba que la ranura recuperada vuelve bit a bit por el MISMO parser y que
+# en el MOTOR REAL la misma nota suena distinto que con la ranura vacia. Sin build-wasm
+# avisa y pasa (mismo skip que NEURONiK_WorkletSync).
+if(NEURONIK_NODE_EXECUTABLE)
+    add_test(NAME NEURONiK_LocalModelCache
+        COMMAND ${NEURONIK_NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/Tests/localModelCacheTest.mjs"
+    )
+else()
+    message(STATUS "node not found: NEURONiK_LocalModelCache test skipped")
+endif()
+
+# E2E de navegador REAL (Playwright + Chromium): el smoke del MODO LOCAL que hasta hoy se
+# verificaba a mano -SOUND ON arranca el motor WASM, la ficha RANURAS carga un modelo, una
+# tecla enciende la voz y el pad mueve morphX/morphY con su anillo bailando-. Sirve `dist`
+# (el artefacto que embebe el plugin; el comando del servidor construye antes) y asierta
+# sobre el DOM y sobre los mensajes que la pagina manda al worklet. Es el UNICO test que ve
+# esa frontera de verdad: los de node leen el WASM a mano y el vitest corre en jsdom.
+# Sin @playwright/test instalado avisa y pasa (mismo skip que los guards de WASM); el
+# navegador se instala con `npx playwright install chromium`.
+if(NEURONIK_NODE_EXECUTABLE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/WebUI/node_modules/@playwright/test/cli.js")
+    # Con SU spec: la regresion visual (que compara contra binarios versionados)
+    # es otro test, y asi este no depende de que las referencias esten al dia.
+    add_test(NAME NEURONiK_WebUiLocalModeE2e
+        COMMAND ${NEURONIK_NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/WebUI/node_modules/@playwright/test/cli.js" test e2e/localMode.spec.js
+    )
+    set_tests_properties(NEURONiK_WebUiLocalModeE2e PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/WebUI"
+        TIMEOUT 600
+        # Las dos suites de navegador CONSTRUYEN el mismo `dist` antes de servirlo
+        # (el comando del webServer). Dos `vite build` a la vez sobre el mismo
+        # directorio de salida se pisan y uno falla al arrancar —medido, no
+        # supuesto—. Este candado impide que se solapen y NO serializa el resto de
+        # ctest: los otros 39 siguen en paralelo.
+        RESOURCE_LOCK "neuronik_webui_dist"
+    )
+else()
+    message(STATUS "playwright not installed: NEURONiK_WebUiLocalModeE2e test skipped")
+endif()
+
+# ---------------------------------------------------------------------------
+# REGRESION VISUAL del lienzo (Playwright + Chromium), una referencia por ficha.
+# ---------------------------------------------------------------------------
+# El E2E de arriba afirma que el lienzo EXISTE y que sus textos dicen lo que deben;
+# este afirma que se PINTA bien: cada ficha tiene su foto de referencia en
+# WebUI/e2e/snapshots/ y se compara con el umbral de playwright.config.js
+# (20 pixeles y 0.2 por pixel, medidos: el ruido entre corridas es 0 y la
+# regresion mas pequena construida movia 77 pixeles).
+#
+# Es un test APARTE, y no un caso mas del E2E, por dos motivos que se notan al
+# mirar los numeros: (1) regenerar las referencias con `--update-snapshots` debe
+# poder hacerse sin tocar las del smoke, y (2) comparar contra un binario es mas
+# lento y mas propenso a fallar por el entomo que el resto, asi que se puede
+# dejar fuera mientras se investiga. Por eso el E2E de arriba invoca SU spec y no
+# el `test` a pelo. `pnpm test:e2e` (sin argumentos) sigue corriendo las dos.
+# Mismo Chromium, mismo puerto y mismo build de dist: las dos suites sirven el
+# mismo artefacto.
+if(NEURONIK_NODE_EXECUTABLE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/WebUI/node_modules/@playwright/test/cli.js")
+    add_test(NAME NEURONiK_WebUiVisualRegression
+        COMMAND ${NEURONIK_NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/WebUI/node_modules/@playwright/test/cli.js" test e2e/visual.spec.js
+    )
+    set_tests_properties(NEURONiK_WebUiVisualRegression PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/WebUI"
+        TIMEOUT 600
+        # Mismo candado de `dist` que el E2E de arriba, y un puerto PROPIO: con
+        # `--strictPort` compartirlo haria que el segundo servidor no arrancara
+        # (EADDRINUSE). Ver la nota de E2E_PORT en WebUI/playwright.config.js.
+        RESOURCE_LOCK "neuronik_webui_dist"
+        ENVIRONMENT "NEURONIK_E2E_PORT=5239"
+    )
+else()
+    message(STATUS "playwright not installed: NEURONiK_WebUiVisualRegression test skipped")
+endif()
+
 
 
 # ============================================================================

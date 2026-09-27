@@ -2,6 +2,10 @@ node_modules/
 dist/
 *.log
 
+# Salida de Playwright (E2E de navegador, `pnpm test:e2e`).
+test-results/
+playwright-report/
+
 # ---------------------------------------------------------------------------
 # generated/ NO se ignora a proposito.
 #

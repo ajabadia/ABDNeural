@@ -89,6 +89,10 @@ const BANDS_WITH_CONTROLS = BANDS.map((band) => band.map((section) => {
           onLoad: (slot) => drawerOnLoad?.(slot),
           ids: section.ids,
           routeControls,
+          // El opener de rutas del cajon (IR A LA RUTA): como en el lienzo, la
+          // fabrica de vistas lo espera y app.js lo conecta tarde; aqui lo
+          // captura el arnes para los tests del gesto.
+          onOpenRoute: (slot) => harnessOpenRoute?.(slot),
           // El cajón de ENVOLVENTES pinta la aguja del MISMO canal que el
           // lienzo (app.js le pasa store.onTelemetry): la prueba expone el
           // emisor para el test de integración.
@@ -105,6 +109,12 @@ const BANDS_WITH_CONTROLS = BANDS.map((band) => band.map((section) => {
           // El opener de rutas (env-curves y mod-summary): app.js lo conecta
           // tarde; la prueba lo captura para los tests del gesto.
           onOpenRoute: (slot) => harnessOpenRoute?.(slot),
+          // El canal de frames de las vistas del arnes (agujas, barras del
+          // cajon y del resumen de la matriz): es la LISTA del arnes, porque
+          // estas vistas son instancias de MODULO (se fabrican una vez) y el
+          // resetTelemetry de otros tests vaciaria su suscripcion al canal
+          // real. emitTelemetry dispara a todas.
+          onTelemetry: (notify) => { harnessTelemetryNotifies.push(notify); return () => {}; },
         },
       )
       : null,
@@ -121,6 +131,19 @@ function makeState(overrides = {}) {
     snapshotVersion: 0,
     ...overrides,
   };
+}
+
+/** Panel de UNA ficha de SONDA, con los ids que el test le pase. */
+function mountProbePanel(section) {
+  const panel = createPanel({
+    bands: [[{ ...section, controls: section.ids.map(describeControl).filter(Boolean) }]],
+    baselineId: 'masterLevel',
+    handlers: {},
+  });
+
+  document.body.append(panel.element);
+
+  return panel;
 }
 
 function mountPanel(handlers = {}) {
@@ -475,13 +498,15 @@ describe('panel / propiedad del audio (policy)', () => {
 
     panel.setVoiceMeter(3);
     expect(meter.hidden).toBe(false);
-    expect(meter.getAttribute('aria-label')).toBe('3 voces activas');
+    // El aria-label describe la ACCION del boton (clic = PANIC) con el conteo.
+    expect(meter.getAttribute('aria-label')).toBe('PANIC: parar 3 voces activas');
+    expect(meter.title).toBe('PANIC: parar 3 voces activas');
     expect(leds().filter((led) => led.dataset.active === 'true').map((led) => led.dataset.led))
       .toEqual(['1', '2', '3']);
 
     // Una sola voz: singular en el aria-label.
     panel.setVoiceMeter(1);
-    expect(meter.getAttribute('aria-label')).toBe('1 voz activa');
+    expect(meter.getAttribute('aria-label')).toBe('PANIC: parar 1 voz activa');
     expect(leds().filter((led) => led.dataset.active === 'true').map((led) => led.dataset.led))
       .toEqual(['1']);
 
@@ -492,6 +517,21 @@ describe('panel / propiedad del audio (policy)', () => {
     // Basura (no numérico): cuenta como 0, no revienta el canal del meter.
     expect(() => panel.setVoiceMeter(undefined)).not.toThrow();
     expect(meter.hidden).toBe(true);
+  });
+
+  it('el medidor es un BOTON: su clic hace PANIC (el gesto doble de la franja)', () => {
+    const onPanic = vi.fn();
+    const panel = mountPanel({ onPanic });
+    const meter = document.querySelector('.voice-meter');
+
+    panel.setVoiceMeter(2);
+    expect(meter.tagName).toBe('BUTTON');
+
+    meter.click();
+    expect(onPanic).toHaveBeenCalledTimes(1);
+
+    // Es el mismo gesto doble que el PANIC de la franja (app.js lo cablea:
+    // sendMidiPanic del bridge + panic del worklet); el panel solo delega.
   });
 });
 
@@ -534,6 +574,354 @@ describe('panel / ficha de cajon (matriz de modulacion)', () => {
       parameters: { ...state.parameters, mod1Source: 0, mod3Source: 1 / 7 },
     });
     expect(badge()).toBe('2/4 RUTAS');
+  });
+
+  it('el distintivo de MODELOS es VIVO: cuenta las ranuras CARGADAS del motor', () => {
+    const panel = mountPanel();
+    const drawer = panel.drawers.get('models');
+    const badge = () => drawer.header.querySelector('.drawer__badge').textContent;
+
+    // Sin snapshot de modelos: 0 cargadas. El literal '4 RANURAS' era el
+    // inventario, no la verdad.
+    panel.paint(makeState());
+    expect(badge()).toBe('0/4 RANURAS');
+
+    // Carga en la ranura A (el dato vive en state.models, fuera del APVTS):
+    // la misma verdad que la vista pinta en su estado "1/4 cargados".
+    panel.paint(makeState({
+      bridgeAvailable: true,
+      models: [{ slot: 0, name: 'Campana', isValid: true, amplitudes: [], frequencyOffsets: [] }],
+    }));
+    expect(badge()).toBe('1/4 RANURAS');
+    expect(
+      drawer.body.querySelector('[data-visual="model-slots"] .model-slots__status').textContent,
+    ).toBe('1/4 cargados');
+
+    // Una segunda ranura (D) y una divergente en B: la divergente CUENTA como
+    // cargada (el fichero se cargo; lo que falla es el fichero), igual que la
+    // vista la marca sin ocultarla.
+    panel.paint(makeState({
+      bridgeAvailable: true,
+      models: [
+        { slot: 0, name: 'Campana', isValid: true, amplitudes: [], frequencyOffsets: [] },
+        { slot: 1, name: 'Fantasma', isValid: false, amplitudes: [], frequencyOffsets: [] },
+        { slot: 3, name: 'Metal', isValid: true, amplitudes: [], frequencyOffsets: [] },
+      ],
+    }));
+    expect(badge()).toBe('3/4 RANURAS');
+  });
+
+  it('el distintivo de GLOBAL es VIVO: cuenta las CELDAS tocadas sobre su default', () => {
+    const panel = mountPanel();
+    const drawer = panel.drawers.get('globalFull');
+    const badge = () => drawer.header.querySelector('.drawer__badge').textContent;
+
+    // Con los defaults del contrato: 0 tocadas. El literal '8 GLOBAL' era el
+    // inventario, no la verdad.
+    const state = makeState();
+    panel.paint(state);
+    expect(badge()).toBe('0/8 GLOBAL');
+
+    // El usuario mueve el BPM (el segundo control de la ficha; el masterLevel
+    // NO cuenta: no es celda del cajon). 0.5 en normalizado basta para
+    // apartarse del default (120 BPM -> 0.2631579).
+    panel.paint({
+      ...state,
+      parameters: { ...state.parameters, masterBPM: 0.5 },
+    });
+    expect(badge()).toBe('1/8 GLOBAL');
+
+    // Un toggle ON (midiThru a 1) suma otra tocada.
+    panel.paint({
+      ...state,
+      parameters: { ...state.parameters, masterBPM: 0.5, midiThru: 1 },
+    });
+    expect(badge()).toBe('2/8 GLOBAL');
+
+    // Y volver al default lo DESCUENTA: el badge sigue la verdad del snapshot,
+    // no un historial de gestos.
+    panel.paint({ ...state, parameters: { ...state.parameters, masterBPM: 0.2631579, midiThru: 1 } });
+    expect(badge()).toBe('1/8 GLOBAL');
+  });
+
+  it('el distintivo VIVO cuelga en la cabecera de la ficha y abre SU cajon', () => {
+    const panel = mountPanel();
+    const chipOf = (id) => document.querySelector(`[data-live-badge="${id}"]`);
+
+    // Solo lo piden las fichas que lo declaran (`liveBadge.onCard`): MODELOS y
+    // GLOBAL. La MATRIZ conserva su resumen y las fichas con literal fijo (LFO,
+    // ENVOLVENTES) no cuelgan nada: un chip con un dato que no cambia de valor
+    // seria ruido con apariencia de dato vivo.
+    panel.paint(makeState());
+
+    expect(document.querySelectorAll('.card__badge')).toHaveLength(3);
+    expect(chipOf('models')).not.toBeNull();
+    expect(chipOf('globalFull')).not.toBeNull();
+    expect(chipOf('lfo')).not.toBeNull();
+    expect(chipOf('modMatrix')).toBeNull();
+    expect(chipOf('envelopes')).toBeNull();
+
+    // Vive en la cabecera de SU ficha, al lado del EDIT que ya abria el cajon.
+    const chip = chipOf('models');
+
+    expect(chip.parentElement.className).toBe('card__heading');
+    expect(chip.parentElement.querySelector('[data-drawer-trigger="models"]')).not.toBeNull();
+
+    // El chip y la cabecera del cajon muestran el MISMO dato, del mismo calculo,
+    // y no el literal '4 RANURAS' de la ficha. El chip lleva solo la FRACCION:
+    // la cabecera de MODELOS no tiene sitio para el rotulo entero (lo mediria
+    // empujando el EDIT fuera de la ficha) — el rotulo va en title y aria-label.
+    const badge = () => panel.drawers.get('models').header.querySelector('.drawer__badge').textContent;
+
+    expect(chip.textContent).toBe('0/4');
+    expect(badge()).toBe('0/4 RANURAS');
+    expect(chip.title).toBe('MODELOS A–D: 0/4 RANURAS — se edita en el cajón lateral');
+
+    panel.paint(makeState({
+      bridgeAvailable: true,
+      models: [{ slot: 0, name: 'Campana', isValid: true, amplitudes: [], frequencyOffsets: [] }],
+    }));
+
+    expect(chip.textContent).toBe('1/4');
+    expect(badge()).toBe('1/4 RANURAS');
+
+    // El nombre accesible CONTIENE el texto visible (WCAG 2.5.3) y no se queda
+    // con el dato del primer paint.
+    expect(chip.getAttribute('aria-label')).toBe('1/4 RANURAS: abrir el cajón de MODELOS A–D');
+
+    // Y el gesto: el chip abre SU cajon, el patron de la franja de GLOBAL.
+    const models = panel.drawers.get('models');
+
+    expect(models.isOpen()).toBe(false);
+
+    chip.click();
+
+    expect(models.isOpen()).toBe(true);
+    expect(models.body.querySelector('[data-visual="model-slots"]')).not.toBeNull();
+  });
+
+  it('el chip de GLOBAL abre el cajon global y lleva su propio recuento', () => {
+    const panel = mountPanel();
+    const state = makeState();
+
+    panel.paint(state);
+
+    const chip = document.querySelector('[data-live-badge="globalFull"]');
+
+    expect(chip.textContent).toBe('0/8');
+    expect(chip.getAttribute('aria-label')).toBe('0/8 GLOBAL: abrir el cajón de GLOBAL & MASTER');
+
+    panel.paint({ ...state, parameters: { ...state.parameters, masterBPM: 0.5 } });
+
+    expect(chip.textContent).toBe('1/8');
+
+    const drawer = panel.drawers.get('globalFull');
+
+    chip.click();
+
+    expect(drawer.isOpen()).toBe(true);
+    expect(drawer.body.querySelector('[data-parameter-id="freezeFilter"]')).not.toBeNull();
+  });
+
+  it('el distintivo ACTIVE cuenta las celdas que consume el motor que SUENA', () => {
+    // Una ficha de sonda con las tres coberturas que declara el host
+    // (`engineCoverageFor`): FILTRO es NEURONiK, RESONADOR es NEUROTIK y el LFO
+    // es DSP compartido. El recount se deriva del contrato, no de una cuenta a
+    // mano en el panel.
+    const panel = mountProbePanel({
+      id: 'probe',
+      title: 'SONDA',
+      subtitle: '',
+      span: 2,
+      columns: 1,
+      ids: ['filterCutoff', 'filterRes', 'resonatorRes', 'lfo1RateHz'],
+      drawer: { badge: 'SONDA', trigger: 'EDIT', liveBadge: { mode: 'active', label: 'ACTIVAS' } },
+    });
+
+    const badge = () => panel.drawers.get('probe').header.querySelector('.drawer__badge').textContent;
+    const state = makeState();
+
+    // NEURONiK (default del contrato): filtro + LFO, el resonador es de NEUROTIK.
+    panel.paint(state);
+    expect(badge()).toBe('3/4 ACTIVAS');
+
+    // NEUROTIK (indice 1 de 2): el mismo snapshot con el motor cambiado, y el
+    // recuento se invierte en la celda que le toca.
+    panel.paint({ ...state, parameters: { ...state.parameters, engineType: 1 } });
+    expect(badge()).toBe('2/4 ACTIVAS');
+
+    // Un motor AUSENTE en el snapshot cuenta como su default del contrato
+    // (indice 0 = NEURONiK), igual que en los modos 'assigned' y 'touched':
+    // no se inventa un tercero, se lee el primero. Un distintivo 'activo' con
+    // motor desconocido seria un numero sin motor que lo sostenga.
+    panel.paint({ ...state, parameters: { ...state.parameters, engineType: undefined } });
+    expect(badge()).toBe('3/4 ACTIVAS');
+  });
+
+  it('el distintivo ACTIVE respeta el gating de una celda GATEADA (destino de la matriz)', () => {
+    // `mod3Destination` es una celda GATEADA: su cobertura es la de la OPCION
+    // que tiene seleccionada, no la del parametro entero (que es 'both'). En el
+    // contrato: Inharmonicity (indice 2) solo la consume NEURONiK y Excite
+    // Noise (23) solo NEUROTIK; Morph Z (28) es de los dos.
+    const panel = mountProbePanel({
+      id: 'probe',
+      title: 'SONDA',
+      subtitle: '',
+      span: 2,
+      columns: 1,
+      ids: ['mod3Destination', 'lfo1RateHz'],
+      drawer: { badge: 'SONDA', trigger: 'EDIT', liveBadge: { mode: 'active' } },
+    });
+
+    const badge = () => panel.drawers.get('probe').header.querySelector('.drawer__badge').textContent;
+    const state = makeState();
+    const atDestination = (index, engine = 0) => ({
+      ...state,
+      parameters: {
+        ...state.parameters,
+        mod3Destination: index / 30,
+        engineType: engine,
+      },
+    });
+
+    // Morph Z (compartido) con cualquiera de los dos motores: la celda suena.
+    panel.paint(atDestination(28, 0));
+    expect(badge()).toBe('2/2 ACTIVAS');
+    panel.paint(atDestination(28, 1));
+    expect(badge()).toBe('2/2 ACTIVAS');
+
+    // Un destino de NEURONiK con NEUROTIK: la opcion queda GATEADA (es lo que
+    // la celda pinta deshabilitada), asi que la celda esta apagada.
+    panel.paint(atDestination(2, 0));
+    expect(badge()).toBe('2/2 ACTIVAS');
+    panel.paint(atDestination(2, 1));
+    expect(badge()).toBe('1/2 ACTIVAS');
+
+    // Y el espejo: un destino de NEUROTIK solo se apaga con NEURONiK.
+    panel.paint(atDestination(23, 1));
+    expect(badge()).toBe('2/2 ACTIVAS');
+    panel.paint(atDestination(23, 0));
+    expect(badge()).toBe('1/2 ACTIVAS');
+
+    // Con el destino en Off (indice 0, cobertura 'both') la celda vuelve: no
+    // hay nada que suene, pero tampoco hay nada apagado.
+    panel.paint(atDestination(0, 1));
+    expect(badge()).toBe('2/2 ACTIVAS');
+  });
+
+  it('la ficha LFO declara el modo active y su caja esta entera con los dos motores', () => {
+    const panel = mountPanel();
+    const state = makeState();
+
+    // El LFO es DSP COMPARTIDO (`engines: 'both'` en el contrato): la caja se ve
+    // entera con cualquiera de los dos motores. El numero no se mueve, y por eso
+    // el chip dice lo mismo que la cabecera del cajon.
+    panel.paint(state);
+    expect(panel.drawers.get('lfo').header.querySelector('.drawer__badge').textContent).toBe('10/10 LFO');
+
+    panel.paint({ ...state, parameters: { ...state.parameters, engineType: 1 } });
+    expect(panel.drawers.get('lfo').header.querySelector('.drawer__badge').textContent).toBe('10/10 LFO');
+  });
+
+  it('el conmutador de la ruta del pad refleja el snapshot y pide el gesto', () => {
+    const cambios = [];
+    const panel = mountPanel({
+      onLocalRoute: (change) => cambios.push(change),
+    });
+
+    const toggle = () => document.querySelector('[data-local-route-toggle="modMatrix"]');
+    const select = () => document.querySelector('[data-local-route-source="modMatrix"]');
+    // `textContent` y no `innerText`: jsdom no implementa innerText. Y el
+    // resumen pinta sus celdas pegadas (los espacios los pone el CSS), asi
+    // que la firma sale sin espacios: '3LFO 2→Morph Z1.00'.
+    const fila3 = () => document.querySelectorAll('.mod-summary__row')[2].textContent;
+
+    // Nace DESHABILITADO y apagado: el primer paint (sin `localMorphRoute`) no
+    // inventa nada. La fila 3 del resumen sigue mostrando lo que hay en el
+    // snapshot (aquí, la ruta de ENV 1 que traen los defaults del contrato).
+    expect(toggle()).not.toBeNull();
+    expect(toggle().getAttribute('aria-pressed')).toBe('false');
+    expect(toggle().disabled).toBe(true);
+    expect(select().options).toHaveLength(0);
+
+    // Con la verdad del snapshot, la ficha MATRIZ muestra el estado: encendido
+    // (que es como arranca), con el LFO que sembraba y sus opciones sacadas de
+    // la tabla de fuentes del CONTRATO (no de una constante).
+    const conRuta = (enabled, source = 'LFO 2') => makeState({
+      localMorphRoute: { enabled, source, sources: ['LFO 1', 'LFO 2'] },
+      parameters: {
+        ...defaultNormalizedState(SCREEN_PARAMETER_IDS),
+        mod3Source: 2 / 7,
+        mod3Destination: 28 / 30,
+        mod3Amount: 1,
+      },
+    });
+
+    panel.paint(conRuta(true));
+
+    expect(toggle().getAttribute('aria-pressed')).toBe('true');
+    expect(toggle().classList.contains('is-on')).toBe(true);
+    expect(toggle().disabled).toBe(false);
+    expect([...select().options].map((option) => option.value)).toEqual(['LFO 1', 'LFO 2']);
+    expect(select().value).toBe('LFO 2');
+    expect(select().disabled).toBe(false);
+    expect(fila3()).toBe('3LFO 2→Morph Z1.00');
+
+    // Apagado: el boton pierde su estado y el selector se DESHABILITA, pero
+    // CONSERVA el LFO elegido (no se pierde al apagar). La fila del resumen ya
+    // no la mira este test: ese estado lo escribe el store, y lo fijo el bloque
+    // de `paramStore.test.js` (virgen) y el E2E (en el navegador de verdad).
+    panel.paint(conRuta(false));
+
+    expect(toggle().getAttribute('aria-pressed')).toBe('false');
+    expect(toggle().classList.contains('is-on')).toBe(false);
+    expect(select().disabled).toBe(true);
+    expect(select().value).toBe('LFO 2');
+
+    // Los gestos NO son estado del panel: solo dicen hacia donde va, y quien
+    // decide es el store. El primer clic (de apagada) pide encender.
+    toggle().click();
+    expect(cambios).toEqual([{ enabled: true }]);
+
+    // Con la verdad encendida, el mismo boton pide apagar; y el desplegable pide
+    // el LFO que se ha elegido.
+    panel.paint(conRuta(true));
+    toggle().click();
+    expect(cambios.at(-1)).toEqual({ enabled: false });
+
+    select().value = 'LFO 1';
+    select().dispatchEvent(new Event('change'));
+    expect(cambios.at(-1)).toEqual({ source: 'LFO 1' });
+  });
+
+  it('con host el conmutador se ve pero no se toca (la matriz es del APVTS)', () => {
+    const cambios = [];
+    const panel = mountPanel({
+      onLocalRoute: (change) => cambios.push(change),
+    });
+
+    panel.paint(makeState({
+      bridgeAvailable: true,
+      localMorphRoute: { enabled: true, source: 'LFO 2', sources: ['LFO 1', 'LFO 2'] },
+    }));
+
+    const toggle = document.querySelector('[data-local-route-toggle="modMatrix"]');
+    const select = document.querySelector('[data-local-route-source="modMatrix"]');
+
+    expect(toggle.disabled).toBe(true);
+    expect(select.disabled).toBe(true);
+    // El estado se sigue leyendo (el usuario ve que la ruta local esta puesta),
+    // y el title explica por que no se puede tocar.
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    expect(toggle.title).toMatch(/solo en MODO LOCAL/);
+  });
+
+  it('solo la ficha que lo declara monta el conmutador', () => {
+    mountPanel();
+
+    // La MATRIZ es la unica con `localRoute`: las demas cabeceras no ellen.
+    expect(document.querySelectorAll('.mod-route')).toHaveLength(1);
+    expect(document.querySelector('.mod-route').closest('.card').dataset.sectionId).toBe('modMatrix');
   });
 
   it('el boton de la ficha abre el cajon y ESC lo cierra (estado de vista)', () => {
@@ -797,6 +1185,29 @@ describe('panel / vista de la ficha ENVOLVENTES (dos curvas + rutas)', () => {
     resetTelemetry();
   });
 
+  it('el medidor de voces vive del frame en PLUGIN (frames sin voices no lo tocan)', () => {
+    const panel = mountPanel();
+    panel.paint(makeState());
+
+    const meter = panel.element.querySelector('.voice-meter');
+    expect(meter.hidden).toBe(true); // sin frames ni worklet, el medidor no existe
+
+    // Frame nativo con voices (plugin): tres leds encendidos.
+    pushTelemetryFrame({ spectral: new Array(64).fill(0), envelopes: [0, 0], voices: 3 });
+    expect(meter.hidden).toBe(false);
+    expect([...meter.children].filter((led) => led.dataset.active === 'true')).toHaveLength(3);
+
+    // Un frame SIN voices no toca el medidor: el dueño en local es el worklet.
+    pushTelemetryFrame({ spectral: new Array(64).fill(0), envelopes: [0.5, 0.5] });
+    expect([...meter.children].filter((led) => led.dataset.active === 'true')).toHaveLength(3);
+
+    // Vuelta a silencio: el medidor desaparece.
+    pushTelemetryFrame({ spectral: new Array(64).fill(0), envelopes: [0, 0], voices: 0 });
+    expect(meter.hidden).toBe(true);
+
+    resetTelemetry();
+  });
+
   it('las filas del RESUMEN de la matriz son botones: clic abre el cajón en SU slot', () => {
     const panel = mountPanel();
     const state = makeState();
@@ -837,6 +1248,40 @@ describe('panel / vista de la ficha ENVOLVENTES (dos curvas + rutas)', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     rowOf('1').click();
     expect(drawer.isOpen()).toBe(true);
+  });
+
+  it('las filas ENV del RESUMEN llevan la barra de nivel (frame al instante, mudanza incluida)', () => {
+    const panel = mountPanel();
+    const state = makeState();
+    const barOf = (slot) => document
+      .querySelector(`.mod-summary__row[data-slot="${slot}"] .drawer-slot__env-level`);
+
+    panel.paint(state);
+
+    // Defaults del contrato: ENV 1 en la ruta 1, ENV 2 en la ruta 2.
+    expect(barOf('1').dataset.live).toBe('true');
+    expect(barOf('2').dataset.live).toBe('true');
+    expect(barOf('3').dataset.live).toBe('false');
+    expect(barOf('4').dataset.live).toBe('false');
+
+    // Un frame repinta el nivel SIN paint intermedio: cada fila SU envolvente.
+    // Por la LISTA del arnes (las vistas de modulo viven ahi; ver el harness).
+    emitTelemetry({ spectral: new Array(64).fill(0), envelopes: [0.3, 0.8] });
+    expect(Number(barOf('1').style.getPropertyValue('--env-level'))).toBeCloseTo(0.3, 5);
+    expect(Number(barOf('2').style.getPropertyValue('--env-level'))).toBeCloseTo(0.8, 5);
+
+    // La fuente manda: la ruta 1 pasa a LFO 1 y ENV 2 se muda a la ruta 4.
+    panel.paint({
+      ...state,
+      parameters: { ...state.parameters, mod1Source: 1 / 7, mod2Source: 0, mod4Source: 1.0 },
+    });
+    expect(barOf('1').dataset.live).toBe('false');
+    expect(barOf('4').dataset.live).toBe('true');
+    expect(Number(barOf('4').style.getPropertyValue('--env-level'))).toBeCloseTo(0.8, 5);
+
+    // Limpieza: las vistas de este arnes son instancias de MODULO (viven entre
+    // tests); un frame en silencio apaga agujas y barras para el siguiente.
+    emitTelemetry({ spectral: new Array(64).fill(0), envelopes: [] });
   });
 
   it('el opener llega TARDE (setRouteOpener) y un paint no lo desconecta', () => {
@@ -1177,7 +1622,8 @@ describe('panel / vista de la ficha ENVOLVENTES (dos curvas + rutas)', () => {
     expect(needle('filter').dataset.visible).toBe('false');
 
     // frame.envelopes es [amp, filter] en ESE orden (contrato del puente).
-    emitTelemetry({ envelopes: [0.25, 0.9] });
+    // El canal es el REAL: el frame completo lleva su spectral de 64.
+    emitTelemetry({ spectral: new Array(64).fill(0), envelopes: [0.25, 0.9] });
 
     expect(needle('env').dataset.visible).toBe('true');
     expect(needle('filter').dataset.visible).toBe('true');
@@ -1186,7 +1632,7 @@ describe('panel / vista de la ficha ENVOLVENTES (dos curvas + rutas)', () => {
     expect(yOf('filter')).toBeLessThan(yOf('env'));
 
     // Frame degenerado: silencio, no excepción.
-    emitTelemetry({ envelopes: [] });
+    emitTelemetry({ spectral: new Array(64).fill(0), envelopes: [] });
     expect(needle('env').dataset.visible).toBe('false');
     expect(needle('filter').dataset.visible).toBe('false');
   });
@@ -1554,5 +2000,167 @@ describe('panel / recorrido E2E de los cuatro cajones con EDIT', () => {
     const open = EDITABLE_DRAWERS
       .filter((id) => panel.drawers.get(id).isOpen());
     expect(open.length).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('panel / VOLVER A LA RUTA (el retorno fresco de ENVOLVENTES)', () => {
+  /**
+   * El clic en el boton IR A LA RUTA del bloque ENV 1 del cajon. La vista de
+   * bloques es UNA instancia compartida por todos los montajes (el arnes la
+   * fabrica a nivel de modulo), y otros tests le pisan el opener con closures
+   * de SU panel: aqui se rearma el wiring de app.js contra el panel VIVO de
+   * este test antes del clic (mismo gesto que setRouteOpener en produccion).
+   */
+  const clickEnvRouteJump = (panel) => {
+    const view = BANDS_WITH_CONTROLS
+      .flat()
+      .find((section) => section.drawerVisual?.element?.classList?.contains('env-blocks'))
+      ?.drawerVisual;
+
+    view?.setRouteOpener((slot) => panel.openDrawerRoute('modMatrix', slot, { returnTo: 'envelopes' }));
+    panel.drawers.get('envelopes').open();
+    document.querySelector('#drawer-envelopes .env-block[data-envelope="env"] .env-block__goto').click();
+  };
+
+  it('sin salto con retorno detras, el boton NO existe', () => {
+    const panel = mountPanel();
+    const envelopes = panel.drawers.get('envelopes');
+
+    envelopes.open();
+    expect(envelopes.body.querySelector('.env-block__back')).toBeNull();
+
+    // Y un salto SIN retorno (el de las rutas del lienzo) tampoco lo nace:
+    panel.openDrawerRoute('modMatrix', 3);
+    envelopes.open();
+    expect(envelopes.body.querySelector('.env-block__back')).toBeNull();
+  });
+
+  it('tras IR A LA RUTA y volver, reabre el MISMO slot mientras siga fresco', () => {
+    const panel = mountPanel();
+    const envelopes = panel.drawers.get('envelopes');
+    const matrix = panel.drawers.get('modMatrix');
+
+    panel.paint(makeState()); // con los defaults del contrato, ENV 1 vive en la RUTA 1
+    clickEnvRouteJump(panel);
+    expect(matrix.isOpen()).toBe(true);
+    expect(matrix.body.querySelector('.drawer-slot[data-slot-highlight="true"]').dataset.slot).toBe('1');
+
+    // Cerrar la matriz: el retorno reabre ENVOLVENTES y el boton aparece.
+    matrix.close();
+    expect(envelopes.isOpen()).toBe(true);
+
+    const back = envelopes.body.querySelector('.env-block__back');
+    expect(back).not.toBeNull();
+    expect(back.textContent).toContain('1');
+
+    back.click();
+    expect(matrix.isOpen()).toBe(true);
+    expect(matrix.body.querySelector('.drawer-slot[data-slot-highlight="true"]').dataset.slot).toBe('1');
+  });
+
+  it('cerrar la matriz de nuevo REFRESCA el slot (no muere en la primera vuelta)', () => {
+    const panel = mountPanel();
+    const envelopes = panel.drawers.get('envelopes');
+    const matrix = panel.drawers.get('modMatrix');
+
+    panel.paint(makeState());
+    clickEnvRouteJump(panel); // ENV 1 -> RUTA 1
+    matrix.close();
+    expect(panel.routeBack.target()).toBe(1);
+
+    // Segunda vuelta con la OTRA envolvente (ENV 2 -> RUTA 2): el ancla cambia.
+    document.querySelector('#drawer-envelopes .env-block[data-envelope="filter"] .env-block__goto').click();
+    expect(matrix.body.querySelector('.drawer-slot[data-slot-highlight="true"]').dataset.slot).toBe('2');
+    matrix.close();
+    expect(panel.routeBack.target()).toBe(2);
+  });
+
+  it('cerrar ENVOLVENTES por si mismo MATA el retorno: el boton desaparece', () => {
+    const panel = mountPanel();
+    const envelopes = panel.drawers.get('envelopes');
+    const matrix = panel.drawers.get('modMatrix');
+
+    panel.paint(makeState());
+    clickEnvRouteJump(panel); // ENV 1 -> RUTA 1
+    matrix.close(); // vuelve a ENVOLVENTES con el boton fresco
+    expect(panel.routeBack.target()).toBe(1);
+
+    envelopes.close(); // el usuario cierra: el gesto no esta pendiente
+    expect(panel.routeBack.target()).toBeNull();
+    envelopes.open();
+    expect(envelopes.body.querySelector('.env-block__back')).toBeNull();
+  });
+
+  it('una ruta desasignada NO rompe el volver: el slot vive donde estaba', () => {
+    const panel = mountPanel();
+    const envelopes = panel.drawers.get('envelopes');
+    const matrix = panel.drawers.get('modMatrix');
+
+    panel.paint(makeState());
+    clickEnvRouteJump(panel); // ENV 1 -> RUTA 1
+    matrix.close();
+
+    // La ruta 1 pasa a Off EN LA MATRIZ mientras el usuario vuelve: el
+    // snapshot repinta los selects (y dejaria IR A LA RUTA sin ruta), pero
+    // el slot del retorno es un GESTO pendiente, no estado: no cambia.
+    const state = makeState();
+    panel.paint({ ...state, parameters: { ...state.parameters, mod1Source: 0 } });
+
+    expect(panel.routeBack.target()).toBe(1);
+    envelopes.body.querySelector('.env-block__back').click();
+    expect(matrix.body.querySelector('.drawer-slot[data-slot-highlight="true"]').dataset.slot).toBe('1');
+  });
+
+  it('abrir OTRO cajon antes de cerrar la matriz CANCELA el retorno', () => {
+    const panel = mountPanel();
+    const envelopes = panel.drawers.get('envelopes');
+    const matrix = panel.drawers.get('modMatrix');
+
+    panel.paint(makeState());
+    clickEnvRouteJump(panel); // salto con retorno pendiente
+
+    // El usuario se mueve por su pie: la vuelta ya no se debe ejecutar.
+    document.querySelector('[data-drawer-trigger="globalFull"]').click();
+    expect(panel.routeBack.target()).toBeNull();
+
+    matrix.close(); // el retorno murio: NO reabre ENVOLVENTES
+    expect(envelopes.isOpen()).toBe(false);
+
+    envelopes.open();
+    expect(envelopes.body.querySelector('.env-block__back')).toBeNull();
+  });
+
+  it('abrir el PROPIO cajon de origen tambien cancela (cerrarlo luego no vuelve)', () => {
+    const panel = mountPanel();
+    const envelopes = panel.drawers.get('envelopes');
+    const matrix = panel.drawers.get('modMatrix');
+
+    panel.paint(makeState());
+    clickEnvRouteJump(panel);
+
+    // Reabrir ENVOLVENTES por su cuenta mientras la matriz sigue abierta:
+    // el gesto del usuario es el EDIT de la ficha (la API directa del cajon
+    // no es un camino de usuario), y cancela el retorno pendiente.
+    document.querySelector('[data-drawer-trigger="envelopes"]').click();
+    expect(panel.routeBack.target()).toBeNull();
+    expect(envelopes.isOpen()).toBe(true); // el EDIT la abrio
+
+    matrix.close();
+    // Sin retorno pendiente, cerrar la matriz SOLO la cierra: no toca
+    // ENVOLVENTES (ya abierta por el EDIT) y el boton no revive.
+    expect(envelopes.isOpen()).toBe(true);
+    expect(envelopes.body.querySelector('.env-block__back')).toBeNull();
+  });
+
+  it('el salto con retorno no se CANCELA a si mismo (ancla y vuelta viven)', () => {
+    const panel = mountPanel();
+    const matrix = panel.drawers.get('modMatrix');
+
+    panel.paint(makeState());
+    clickEnvRouteJump(panel);
+    expect(panel.routeBack.target()).toBe(1); // el salto deja el ancla vivo
+
+    matrix.close();
+    expect(panel.routeBack.target()).toBe(1); // la vuelta lo reancla
   });
 });

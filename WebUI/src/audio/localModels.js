@@ -22,6 +22,46 @@
 
 export const MODEL_SLOT_COUNT = 4;
 
+/** Nombre con el que el procesador marca una ranura vacia (`modelNames`). */
+export const EMPTY_SLOT_NAME = 'EMPTY';
+
+/**
+ * Ranura VACIA de fabrica: el shape que el host manda en `modelsState` y el que
+ * el motor entiende como "no hay modelo aqui" (64 amplitudes a cero, sin capas).
+ * Una sola funcion, para que la ranura que se olvida y la que se siembra no
+ * puedan divergir.
+ */
+export function emptyLocalModelSlot(slot) {
+  return {
+    slot,
+    name: EMPTY_SLOT_NAME,
+    isValid: false,
+    amplitudes: new Array(64).fill(0),
+    frequencyOffsets: new Array(64).fill(0),
+  };
+}
+
+/**
+ * Nombre que se puede enseñar de una ranura, o null si no hay nada cargado.
+ *
+ * La verdad es `isValid`, no el texto: el procesador nace con las cuatro ranuras a
+ * "EMPTY", asi que ese literal (y el vacio) cuentan como ranura vacia aunque el
+ * nombre exista. Un nombre con `isValid: false` (un preset que apunta a un
+ * fichero que ya no esta) SI cuenta como cargada: el fichero llego a cargarse,
+ * lo que fallo fue el fichero.
+ *
+ * Vive aqui, y no en la vista, porque la pregunta la hacen dos: la ficha (que
+ * pinta) y el store (que olvida). Dos copias de "que es una ranura vacia" ya
+ * acabarian discrepando.
+ */
+export function displayableModelName(entry) {
+  const name = typeof entry?.name === 'string' ? entry.name.trim() : '';
+
+  if (name === '' || name === EMPTY_SLOT_NAME) return null;
+
+  return name;
+}
+
 /**
  * Extrae la capa 1 del bloque v2.1 al shape del worklet
  * ({ layerCount, weight, frames[{amplitudes, frequencyOffsets, frameF0}],
@@ -111,27 +151,36 @@ export function parseModelText(text) {
 }
 
 /**
- * Lee un File del input y devuelve el modelo parseado. Rejects con el mensaje
- * de usuario; el llamador decide dónde pintarlo (el estado de la ficha).
+ * Lee el TEXTO crudo de un File del input y lo devuelve. Rejects con el mensaje
+ * de usuario; el llamador decide que hace con el: parsearlo, o guardarlo tal cual
+ * — la memoria local de la pagina (localModelCache) recuerda el FICHERO, no el
+ * objeto derivado, para que recuperarlo vuelva a cruzar este mismo parser.
  */
-export async function readModelFile(file) {
+export async function readModelText(file) {
   if (!file) throw new Error('no hay fichero');
 
-  let text;
-  if (typeof file.text === 'function') {
-    text = await file.text();
-  } else {
-    // Fallback (jsdom no implementa Blob.text()): FileReader, el camino
-    // que tambien sirve en runtimes viejos.
-    text = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(new Error('no se pudo leer el fichero'));
-      reader.readAsText(file);
-    });
-  }
+  if (typeof file.text === 'function') return file.text();
 
-  return parseModelText(text);
+  // Fallback (jsdom no implementa Blob.text()): FileReader, el camino
+  // que tambien sirve en runtimes viejos.
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('no se pudo leer el fichero'));
+    reader.readAsText(file);
+  });
+}
+
+/**
+ * Lee un File del input y devuelve el modelo parseado. Rejects con el mensaje
+ * de usuario; el llamador decide dónde pintarlo (el estado de la ficha).
+ *
+ * Son DOS pasos (texto + parser) y no uno porque el texto es justo lo que guarda
+ * la memoria local: asi lo que vuelve del almacen cruza el MISMO parser que un
+ * fichero recien elegido, sin dialectos derivados que mantener.
+ */
+export async function readModelFile(file) {
+  return parseModelText(await readModelText(file));
 }
 
 /**
@@ -140,11 +189,5 @@ export async function readModelFile(file) {
  * RANURAS no distingue de dónde vengo.
  */
 export function emptyLocalModels() {
-  return Array.from({ length: MODEL_SLOT_COUNT }, (_, slot) => ({
-    slot,
-    name: 'EMPTY',
-    isValid: false,
-    amplitudes: new Array(64).fill(0),
-    frequencyOffsets: new Array(64).fill(0),
-  }));
+  return Array.from({ length: MODEL_SLOT_COUNT }, (_, slot) => emptyLocalModelSlot(slot));
 }

@@ -190,8 +190,9 @@ describe('bridge transport', () => {
 
       const transport = createBridgeTransport({ onSnapshot, onParameterChanged });
       // Una por mensaje del contrato: snapshot, parameterChanged, presetList,
-      // presetError, midiNoteState, modelsState, modelError y telemetryFrame.
-      expect(backend.listenerCount(NATIVE_TO_JS_EVENT_ID)).toBe(8);
+      // presetError, midiNoteState, modelsState, modelError, midiCcState y
+      // telemetryFrame.
+      expect(backend.listenerCount(NATIVE_TO_JS_EVENT_ID)).toBe(9);
 
       transport.dispose();
       expect(backend.listenerCount(NATIVE_TO_JS_EVENT_ID)).toBe(0);
@@ -251,6 +252,44 @@ describe('bridge transport', () => {
 
       expect(onMidiState).toHaveBeenCalledTimes(1);
       expect(onMidiState).toHaveBeenCalledWith({ held: [60, 64], pitchBend: -0.25, modWheel: 0.5 });
+    });
+
+    it('onMidiCc receives the engine CC mapping table from midiCcState', () => {
+      const onMidiCc = vi.fn();
+      const backend = makeBackend();
+      window.__JUCE__ = { backend };
+
+      createBridgeTransport({ onMidiCc });
+
+      const mappings = [
+        { paramId: 'filterCutoff', cc: 74 },
+        { paramId: 'oscLevel', cc: -1 },
+      ];
+
+      backend.dispatchFromNative(NATIVE_TO_JS_EVENT_ID, { action: 'midiCcState', mappings });
+      backend.dispatchFromNative(NATIVE_TO_JS_EVENT_ID, {
+        action: 'midiCcState', mappings: 'not-an-array',
+      }); // malformed: ignored
+
+      expect(onMidiCc).toHaveBeenCalledTimes(1);
+      expect(onMidiCc).toHaveBeenCalledWith(mappings);
+    });
+
+    it('sendMidiCcLearn/Clear/Reset emit the cc actions with their fields', () => {
+      const backend = makeBackend();
+      window.__JUCE__ = { backend };
+
+      const transport = createBridgeTransport({});
+
+      transport.sendMidiCcLearn('filterCutoff');
+      transport.sendMidiCcClear('oscLevel');
+      transport.sendMidiCcReset();
+
+      expect(backend.emitted.map((e) => e.message)).toEqual([
+        { action: 'midiCcLearn', paramId: 'filterCutoff' },
+        { action: 'midiCcClear', paramId: 'oscLevel' },
+        { action: 'midiCcReset' },
+      ]);
     });
 
     it('onModels receives the spectral model slots from modelsState', () => {

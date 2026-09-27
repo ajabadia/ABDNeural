@@ -221,6 +221,33 @@ describe('xyPad / wiring de morphX-morphY', () => {
     view.destroy();
   });
 
+  it('el tercer dato de la fila es el morphZ EFECTIVO (base + matriz, clamp 0..1)', () => {
+    const view = createXyPad({});
+    host.append(view.element);
+
+    const zReadout = view.element.querySelector('.xy-pad__readout-z');
+    expect(zReadout).not.toBeNull();
+
+    // Sin módulo (0), el efectivo ES la base del aro.
+    view.paint({ morphX: 0, morphY: 0, morphZ: 0.25 }, {});
+    expect(zReadout.textContent).toBe('· Z 25%');
+
+    // La matriz suma (contribución +0.5 por telemetría): 0.25 + 0.5 = 75%.
+    view.setZMod(0.5);
+    expect(zReadout.textContent).toBe('· Z 75%');
+
+    // Y resta con signo: 0.25 - 0.4 = -0.15 -> CLAMP a 0 (lo que suena).
+    view.setZMod(-0.4);
+    expect(zReadout.textContent).toBe('· Z 0%');
+
+    // Por arriba: 0.9 + 0.5 = 1.4 -> clamp a 100%.
+    view.paint({ morphX: 0, morphY: 0, morphZ: 0.9 }, {});
+    view.setZMod(0.5);
+    expect(zReadout.textContent).toBe('· Z 100%');
+
+    view.destroy();
+  });
+
   it('los nombres A–D llegan a las esquinas desde state.models', () => {
     const view = createXyPad({});
     host.append(view.element);
@@ -251,6 +278,54 @@ describe('xyPad / wiring de morphX-morphY', () => {
     // Sin modelos (modo local, snapshot sin modelsState): sin esquinas.
     paintModels(null);
     expect(view.element.querySelector('.abd-xypad__corner')).toBeNull();
+
+    view.destroy();
+  });
+});
+
+describe('xyPad / divergencia página <-> nativo en la fila de readout', () => {
+  let host;
+
+  beforeEach(() => { host = makeHost(); });
+
+  const FRAME = (x, y) => ({ spectral: new Array(64).fill(0), morph: [x, y] });
+
+  it('la fila se COLOREA cuando la página y el nativo difieren, y limpia al converger', () => {
+    let emit = null;
+    const view = createXyPad({ onTelemetry: (notify) => { emit = notify; return () => {}; } });
+    host.append(view.element);
+    const row = view.element.querySelector('.xy-pad__readout-row');
+
+    // Sin frame nativo no hay con qué comparar: fila neutra.
+    view.paint({ morphX: 0.5, morphY: 0.5 }, {});
+    expect(row.dataset.divergent).toBeUndefined();
+
+    // El nativo dice otra cosa (0.1/0.1 vs 0.5/0.5 de la página): divergente.
+    emit(FRAME(0.1, 0.1));
+    view.paint({ morphX: 0.5, morphY: 0.5 }, {});
+    expect(row.dataset.divergent).toBe('true');
+    expect(row.title).toContain('página 50/50%');
+    expect(row.title).toContain('nativo 10/10%');
+
+    // El nativo se pone al día (el host confirma la edición): fila neutra.
+    emit(FRAME(0.5, 0.5));
+    view.paint({ morphX: 0.5, morphY: 0.5 }, {});
+    expect(row.dataset.divergent).toBe('false');
+    expect(row.title).toBe('');
+
+    view.destroy();
+  });
+
+  it('un frame de transición (por debajo del epsilon) NO alarma', () => {
+    let emit = null;
+    const view = createXyPad({ onTelemetry: (notify) => { emit = notify; return () => {}; } });
+    host.append(view.element);
+    const row = view.element.querySelector('.xy-pad__readout-row');
+
+    view.paint({ morphX: 0.5, morphY: 0.5 }, {});
+    emit(FRAME(0.51, 0.49)); // 0.01 de desfase por eje: ruido del canal
+    view.paint({ morphX: 0.5, morphY: 0.5 }, {});
+    expect(row.dataset.divergent).toBe('false');
 
     view.destroy();
   });
@@ -313,6 +388,38 @@ describe('xyPad / las dos vistas de MODELOS (mudanza al centro, 8.3)', () => {
     // panel): no queda una ranura viva.
     view.destroy();
     expect(view.element.querySelector('.model-slots__row')).toBeNull();
+  });
+
+  it('ayuda contextual: los gestos del pad viven documentados en el cajon', () => {
+    const view = createVisual('model-slots', [], {});
+    host.append(view.element);
+
+    // <details> plegado por defecto, con su summary.
+    const help = view.element.querySelector('details.model-help');
+    expect(help).not.toBeNull();
+    expect(help.open).toBe(false);
+    expect(help.querySelector('summary').textContent).toBe('Gestos del pad XY');
+
+    // Los CUATRO gestos documentados: pad, aro, teclado del aro y esquinas.
+    const items = [...help.querySelectorAll('li')];
+    expect(items).toHaveLength(4);
+    expect(items[0].textContent).toContain('Pad:');
+    expect(items[0].textContent).toContain('Shift');
+    expect(items[1].textContent).toContain('Aro (morphZ):');
+    expect(items[1].textContent).toContain('1/10');
+    expect(items[2].textContent).toContain('Aro (teclado):');
+    expect(items[2].textContent).toContain('Inicio/Fin');
+    expect(items[3].textContent).toContain('Esquinas A–D:');
+    // La verdad vigente: la esquina ya NO salta el pad — abre este cajón.
+    expect(items[3].textContent).toContain('abre el cajón de MODELOS');
+
+    // Abrir es un gesto del usuario (nativo): el contenido esta ahi.
+    help.open = true;
+    expect(help.querySelector('ul')).not.toBeNull();
+
+    // La ayuda muere con la vista (mismo vaciado que las ranuras).
+    view.destroy();
+    expect(view.element.querySelector('details.model-help')).toBeNull();
   });
 });
 
@@ -506,6 +613,62 @@ describe('xyPad / anillo morphZ con la modulación en vivo (destino 28)', () => 
     view.destroy();
   });
 
+  it('arrastre fino del ARO: Shift = 1/10 relativo, camino corto y sin salto al entrar', () => {
+    const onEdit = vi.fn();
+    const view = createXyPad({ onEdit });
+    host.append(view.element);
+
+    // Ángulos deterministas: svg de 200x200, centro (100,100).
+    // Top (100,0) = 0.0 · Derecha (200,100) = 0.25 · Izquierda (0,100) = 0.75.
+    const svg = view.element.querySelector('.xy-pad__zring svg');
+    stubRect(svg, 200, 200);
+    const zAt = () => Number(view.element.querySelector('.zring-fill').getAttribute('stroke-dasharray').split(' ')[0]) / 100;
+
+    // Drag normal a las 12: salto angular absoluto de siempre.
+    svg.dispatchEvent(pointer('pointerdown', 100, 0));
+    expect(zAt()).toBe(0);
+
+    // Primer Shift+move EN EL MISMO punto: ancla el fino (cero salto).
+    svg.dispatchEvent(new PointerEvent('pointermove', {
+      clientX: 100, clientY: 0, bubbles: true, shiftKey: true, pointerId: 1 }));
+    expect(zAt()).toBe(0);
+
+    // Hasta las 3 (0.25 de vuelta): fino 0.25 * 0.1 = +0.025,
+    // NO el salto absoluto a 0.25.
+    svg.dispatchEvent(new PointerEvent('pointermove', {
+      clientX: 200, clientY: 100, bubbles: true, shiftKey: true, pointerId: 1 }));
+    expect(zAt()).toBeCloseTo(0.025, 5);
+
+    // Volver al ancla: valor base exacto (relativo al anclaje).
+    svg.dispatchEvent(new PointerEvent('pointermove', {
+      clientX: 100, clientY: 0, bubbles: true, shiftKey: true, pointerId: 1 }));
+    expect(zAt()).toBe(0);
+
+    // Soltar: el gesto fino muere con el drag (el siguiente ancla es nuevo).
+    svg.dispatchEvent(pointer('pointerup', 100, 0));
+
+    // Cruzar las 12 es el CAMINO CORTO: anclado cerca de las 12 por la izquierda
+    // (0.98) y moviendo a la derecha (0.02), el delta es +0.04 — no -0.96.
+    svg.dispatchEvent(pointer('pointerdown', 87.467, 0.789));   // 0.98 absoluto
+    expect(zAt()).toBeCloseTo(0.98, 3);
+    svg.dispatchEvent(new PointerEvent('pointermove', {
+      clientX: 87.467, clientY: 0.789, bubbles: true, shiftKey: true, pointerId: 1 }));
+    svg.dispatchEvent(new PointerEvent('pointermove', {
+      clientX: 112.533, clientY: 0.789, bubbles: true, shiftKey: true, pointerId: 1 }));
+    expect(zAt()).toBeCloseTo(0.984, 3);
+
+    // Soltar: el gesto fino muere (un move sin shift salta absoluto de nuevo).
+    svg.dispatchEvent(pointer('pointerup', 112.533, 0.789));
+
+    // Y es un GESTO normal para el store: begin/change/end completos.
+    const phases = onEdit.mock.calls.filter(([id]) => id === 'morphZ').map(([, , phase]) => phase);
+    expect(phases[0]).toBe('begin');
+    expect(phases).toContain('change');
+    expect(phases.at(-1)).toBe('end');
+
+    view.destroy();
+  });
+
   it('contribución negativa: el arco corre ANTIHORARIO y TERMINA en la base', () => {
     const view = createXyPad({});
     host.append(view.element);
@@ -581,7 +744,9 @@ describe('xyPad / anillo morphZ con la modulación en vivo (destino 28)', () => 
     expect(mod.getAttribute('stroke-dasharray')).toBe('50 100'); // positivo: nace en la base
 
     view.destroy();
-    expect(unsubs.length).toBe(1); // destroy cancela la suscripción
+    // destroy cancela las suscripciones: el aro (telemetría nativa) Y la
+    // divergencia página<->nativo de la fila de readout, añadida después.
+    expect(unsubs.length).toBe(2);
   });
 
   it('frames sin destino morphZ o sin campo modulation no envenenan el aro', () => {
@@ -596,6 +761,120 @@ describe('xyPad / anillo morphZ con la modulación en vivo (destino 28)', () => 
 
     const mod = view.element.querySelector('.zring-mod');
     expect(mod.getAttribute('stroke-dasharray')).toBe('0 100');
+
+    view.destroy();
+  });
+});
+
+describe('xyPad / esquinas A-D clicables (abrir el cajón de MODELOS)', () => {
+  let host;
+
+  beforeEach(() => { host = makeHost(); });
+
+  const paintModels = (view, models) =>
+    view.paint({ morphX: 0, morphY: 0 }, { models });
+
+  it('clic en una esquina cargada viaja al opener con el slot del motor (A=0)', () => {
+    const opened = [];
+    const view = createXyPad({ onCornerClick: (slot) => opened.push(slot) });
+    host.append(view.element);
+    paintModels(view, [
+      { slot: 0, name: 'Piano', isValid: true },
+      { slot: 1, name: 'EMPTY', isValid: true },
+      { slot: 2, name: 'Bell', isValid: true },
+      { slot: 3, name: 'Glass', isValid: false },
+    ]);
+
+    const pad = view.element.querySelector('.abd-xypad__pad');
+    stubRect(pad);
+
+    pad.querySelector('[data-corner="tl"]').click();
+    pad.querySelector('[data-corner="bl"]').click();
+    pad.querySelector('[data-corner="br"]').click(); // divergente: TAMBIÉN abre
+
+    expect(opened).toEqual([0, 2, 3]);
+
+    view.destroy();
+  });
+
+  it('el clic NO morfea: el salto del pad muere en la esquina (sin begin/change/end)', () => {
+    const onEdit = vi.fn();
+    const opened = [];
+    const view = createXyPad({ onEdit, onCornerClick: (slot) => opened.push(slot) });
+    host.append(view.element);
+    paintModels(view, [{ slot: 0, name: 'Piano', isValid: true }]);
+
+    const pad = view.element.querySelector('.abd-xypad__pad');
+    stubRect(pad);
+    const corner = pad.querySelector('[data-corner="tl"]');
+
+    // El pointerdown de apertura muere en captura ANTES del componente: sin
+    // salto de pulgar ni gesto abierto. click() en jsdom no sintetiza el
+    // pointerdown, así que se despacha a mano.
+    corner.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+    corner.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 }));
+    corner.click();
+
+    expect(opened).toEqual([0]);
+    expect(onEdit.mock.calls).toEqual([]); // ningún gesto de morfeo
+    expect(view.pad.getValue()).toEqual({ x: 0, y: 0 }); // sin salto a la esquina
+
+    view.destroy();
+  });
+
+  it('Enter/Space con foco en la esquina abren, y una esquina vacía no es abrible', () => {
+    const opened = [];
+    const view = createXyPad({ onCornerClick: (slot) => opened.push(slot) });
+    host.append(view.element);
+    paintModels(view, [
+      { slot: 0, name: 'Piano', isValid: true },
+      { slot: 3, name: 'Glass', isValid: true },
+    ]);
+
+    const tl = view.element.querySelector('[data-corner="tl"]');
+    const tr = view.element.querySelector('[data-corner="tr"]');
+
+    expect(tl.dataset.clickable).toBe('true');
+    expect(tl.getAttribute('role')).toBe('button');
+    expect(tl.title).toContain('Piano');
+
+    // Vacía: no existe como span (el componente la omite); PERO tras un paint
+    // con nombres hay que asegurar que NO queda clickable de una vida previa.
+    expect(tr).toBeNull();
+
+    tl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    tl.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+
+    expect(opened).toEqual([0, 0]);
+
+    // Mudanza a ranura vacía: la esquina desaparece (el repinto la reconstruye).
+    paintModels(view, [
+      { slot: 0, name: 'EMPTY', isValid: true },
+      { slot: 3, name: 'Glass', isValid: true },
+    ]);
+    expect(view.element.querySelector('[data-corner="tl"]')).toBeNull();
+    expect(view.element.querySelector('[data-corner="br"]').dataset.clickable).toBe('true');
+
+    view.destroy();
+  });
+
+  it('sin opener el clic no revienta y el pad sigue morfeando fuera de las esquinas', () => {
+    const onEdit = vi.fn();
+    const view = createXyPad({ onEdit }); // sin onCornerClick
+    host.append(view.element);
+    paintModels(view, [{ slot: 0, name: 'Piano', isValid: true }]);
+
+    const pad = view.element.querySelector('.abd-xypad__pad');
+    stubRect(pad);
+
+    // Clic en esquina sin opener: no-op silencioso.
+    pad.querySelector('[data-corner="tl"]').click();
+    expect(onEdit.mock.calls).toEqual([]);
+
+    // El pointerdown FUERA de una esquina sigue siendo el pad de siempre.
+    pad.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 50, pointerId: 1 }));
+    pad.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 }));
+    expect(view.pad.getValue()).toEqual({ x: 0.5, y: 0.5 });
 
     view.destroy();
   });

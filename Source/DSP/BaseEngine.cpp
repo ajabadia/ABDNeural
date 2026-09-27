@@ -135,16 +135,36 @@ int BaseEngine::getNumActiveVoices() const
 void BaseEngine::setPolyphony(int numVoices)
 {
     const int limit = dsp::jlimit(1, kMaxVoices, numVoices);
+    const int oldSize = (int) voices.size();
 
-    // Crecer ANTES de publicar el limite: el hilo de audio indexa `voices[i]` para
-    // i < activeVoiceLimit, asi que la invariante `size() >= limit` tiene que estar
-    // puesta cuando el limite nuevo se vea. La reserva la hace el hilo de mensajes
-    // (o el que prepara el motor), nunca el de audio.
-    //
-    // BAJAR el limite NO devuelve las voces: una voz puede estar sonando su cola y
-    // desalojarla la cortaria; la reserva es de TECHO. Quien quiera reclamar memoria
-    // tiene que recrear el motor.
-    ensureVoices (limit);
+    if (limit > oldSize)
+    {
+        // Crecer ANTES de publicar el limite: el hilo de audio indexa
+        // `voices[i]` para i < activeVoiceLimit, asi que la invariante
+        // `size() >= limit` tiene que estar puesta cuando el limite nuevo
+        // se vea. La reserva la hace el hilo de mensajes (o el que prepara
+        // el motor), nunca el de audio.
+        ensureVoices (limit);
+        activeVoiceLimit.store(limit);
+        return;
+    }
+
+    if (limit < oldSize)
+    {
+        // BAJAR: devuelve solo las OCiosas. Las que aun suenan (isActive)
+        // no se tocan; las demas se liberan. La CAPACIDAD en caliente
+        // (reserve 32) se mantiene, solo baja size(). Ver reclaimIdleVoices.
+        // Publicar el limite primero no rompe la invariante size()>=limit
+        // en este camino (limit < oldSize), y el audio ve el nuevo limite
+        // antes que la compactacion — bajo el cerrojo del procesador.
+        activeVoiceLimit.store(limit);
+        reclaimIdleVoices (limit);
+        return;
+    }
+
+    // limit == oldSize: solo mueve el limite (subir/bajar dentro de lo
+    // ya reservado sin re-asignar, o mismo valor: no hay memoria que
+    // devolver porque ya cabe, solo baja el limite.
     activeVoiceLimit.store(limit);
 }
 
@@ -161,6 +181,45 @@ void BaseEngine::ensureVoices(int count)
         if (voicesPrepared && voices.back() != nullptr)
             voices.back()->prepare (currentSampleRate, currentSamplesPerBlock);
     }
+}
+
+void BaseEngine::reclaimIdleVoices (int newLimit) noexcept
+{
+    const int currentSize = (int) voices.size();
+    if (newLimit >= currentSize)
+        return;
+
+    int numActive = 0;
+    for (auto& v : voices)
+        if (v && v->isActive())
+            ++numActive;
+
+    if (numActive >= currentSize)
+        return; // todas suenan: no hay nada ocioso que devolver
+
+    // Compacta las que suenan al frente: [0, numActive) activas,
+    // [numActive, size) ociosas. Asi el trim de la cola solo toca
+    // ociosas y nunca corta una cola.
+    int write = 0;
+    for (int read = 0; read < currentSize; ++read)
+    {
+        if (voices[(size_t) read] && voices[(size_t) read]->isActive())
+        {
+            if (read != write)
+                std::swap (voices[(size_t) read], voices[(size_t) write]);
+            ++write;
+        }
+    }
+
+    const int targetSize = std::max (newLimit, numActive);
+    while ((int) voices.size() > targetSize)
+    {
+        auto& tail = voices.back();
+        if (tail && tail->isActive())
+            break; // por si la particion no dejo cola ociosa limpia
+        voices.pop_back();
+    }
+    // Capacidad (reserve 32) intacta: volver a subir solo pushea.
 }
 
 void BaseEngine::allNotesOff()

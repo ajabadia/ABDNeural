@@ -67,6 +67,14 @@ private:
     bool gridLabelHasFocus = false;                          // anillo pintado?
     juce::FocusChangeListener* gridFocusCallback = nullptr;  // repinta al entrar/salir
 
+    // 2026-09-27: resumen de capas visible ANTES de exportar (selector de
+    // metrica + numero de capas resultantes). La fila vive entre el indicador
+    // de rejilla y los visualizadores, y se actualiza tras cada analisis con
+    // el veredicto real del analizador (lastLayerCount/lastLayerTraces y
+    // puerta de plegado), no con una copia en la GUI. El usuario ve CUANTAS
+    // capas salieron y con QUE metrica antes de pulsar Exportar.
+    juce::Label layersSummaryLabel;
+
     // Visualizers
     GlassBox waveBox;
     GlassBox spectralBox;
@@ -75,6 +83,12 @@ private:
     // Footer Controls
     juce::Label pitchLabel;
     juce::ComboBox framesCombo;   // FASE 10.4: frames temporales del analisis
+    // 2026-09-27: selector de metrica de clustering (Descriptors por defecto,
+    // EnvelopeCosine dedicado con corte 0.60). El selector viaja al
+    // SpectralAnalyzer::analyzeTemporal(..., LayerMetric) y su valor se
+    // persiste (clusteringMetric) para que la metrica sobreviva a reinicios.
+    juce::Label metricLabel;
+    juce::ComboBox metricCombo;
     juce::TextEditor pitchEditor;
     // 2026-09-25: modo REJILLA FIJA — el usuario declara la rejilla y el
     // analisis NO sigue el pitch por ventana (lo dice el indicador y lo escribe
@@ -117,6 +131,8 @@ private:
     void updateGridIndicator();
     void useDetectedFrequency();   // clic en el indicador -> editor de pitch
     int  selectedFrameCount() const;
+    Analysis::LayerMetric selectedMetric() const;
+    void updateLayersSummary();
     void exportModel();
     void startRecording();
     void stopRecording();

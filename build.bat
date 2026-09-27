@@ -22,10 +22,15 @@ REM
 REM  El paso 9 corre el selftest del bridge sobre el canal real de WebView2 DOS
 REM  veces y sobre la MISMA pagina: en el PLUGIN (Standalone, el veredicto que
 REM  manda) y en la bancada WebView2, que sirve WebUI\dist desde disco. Los dos
-REM  corren las mismas SEIS direcciones — MATRIZ (abre el cajon con la matriz en
-REM  uso y deja el cajon abierto), nativo->JS, JS->nativo, GENERAL, MIDI y MODELOS
-REM  A-D — y SIN omitidos: la maquinaria de "direccion no aplicable" se fue con el
-REM  piloto (ticket 8.4). Exit code != 0 si alguna direccion no se mueve.
+REM  corren las mismas DIEZ direcciones (MATRIZ abre el cajon con la matriz en
+REM  uso y deja el cajon abierto) y SIN omitidos: la maquinaria de "direccion no
+REM  aplicable" se fue con el piloto (ticket 8.4). Exit code != 0 si alguna
+REM  direccion no se mueve.
+REM
+REM  Al final, :finish imprime el resumen del selftest por direccion con su
+REM  veredicto (lo parsea Scripts\selftest_summary.ps1 desde la ultima corrida
+REM  cerrada del transcript) y la ruta del log, y todo cae tambien en
+REM  build-last-run.log.
 REM
 REM  El script siempre termina con PAUSA, incluso si algo falla (build.bat
 REM  nopause la omite para correr automatizado: CI, agentes, una sola pasada).
@@ -143,6 +148,16 @@ if !ERRORLEVEL! neq 0 (
     goto :finish
 )
 echo [OK] WASM compilado, validado y sincronizado en WebUI\public\worklet.
+REM Guard por HASH (SHA256): el drift no se ve en el codigo (los .js/.wasm se versionan)
+REM y solo aparece como audio viejo en la WebUI. workletSyncTest.mjs es la SSOT del hash.
+node "%~dp0Tests\workletSyncTest.mjs"
+if !ERRORLEVEL! neq 0 (
+    echo.
+    echo [ERROR] WebUI\public\worklet desincronizado de build-wasm ^(hash SHA256^). El worklet
+    echo         quedaria con un DSP VIEJO y el sintoma es mudo.
+    set "EXIT_CODE=1"
+    goto :finish
+)
 goto :wasm_done
 
 :no_wasm
@@ -166,6 +181,18 @@ if !ERRORLEVEL! neq 0 (
 )
 popd
 echo [OK] WebUI del plugin exportada en WebUI\dist.
+REM Guard por HASH: dist/worklet tiene que ser el DSP recien compilado, no el de la
+REM pasada anterior. Compara build-wasm <-> public/worklet <-> dist/worklet.
+if "%WITH_WASM%"=="1" (
+    node "%~dp0Tests\workletSyncTest.mjs"
+    if !ERRORLEVEL! neq 0 (
+        echo.
+        echo [ERROR] WebUI\dist\worklet desincronizado ^(hash SHA256^). El worklet embebido
+        echo         seria un DSP VIEJO. Ejecuta WebUI\scripts\sync-wasm.mjs y pnpm build en WebUI/.
+        set "EXIT_CODE=1"
+        goto :finish
+    )
+)
 goto :plugin_webui_done
 
 :no_plugin_webui
@@ -281,14 +308,15 @@ REM El transcript queda junto al log de la compilacion, para poder leer el detal
 REM sin depender del stdout (y ahi es donde lo busca quien depura un FAIL).
 set "NEURONIK_SELFTEST_LOG=%~dp0%BUILD_DIR%\neuronik-selftest.log"
 "%PLUGIN_STANDALONE%" --selftest
-if !ERRORLEVEL! neq 0 (
+set "PLUGIN_ST=%ERRORLEVEL%"
+if not "%PLUGIN_ST%"=="0" (
     echo.
     echo [ERROR] El selftest del plugin fallo: alguna direccion no se movio.
     echo         Detalle: %NEURONIK_SELFTEST_LOG%
     set "EXIT_CODE=1"
     goto :finish
 )
-echo [OK] Plugin verificado (7 direcciones): MATRIZ, nativo-^>JS, JS-^>nativo, GENERAL, MIDI, MODELOS A-D y ACCIONES (RANDOM de la pagina).
+echo [OK] Plugin verificado: ver el resumen por direccion al final de esta pasada.
 
 REM Solo si la bancada compilo y la pagina existe: sin pagina que cargar no hay E2E.
 REM La bancada sirve WebUI\dist (la MISMA pagina que embebe el plugin), asi que este
@@ -312,13 +340,14 @@ if not exist "WebUI\dist\index.html" (
 )
 
 "%PILOT_HOST%" --selftest
-if !ERRORLEVEL! neq 0 (
+set "PILOT_ST=%ERRORLEVEL%"
+if not "%PILOT_ST%"=="0" (
     echo.
     echo [ERROR] El selftest del bridge fallo: alguna direccion no se movio.
     set "EXIT_CODE=1"
     goto :finish
 )
-echo [OK] Bancada verificada: las siete direcciones sobre la MISMA pagina del plugin.
+echo [OK] Bancada verificada: las mismas direcciones sobre la MISMA pagina del plugin.
 
 echo.
 echo =======================================================
@@ -333,12 +362,32 @@ echo.
 echo  Copia de seguridad de builds anteriores: "Versiones compiladas"
 
 :finish
+REM ---- Resumen del selftest: veredicto por direccion + rutas de los logs -----
+REM El transcript del selftest es acumulativo (cada corrida del plugin anhade y
+REM se cierra con una linea "veredicto:"), asi que el resumen lo parsea
+REM Scripts\selftest_summary.ps1 desde la ULTIMA corrida CERRADA: si esta pasada
+REM no llego a renovarla (proceso muerto antes de terminar), el aviso de fecha
+REM lo dice en vez de pintar un OK de otra pasada. Sin log o sin corrida, el
+REM resumen lo dice en vez de callar. La llamada es un proceso hijo del tee:
+REM su stdout lo captura el envoltorio y por eso el resumen tambien queda en
+REM build-last-run.log.
+set "SELFTEST_LOG=%NEURONIK_SELFTEST_LOG%"
+if "%SELFTEST_LOG%"=="" set "SELFTEST_LOG=%~dp0%BUILD_DIR%\neuronik-selftest.log"
+
 echo.
 echo =======================================================
 if "%EXIT_CODE%"=="0" (
     echo  RESULTADO: OK
 ) else (
     echo  RESULTADO: CON ERRORES ^(codigo %EXIT_CODE%^)
+)
+echo =======================================================
+
+if "%WITH_SELFTEST%"=="1" (
+    echo  Resumen del selftest ^(por direccion^):
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Scripts\selftest_summary.ps1" "%SELFTEST_LOG%"
+) else (
+    echo  Selftest omitido en esta pasada ^(noselftest / tests^).
 )
 echo =======================================================
 if "%NOPAUSE%"=="1" exit /b %EXIT_CODE%

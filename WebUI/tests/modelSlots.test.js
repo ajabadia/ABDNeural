@@ -14,7 +14,10 @@
  *   - sin host el botón está deshabilitado y no pide nada: la carga la ejecuta el
  *     host (la página no tiene sistema de ficheros), así que fingirla sería mentir;
  *   - el fallo del host (`modelError`) se enseña con su motivo, y una respuesta
- *     nueva lo limpia.
+ *     nueva lo limpia;
+ *   - OLVIDAR solo aparece con modelo y solo en modo local (con host la ranura es
+ *     del preset), y el aviso de ese gesto sale por la MISMA linea de estado que el
+ *     fallo, con su tono.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -27,8 +30,8 @@ afterEach(() => {
 
 /** Estado del store que necesita la vista (lo demás lo ignora). */
 function makeState({ models = null, bridgeAvailable = true, modelError = null,
-                     localModelReady = false } = {}) {
-  return { models, bridgeAvailable, modelError, localModelReady };
+                     localModelReady = false, modelNotice = null } = {}) {
+  return { models, bridgeAvailable, modelError, localModelReady, modelNotice };
 }
 
 /** Los cuatro slots tal cual los manda el puente (`modelsState`). */
@@ -205,6 +208,121 @@ describe('ranuras de modelo / el fallo del host', () => {
     expect(status.textContent).toBe('1/4 cargados');
     expect(status.dataset.state).toBe('ok');
     expect(status.title).toBe('');
+  });
+});
+
+describe('ranuras de modelo / OLVIDAR', () => {
+  const forgetOf = (slot) => rowOf(slot).querySelector('.model-slots__forget');
+
+  it('el botón pide SU ranura', () => {
+    const onForget = vi.fn();
+    const view = mount({ onForget });
+
+    view.paint({}, makeState({
+      models: modelsPayload(['Campana', 'EMPTY', 'Cristal', 'EMPTY']),
+      bridgeAvailable: false,
+      localModelReady: true,
+    }));
+
+    forgetOf(0).click();
+
+    expect(onForget).toHaveBeenCalledTimes(1);
+    expect(onForget).toHaveBeenCalledWith(0);
+  });
+
+  it('solo aparece con modelo: una ranura vacía no tiene nada que olvidar', () => {
+    const view = mount({ onForget: () => {} });
+
+    view.paint({}, makeState({
+      models: modelsPayload(['Campana']),
+      bridgeAvailable: false,
+      localModelReady: true,
+    }));
+
+    expect(forgetOf(0).hidden).toBe(false);
+    expect(forgetOf(0).title).toContain('slot A');
+    for (const slot of [1, 2, 3]) expect(forgetOf(slot).hidden).toBe(true);
+  });
+
+  it('con host NO se ofrece: la ranura es del preset y su fichero vuelve con el proyecto', () => {
+    const onForget = vi.fn();
+    const view = mount({ onForget });
+
+    view.paint({}, makeState({ models: modelsPayload(['Campana']), bridgeAvailable: true }));
+
+    expect(forgetOf(0).hidden).toBe(true);
+    forgetOf(0).click();
+    expect(onForget).not.toHaveBeenCalled();
+  });
+
+  it('un nombre que el motor no pudo cargar TAMBIÉN se puede olvidar', () => {
+    // La ranura tiene nombre, luego hay algo cargado: lo que fallo fue el fichero,
+    // no la carga. Y al olvidarla desaparece el estado divergente.
+    const view = mount({ onForget: () => {} });
+    const models = modelsPayload(['Fantasma']);
+
+    models[0].isValid = false;
+    view.paint({}, makeState({ models, bridgeAvailable: false, localModelReady: true }));
+
+    expect(forgetOf(0).hidden).toBe(false);
+
+    view.paint({}, makeState({
+      models: modelsPayload(),
+      bridgeAvailable: false,
+      localModelReady: true,
+    }));
+
+    expect(forgetOf(0).hidden).toBe(true);
+  });
+});
+
+describe('ranuras de modelo / la linea de estado: fallo y aviso', () => {
+  const status = () => document.querySelector('.model-slots__status');
+
+  it('el acierto se anuncia con su tono (no es un error)', () => {
+    const view = mount();
+
+    view.paint({}, makeState({
+      models: modelsPayload(),
+      modelNotice: { slot: 1, tone: 'ok', detail: 'olvidada: la ranura vuelve a EMPTY' },
+    }));
+
+    expect(status().textContent).toBe('✓ olvidada: la ranura vuelve a EMPTY');
+    expect(status().dataset.state).toBe('ok');
+    expect(status().title).toContain('slot B');
+  });
+
+  it('el aviso a medias (el navegador no la deja olvidar) va en tono warn', () => {
+    const view = mount();
+
+    view.paint({}, makeState({
+      modelNotice: { slot: 0, tone: 'warn', detail: 'al recargar volvera' },
+    }));
+
+    expect(status().textContent).toBe('⚠ al recargar volvera');
+    expect(status().dataset.state).toBe('warn');
+  });
+
+  it('un fallo de carga MANDA sobre el aviso: una línea, un mensaje', () => {
+    const view = mount();
+
+    view.paint({}, makeState({
+      modelError: { slot: 2, detail: 'no file chosen' },
+      modelNotice: { slot: 1, tone: 'ok', detail: 'olvidada' },
+    }));
+
+    expect(status().textContent).toBe('✕ no file chosen');
+    expect(status().dataset.state).toBe('error');
+  });
+
+  it('sin aviso ni fallo, la línea es el conteo', () => {
+    const view = mount();
+
+    view.paint({}, makeState({ models: modelsPayload(['Uno']) }));
+
+    expect(status().textContent).toBe('1/4 cargados');
+    expect(status().dataset.state).toBe('ok');
+    expect(status().title).toBe('');
   });
 });
 

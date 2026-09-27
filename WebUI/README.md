@@ -30,6 +30,12 @@ su propia carpeta.
   carpeta**: el contrato generado (`generated/`), el protocolo versionado (`contracts/`) y los
   assets + worklet (`public/`, que es el `publicDir` de `vite.config.js`). Ver `HANDOFF.md`,
   «Retirada del piloto».
+- **E2E de navegador (2026-09-27)**: Playwright + Chromium para el smoke del **MODO LOCAL**
+  (`e2e/localMode.spec.js`): SOUND ON arranca el motor WASM, la ficha RANURAS carga un
+  `.neuronikmodel` real, una tecla enciende la voz y el pad mueve morphX/morphY con su anillo
+  bailando. Es el unico test que arranca el `AudioWorklet` de verdad y mira la frontera
+  pagina -> worklet (`neuronik:params` / `neuronik:models`); entra en `ctest` como
+  `NEURONiK_WebUiLocalModeE2e`. En una maquina nueva: `npx playwright install chromium`.
 - **Workspace propio.** `pnpm install` se corre **aquí dentro**: hasta la retirada, los enlaces de
   `node_modules/@abdsynths/*` los daba el workspace anidado del piloto, y este proyecto estrena el
   suyo (`WebUI/pnpm-workspace.yaml` + `WebUI/pnpm-lock.yaml`), porque el workspace raíz de la
@@ -40,9 +46,43 @@ su propia carpeta.
 ```bash
 cd ABDNeural/WebUI && pnpm install  # workspace propio (incluye los paquetes compartidos)
 cd ABDNeural/WebUI && pnpm test     # vitest (jsdom)
+cd ABDNeural/WebUI && pnpm test:e2e # Playwright + Chromium (E2E de navegador, sirve dist)
 cd ABDNeural/WebUI && pnpm dev      # servidor de desarrollo en el navegador (modo local)
 cd ABDNeural/WebUI && pnpm build    # -> WebUI/dist (assets + worklet desde public/)
 ```
+
+### Regresión visual (Playwright, una referencia por ficha)
+
+El E2E afirma que el lienzo existe y que sus textos dicen lo que deben; la
+regresión visual afirma que **se pinta bien**: cada ficha del lienzo (y el lienzo
+entero, en los dos temas) tiene su foto de referencia en `e2e/snapshots/` y se
+compara con un umbral.
+
+```bash
+cd ABDNeural/WebUI && pnpm test:visual           # solo la regresion visual
+cd ABDNeural/WebUI && pnpm test:visual:update    # REGENERA las referencias (cambio de pintura INTENCIONAL)
+```
+
+Dos cosas que hay que saber antes de regenerar nada:
+
+- **El viewport es el tamaño de diseño** (`CANVAS` de `src/contracts/sections.js`,
+  1440x946), no un número escrito en el spec: el lienzo se escala con `transform`
+  para caber en el editor (`mountFitStage`), así que con un viewport mayor la
+  referencia sería una foto reescalada. El spec exige escala 1 antes de capturar.
+- **Las referencias son de Chromium/Windows** y hay que compararlas en Windows:
+  la página usa las fuentes del sistema (no carga ninguna webfont) y su
+  rasterizado cambia entre sistemas operativos.
+
+El umbral (`maxDiffPixels: 20`, `threshold: 0.2`) está medido, no copiado del
+hermano ABDMS2000, que usa 100: aquí el ruido entre corridas es de 0 píxeles y la
+regresión más pequeña que se ha podido construir (el color de un distintivo) mueve
+77, así que con 100 **pasaba en verde**. Ver el comentario en
+`playwright.config.js`.
+
+Las dos suites de navegador son tests de ctest aparte
+(`NEURONiK_WebUiVisualRegression` y `NEURONiK_WebUiLocalModeE2e`): comparten el
+`dist`, así que un `RESOURCE_LOCK` de ctest impide que sus dos `vite build` se
+solapen, y cada una usa su puerto (`NEURONIK_E2E_PORT`).
 
 Sin host (`window.__JUCE__` ausente) la página arranca en **modo local**: el store
 funciona, pero ningún envío sale al plugin ni se pinta estado nativo.

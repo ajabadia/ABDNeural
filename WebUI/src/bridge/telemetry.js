@@ -28,6 +28,11 @@ export function pushTelemetryFrame(frame) {
     lfos: Array.isArray(frame.lfos) ? frame.lfos : [],
     modulation: Array.isArray(frame.modulation) ? frame.modulation : [],
     morph: Array.isArray(frame.morph) ? frame.morph : [],
+    // Voces activas del motor (opcional y OPCIONALMENTE presente: el meter del
+    // worklet ya alimenta su medidor en local, y los frames de la pagina para
+    // el canal de telemetria no lo traen — Number(undefined)=NaN, que `|| 0`
+    // sanea; el panel lo decide con un `voices !== undefined`).
+    voices: Number.isFinite(Number(frame.voices)) ? Math.max(0, Math.floor(Number(frame.voices))) : undefined,
   };
 
   for (const notify of subscribers) notify(last);

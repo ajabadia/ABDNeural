@@ -280,6 +280,15 @@ export const SECTIONS = [
     columns: 2,
     drawer: {
       badge: '4 LFO',
+      // 2026-09-27: distintivo VIVO, `mode: 'active'` — cuantas de las diez
+      // celdas de la caja consume el motor que esta sonando. La cobertura es la
+      // del gating (`engines` del contrato generado), no una cuenta a mano: los
+      // dos LFO son DSP COMPARTIDO, asi que con cualquiera de los dos motores la
+      // caja esta entera (10/10). La ficha se lo pide al motor porque la caja es
+      // de el; el numero se mueve en las fichas de un solo motor (FILTRO es
+      // NEURONiK, RESONADOR es NEUROTIK), que aún no tienen cajon donde colgar
+      // el distintivo.
+      liveBadge: { mode: 'active', label: 'LFO', onCard: true },
       trigger: 'EDIT',
       // Los cuatro del frontal NO se replican en el cajon (un control, un
       // nodo DOM; patron masterLevel en GLOBAL & MASTER).
@@ -348,6 +357,19 @@ export const SECTIONS = [
     visual: 'model-xy',
     drawer: {
       badge: '4 RANURAS',
+      // 2026-09-27: el distintivo es un DATO VIVO, no un inventario: `mode:
+      // 'loaded'` cuenta cuantas ranuras del MOTOR traen modelo (la MISMA
+      // verdad que la vista model-slots y su estado "N/4 cargados": entry con
+      // nombre != 'EMPTY' — `isValid: false` sigue contando como cargada,
+      // porque el fichero SI fue cargado, lo que falla es el fichero). El
+      // literal queda para lo que si es: el inventario antes del primer paint.
+      // Los datos viven fuera del APVTS (state.models), asi que el panel los
+      // lee del snapshot entero (ver liveDrawerBadge en ui/panel.js).
+      // `onCard`: el MISMO distintivo se cuelga tambien en la cabecera de la
+      // ficha del lienzo, como boton que abre este cajon (patron de la franja
+      // de GLOBAL & MASTER). Con el dato a la vista no hace falta abrir el
+      // cajon para leerlo: el EDIT de al lado sigue siendo el que EDITA.
+      liveBadge: { mode: 'loaded', onCard: true },
       trigger: 'EDIT',
       // El detalle es una VISTA (model-slots), no celdas del APVTS: el panel
       // la monta entera en el cuerpo del cajon y el flujo de controles no la
@@ -428,6 +450,17 @@ export const SECTIONS = [
       ],
     },
     visual: 'mod-summary',
+    // EL CONMUTADOR de la ruta local del pad (2026-09-27): sin host el motor
+    // nace con la matriz del contrato y el anillo del pad se queda quieto, asi
+    // que la pagina siembra una ruta (LFO -> Morph Z, ver LOCAL_MORPH_Z_ROUTE
+    // en el store). Con esto el usuario la apaga y cambia de LFO sin entrar al
+    // cajon. Solo MODO LOCAL: con host la matriz es del APVTS y el conmutador se
+    // pinta deshabilitado (lo dice el snapshot, no esta ficha).
+    //
+    // Solo la ETIQUETA se declara aqui: las OPCIONES las publica el store
+    // (`state.localMorphRoute.sources`, sacadas de la tabla de fuentes del
+    // contrato), para que la vista no decida que LFO existe.
+    localRoute: { label: 'RUTA DEL PAD' },
     ids: [
       'mod1Source',
       'mod1Destination',
@@ -459,6 +492,16 @@ export const SECTIONS = [
     action: 'randomize',
     drawer: {
       badge: '8 GLOBAL',
+      // 2026-09-27: distintivo VIVO, `mode: 'touched'`: cuantas CELDAS del
+      // cajon se han apartado del default del contrato generado (la linea
+      // `defaultNormalized` del propio APVTS — la misma verdad que usa el
+      // store para sembrar el estado). masterLevel no cuenta: no es celda del
+      // cajon (vive en la ficha, contrato 8.1 2c), y contar lo que no se
+      // edita aqui seria contar dos veces lo mismo. Un id que el snapshot no
+      // traiga cuenta como en default: no se inventa un gesto que no hubo.
+      // `onCard`: identico al de MODELOS — el recuento de celdas tocadas se
+      // lee en la cabecera de la ficha y el gesto lo lleva a su cajon.
+      liveBadge: { mode: 'touched', onCard: true },
       // Los desplegables del cajon son los MISMO select que pinta el lienzo
       // cuando su ficha los tiene (misma variable, mismo DOM por id), asi que
       // no hay estado que sincronizar: es el mismo nodo repartido en dos sitios.

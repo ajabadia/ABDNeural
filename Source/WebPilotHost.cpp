@@ -64,6 +64,7 @@ namespace
     // plugin editor can use the SAME ones instead of a copy per surface.
     using NEURONiK::WebUI::EngineModelsAdapter;
     using NEURONiK::WebUI::MidiInjectionAdapter;
+    using NEURONiK::WebUI::MidiCcMappingsAdapter;
     using NEURONiK::WebUI::PresetManagerAdapter;
     using NEURONiK::WebUI::RandomizerAdapter;
     using NEURONiK::WebUI::VisualizationSourceAdapter;
@@ -431,6 +432,13 @@ namespace
             midiAdapter = std::make_unique<MidiInjectionAdapter> (processor);
             bridge->setMidiController (midiAdapter.get());
 
+            // Tabla de mapeos CC para el menu MIDI CONTROL del LCD de la pagina:
+            // la MISMA tabla que edita el MidiLearner nativo (RT-safe, persistida
+            // con el estado). El learn/clear/reset viajan como acciones de estado
+            // y la tabla como midiCcState pegado a cada snapshot.
+            midiCcAdapter = std::make_unique<MidiCcMappingsAdapter> (processor);
+            bridge->setMidiCcController (midiCcAdapter.get());
+
             // Spectral models for the page: the bridge publishes the engine's
             // current slots (file-backed mirror) so the WASM path can morph
             // between the SAME partials the plugin renders — and serves the
@@ -577,6 +585,10 @@ namespace
             // native XYPad would never move.
             processor.refreshUiTelemetryFromApvts();
 
+            // CC -> parametro: los CC mapeados (y aprendidos) que el bloque
+            // encolo esperan aqui. El editor hace lo mismo con su timer.
+            processor.applyPendingCcChanges();
+
             bridge->publishPendingChanges();
 
             // Mirror the plugin's external MIDI view on the page keyboard every
@@ -710,6 +722,7 @@ namespace
         // the component, before the processor's own members go away.
         std::unique_ptr<PresetManagerAdapter> presetAdapter;
         std::unique_ptr<MidiInjectionAdapter> midiAdapter;
+        std::unique_ptr<MidiCcMappingsAdapter> midiCcAdapter;
         std::unique_ptr<EngineModelsAdapter> modelsAdapter;
         std::unique_ptr<RandomizerAdapter> randomizeAdapter;
         std::unique_ptr<VisualizationSourceAdapter> visualizationAdapter;

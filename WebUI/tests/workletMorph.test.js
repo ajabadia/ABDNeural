@@ -17,11 +17,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   getWorkletMorph,
   isAudioEngineReady,
+  onWorkletEnvelopeLevels,
+  onWorkletVoices,
   pushMorphToWorklet,
   startAudioEngine,
 } from '../src/audio/audioWorkletEngine.js';
 import { createParameterStore } from '../src/contracts/paramStore.js';
 import { emptyLocalModels } from '../src/audio/localModels.js';
+import { gpFieldsFromState } from '../src/wasm/audioParams.js';
 
 let lastNode = null;
 
@@ -110,6 +113,66 @@ afterEach(async () => {
   delete window.AudioWorkletNode;
   delete window.AudioContext;
   lastNode = null;
+});
+
+describe('worklet / meter hacia la pagina', () => {
+  it('el mensaje neuronik:meter reparte envelopes[amp, filter] a los suscriptores', async () => {
+    installFakeWebAudio();
+    const startPromise = startAudioEngine();
+    await vi.waitFor(() => expect(lastNode).not.toBeNull());
+    await fakeWorkletReady();
+    await startPromise;
+
+    const seen = [];
+    const unsubscribe = onWorkletEnvelopeLevels((levels) => seen.push(levels));
+
+    lastNode.port.emit({ type: 'neuronik:meter', envelopes: [0.72, 0.31], voices: 1 });
+
+    expect(seen).toEqual([[0.72, 0.31]]);
+
+    unsubscribe();
+
+    // Baja de suscripción: el meter sigue llegando pero nadie lo escucha.
+    lastNode.port.emit({ type: 'neuronik:meter', envelopes: [0.1, 0.1], voices: 0 });
+    expect(seen).toHaveLength(1);
+  });
+
+  it('frames sin envelopes (o con otra forma) no envenenan a los suscriptores', async () => {
+    installFakeWebAudio();
+    const startPromise = startAudioEngine();
+    await vi.waitFor(() => expect(lastNode).not.toBeNull());
+    await fakeWorkletReady();
+    await startPromise;
+
+    const seen = [];
+    const unsubscribe = onWorkletEnvelopeLevels((levels) => seen.push(levels));
+
+    lastNode.port.emit({ type: 'neuronik:meter', voices: 1 });              // sin campo
+    lastNode.port.emit({ type: 'neuronik:meter', envelopes: [0.5], voices: 1 }); // incompleto
+    lastNode.port.emit({ type: 'neuronik:meter', envelopes: [0.4, 0.6], voices: 2 }); // válido
+
+    expect(seen).toEqual([[0.4, 0.6]]);
+
+    unsubscribe();
+  });
+
+  it('el contador de voces del meter alimenta onWorkletVoices (medidor de voces local)', async () => {
+    installFakeWebAudio();
+    const startPromise = startAudioEngine();
+    await vi.waitFor(() => expect(lastNode).not.toBeNull());
+    await fakeWorkletReady();
+    await startPromise;
+
+    const voices = [];
+    const unsubscribe = onWorkletVoices((count) => voices.push(count));
+
+    lastNode.port.emit({ type: 'neuronik:meter', voices: 3, envelopes: [0, 0] });
+    lastNode.port.emit({ type: 'neuronik:meter', voices: 0, envelopes: [0, 0] });
+
+    expect(voices).toEqual([3, 0]);
+
+    unsubscribe();
+  });
 });
 
 describe('worklet / pushMorphToWorklet', () => {
@@ -203,5 +266,27 @@ describe('store / ranuras en modo local', () => {
 
     const file = new File([validModelText()], 'x.neuronikmodel');
     expect(await store.loadLocalModel(file, 0)).toBe(false);
+  });
+});
+describe('worklet / la ruta sembrada a Morph Z viaja como campos de la MATRIZ', () => {
+  it('pushParamsToWorklet cruza (mod3Source, mod3Destination, mod3Amount) ya en indices', () => {
+    // La pagina siembra la ruta en NORMALIZADO (contrato); el worklet solo entiende
+    // indices de GlobalParams. Este es el eslabon que hace que el motor TENGa la
+    // ruta: sin el, el anillo del pad mide 0 por mucho que el store la tenga.
+    const store = createParameterStore({
+      ids: ['mod3Source', 'mod3Destination', 'mod3Amount', 'lfo2RateHz', 'lfo2Depth', 'morphZ'],
+    });
+    store.start();
+    expect(store.seedLocalMorphZRoute()).toBe(true);
+
+    const fields = new Map(gpFieldsFromState(store.getState().parameters));
+
+    // 22..33 modMatrix[r].{source,destination,amount} r=0..3 (fuente 2 = LFO 2,
+    // destino 28 = Morph Z, amount 1.0 = barrido entero).
+    expect(fields.get(28)).toBe(2);
+    expect(fields.get(29)).toBe(28);
+    expect(fields.get(30)).toBe(1);
+
+    store.dispose();
   });
 });

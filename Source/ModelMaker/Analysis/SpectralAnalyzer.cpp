@@ -48,6 +48,43 @@ void SpectralAnalyzer::transformCurrentFrame(int numSamples)
     window.multiplyWithWindowingTable(fftData.data(), static_cast<size_t>(numSamples));
     fft.performFrequencyOnlyForwardTransform(fftData.data());
 }
+
+// 2026-09-27: REJILLAS ENTRELAZADAS — el diagnostico que la sonda tenia
+// fuera (acousticCheck) ahora vive en el analizador, donde pertenece:
+// measurePartial marca el pico y el residuo/LS lo excluyen. Un pico a
+// <0.25*f0 de un impar de f0/2 y a >0.25*f0 de k*f0 es la otra familia;
+// esa energia no mide la inharmonicidad de k*f0, sino la sub-oscilacion
+// (phasor CZ). Ver el caso CZ-SWEP1: 4 de los 8 parciales top caen aqui.
+bool SpectralAnalyzer::isInterlacedPeak(float peakHz, float targetFreq, float rootFrequency) noexcept
+{
+    if (peakHz <= 0.0f || targetFreq <= 0.0f || rootFrequency <= 0.0f)
+        return false;
+    const float halfGrid = rootFrequency * 0.5f;
+    const float oddF = std::round(peakHz / halfGrid);
+    if (oddF < 1.0f)
+        return false;
+    // impar de f0/2 = la sub-rejilla; par = la propia rejilla
+    const int oddI = (int) std::lround(oddF);
+    const bool isOdd = (oddI % 2) == 1;
+    if (! isOdd)
+        return false;
+    const float oddHz = oddF * halfGrid;
+    const bool oddUsable = std::abs(peakHz - oddHz) < 0.25f * rootFrequency;
+    const bool onOwnGrid = std::abs(peakHz - targetFreq) < 0.25f * rootFrequency;
+    if (! oddUsable || onOwnGrid)
+        return false;
+    // Guarda de k: un pico de la sub-rejilla por debajo de la fundamental
+    // de ESTE parcial no es el que contamina su banda (ventana = 0.5*f0,
+    // nunca llega tan lejos). La sonda usaba odd*2 > k+0.5, que es lo
+    // mismo que oddF > k + 0.5 con k = round(target/root).
+    const int k = (int) std::lround(targetFreq / rootFrequency);
+    // Guarda documentada: oddF siempre cae en [2k-1, 2k+1] dentro de la
+    // ventana (media banda del peak-picking). Un impar fuera de ese
+    // intervalo no esta en la banda de k, asi que no contamina su offset.
+    // Formalmente: oddF en {2k-1, 2k+1}. Dentro => interlazado, fuera => no.
+    const bool inBand = oddF >= (float)(2*k - 1) - 0.5f && oddF <= (float)(2*k + 1) + 0.5f;
+    return inBand;
+}
 // Maximo local +-1 bin: el esbozo del pico NO re-ventanea (no toca fftData);
 // el bin queda en la misma cordillera del espectro crudo, ya anclado al
 // maximo local. Llamar con magnitudeSpectrum ya publicado.
@@ -303,8 +340,13 @@ NEURONiK::Common::SpectralModel SpectralAnalyzer::analyze(const juce::AudioBuffe
 
     // Los parciales por debajo del suelo no son de la fuente: su offset
     // seria desajuste del ruido, no inharmonicidad.
+    // 2026-09-27: picos interlazados (sub-rejilla) no contaminan ni offset ni
+    // residuo. Su offset ya es 0 (measurePartial) y no entra al LS; aqui se
+    // deja la amplitud tal cual para diagnostico, pero el offset permanece 0.
     for (int k = 0; k < 64; ++k)
     {
+        if (measured[static_cast<size_t>(k)].interlaced)
+            measured[static_cast<size_t>(k)].offsetHz = 0.0f;
         if (measured[static_cast<size_t>(k)].amplitude < maxAmp * kPartialFloor)
             measured[static_cast<size_t>(k)].offsetHz = 0.0f;
 
@@ -400,9 +442,23 @@ SpectralAnalyzer::PartialMeasurement SpectralAnalyzer::measurePartial(float targ
         delta = juce::jlimit(-0.5f, 0.5f, 0.5f * (a - c) / denom);
 
     const float peakFreq = (static_cast<float>(bestBin) + delta) * binWidth;
-    // El limite es la propia ventana de busqueda (half spacing f0): con la
-    // inharmonicidad creciente el offset real supera de largo el viejo cap de
-    // +-2 bins y saturaba (parcial 1 a +12 Hz se recortaba a 10.77).
+    result.peakHz = peakFreq;
+    // 2026-09-27: REJILLAS ENTRELAZADAS. Si el pico cae sobre la sub-rejilla
+    // (impar de f0/2) no es inharmonicidad de ESTE parcial, sino energia de
+    // la otra familia (phasor CZ: la sonda lo diagnosticaba como ENTRELAZADO).
+    // La medida lo marca y el offset NO se contamina: se deja a 0 y el
+    // residuo/LS lo ignoran (ver fitGridLeastSquares / fitGridFromSpectrum);
+    // la amplitud se conserva para diagnostico pero el modelo la pondra a 0
+    // en el volcado si hace falta (el llamador decide con el flag).
+    // 2026-09-27 (+capa entrelazada): peakHz se conserva aunque el flag este
+    // activo, para que la capa entrelazada pueda usar la posicion real del
+    // pico (impar de f0/2) con su offset correspondiente.
+    result.interlaced = isInterlacedPeak(peakFreq, targetFreq, rootFrequency);
+    if (result.interlaced)
+    {
+        result.offsetHz = 0.0f;
+        return result;
+    }
     const float maxOffset = static_cast<float>(halfWin) * binWidth;
     result.offsetHz = juce::jlimit(-maxOffset, maxOffset, peakFreq - targetFreq);
     return result;
@@ -413,6 +469,7 @@ float SpectralAnalyzer::detectPitch(const juce::AudioBuffer<float>& audio, doubl
     // INDICADOR (2026-09-24): cada lectura lo recalcula; sin material, n/d.
     gridResidCents = -1.0f;
     gridObsCount = 0;
+    gridInterlacedCount = 0;
 
     if (audio.getNumSamples() == 0) return 0.0f;
 
@@ -485,10 +542,12 @@ float SpectralAnalyzer::fitGridLeastSquares (const juce::AudioBuffer<float>& aud
     struct Observation { int harmonic; float peakHz; };
     std::vector<Observation> observations;
     observations.reserve (static_cast<size_t> (frameCount * 16));
+    int interlacedDropped = 0; // 2026-09-27: picos de la sub-rejilla no entran al LS
 
     auto collect = [&] (float root)
     {
         observations.clear();
+        interlacedDropped = 0;
         if (root <= 0.0f)
             return;
 
@@ -535,6 +594,7 @@ float SpectralAnalyzer::fitGridLeastSquares (const juce::AudioBuffer<float>& aud
             for (int k = 0; k < 64; ++k)
             {
                 const auto& m = measured[static_cast<size_t> (k)];
+                if (m.interlaced) { ++interlacedDropped; continue; }
                 if (m.amplitude <= 0.0f || m.amplitude < windowMax * kPartialFloor)
                     continue;
                 observations.push_back ({ k + 1, root * static_cast<float> (k + 1) + m.offsetHz });
@@ -574,6 +634,7 @@ float SpectralAnalyzer::fitGridLeastSquares (const juce::AudioBuffer<float>& aud
     {
         gridObsCount   = static_cast<int> (obs.size ());
         gridResidCents = residualCents (obs, f0);
+        gridInterlacedCount = interlacedDropped;
     };
 
     // Pasada 1: bandas ancladas en la semilla.
@@ -636,10 +697,12 @@ float SpectralAnalyzer::fitGridFromSpectrum (double sampleRate, float seedHz)
     struct Observation { int harmonic; float peakHz; };
     std::vector<Observation> observations;
     observations.reserve (64);
+    int interlacedDropped = 0; // 2026-09-27: sub-rejilla fuera del LS
 
     auto collect = [&] (float root)
     {
         observations.clear();
+        interlacedDropped = 0;
         if (root <= 0.0f)
             return;
 
@@ -657,6 +720,7 @@ float SpectralAnalyzer::fitGridFromSpectrum (double sampleRate, float seedHz)
         for (int k = 0; k < 64; ++k)
         {
             const auto& m = measured[static_cast<size_t> (k)];
+            if (m.interlaced) { ++interlacedDropped; continue; }
             if (m.amplitude <= 0.0f || m.amplitude < windowMax * kPartialFloor)
                 continue;
             observations.push_back ({ k + 1, root * static_cast<float> (k + 1) + m.offsetHz });
@@ -696,6 +760,143 @@ float SpectralAnalyzer::fitGridFromSpectrum (double sampleRate, float seedHz)
     return fitted;
 }
 
+
+
+// 2026-09-27: BATERIA DE FAMILIAS DE OCTAVA -- decision por RESIDUO GLOBAL
+// El proto HPS exploraba {seed/2, seed, seed*2} sinteticas con series debiles /
+// continuas para ver donde cae el minimo de residuo sobre TODAS las ventanas.
+// Aqui la metrica es la misma del ajuste LS (RMS en cents sobre los picos sub-bin
+// de TODAS las ventanas activas, con las mismas guardas: media banda por armonico,
+// maximo local, suelo -60 dB y diagnostico de rejillas entrelazadas). El LS de cada
+// candidato es exactamente fitGridLeastSquares en miniatura (collect/solve/residuo
+// a 2 pasadas, con LS que solo refina <600 cents su candidato), pero sin publicar
+// el indicador -- es la medida para elegir, no el ajuste ya publicado. Los candidatos
+// por debajo de anchorFloorHz() se marcan invalidos (via manual por debajo del
+// suelo, seccion 8 del plan). Empate a <0.5 cents => mas observaciones.
+std::array<SpectralAnalyzer::OctaveCandidate, 3>
+SpectralAnalyzer::evaluateOctaveCandidates (const juce::AudioBuffer<float>& audio,
+                                            double sampleRate, float seedHz)
+{
+    std::array<OctaveCandidate, 3> out{};
+    if (seedHz <= 0.0f || audio.getNumSamples() <= 0) return out;
+    const float floor = anchorFloorHz (sampleRate);
+    const float candidates[3] = { seedHz * 0.5f, seedHz, seedHz * 2.0f };
+    for (int ci = 0; ci < 3; ++ci)
+    {
+        const float cand = candidates[ci];
+        auto& o = out[(size_t) ci];
+        o.candidateHz = cand;
+        o.fittedHz    = cand;
+        if (cand < floor || cand <= 0.0f) continue;
+        const int numSamples = audio.getNumSamples();
+        if (numSamples <= 0) continue;
+        constexpr int numBins = fftSize / 2 + 1;
+        const float* left = audio.getReadPointer (0);
+        const float* right = (audio.getNumChannels() > 1) ? audio.getReadPointer (1) : nullptr;
+        const int frameCount = (numSamples <= fftSize) ? 1 : juce::jlimit (2, maxFrames, numSamples / fftSize);
+        struct Obs { int harmonic; float peakHz; };
+        std::vector<Obs> observations;
+        observations.reserve ((size_t) (frameCount * 16));
+        int interlacedDropped = 0;
+        auto collect = [&] (float root)
+        {
+            observations.clear();
+            interlacedDropped = 0;
+            if (root <= 0.0f) return;
+            for (int f = 0; f < frameCount; ++f)
+            {
+                const int start = (frameCount == 1) ? 0 : (numSamples - fftSize) * f / (frameCount - 1);
+                const int count = juce::jmin (fftSize, numSamples - start);
+                if (count <= 0) continue;
+                std::fill (fftData.begin(), fftData.end(), 0.0f);
+                double energy = 0.0;
+                for (int i = 0; i < count; ++i)
+                {
+                    float s = left[start + i];
+                    if (right) s = (s + right[start + i]) * 0.5f;
+                    fftData[(size_t) i] = s;
+                    energy += (double) s * (double) s;
+                }
+                if (std::sqrt (energy / (double) count) < (double) kFrameRmsFloor) continue;
+                transformCurrentFrame (count);
+                for (int b = 0; b < numBins; ++b) magnitudeSpectrum[(size_t) b] = fftData[(size_t) b];
+                std::array<PartialMeasurement, 64> measured;
+                float windowMax = 0.0f;
+                for (int k = 0; k < 64; ++k)
+                {
+                    measured[(size_t) k] = measurePartial (root * (float)(k+1), root, sampleRate);
+                    windowMax = std::max (windowMax, measured[(size_t) k].amplitude);
+                }
+                if (windowMax <= 0.0f) continue;
+                for (int k = 0; k < 64; ++k)
+                {
+                    const auto& m = measured[(size_t) k];
+                    if (m.interlaced) { ++interlacedDropped; continue; }
+                    if (m.amplitude <= 0.0f || m.amplitude < windowMax * kPartialFloor) continue;
+                    observations.push_back ({ k+1, root * (float)(k+1) + m.offsetHz });
+                }
+            }
+        };
+        auto solve = [] (const std::vector<Obs>& obs) -> float
+        {
+            double num = 0.0, den = 0.0;
+            for (auto& o : obs) { num += (double)o.harmonic * (double)o.peakHz; den += (double)o.harmonic * (double)o.harmonic; }
+            return den > 0.0 ? (float)(num/den) : 0.0f;
+        };
+        auto resid = [] (const std::vector<Obs>& obs, float f0) -> float
+        {
+            if (obs.empty() || f0 <= 0.0f) return -1.0f;
+            double acc = 0.0;
+            for (auto& o : obs) { double r = 1200.0 * std::log2((double)o.peakHz / ((double)o.harmonic * (double)f0)); acc += r*r; }
+            return (float) std::sqrt(acc / (double)obs.size());
+        };
+        collect (cand);
+        if ((int)observations.size() < kMinLsObservations) continue;
+        const float firstFit = solve (observations);
+        if (firstFit <= 0.0f) continue;
+        collect (firstFit);
+        const float fitted = ((int)observations.size() >= kMinLsObservations) ? solve (observations) : firstFit;
+        if (fitted <= 0.0f) continue;
+        if (std::abs (1200.0f * std::log2 (fitted / cand)) > 600.0f) continue;
+        const float rc = resid (observations, fitted);
+        if (rc < 0.0f) continue;
+        if ((int) observations.size() < kMinLsObservations) continue;
+        o.valid = true;
+        o.fittedHz = fitted;
+        o.residCents = rc;
+        o.observations = (int) observations.size();
+        o.interlaced = interlacedDropped;
+    }
+    return out;
+}
+
+float SpectralAnalyzer::resolveOctaveByGlobalResidual (const juce::AudioBuffer<float>& audio,
+                                                       double sampleRate, float seedHz)
+{
+    if (seedHz <= 0.0f || audio.getNumSamples() <= 0) return seedHz;
+    auto cands = evaluateOctaveCandidates (audio, sampleRate, seedHz);
+    int best = -1;
+    for (int i = 0; i < 3; ++i)
+        if (cands[(size_t)i].valid)
+        {
+            if (best < 0) { best = i; continue; }
+            const float rBest = cands[(size_t)best].residCents;
+            const float rThis = cands[(size_t)i].residCents;
+            if (rThis + 0.5f < rBest) best = i;
+            else if (std::abs(rThis - rBest) <= 0.5f)
+            {
+                if (cands[(size_t)i].observations > cands[(size_t)best].observations) best = i;
+                else if (cands[(size_t)i].observations == cands[(size_t)best].observations)
+                {
+                    float dBest = std::abs(1200.0f * std::log2(cands[(size_t)best].fittedHz / seedHz));
+                    float dThis = std::abs(1200.0f * std::log2(cands[(size_t)i].fittedHz / seedHz));
+                    if (dThis < dBest) best = i;
+                }
+            }
+        }
+    if (best < 0) return seedHz;
+    return cands[(size_t)best].fittedHz;
+}
 
 
 // 2026-09-26: LA FRASE del residuo de rejilla (ver la cabecera de la
@@ -966,6 +1167,9 @@ NEURONiK::Common::SpectralModel SpectralAnalyzer::analyzeTemporal(
     //    calcular unas capas que se iban a tirar (antes se corrian y se
     //    rechazaban despues de calcularlas).
     lastMetric = layerMetric;   // se publica aunque el clustering no corra
+    // reset per-layer residuo (la recomputa el camino que produzca capas)
+    for (int l=0;l<LayerClustering::kMaxLayers;++l){ layerGridResidCents[l] = -1.0f; layerGridObsCount[l]=0; }
+    entrelazadaLayerIndex = -1;
 
     if (! gridCommon)
     {
@@ -984,11 +1188,82 @@ NEURONiK::Common::SpectralModel SpectralAnalyzer::analyzeTemporal(
                                        LayerClustering::kActivityFloor, layerMetric);
         lastLayerRejected = false;
 
+        // 2026-09-27: FAMILIA ENTRELAZADA como segunda capa (sub-rejilla f0/2).
+        // Usa los mismos traces y el mismo suelo que el clustering: una traza
+        // es "entrelazada dominante" si en >=2 frames activos su pico cae
+        // en la sub-rejilla (flag interlaced). Si hay >=2 trazas asi, se
+        // produce un modelo de 2 capas (propia vs entrelazada) sobre la
+        // MISMA rejilla f0: cada indice pertenece a UNA capa y su offset
+        // verdadero (peakHz - k*f0) coloca SONICAMENTE la energia en el impar
+        // de f0/2 (~+-0.5*f0) aunque el indice sea k. La capa entrelazada
+        // declara SU f0 = f0/2 en el fichero v2.1 (extraLayers[l].f0), pero
+        // el motor suma las capas indice a indice con el gridRatio de la
+        // dominante (propia): el offset ya corrige la posicion, no la
+        // rejilla. Si no hay familia entrelazada, cae al camino de
+        // envolvente de siempre.
+        std::vector<int> entreTraces;
+        entreTraces.reserve(64);
+        for (int t=0; t<64; ++t)
+        {
+            if (! lastClustering.active[(size_t)t]) continue;
+            int activeCount=0, interCount=0;
+            for (int f=0; f<nFrames; ++f)
+            {
+                const auto& m = perFrameCommon[(size_t)f][(size_t)t];
+                if (m.amplitude < LayerClustering::kActivityFloor) continue;
+                ++activeCount;
+                if (m.interlaced) ++interCount;
+            }
+            if (activeCount < LayerClustering::kMinActiveFrames) continue;
+            if (interCount >= 2) entreTraces.push_back(t);
+        }
+        const bool hasEntre = (int)entreTraces.size() >= LayerClustering::kMinLayerTraces;
+        if (hasEntre)
+        {
+            // monta el modelo entrelazado: propia vs entrelazada
+            auto layered = buildEntrelazadaModel (perFrameCommon, entreTraces, lastClustering, nFrames, rootFrequency);
+            layered.gridFixed = fixedGrid;
+            // residuo por capa publicado para la sonda
+            // (propia capa 0 vs f0, entrelazada capa 1 vs impares de f0/2
+            // con su propio LS sobre los impares).
+            return layered;
+        }
+
         if (lastClustering.layerCount > 1)
         {
             auto layered = buildLayeredModel (perFrameCommon, lastClustering, nFrames, rootFrequency);
             layered.gridFixed = fixedGrid;   // REJILLA FIJA: procedencia declarada
+            // residuo por capa (envolvente) para la sonda
+            for (int l=0; l<layered.layerCount; ++l)
+            {
+                std::vector<int> members;
+                for (int t=0; t<64; ++t) if (lastClustering.layerOfTrace[(size_t)t]==l) members.push_back(t);
+                layerGridResidCents[l] = layerResidualCents(perFrameCommon, members, rootFrequency, false, nFrames);
+                // obs approx: cuenta picos validos de la capa
+                layerGridObsCount[l] = 0;
+                for (int f=0; f<nFrames; ++f)
+                    for (int t: members) {
+                        const auto& m = perFrameCommon[(size_t)f][(size_t)t];
+                        if (m.amplitude < LayerClustering::kActivityFloor) continue;
+                        if (m.interlaced) continue;
+                        // windowMax check approx: skip very quiet
+                        layerGridObsCount[l]++;
+                    }
+            }
+            entrelazadaLayerIndex = -1;
             return layered;
+        }
+        // sin entre y sin envolvente: una sola capa, publica su residuo propio (k*f0)
+        {
+            std::vector<int> allActive;
+            for (int t=0; t<64; ++t) if (lastClustering.active[(size_t)t]) allActive.push_back(t);
+            if (! allActive.empty())
+            {
+                layerGridResidCents[0] = layerResidualCents(perFrameCommon, allActive, rootFrequency, false, nFrames);
+                int cnt=0; for(int f=0;f<nFrames;++f) for(int t: allActive){ auto &m=perFrameCommon[(size_t)f][(size_t)t]; if(m.amplitude>=LayerClustering::kActivityFloor && !m.interlaced) ++cnt; }
+                layerGridObsCount[0]=cnt;
+            }
+            entrelazadaLayerIndex = -1;
         }
     }
 
@@ -1145,6 +1420,143 @@ NEURONiK::Common::SpectralModel SpectralAnalyzer::buildLayeredModel (
     return model;
 }
 
+float SpectralAnalyzer::lastLayerGridResidCents (int layer) const noexcept
+{
+    if (layer<0 || layer>=LayerClustering::kMaxLayers) return -1.0f;
+    return layerGridResidCents[(size_t)layer];
+}
+int SpectralAnalyzer::lastLayerGridObsCount (int layer) const noexcept
+{
+    if (layer<0 || layer>=LayerClustering::kMaxLayers) return 0;
+    return layerGridObsCount[(size_t)layer];
+}
+juce::String SpectralAnalyzer::lastLayerBand (int layer) const
+{
+    const float r = lastLayerGridResidCents(layer);
+    if (r < 0.0f) return "n/d";
+    if (r <= GridIndicatorModel::residualGreenCents) return "verde";
+    if (r <= GridIndicatorModel::residualAmberCents) return "amarillo";
+    return "naranja";
+}
+float SpectralAnalyzer::layerResidualCents (const std::vector<std::array<PartialMeasurement,64>>& frames,
+                                              const std::vector<int>& tracesOfLayer,
+                                              float rootFrequency, bool isEntrelazada, int nFrames) const
+{
+    if (tracesOfLayer.empty() || rootFrequency <= 0.0f || nFrames <=0) return -1.0f;
+    struct Obs { int harm; float peak; };
+    std::vector<Obs> obs; obs.reserve((size_t)nFrames * tracesOfLayer.size());
+    const float halfGrid = rootFrequency * 0.5f;
+    for (int f=0; f<nFrames; ++f)
+    {
+        if ((int)frames.size() <= f) continue;
+        float frameMax = 0.0f;
+        for (int k=0;k<64;++k) frameMax = std::max(frameMax, frames[(size_t)f][(size_t)k].amplitude);
+        if (frameMax <= 0.0f) continue;
+        const float floor = frameMax * kPartialFloor;
+        for (int t: tracesOfLayer)
+        {
+            const auto& m = frames[(size_t)f][(size_t)t];
+            if (m.amplitude < floor) continue;
+            if (m.peakHz <= 0.0f) continue;
+            if (isEntrelazada)
+            {
+                if (! m.interlaced) continue;
+                const float oddF = std::round(m.peakHz / halfGrid);
+                const int odd = (int) std::lround(oddF);
+                if (odd < 1 || (odd%2)==0) continue;
+                const int k = t+1;
+                if (oddF < (float)(2*k -1) -0.6f || oddF > (float)(2*k +1) +0.6f) continue;
+                obs.push_back({odd, m.peakHz});
+            }
+            else
+            {
+                if (m.interlaced) continue;
+                obs.push_back({t+1, m.peakHz});
+            }
+        }
+    }
+    if ((int)obs.size() < kMinLsObservations) return -1.0f;
+    double num=0.0, den=0.0;
+    for (auto& o: obs){ num += (double)o.harm * (double)o.peak; den += (double)o.harm * (double)o.harm; }
+    const double fitted = den>0.0 ? num/den : 0.0;
+    if (fitted <= 0.0) return -1.0f;
+    double acc=0.0;
+    for (auto& o: obs){ double r = 1200.0 * std::log2((double)o.peak / ((double)o.harm * fitted)); acc += r*r; }
+    return (float) std::sqrt(acc / (double)obs.size());
+}
+NEURONiK::Common::SpectralModel SpectralAnalyzer::buildEntrelazadaModel (
+        const std::vector<std::array<PartialMeasurement,64>>& frames,
+        const std::vector<int>& entrelazadaTraces,
+        const LayerClustering& fallbackClusters,
+        int nFrames, float rootFrequency) const
+{
+    NEURONiK::Common::SpectralModel model;
+    std::vector<int> propiaTraces; propiaTraces.reserve(64);
+    for (int t=0; t<64; ++t)
+    {
+        const bool isEntre = std::find(entrelazadaTraces.begin(), entrelazadaTraces.end(), t) != entrelazadaTraces.end();
+        if (isEntre) continue;
+        if (fallbackClusters.active[(size_t)t]) propiaTraces.push_back(t);
+    }
+    model.setLayerCount(2);
+    {
+        model.setNumFramesOf(0, nFrames);
+        model.setLayerWeightAt(0, 1.0f);
+        model.setLayerNameAt(0, "propia");
+        std::vector<float> level((size_t)nFrames, 0.0f); float peak=0.0f;
+        for (int f=0; f<nFrames; ++f)
+        {
+            float* amps = model.ampsOf(0,f); float* offs = model.offsetsOf(0,f);
+            std::fill(amps, amps+64, 0.0f); std::fill(offs, offs+64, 0.0f);
+            double energy=0.0;
+            for (int t: propiaTraces)
+            {
+                const auto& m = frames[(size_t)f][(size_t)t];
+                amps[t] = m.amplitude;
+                offs[t] = m.offsetHz;
+                energy += (double)amps[t]*(double)amps[t];
+            }
+            level[(size_t)f] = (float) std::sqrt(energy); peak = std::max(peak, level[(size_t)f]);
+            model.setF0At(0, f, rootFrequency);
+        }
+        for (int f=0; f<nFrames; ++f) model.setFrameWeightAt(0,f, peak>0.0f ? level[(size_t)f]/peak : 1.0f);
+        const_cast<SpectralAnalyzer*>(this)->layerGridResidCents[0] = layerResidualCents(frames, propiaTraces, rootFrequency, false, nFrames);
+        int cnt=0; for(int f=0;f<nFrames;++f) for(int t: propiaTraces){ auto &m=frames[(size_t)f][(size_t)t]; if(m.amplitude>=LayerClustering::kActivityFloor && !m.interlaced) ++cnt; }
+        const_cast<SpectralAnalyzer*>(this)->layerGridObsCount[0]=cnt;
+        model.frameSpanHz = rootFrequency;
+    }
+    {
+        model.setNumFramesOf(1, nFrames);
+        model.setLayerWeightAt(1, 1.0f);
+        model.setLayerNameAt(1, "entrelazada");
+        const float halfGrid = rootFrequency * 0.5f;
+        std::vector<float> level((size_t)nFrames, 0.0f); float peak=0.0f;
+        for (int f=0; f<nFrames; ++f)
+        {
+            float* amps = model.ampsOf(1,f); float* offs = model.offsetsOf(1,f);
+            std::fill(amps, amps+64, 0.0f); std::fill(offs, offs+64, 0.0f);
+            double energy=0.0;
+            for (int t: entrelazadaTraces)
+            {
+                const auto& m = frames[(size_t)f][(size_t)t];
+                amps[t] = m.amplitude;
+                if (m.peakHz > 0.0f) offs[t] = m.peakHz - (float)(t+1)*rootFrequency;
+                else offs[t]=0.0f;
+                energy += (double)amps[t]*(double)amps[t];
+            }
+            level[(size_t)f]=(float)std::sqrt(energy); peak=std::max(peak, level[(size_t)f]);
+            model.setF0At(1, f, halfGrid);
+        }
+        for (int f=0; f<nFrames;++f) model.setFrameWeightAt(1,f, peak>0.0f ? level[(size_t)f]/peak : 1.0f);
+        const_cast<SpectralAnalyzer*>(this)->layerGridResidCents[1] = layerResidualCents(frames, entrelazadaTraces, rootFrequency, true, nFrames);
+        int cnt=0; for(int f=0;f<nFrames;++f) for(int t: entrelazadaTraces){ auto &m=frames[(size_t)f][(size_t)t]; if(m.amplitude>=LayerClustering::kActivityFloor && m.interlaced) ++cnt; }
+        const_cast<SpectralAnalyzer*>(this)->layerGridObsCount[1]=cnt;
+        const_cast<SpectralAnalyzer*>(this)->entrelazadaLayerIndex = 1;
+    }
+    model.frameSpanHz = rootFrequency;
+    model.isValid = true;
+    return model;
+}
 void SpectralAnalyzer::averageWindow(const float* left, const float* right, int start, int count, std::vector<float>& out)
 {
     std::fill(fftData.begin(), fftData.end(), 0.0f);

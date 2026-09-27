@@ -42,7 +42,7 @@
 
 import { XYPad } from '@abdsynths/shared/components';
 
-import { displayableName } from './modelSlots.js';
+import { displayableName, MODEL_SLOT_LABELS } from './modelSlots.js';
 
 const MORPH_IDS = { x: 'morphX', y: 'morphY', z: 'morphZ' };
 
@@ -74,10 +74,14 @@ function ringSvg() {
  *          phase: 'begin'|'change'|'end') => void} [options.onEdit]
  *   empuja una edición al store (`pushParameter`): la fábrica la inyecta para
  *   que el panel siga sin saber qué dibuja cada vista.
+ * @param {(slot: number) => void} [options.onCornerClick]
+ *   clic (o Enter/Space con foco) sobre una esquina CARGADA: abre el cajón de
+ *   MODELOS en esa ranura — el gesto inverso a IR A LA RUTA. Lo ejecuta el
+ *   panel vía openDrawerRoute; aquí solo viaja el slot (0..3).
  * @returns {{ element: HTMLElement, pad: object, paint: Function, destroy: Function }}
  *   `pad` es la instancia compartida (handle de inspección para tests).
  */
-export function createXyPad({ onEdit = null } = {}) {
+export function createXyPad({ onEdit = null, onTelemetry = null, onCornerClick = null } = {}) {
   const element = document.createElement('div');
   element.className = 'xy-pad';
   // Consultable como vista de ficha (el espectral y las ranuras lo hacen).
@@ -158,6 +162,51 @@ export function createXyPad({ onEdit = null } = {}) {
     readoutMirror.textContent = pad.readout?.textContent ?? '';
   };
 
+  // El TERCER dato de la fila: el morphZ EFECTIVO = base (el aro, morphZ del
+  // APVTS) + contribución de la matriz (frame.modulation[28], con signo),
+  // recortado 0..1 como lo clampea la voz. renderZ() lo repinta: la base y
+  // el módulo pasan AMBOS por ahí, y el texto nace con el primer render.
+  const zEffective = document.createElement('span');
+  zEffective.className = 'xy-pad__readout-z';
+  readoutRow.append(zEffective);
+
+  // --- DIVERGENCIA página <-> nativo en la fila de readout -----------------
+  //
+  // La página pinta SU snapshot (morphX/morphY del APVTS, vía paint) y la
+  // telemetría trae `frame.morph` (lo que el motor dice tener AHORA). Dos
+  // caminos que deberían contar lo mismo: mientras difieran por más que la
+  // resolución del canal (un frame a ~15 Hz con diff de 1/255 puede ver el
+  // valor de transición), la fila se COLOREA y su tooltip lo dice — la misma
+  // honestidad de `cell--divergent` (dspStatus) y `data-divergent` (ranuras).
+  const DIVERGENCE_EPSILON = 0.02; // ~5/255: un frame de transición no alarma
+  let nativeMorph = null;
+
+  function paintDivergence(pageValue) {
+    if (nativeMorph === null) {
+      delete readoutRow.dataset.divergent;
+      return;
+    }
+
+    const divergent = Math.abs(pageValue.x - nativeMorph[0]) > DIVERGENCE_EPSILON
+      || Math.abs(pageValue.y - nativeMorph[1]) > DIVERGENCE_EPSILON;
+
+    readoutRow.dataset.divergent = String(divergent);
+    readoutRow.title = divergent
+      ? `DIVERGENCIA con el motor: página ${Math.round(pageValue.x * 100)}/${Math.round(pageValue.y * 100)}%, nativo ${Math.round(nativeMorph[0] * 100)}/${Math.round(nativeMorph[1] * 100)}%`
+      : '';
+  }
+
+  const stopTelemetry = typeof onTelemetry === 'function'
+    ? onTelemetry((frame) => {
+      const morph = Array.isArray(frame?.morph) ? frame.morph : [];
+
+      if (typeof morph[0] !== 'number' || typeof morph[1] !== 'number') return;
+
+      nativeMorph = [morph[0], morph[1]];
+      paintDivergence(pad.getValue());
+    })
+    : null;
+
   // Primer pintado del espejo (el constructor ya llamó a su render).
   readoutMirror.textContent = pad.readout?.textContent ?? '';
 
@@ -208,6 +257,47 @@ export function createXyPad({ onEdit = null } = {}) {
   // nativo documenta su gesto fino en el manual; aqui, en el propio widget).
   padSurface.title = 'Arrastrar = mover · Shift = fino (1/10)';
 
+  // ------------- esquinas clicables (abrir el cajón de MODELOS) -----------
+  //
+  // La esquina es la RANURA del motor puesta en el pad: clic en la de un slot
+  // cargado abre su cajón en esa ranura (el mismo salto que IR A LA RUTA hace
+  // desde ENVOLVENTES). Delegación en CAPTURA sobre la superficie: la esquina
+  // vive DENTRO del pad (superficie absoluta, el pointerdown salta al punto) y
+  // el gesto de abrir NO es un gesto de morfeo — stopPropagation le bloquea el
+  // salto al componente compartido, cuyo contrato lo pinean SUS tests.
+  const CORNER_SLOTS = { tl: 0, tr: 1, bl: 2, br: 3 }; // A arriba-izq ... D abajo-der
+
+  const cornerFrom = (event) => event.target?.closest?.('.abd-xypad__corner') ?? null;
+
+  // El pointerdown de apertura muere aquí: sin salto de pulgar ni gesto abierto.
+  const blockCornerPress = (event) => {
+    if (cornerFrom(event)) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
+  };
+
+  padSurface.addEventListener('pointerdown', blockCornerPress, true);
+
+  padSurface.addEventListener('click', (event) => {
+    const corner = cornerFrom(event);
+
+    if (corner && onCornerClick) onCornerClick(CORNER_SLOTS[corner.dataset.corner] ?? 0);
+  });
+
+  // Accesible gratis: la esquina abrible se declara botón en paintCorners
+  // (role + tabindex); Enter/Space con foco pasan por la misma puerta.
+  padSurface.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+
+    const corner = cornerFrom(event);
+
+    if (corner && onCornerClick) {
+      event.preventDefault();
+      onCornerClick(CORNER_SLOTS[corner.dataset.corner] ?? 0);
+    }
+  });
+
   let cornerKey = null;
 
   function paintCorners(models) {
@@ -237,11 +327,27 @@ export function createXyPad({ onEdit = null } = {}) {
     // del cajón, contado dos veces: el color es de la página, no del paquete.
     for (const corner of padSurface.querySelectorAll('.abd-xypad__corner')) {
       const index = ['tl', 'tr', 'bl', 'br'].indexOf(corner.dataset.corner);
+      const entry = entries[index] ?? { name: '', divergent: false };
 
-      corner.dataset.divergent = String(entries[index]?.divergent === true);
-      corner.title = entries[index]?.divergent
-        ? `"${corner.textContent}": el motor no ha podido cargar el fichero (¿movido o borrado?)`
-        : '';
+      corner.dataset.divergent = String(entry.divergent === true);
+
+      // Esquina abrible = ranura cargada (la vacía ni existe como span). El
+      // estado del botón va aquí porque la esquina se RECONSTRUYE con cada
+      // cambio de nombres (renderCorners del compartido); atributos
+      // idempotentes, cero listeners duplicados (el clic es delegado).
+      if (entry.name !== '') {
+        corner.dataset.clickable = 'true';
+        corner.setAttribute('role', 'button');
+        corner.tabIndex = 0;
+        corner.title = entry.divergent
+          ? `"${corner.textContent}": el motor no ha podido cargar el fichero (¿movido o borrado?) · Clic: abrir MODELOS`
+          : `Abrir MODELOS: ranura ${MODEL_SLOT_LABELS[index]} "${corner.textContent}"`;
+      } else {
+        delete corner.dataset.clickable;
+        corner.removeAttribute('role');
+        corner.removeAttribute('tabindex');
+        corner.title = '';
+      }
     }
   }
 
@@ -268,6 +374,9 @@ export function createXyPad({ onEdit = null } = {}) {
   const zFill = svg.querySelector('.zring-fill');
   const zModFill = svg.querySelector('.zring-mod');
 
+  // Descubribilidad del gesto fino del aro (mismo convenio que el pad).
+  ring.title = 'Arrastrar = girar · Shift = fino (1/10)';
+
   function renderZ() {
     zFill.setAttribute('stroke-dasharray', `${zValue * 100} 100`);
 
@@ -291,6 +400,12 @@ export function createXyPad({ onEdit = null } = {}) {
 
     ring.setAttribute('aria-valuenow', `${zValue}`);
     ring.setAttribute('aria-valuetext', `Morph Z ${Math.round(zValue * 100)}%`);
+
+    // El efectivo que lee la voz (la matriz puede empujarlo fuera de 0..1;
+    // el aro enseña la CONTRIBUCIÓN sin recortar, el readout da el VALOR).
+    const effective = Math.min(1, Math.max(0, zValue + zMod));
+
+    zEffective.textContent = `· Z ${Math.round(effective * 100)}%`;
   }
 
   /** silencioso (snapshots) o con eco (ediciones propias) */
@@ -341,6 +456,56 @@ export function createXyPad({ onEdit = null } = {}) {
   svg.addEventListener('pointermove', (event) => {
     if (zDragging) applyRingPointer(event);
   });
+
+  // ---------------- arrastre fino del aro (Shift = 1/10) -------------------
+  //
+  // El mismo convenio del pad (ver su bloque fino): con Shift, el movimiento
+  // es RELATIVO al anclaje a 1/10, no el salto angular absoluto. Va en CAPTURA
+  // sobre el ring (ancestro del svg): corre antes que el listener absoluto y
+  // stopImmediatePropagation se lo salta — sin Shift, el gesto de siempre pasa
+  // intacto. La particularidad es angular: el delta del ángulo se toma por el
+  // CAMINO CORTO (cruzar las 12 no es dar la vuelta entera) y 360° equivalen a
+  // 0.1 de valor (1/10 de vuelta).
+  let zFineActive = false;
+  let zFineAnchor = null; // { angle, z }: ángulo del puntero y valor al entrar
+
+  function pointerAngle(event) {
+    const rect = svg.getBoundingClientRect();
+    const dx = event.clientX - (rect.left + rect.width / 2);
+    const dy = event.clientY - (rect.top + rect.height / 2);
+
+    let v = Math.atan2(dx, -dy) / (2 * Math.PI);
+    return v < 0 ? v + 1 : v;
+  }
+
+  ring.addEventListener('pointermove', (event) => {
+    if (!zDragging || !event.shiftKey) return;
+
+    // Entrar en fino: ángulo del puntero ACTUAL con el valor ACTUAL — cero
+    // salto al activar el modo.
+    if (!zFineActive) {
+      zFineActive = true;
+      zFineAnchor = { angle: pointerAngle(event), z: zValue };
+    }
+
+    event.stopImmediatePropagation();
+
+    // Delta por el camino corto (-0.5..0.5 de vuelta), escalado 1/10: mover
+    // 36 grados equivale a 0.01 de valor.
+    let delta = pointerAngle(event) - zFineAnchor.angle;
+
+    if (delta > 0.5) delta -= 1;
+    else if (delta < -0.5) delta += 1;
+
+    setZ(zFineAnchor.z + delta * FINE_SCALE);
+    onEdit?.(MORPH_IDS.z, zValue, 'change');
+    for (const id of LAYER_IDS) onEdit?.(id, zValue, 'change');
+  }, true);
+
+  const endZFine = () => { zFineActive = false; };
+
+  ring.addEventListener('pointerup', endZFine, true);
+  ring.addEventListener('pointercancel', endZFine, true);
 
   const endZDrag = () => {
     if (!zDragging) return;
@@ -415,9 +580,13 @@ export function createXyPad({ onEdit = null } = {}) {
 
       pad.setValue(value);
       last = value;
+
+      // El snapshot de la página es la mitad PÁGINA de la comparación.
+      paintDivergence(value);
     },
 
     destroy() {
+      stopTelemetry?.();
       pad.destroy();
       element.textContent = '';
     },

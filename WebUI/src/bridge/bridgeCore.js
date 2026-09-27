@@ -115,7 +115,10 @@ export function nativeBackend() {
  *   the engine's current spectral model slots (sent with every snapshot)
  * @param {({ slot: number, detail: string }) => void} [handlers.onModelError]
  *   a model load that did NOT happen (cancelled dialog, unusable file, bad slot)
- * @returns {{ available: boolean, sendParameterChange: Function, sendRequestState: Function, announcePageLoaded: Function, sendListPresets: Function, sendLoadPreset: Function, sendSavePreset: Function, sendRandomize: Function, sendLoadModel: Function, sendMidiNoteOn: Function, sendMidiNoteOff: Function, sendMidiPitchBend: Function, sendMidiModWheel: Function, sendMidiPanic: Function, dispose: Function }}
+ * @param {(mappings: Array<{paramId: string, cc: number}>) => void} [handlers.onMidiCc]
+ *   the engine's MIDI CC mapping table (one entry per learnable parameter,
+ *   cc = -1 when unmapped) — sent with every snapshot and after every cc action
+ * @returns {{ available: boolean, sendParameterChange: Function, sendRequestState: Function, announcePageLoaded: Function, sendListPresets: Function, sendLoadPreset: Function, sendSavePreset: Function, sendRandomize: Function, sendLoadModel: Function, sendMidiNoteOn: Function, sendMidiNoteOff: Function, sendMidiPitchBend: Function, sendMidiModWheel: Function, sendMidiPanic: Function, sendMidiCcLearn: Function, sendMidiCcClear: Function, sendMidiCcReset: Function, dispose: Function }}
  */
 export function createBridgeTransport(handlers) {
   const carrier = backend();
@@ -137,6 +140,9 @@ export function createBridgeTransport(handlers) {
       sendMidiPitchBend: () => {},
       sendMidiModWheel: () => {},
       sendMidiPanic: () => {},
+      sendMidiCcLearn: () => {},
+      sendMidiCcClear: () => {},
+      sendMidiCcReset: () => {},
       dispose: () => {},
     };
   }
@@ -219,6 +225,14 @@ export function createBridgeTransport(handlers) {
       && typeof message.detail === 'string'
     )
       handlers.onModelError?.({ slot: Number(message.slot ?? -1), detail: message.detail });
+  });
+
+  const removeMidiCcState = carrier.addEventListener(NATIVE_TO_JS_EVENT_ID, (message) => {
+    if (
+      message?.action === 'midiCcState'
+      && Array.isArray(message.mappings)
+    )
+      handlers.onMidiCc?.(message.mappings);
   });
 
   return {
@@ -305,6 +319,21 @@ export function createBridgeTransport(handlers) {
       emit({ action: 'loadModel', slot });
     },
 
+    /** LCD MIDI CONTROL: arm learn for ONE parameter (next CC wins). */
+    sendMidiCcLearn(paramId) {
+      emit({ action: 'midiCcLearn', paramId });
+    },
+
+    /** LCD MIDI CONTROL: unmap that parameter. */
+    sendMidiCcClear(paramId) {
+      emit({ action: 'midiCcClear', paramId });
+    },
+
+    /** LCD MIDI CONTROL: the manager's default table. */
+    sendMidiCcReset() {
+      emit({ action: 'midiCcReset' });
+    },
+
     dispose() {
       carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removeSnapshot]);
       carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removeChange]);
@@ -314,6 +343,7 @@ export function createBridgeTransport(handlers) {
       carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removeModelsState]);
       carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removeTelemetry]);
       carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removeModelError]);
+      carrier.removeEventListener([NATIVE_TO_JS_EVENT_ID, removeMidiCcState]);
     },
   };
 }

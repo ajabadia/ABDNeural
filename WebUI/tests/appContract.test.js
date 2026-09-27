@@ -118,8 +118,18 @@ describe('WebUI entry contract', () => {
     // La vista MODELOS es compuesta desde 8.3: pad dibujado + ranuras, montadas
     // por la misma fabrica (un solo punto de comportamiento, dos mitades).
     expect(visuals).toContain("if (visualId === 'model-slots') {");
-    expect(visuals).toContain('createModelSlots({ onLoad: options.onLoad ?? null })');
-    expect(visuals).toContain('createXyPad({ onEdit: options.onEdit ?? null })');
+    expect(visuals).toContain('onLoad: options.onLoad ?? null,');
+    // OLVIDAR tambien entra por handler (no por el panel): la vista no guarda
+    // estado de la memoria, solo dice a quien se lo pide.
+    expect(visuals).toContain('onForget: options.onForget ?? null,');
+    // El pad recibe el canal de telemetría: la divergencia página<->nativo
+    // de su fila de readout vive del frame.morph (ver ui/xyPad.js). Las
+    // esquinas A-D clicables piden abrir el cajón vía un opener que el panel
+    // enchufa tarde (app.js), mismo patrón que setRouteOpener.
+    expect(visuals).toContain('onEdit: options.onEdit ?? null,');
+    expect(visuals).toContain('onTelemetry: options.onTelemetry ?? null,');
+    expect(visuals).toContain('onCornerClick: (slot) => cornerOpener?.(slot),');
+    expect(visuals).toContain('setCornerOpener(opener) {');
   });
 
   it('las ranuras de modelo A–D piden la carga al store: host O fichero local', () => {
@@ -148,7 +158,9 @@ describe('WebUI entry contract', () => {
     expect(panel).toContain('(slotOf?.get(control.id) ?? body).append(cell.element);');
     expect(panel).toContain('context.drawers.set(section.id, drawer);');
     // Abrir el cajon es estado de VISTA: no pasa por el store ni por el host.
-    expect(panel).toContain('trigger.addEventListener(\'click\', () => drawer.open());');
+    // El gancho avisa al panel de la apertura por cuenta del usuario (cancela
+    // un retorno VOLVER pendiente: ver routeBack en ui/panel.js).
+    expect(panel).toContain('context.onDrawerOpenedByUser?.();');
   });
 
   it('mounts the shared keyboard with the DUAL MIDI path (bridge + worklet)', () => {
@@ -167,6 +179,52 @@ describe('WebUI entry contract', () => {
     expect(app).toContain('owner = audioOwnerFor(state.bridgeAvailable)');
     expect(app).toContain('panel.paintAudio({ owner, ...engineSnapshot })');
     expect(app).toContain('startAudioEngine()');
+  });
+
+  it('en MODO LOCAL el pad arranca con una ruta de la MATRIZ a Morph Z y el motor la recibe', () => {
+    // Sin host el motor nace con la matriz del contrato (slot 3 en Off) y el anillo
+    // del pad se queda quieto: la ruta sembrada es lo que lo hace bailar.
+    expect(store).toContain('function seedLocalMorphZRoute()');
+    expect(app).toContain('store.seedLocalMorphZRoute();');
+    // Y el cable va DENTRO de la rama local: con host manda el APVTS.
+    expect(app.indexOf('store.seedLocalMorphZRoute();'))
+      .toBeGreaterThan(app.indexOf('if (!store.getState().bridgeAvailable) {'));
+
+    // SOUND ON arranca el motor DESPUES del primer paint, y syncEngine se corta
+    // sin motor: al llegar a ready hay que re-aplicar el estado, o la ruta (y los
+    // modelos, y el pad) no llegan nunca al worklet recien arrancado.
+    expect(app).toContain("if (engine.status === 'ready' && !wasReady) paint(store.getState());");
+
+    // Y el guard necesita una COPIA: el objeto que llega por el canal es el MISMO
+    // `audioEngineState` que se muta en el sitio, asi que guardarlo por referencia
+    // deja `wasReady` en true para siempre y el re-sync no dispara NUNCA -el worklet
+    // arranca, procesa y no le llega ni un `neuronik:params`-. Lo caza el E2E de
+    // navegador (e2e/localMode.spec.js), que es el unico que ve la frontera de verdad.
+    expect(app).toContain('engineSnapshot = { ...engine };');
+  });
+
+  it('en MODO LOCAL las ranuras de modelo se recuperan de la memoria del navegador', () => {
+    // El plugin vuelve a sus ranuras por el PRESET (`modelPath<slot>`); el navegador no
+    // tiene preset ni sistema de ficheros, asi que lo unico que sobrevive a un F5 es el
+    // localStorage: sin esta memoria cada recarga empezaba con las cuatro EMPTY.
+    expect(store).toContain('function restoreLocalModels()');
+    expect(app).toContain('store.restoreLocalModels();');
+
+    // Y SOLO en modo local: con host manda modelsState (el APVTS sabe sus rutas).
+    expect(store).toContain('if (state.bridgeAvailable) return 0;');
+
+    // El orden del arranque local es el de siempre: el shape de cuatro ranuras
+    // primero, la memoria encima, y el input de fichero al final.
+    const seeded = app.indexOf('store.seedLocalModels(emptyLocalModels());');
+    const restored = app.indexOf('store.restoreLocalModels();');
+    const ready = app.indexOf('store.setLocalModelReady(true);');
+
+    expect(seeded).toBeGreaterThan(-1);
+    expect(seeded).toBeLessThan(restored);
+    expect(restored).toBeLessThan(ready);
+
+    // Dentro de la rama local: con bridge no se toca nada de esto.
+    expect(restored).toBeGreaterThan(app.indexOf('if (!store.getState().bridgeAvailable) {'));
   });
 
   it('syncs state to the worklet through ONE path (page edits and native snapshots)', () => {

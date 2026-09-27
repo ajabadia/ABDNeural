@@ -144,20 +144,78 @@ class RandomizerAdapter final : public RandomizeController
 public:
     explicit RandomizerAdapter (NEURONiKProcessor& processorToWrap)
         : apvts (processorToWrap.getAPVTS()),
+          presetManager (processorToWrap.getPresetManager()),
           // Semilla del reloj, no `getSystemRandom()`: la regla del proyecto es no
           // depender de entropia de sistema (ver WASM, fase 7A).
           random (static_cast<juce::int64> (juce::Time::getMillisecondCounter())) {}
 
     int randomize() override
     {
-        return NEURONiK::State::applyRandomize (apvts,
-                                                NEURONiK::State::readRandomizeStrength (apvts),
-                                                random);
+        const auto moved = NEURONiK::State::applyRandomize (apvts,
+                                                            NEURONiK::State::readRandomizeStrength (apvts),
+                                                            random);
+
+        // El sorteo SUSTITUYE el timbre: el nombre del preset anterior ya no
+        // describe lo que suena (la misma regla del loadPreset del manager, que
+        // si reescribe su current). El LCD lo ensena: PATCH: RANDOM.
+        if (moved > 0)
+            presetManager.markAsUserTimbre();
+
+        return moved;
     }
 
 private:
     juce::AudioProcessorValueTreeState& apvts;
+    NEURONiK::Serialization::PresetManager& presetManager;
     juce::Random random;
+};
+
+/**
+ * @brief Adapts the processor's MidiMappingManager to the bridge's
+ *        MidiCcController interface — the wire side of the page's MIDI CONTROL
+ *        menu (the LCD 'cc' items).
+ *
+ * The table itself lives in the processor (RT-safe atomics, persisted with the
+ * state, shared with the native MidiLearner), so the adapter is a thin shim:
+ * arm/clear/reset call straight through, and getMappings() builds the
+ * { paramId, cc } view the bridge publishes as midiCcState. All message-thread.
+ */
+class MidiCcMappingsAdapter final : public MidiCcController
+{
+public:
+    explicit MidiCcMappingsAdapter (NEURONiKProcessor& processorToWrap)
+        : processor (processorToWrap) {}
+
+    void armLearn (const juce::String& paramID) override
+    {
+        processor.enterMidiLearnMode (paramID);
+    }
+
+    void clearMapping (const juce::String& paramID) override
+    {
+        processor.clearMidiLearnForParameter (paramID);
+    }
+
+    void resetToDefaults() override
+    {
+        processor.getMidiMappingManager().resetToDefaults();
+    }
+
+    std::vector<std::pair<juce::String, int>> getMappings() const override
+    {
+        const auto& params = NEURONiK::Main::MidiMappingManager::getLearnableParams();
+        std::vector<std::pair<juce::String, int>> view;
+        view.reserve ((size_t) params.size());
+
+        for (int i = 0; i < params.size(); ++i)
+            view.emplace_back (params[(size_t) i],
+                               processor.getMidiMappingManager().getCCForParam (params[(size_t) i]));
+
+        return view;
+    }
+
+private:
+    NEURONiKProcessor& processor;
 };
 
 /**
@@ -303,6 +361,11 @@ public:
     void getEnvelopeLevels (float& amp, float& filter) override
     {
         processor.getEnvelopeLevelsForUI (amp, filter);
+    }
+ 
+    int getVoiceCount() override
+    {
+        return processor.getVoiceCountForUI();
     }
  
     float getLfoValue (int lfoIndex) override

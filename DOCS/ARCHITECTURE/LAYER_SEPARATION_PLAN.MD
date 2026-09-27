@@ -77,8 +77,9 @@ de parciales (Fase 10, §5.3):
    una capa comparten **forma de envolvente**, no magnitud — el coseno la
    captura (n=1 y n=3 del drone: vectores casi paralelos ⇒ misma capa; n=7 y
    n=15: soportes disjuntos ⇒ d≈1, capas distintas).
-   Corte del dendrograma: capas = componentes con coseno ≥ 0.55 con su medoide;
-   clamp a kPolydroneMaxLayers.
+   Corte del dendrograma: capas = componentes con coseno ≥ su corte con su medoide
+   (descriptores 0.55; EnvelopeCosine 0.60 dedicado, 2026-09-27 calibrado: con
+   el dedicado TAMPOCO separa —ver sec 3.3 y sec 3 del dedicado);
 4. **Asignación por ventana**: el pico de la ventana k en el índice n va a la
    capa cuya **energía total en esa ventana** sea dominante para n (los frames
    son discretos; no hay fracciones).
@@ -283,13 +284,54 @@ capas=1. Extensión aditiva y compatible:
   comportamiento disenado y el caso §9 del test lo pinnea). Los assets versionados NO se
   regeneran en esta fase: el ejemplo de capas en assets es la 11.5 y el motor que SUMA las
   capas es la 11.3 (hoy el engine suena la capa 0, que es el contrato del v2.1).
+- **Corte DEDICADO para EnvelopeCosine (2026-09-27, calibrado, negativa)**:
+  `LayerClustering::kEnvelopeCosineCut = 0.60f` y `clusterTraces` elige corte
+  según métrica (descriptores 0.55, coseno 0.60). Barrido 0.10..0.90 (paso 0.05,
+  fino 0.45..0.75) sobre los DOS juegos de trazas del criterio:
+  sintéticas 8 frames (drone plano vs voz en 2 frames: drone-voz 0.49,
+  voz-voz adyacente 0.44, disjuntas 0.00; soporte 1.00 vs 0.25) y reales
+  CZ-RRISE 9 ventanas (drone n1/n3 vs n7/n15: n1-n7 0.69, n1-n15 0.55,
+  n7-n15 0.09; soporte 1.00 vs 0.56/0.67). Veredicto **NEGATIVO**: NINGÚN
+  corte separa drone/voz en ambos a la vez. Sintéticas piden >0.49 para no
+  fusionar drone-voz Y ≤0.44 para mantener la voz junta; reales piden >0.69
+  Y ≤0.09: huecos INVERTIDOS y sin intersección. AGLOM (media) + medoide +
+  clamp a 3 + guardia delgada colapsan el resto: sintéticas 6→3→1 en casi
+  todo el rango (solo 0.40 da 3→1), reales 2→1 a 0.55 y 3→1 a ≥0.70.
+  Con el dedicado 0.60: sintéticas 1 capa (descriptores 2), reales 1 capa
+  (descriptores 2), punta a punta 1 capa (descriptores 2). El coseno no falla
+  por el corte sino por ceguera al SOPORTE (traza plana correlaciona con toda
+  parcial, disjuntas dan 0). El test lo pinnea (sec E) y el plan sec 3 usa el
+  dedicado y documenta la negativa; el defecto sigue siendo descriptores.
+- **Tabla comparativa sobre WAV reales (2026-09-27, sonda CLI, 4 frames)**:
+  `ModelMakerRealWavProbe` corre Descriptors (0.55) y EnvelopeCosine (0.60
+  dedicado) sobre cada WAV con la misma f0 / mismos 4 frames / mismo
+  plegado, e imprime al final la tabla por patch (ademas del delta por
+  WAV en el log). Resultado MEDIDO:
+
+  | patch | f0 | plegado post/crudo | Descriptors | Cosine (dedicado) | veredicto |
+  |---|---|---|---|---|---|
+  | CZ-BASS1 | 124.3 Hz | 9.4/1194.4 mono | 1 (35 tr) | 2 (13+22) | DIFIEREN (FP del coseno) |
+  | CZ-HAMOG | 124.3 | 0.0/0.0 mono | 1 (63) | 1 (63) | igual |
+  | CZ-PAD1 | 124.7 | 4.2/4.2 mono | 1 (17) | 1 (17) | igual |
+  | CZ-RRISE | 273.2 | 502.5/1702.5 BI | 1 skip | 1 skip | igual (BI, no paga) |
+  | CZ-SWEP1 | 124.6 | 17.5/17.5 mono | 2 (48+16) | 1 (64) | DIFIEREN (FN del coseno) |
+
+  Criterio sintético (8 frames): Descriptors 2/2, Cosine 1/1 (dedicado).
+  En CZ101 reales el único que debe dar 2 capas es SWEP1 (lo hace
+  Descriptors); Cosine falla en ambos sentidos: falso positivo en BASS1 y
+  falso negativo en SWEP1. RRISE es BI-rejilla (pre-filtro 10.4: ambas
+  métricas skip, 1 capa, no paga clustering). La tabla vive en la sonda
+  (no es un test con umbral: es el dato del diseño, como el residuo por
+  bandas) y la propia sonda la publica al final de cada corrida.
 
 ## 8. Riesgos y decisiones abiertas
 
 - **Coseno vs correlación cruda**: el coseno ignora magnitud (dos capas con la
   misma forma pero escalas distintas caen juntas). Mitigación: la asignación
   por ventana (§3.4) usa energía total; el dendrograma solo agrupa *formas*.
-  Si material real produce capas espurias, subir el corte a 0.65.
+  Con su corte DEDICADO (0.60, 2026-09-27) el coseno TAMPOCO separa (barrido
+  0.10..0.90 en ambos juegos: huecos invertidos, sin intersección); subir el
+  corte a 0.65 no lo arreglaba entonces (sec 3 dedicado) y tampoco ahora.
 - **Transiciones**: los armónicos de la voz "migran" (n7 muere mientras n11
   nace — soportes disjuntos con solape parcial). El clustering por forma los
   separa; el emparejador por índice (Fase 10) conecta cada n consigo mismo

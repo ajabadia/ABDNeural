@@ -1847,6 +1847,157 @@ de pitch". El guard de material vive en useDetectedFrequency, asi que sin f0
 la tecla no hace nada — igual que el clic; Tab desde el indicador sigue
 llegando al editor de pitch. ctest **35/35** y arranque de bancada OK.
 
+**Hecho (2026-09-27) — los distintivos de los cajones EDIT son DATOS VIVOS**
+— El patrón `liveBadge` de la MATRIZ (rutas asignadas) pasa a familia con tres
+modos (`ui/panel.js::liveDrawerBadge`, el snapshot entero entra): `assigned`
+cuenta rutas con fuente != Off; `loaded` (MODELOS) cuenta ranuras del MOTOR con
+modelo — la MISMA verdad que la vista model-slots (`displayableName`: nombre !=
+'EMPTY'; un entry con `isValid: false` cuenta como cargada, porque lo que falla
+es el fichero) y el total sale de `MODEL_SLOT_LABELS`, sin declarar el 4 dos
+veces; `touched` (GLOBAL) cuenta celdas del cajón apartadas del default del
+contrato generado (descriptor con skew -> `defaultNormalized` del generated ->
+"0 en real", nunca undefined; margen 1/8192 de normalizado, medio paso de la
+rejilla del wire — generoso con el redondeo y estricto con el gesto). Los ids
+que cuenta `touched` los DERIVA `drawerFor` (ids de la ficha: las celdas del
+cajón, sin frontal ni baseline), así que la ficha no replica la regla del
+reparto; masterLevel no cuenta (no es celda del cajón, contrato 8.1 2c). Un id
+ausente del snapshot cuenta como sin asignar / en default: no se inventa nada.
+Los literales (4 RANURAS, 8 GLOBAL) quedan para lo que son: el inventario
+antes del primer paint. Tests: el badge de MODELOS con slots del puente
+(Campana + Fantasma divergente + Metal = 3/4, coherente con el "1/4 cargados"
+de la vista) y el de GLOBAL con BPM movido, toggle ON y vuelta al default
+(2/8 -> 1/8: el badge sigue la verdad del snapshot, no un historial). Vitest
+**310/310**.
+
+**Hecho (2026-09-27) — el anillo del pad BAILA sin host: la MATRIZ de fabrica en
+MODO LOCAL apunta un LFO al eje temporal del pad**
+— El anillo ya pintaba el destino 28 (con signo, envolviendo), pero sin host nadie lo
+movia: el motor WASM nace con la matriz del contrato (slots 3/4 en Off), asi que
+`_neuronikGetMod(morphZ)` valia 0 y el arco se quedaba en su base. La pagina ahora la
+SIEMBRA en local (`paramStore::seedLocalMorphZRoute`): **LFO 2 -> Morph Z al 100%** en el
+primer slot LIBRE (el 3; los 1/2 son las rutas de las envolventes y no se tocan), solo si
+el slot sigue virgen y el store posee los tres ids — con host devuelve false y manda el
+APVTS. Fuente y destino se resuelven por LABEL contra las `choices` del contrato, nunca
+por indice literal. Y para que la ruta LLEGUE al motor, `onAudioEngineChange` re-aplica el
+snapshot de la pagina al saltar a `ready`: `syncEngine()` se corta sin motor y SOUND ON
+arranca despues del primer paint, asi que era el unico hueco por el que la matriz (y los
+modelos, y el pad) no entraban a un motor recien arrancado. Medido contra el binario real
+del worklet por el mismo camino de la pagina (`Tests/localMorphZRouteTest.mjs`,
+`NEURONiK_LocalMorphZRoute`): fields `[28,2] [29,28] [30,1]`, `GetMod(28)` de **-1.0000 a
+1.0000**, periodo **998.7 ms** y control en Off **0** exacto. ctest **38/38**; vitest
+**338/338** (siembra y sus dos NO en `paramStore.test.js`, el viaje de la ruta en
+`workletMorph.test.js`, el cableado y el re-sync en `appContract.test.js`).
+
+**Hecho (2026-09-27) — el navegador RECUERDA sus ranuras de modelo: la ultima carga
+sobrevive al F5**
+El plugin vuelve a sus cuatro ranuras porque el PRESET lleva la ruta del fichero
+(`modelPath<slot>`); la pagina no tiene preset ni sistema de ficheros, asi que cada
+recarga empezaba con las cuatro EMPTY y habia que volver a buscar los mismos ficheros.
+`paramStore::loadLocalModel` guarda ahora en `localStorage` el TEXTO CRUDO del
+.neuronikmodel y `restoreLocalModels` repuebla las ranuras al arrancar (solo MODO LOCAL:
+con host manda `modelsState`, el preset). Se guarda el texto y no el objeto parseado
+porque el lector es UNO: recuperar vuelve a cruzar `parseModelText`, el mismo parser que
+un fichero elegido a mano — `readModelFile` se parte en `readModelText` + parser. Todo
+best-effort: sin almacen o sin cupo la carga funciona igual (y un aviso lo dice), y una
+entrada que ya no parsea se descarta con el `modelError` de siempre en vez de romper el
+arranque. Medido contra el binario real del worklet por el mismo camino de la pagina
+(`Tests/localModelCacheTest.mjs`, `NEURONiK_LocalModelCache`): la ranura recuperada vuelve
+bit a bit por el mismo parser y la misma nota suena distinto (RMS 0.49542 con la ranura
+vacia vs 0.36251 con la recordada). ctest **39/39**; vitest **359/359** (memoria por
+ranura y sus dos NO -sin almacen, con host- en `paramStore.test.js`, el round trip del
+texto en `localModels.test.js`, el almacen en `localModelCache.test.js` y el orden del
+arranque local en `appContract.test.js`).
+
+**Hecho (2026-09-27) — el smoke del MODO LOCAL es un test de navegador (Playwright) y caza el
+bug de la pagina muda**
+El smoke del modo local -SOUND ON, ranura de modelo, nota y pad- se comprobaba a mano y su
+resultado vivia en HANDOFF. Ahora `WebUI/e2e/localMode.spec.js` (+ `playwright.config.js`) lo
+recorre en Chromium de verdad sobre `dist`, con cinco casos: SOUND ON -> badge del motor WASM y
+la fila 3 de la MATRIZ cruzando por `neuronik:params`; el anillo del pad bailando con los dos
+signos (y `morphZMod` de -0.99 a +1.00); una nota -> «1 voz activa» y 0 al soltar; la ranura A
+cargando el CZ-BASS1 real por el dialogo del input oculto y sobreviviendo al F5; el pad moviendo
+morphX/morphY. Es el UNICO test que arranca el AudioWorklet y espia la frontera pagina -> worklet
+(envuelve `MessagePort.prototype.postMessage` y `AudioWorkletNode`): los de node leen el WASM a
+mano y el vitest corre en jsdom. Dos trampas del entorno, medidas: `--mute-audio` (sin el, el
+reloj del AudioContext no avanza y el worklet no procesa nunca, ni headless ni con ventana) y ~4 s
+de arranque del servicio de audio (el test espera al reloj, y si no arranca los casos que
+necesitan procesar se saltan con el motivo). Y el hallazgo: la pagina NO mandaba nada al worklet
+-`engineSnapshot = engine` guardaba el MISMO objeto vivo del modulo, asi que `wasReady` era
+siempre true y el re-sync a `ready` no disparaba-, de modo que el motor procesaba con los
+defaults del struct y el anillo del pad no bailaba. Se arregla con una COPIA del snapshot; el
+test se comprobo rojo con el bug puesto. ctest **40/40** (`NEURONiK_WebUiLocalModeE2e`) y vitest
+**359/359**.
+
+**Hecho (2026-09-27) — el distintivo VIVO de MODELOS y GLOBAL cuelga en el lienzo y abre su cajón**
+
+El dato vivo de una ficha (0/4 RANURAS, 0/8 GLOBAL) solo se leía abriendo el cajón, que cerrado sale
+desplazado fuera de pantalla. Ahora cuelga también en la CABECERA de la ficha, junto al EDIT, como botón
+que abre su cajón: el mismo gesto que la franja de GLOBAL & MASTER. Lo piden las fichas que lo declaran
+(`liveBadge.onCard`), no todas, y se repinta con el MISMO cálculo que el distintivo del cajón (un dato, dos
+destinos). El chip muestra solo la fracción (`0/4`): la cabecera de MODELOS mide 211 px de diseño y con el
+rótulo entero el chip empujaba el EDIT fuera de la ficha —medido, no supuesto-; el rótulo se queda en el
+`title` y en la etiqueta accesible, que además contiene el texto visible. vitest **361/361** y
+Playwright **6/6** (el caso nuevo además mide el encaje en el navegador y ve el chip subir a `1/4` al
+cargar un modelo de verdad).
+
+**Hecho (2026-09-27) — los distintivos vivos también saben de motores (modo `active`)**
+
+Nuevo `liveBadge.mode: 'active'`: cuenta las celdas de la ficha que consume el motor que está
+sonando, con la cobertura que el propio gating usa (`engines` por parámetro, `optionEngines` por
+opción para las celdas gateadas), no con una cuenta a mano: una celda gateada está activa si la opción
+seleccionada es alcanzable, y una normal si su parámetro la comparten los dos motores, la consume
+el procesador (`host`) o la consume el motor activo. El LFO 1 & 2 lo declara y muestra 10/10 con
+ambos motores (los dos LFO son DSP compartido); el motor se resuelve por contrato cuando el selector
+no es celda de la ficha. Las fichas donde el número Sí se mueve —FILTRO 2/2 → 0/2, RESONADOR
+0/3 → 3/3, ENVOLVENTES 8/8 → 4/8— no tienen cajón donde colgarlo aún. vitest **364/364** y
+Playwright **7/7**, este último midiendo el gating real en el navegador en los dos motores.
+
+**Hecho (2026-09-27) — la MATRIZ tiene conmutador para la ruta local del pad**
+
+La siembra LFO 2 → Morph Z (la que hace bailar el anillo del pad sin host) se plantaba sola y solo se
+podía quitar a mano, con el cajon abierto. Ahora la cabecera de la ficha lleva el boton que la enciende y
+apaga y el desplegable con los LFO, con la siembra como valor inicial: arrancar sin la ruta es una decisión
+del usuario, arrancarla es la de fábrica. El estado vive en el store (`state.localMorphRoute`, con la
+lista de LFO sacada de la tabla de fuentes del contrato) y lo pinta el panel con el mismo snapshot que
+las celdas. OFF devuelve la fila 3 a VIRGEN —los defaults del propio contrato de sus tres ids— y ON la
+escribe aunque el usuario la hubiera tocado antes, porque es un gesto explícito y no una siembra; con host
+no hace nada y se ve deshabilitado. Medido con el WASM real: apagada, `GetMod(28)` da 0 exacto y el anillo
+se queda quieto; encendida, barre los dos signos con periodo 998.7 ms, y con LFO 1 la fila viaja con el
+índice 1 y el anillo vuelve a bailar. ctest **40/40**, vitest **373/373**, Playwright **8/8**.
+
+**Hecho (2026-09-27) — la ficha RANURAS puede OLVIDAR una ranura (y el aviso va con el del error)**
+
+Cargar era el unico gesto: un modelo equivocado se quedaba ahi para siempre, y en modo local la memoria lo
+devolvia en cada F5. Cada fila con modelo lleva ahora su OLVIDAR: la ranura vuelve a EMPTY (con la
+entrada vacia de fabrica, para que el motor la descargue por el mismo canal `neuronik:models` que la
+carga) y su texto sale de la memoria del navegador, de modo que un F5 no la devuelve. Medido contra el
+WASM real: la misma nota suena bit a bit igual que con una ranura nunca cargada. El aviso sale por la
+MISMA linea de estado que un fallo de carga, con su tono propio —`✓` acierto, `⚠` acierto a medias (la
+sesion se vacio pero el navegador no solto la memoria, verificado releiendo el almacen)—, y si hay fallo
+de carga ese manda. Con host el boton no aparece: la ranura es del preset. ctest **40/40**, vitest
+**395/395**, Playwright **9/9**.
+
+**Hecho (2026-09-27) — regresion visual del lienzo: una referencia por ficha**
+
+La suite decia que el lienzo EXISTE y que sus textos dicen lo que deben, pero no que se pinte bien: un
+token de color invertido o un boton empujado fuera de su ficha no rompen ninguna asercion de texto.
+Ahora cada ficha del lienzo tiene su foto de referencia en `e2e/snapshots/` y se compara con
+`toHaveScreenshot` (patron ABDMS2000), con el lienzo entero en los dos temas para cazar tambien los
+cambios de reparto. La lista de fichas sale del contrato (`SECTIONS`), el viewport es el tamano de
+diseno del SSOT y el spec EXIGE escala 1 antes de capturar, porque `mountFitStage` escala el lienzo con
+`transform` y una referencia reescalada seria una foto borrosa. El umbral esta medido, no copiado: el
+ruido entre corridas es de 0 pixeles y la regresion mas pequena construida (el color de un distintivo)
+mueve 77, asi que el `maxDiffPixels: 100` del hermano aqui PASABA en verde; queda 20. Test de ctest
+aparte (`NEURONiK_WebUiVisualRegression`) con `RESOURCE_LOCK` sobre el `dist` compartido y puerto
+propio. ctest **41/41**, Playwright **11/11** la visual y **9/9** el smoke.
+
+**Pendiente (2026-09-27)** — el indice completo de lo que quedo abierto en la sesion (decisiones que
+son tuyas, huecos con sitio exacto y verificaciones no hechas) esta en `HANDOFF.md`, seccion "PENDIENTES:
+todo lo que quedo abierto en esta sesion". Lo que decide la proxima direccion, en una linea cada uno:
+persistir el conmutador de la ruta del pad; `unloadModel` en el plugin para que OLVIDAR exista con host;
+alinear los dos bloques de CZ101 que nacen fuera de fabrica; y el gris por celda del gating, que hoy solo
+apaga opciones de un choice y no knobs.
+
 ## Criterios de aceptación
 
 No se avanzará de fase si se cumple alguna de estas condiciones:

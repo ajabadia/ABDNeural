@@ -59,6 +59,10 @@ const morphZModListeners = [];
 
 export function onWorkletMorphZ(listener) {
   morphZModListeners.push (listener);
+  return () => {
+    const index = morphZModListeners.indexOf (listener);
+    if (index >= 0) morphZModListeners.splice (index, 1);
+  };
 }
 
 /**
@@ -79,6 +83,10 @@ const voicesListeners = [];
 
 export function onWorkletVoices(listener) {
   voicesListeners.push (listener);
+  return () => {
+    const index = voicesListeners.indexOf (listener);
+    if (index >= 0) voicesListeners.splice (index, 1);
+  };
 }
 
 /**
@@ -91,6 +99,10 @@ const envelopeLevelListeners = [];
 
 export function onWorkletEnvelopeLevels(listener) {
   envelopeLevelListeners.push (listener);
+  return () => {
+    const index = envelopeLevelListeners.indexOf (listener);
+    if (index >= 0) envelopeLevelListeners.splice (index, 1);
+  };
 }
 
 let context = null;

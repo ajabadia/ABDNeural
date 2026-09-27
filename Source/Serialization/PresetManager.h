@@ -46,6 +46,14 @@ public:
     juce::StringArray getAllPresets() const;
     juce::String getCurrentPreset() const;
 
+    /**
+     * El estado actual ya NO es el preset que su nombre dice (un RANDOMIZE lo
+     * sustituyo): el nombre pasa a describir que es un timbre del usuario y deja
+     * de apuntar al fichero. Lo muestra el LCD (PATCH: RANDOM) hasta la proxima
+     * carga o guardado con nombre.
+     */
+    void markAsUserTimbre() { currentPresetName = "Random"; }
+
     juce::File getPresetsDirectory() const;
 
 private:

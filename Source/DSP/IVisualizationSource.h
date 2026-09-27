@@ -29,6 +29,10 @@ public:
     /** Returns the current envelope levels (Amp, Filter). */
     virtual void getEnvelopeLevelsForUI(float& amp, float& filter) const noexcept = 0;
 
+    /** Returns the number of active voices (the UI voice meter). Default 0:
+        partial sources do not have to know the polyphony. */
+    virtual int getVoiceCountForUI() const noexcept { return 0; }
+
     /** Returns the current LFO values (0 or 1). */
     virtual float getLfoValueForUI(int lfoIndex) const noexcept = 0;
 

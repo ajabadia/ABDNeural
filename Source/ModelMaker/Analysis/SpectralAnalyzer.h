@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include <array>
 #include <vector>
 #include <juce_dsp/juce_dsp.h>
 #include "../../../Source/Common/SpectralModel.h"
@@ -104,6 +105,12 @@ public:
         (no hay UNA rejilla). -1 = sin datos (material insuficiente). */
     float lastGridResidualCents() const noexcept { return gridResidCents; }
     int   lastGridObservations()   const noexcept { return gridObsCount; }
+
+    /** 2026-09-27: picos de la sub-rejilla del ultimo ajuste (no contados
+        en residuo ni en LS). 0 = nada entrelazado: la sonda no tenia
+        que filtrar nada. */
+    int lastGridInterlacedCount() const noexcept { return gridInterlacedCount; }
+    int lastGridTotalObservations() const noexcept { return gridObsCount + gridInterlacedCount; }
 
     /** 2026-09-26: LA FRASE del residuo, una sola para las TRES superficies del
         aviso de pitch —la fila del ModelMaker, el dialogo que BLOQUEA la
@@ -245,6 +252,27 @@ public:
         return lastClustering.layerOfTrace[(size_t) juce::jlimit (0, LayerClustering::kMaxTraces - 1, partial)];
     }
 
+    int lastLayerTraces (int layer) const noexcept
+    {
+        if (layer < 0 || layer >= LayerClustering::kMaxLayers) return 0;
+        return lastClustering.layerTraces[(size_t) layer];
+    }
+
+    /** 2026-09-27: residuo por capa publicado tras analyzeTemporal().
+        -1 = sin datos (capa sin picos validos o sin capa). Verde <= 15 etc.
+        La capa entrelazada, cuando existe, aporta SU residuo contra la
+        sub-rejilla impar de f0/2 (no contra k*f0): es la medida que cae a
+        verde y que la sonda debe reportar. */
+    float lastLayerGridResidCents (int layer) const noexcept;
+    int   lastLayerGridObsCount (int layer) const noexcept;
+    juce::String lastLayerBand (int layer) const;
+
+    /** 2026-09-27: capa entrelazada dedicada (sub-rejilla f0/2). -1 = no hay. */
+    int lastEntrelazadaLayer() const noexcept { return entrelazadaLayerIndex; }
+    bool lastHasEntrelazada() const noexcept { return entrelazadaLayerIndex >= 0 && entrelazadaLayerIndex < LayerClustering::kMaxLayers; }
+
+    const LayerClustering& lastClusteringRef() const noexcept { return lastClustering; }
+
     /** FASE 11.2 (2026-09-26): metrica de afinidad con la que se decidieron las
         capas de la ultima llamada a analyzeTemporal() (ver LayerMetric). El
         camino por defecto es LayerMetric::Descriptors; EnvelopeCosine es la
@@ -278,6 +306,12 @@ private:
     /** Estado del ultimo ajuste de rejilla (ver accessores publicos). */
     float gridResidCents = -1.0f;
     int   gridObsCount = 0;
+    /** 2026-09-27: diagnostico de sub-rejilla del ultimo ajuste. */
+    int   gridInterlacedCount = 0;
+    /** 2026-09-27: residuo por capa tras analyzeTemporal() (ver accessores). */
+    float layerGridResidCents[LayerClustering::kMaxLayers] = { -1.0f, -1.0f, -1.0f };
+    int   layerGridObsCount[LayerClustering::kMaxLayers] = { 0, 0, 0 };
+    int   entrelazadaLayerIndex = -1;
 
     /** PUERTA DE PLEGADO: el veredicto de la ultima llamada a
         analyzeTemporal() (ver lastOctaveFold()). */
@@ -316,6 +350,36 @@ private:
         semilla HPS). La semilla sigue siendo la respuesta cuando el
         frame no tiene UNA rejilla. No toca el indicador de la UI. */
     float fitGridFromSpectrum (double sampleRate, float seedHz);
+    /** 2026-09-27: BATERIA DE FAMILIAS DE OCTAVA (proto HPS) — decision
+        por RESIDUO GLOBAL sobre TODAS las ventanas. El proto exploraba las
+        tres familias {seed/2, seed, seed*2} sinteticas con series debiles /
+        continuas; aqui la bateria vive nativa en OctaveFamilyTest.cpp y la
+        decision vive en el analizador: cada candidato se ajusta por LS sobre
+        los picos de TODAS las ventanas (mismo collect/solve/residuo que
+        fitGridLeastSquares) y se elige el de menor residuo RMS en cents
+        entre los validos (>=kMinLsObservations y a <600 cents del candidato).
+        Empate a <0.5 cents => mas observaciones; si persiste, el mas cercano
+        a la semilla. Candidatos por debajo del suelo del ancla no se
+        consideran (la via por debajo del suelo es manual). */
+public:
+    struct OctaveCandidate
+    {
+        float candidateHz = 0.0f;
+        float fittedHz    = 0.0f;
+        float residCents  = -1.0f;
+        int   observations = 0;
+        int   interlaced   = 0;
+        bool  valid = false;
+    };
+    std::array<OctaveCandidate, 3> evaluateOctaveCandidates (const juce::AudioBuffer<float>& audio, double sampleRate, float seedHz);
+    float resolveOctaveByGlobalResidual (const juce::AudioBuffer<float>& audio, double sampleRate, float seedHz);
+    // DEBUG helpers para sonda entrelazada (public for probe) — types public
+    struct InterlacedFrame { std::array<float,64> amps{}; std::array<float,64> offs{}; std::array<bool,64> interlaced{}; };
+    std::vector<InterlacedFrame> debugPerFrameCommon(const juce::AudioBuffer<float>& audio, double sampleRate, float rootFrequency, int frameCount);
+    std::array<int,64> debugInterlacedCountPerPartial(const juce::AudioBuffer<float>& audio, double sampleRate, float rootFrequency);
+
+private:
+
 
     /** Observaciones minimas del ajuste para creerle mas que a la semilla. */
     static constexpr int kMinLsObservations = 4;
@@ -343,12 +407,25 @@ private:
     /** Espectro temporal reutilizable entre llamadas/frames. */
     std::vector<float> frameSpectrum;
 
-    /** Medida de UN parcial: magnitud (bin del pico) y desviacion sub-bin. */
+    /** Medida de UN parcial: magnitud (bin del pico) y desviacion sub-bin.
+        2026-09-27: REJILLAS ENTRELAZADAS. Un pico sobre la sub-rejilla
+        (impar de f0/2) NO es inharmonicidad de k*f0, sino energia de la
+        otra familia (phasor CZ). El flag `interlaced` lo marca para que
+        offsets (offset=0) y residuo (no entra al LS) no se contaminen.
+        2026-09-27 (+capa entrelazada): `peakHz` conserva la posicion real del
+        pico sub-bin para que la capa entrelazada suene en SU rejilla (impar
+        de f0/2) aunque su indice sea el de k*f0. */
     struct PartialMeasurement
     {
         float amplitude = 0.0f;
         float offsetHz = 0.0f;
+        float peakHz = 0.0f;        // posicion real del pico (bin+delta)*binWidth
+        bool  interlaced = false;   // pico de la sub-rejilla (f0/2 impar)
     };
+
+    /** 2026-09-27: diagnostico de rejilla entrelazada. Un pico a <0.25*f0
+        de un impar de f0/2 y a >0.25*f0 de k*f0 es la otra familia. */
+    static bool isInterlacedPeak(float peakHz, float targetFreq, float rootFrequency) noexcept;
 
     /**
      * Peak-picking (ventana = mitad del espaciado entre armonicos f0) sobre
@@ -381,6 +458,14 @@ private:
     NEURONiK::Common::SpectralModel buildLayeredModel (
         const std::vector<std::array<PartialMeasurement, 64>>& frames,
         const LayerClustering& clusters, int nFrames, float rootFrequency) const;
+    float layerResidualCents (const std::vector<std::array<PartialMeasurement, 64>>& frames,
+                              const std::vector<int>& tracesOfLayer,
+                              float rootFrequency, bool isEntrelazada, int nFrames) const;
+    NEURONiK::Common::SpectralModel buildEntrelazadaModel (
+        const std::vector<std::array<PartialMeasurement, 64>>& frames,
+        const std::vector<int>& entrelazadaTraces,
+        const LayerClustering& fallbackClusters,
+        int nFrames, float rootFrequency) const;
 };
 
 } // namespace NEURONiK::ModelMaker::Analysis

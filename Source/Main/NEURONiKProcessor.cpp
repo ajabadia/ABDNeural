@@ -263,9 +263,11 @@ void NEURONiKProcessor::setPolyphony(int numVoices)
 
     if (engine)
     {
-        // Bajo el mismo cerrojo que el cambio de motor: subir la polifonia RESERVA
-        // voces (heap) y la reserva no puede ocurrir mientras el hilo de audio
-        // recorre la lista. El editor llama a esto desde el hilo de mensajes.
+        // Bajo el mismo cerrojo que el cambio de motor: subir RESERVA voces (heap) y
+        // bajar devuelve solo las OCIOSAS (!isActive, ver BaseEngine::reclaimIdleVoices).
+        // Las que aun sueltan cola no se desalojan; la capacidad en caliente (reserve 32)
+        // queda intacta, solo baja size(). La reserva no puede ocurrir mientras el hilo
+        // de audio recorre la lista. El editor llama a esto desde el hilo de mensajes.
         const juce::ScopedLock engineLock(getCallbackLock());
         engine->setPolyphony(newLimit);
     }
@@ -524,11 +526,45 @@ void NEURONiKProcessor::enterMidiLearnMode(const juce::String& paramID)
 {
     midiLearnActive.store(true);
     parameterToLearn = paramID;
+    // El indice es lo unico que el hilo de audio puede leer sin carrera: el
+    // proximo CC mapea AQUI (el consumidor esta en el barrido de CC).
+    parameterToLearnIndex.store (NEURONiK::Main::MidiMappingManager::getParamIndex (paramID),
+                                 std::memory_order_release);
 }
 
 void NEURONiKProcessor::clearMidiLearnForParameter(const juce::String& paramID)
 {
     midiMappingManager->clearMapping(paramID);
+}
+
+void NEURONiKProcessor::applyPendingCcChanges()
+{
+    // HILO DE MENSAJES (lo llama el timer del editor): los CC que el bloque
+    // mapeo contra la tabla esperan aqui. setValueNotifyingHost avisa al host,
+    // repinta la pagina por parameterChanged y es la misma puerta que un
+    // control nativo - un CC deja de ser un dato muerto.
+    int start1, block1, start2, block2;
+    ccValueFifo.prepareToRead (ccQueueSize, start1, block1, start2, block2);
+
+    auto drainBlock = [this] (int start, int block)
+    {
+        for (int i = 0; i < block; ++i)
+        {
+            const auto& pending = ccValueQueue[(size_t) (start + i)];
+            const auto& params = NEURONiK::Main::MidiMappingManager::getLearnableParams();
+
+            if (pending.paramIndex < 0 || pending.paramIndex >= (int) params.size())
+                continue;
+
+            if (auto* parameter = apvts.getParameter (params[(size_t) pending.paramIndex]))
+                parameter->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, pending.normalized));
+        }
+    };
+
+    if (block1 > 0) drainBlock (start1, block1);
+    if (block2 > 0) drainBlock (start2, block2);
+
+    ccValueFifo.finishedRead (block1 + block2);
 }
 
 void NEURONiKProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
@@ -565,6 +601,48 @@ void NEURONiKProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     }
 
     midiFifo.finishedRead(blockSize1 + blockSize2);
+
+    // MIDI CC -> parameter (el eslabon que la tabla nunca tuvo): se barre el
+    // bloque COMPLETO, ANTES del filtro de canal — el learn de hardware no
+    // deberia depender del canal que escucha el instrumento. Los mapeados se
+    // encolan normalizados y el hilo de mensajes los aplica con
+    // setValueNotifyingHost (applyPendingCcChanges, lo llama el editor).
+    for (const auto metadata : midiMessages)
+    {
+        const auto& message = metadata.getMessage();
+
+        if (! message.isController())
+            continue;
+
+        const auto cc = message.getControllerNumber();
+        const auto ccValue = (float) message.getControllerValue() / 127.0f;
+
+        // LEARN ARMADO (el gesto que el MidiLearner nativo empuja y que la
+        // pagina empuja por el bridge): el proximo CC gana y la tabla queda
+        // aplicandose de ahi en adelante.
+        const auto learnIndex = parameterToLearnIndex.load (std::memory_order_acquire);
+
+        if (learnIndex >= 0)
+        {
+            midiMappingManager->setMappingByIndex (learnIndex, cc);
+            parameterToLearnIndex.store (-1, std::memory_order_release);
+            midiLearnActive.store (false, std::memory_order_relaxed);
+            continue; // este CC asigna, no toca el parametro todavia
+        }
+
+        const auto paramIndex = midiMappingManager->getParamIndexForCC (cc);
+
+        if (paramIndex < 0)
+            continue;
+
+        int w1, b1, w2, b2;
+        ccValueFifo.prepareToWrite (1, w1, b1, w2, b2);
+
+        if (b1 > 0)
+            ccValueQueue[(size_t) w1] = { paramIndex, ccValue };
+
+        ccValueFifo.finishedWrite (b1 + b2);
+    }
 
     // Shape note-on velocities after the on-screen keyboard injection on purpose:
     // the curve is part of the instrument's response, not of one input port.
@@ -634,6 +712,9 @@ void NEURONiKProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
         engine->getEnvelopeLevels(ampLevel, filterLevel);
         uiEnvelope.store(ampLevel, std::memory_order_relaxed);
         uiFEnvelope.store(filterLevel, std::memory_order_relaxed);
+        // El medidor de voces del panel (plugin): el MISMO dato que el meter
+        // del worklet ensena en local, por el canal de la UI.
+        uiVoiceCount.store(engine->getNumActiveVoices(), std::memory_order_relaxed);
         
         // --- Safe Modulation Indexing Update ---
         float mods[static_cast<int>(NEURONiK::ModulationTarget::Count)];
@@ -829,6 +910,11 @@ void NEURONiKProcessor::getEnvelopeLevelsForUI(float& amp, float& filter) const 
 {
     amp = uiEnvelope.load(std::memory_order_relaxed);
     filter = uiFEnvelope.load(std::memory_order_relaxed);
+}
+
+int NEURONiKProcessor::getVoiceCountForUI() const noexcept
+{
+    return uiVoiceCount.load(std::memory_order_relaxed);
 }
 
 float NEURONiKProcessor::getLfoValueForUI(int lfoIndex) const noexcept

@@ -8,12 +8,19 @@
  *   - los errores son mensajes de usuario, no stacks;
  *   - un modelo v2.1 lleva la capa 1 COMPLETA en `parsed.layers` (el motor del
  *     puente WASM) y un modelo vacio sale isValid false;
- *   - emptyLocalModels() da cuatro ranuras con el shape del bridge.
+ *   - emptyLocalModels() da cuatro ranuras con el shape del bridge;
+ *   - el TEXTO crudo se lee aparte (readModelText): es lo que guarda la memoria
+ *     local de la pagina, y readModelFile es ese texto + el parser.
  */
 
 import { describe, expect, it } from 'vitest';
 
-import { emptyLocalModels, parseModelText, readModelFile } from '../src/audio/localModels.js';
+import {
+  emptyLocalModels,
+  parseModelText,
+  readModelFile,
+  readModelText,
+} from '../src/audio/localModels.js';
 
 function modelJson(overrides = {}) {
   return JSON.stringify({
@@ -112,8 +119,30 @@ describe('localModels / parser del dialecto v2', () => {
     expect(model.isValid).toBe(true);
   });
 
+  it('readModelText devuelve el TEXTO crudo: es lo que guarda la memoria local', async () => {
+    const text = modelJson();
+    const raw = await readModelText(new File([text], 'CZ-BASS1.neuronikmodel'));
+
+    // Ni re-serializado ni recortado: es el fichero tal cual, y es lo que la
+    // memoria local (localModelCache) guarda para que un F5 lo re-parse.
+    expect(raw).toBe(text);
+    expect(JSON.parse(raw).name).toBe('CZ-BASS1');
+  });
+
+  it('readModelFile = readModelText + parser (mismo lector, dos pasos)', async () => {
+    const text = modelJson();
+    const raw = await readModelText(new File([text], 'CZ-BASS1.neuronikmodel'));
+    const model = await readModelFile(new File([text], 'CZ-BASS1.neuronikmodel'));
+
+    expect(model).toEqual(parseModelText(raw));
+  });
+
   it('readModelFile sin fichero rechaza con mensaje de usuario', async () => {
     await expect(readModelFile(null)).rejects.toThrow(/no hay fichero/);
+  });
+
+  it('readModelText sin fichero tambien rechaza (el texto sale del mismo File)', async () => {
+    await expect(readModelText(null)).rejects.toThrow(/no hay fichero/);
   });
 });
 

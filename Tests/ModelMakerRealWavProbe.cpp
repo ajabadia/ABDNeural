@@ -31,6 +31,26 @@
 
 using NEURONiK::Common::SpectralModel;
 
+// 2026-09-27: TABLA COMPARATIVA de metricas sobre el banco real (Descriptores vs
+// EnvelopeCosine con su corte dedicado kEnvelopeCosineCut = 0.60). Se corre
+// sobre cada WAV con la misma f0 y los mismos 4 frames, con el mismo plegado.
+// El defecto sigue siendo Descriptors (sec 3 del plan); el dedicado queda
+// documentado aunque TAMPOCO separa (barrido 0.10..0.90 huecos invertidos).
+struct ComparativeRecord
+{
+    juce::String name;
+    float f0 = 0.0f;
+    int descLayers = 1;
+    int cosineLayers = 1;
+    bool descSkipped = false;
+    bool cosineSkipped = false;
+    NEURONiK::ModelMaker::Analysis::SpectralAnalyzer::OctaveFold fold;
+    int descTraces[3] = { 0, 0, 0 };
+    int cosineTraces[3] = { 0, 0, 0 };
+};
+
+static std::vector<ComparativeRecord> gComparative;
+
 namespace
 {
 void fail (const juce::String& what)
@@ -610,6 +630,28 @@ void probeWav (const juce::File& wav, const juce::File& outDir,
         NEURONiK::Common::sampleFrame (tback, 0.5f, zFrame);
         if (zFrame.frameF0 <= 0.0f) fail ("el frame interpolado no lleva f0 (sin remapeo)");
 
+        // 2026-09-27: RESIDUO POR CAPA (segunda capa = familia entrelazada f0/2)
+        {
+            for (int l=0; l<tback.layerCount; ++l)
+            {
+                const float r = analyzer.lastLayerGridResidCents(l);
+                const int obs = analyzer.lastLayerGridObsCount(l);
+                const auto band = analyzer.lastLayerBand(l);
+                const bool isEntre = (analyzer.lastEntrelazadaLayer()==l);
+                const char* tag = isEntre ? "entre" : "propia";
+                const char* name = tback.layerNameAt(l).toRawUTF8();
+                if (r >= 0.0f)
+                    std::printf ("[probe]   residuo capa %d (%s %s): %.1f cents (%d picos) -> %s\n",
+                                 l, name, tag, (double)r, obs, band.toRawUTF8());
+                else
+                    std::printf ("[probe]   residuo capa %d (%s %s): n/d\n", l, name, tag);
+            }
+            if (analyzer.lastHasEntrelazada())
+                std::printf ("[probe]   entrelazada como segunda capa: la capa %d son impares de f0/2, verde = propia %s y entre %s\n",
+                             (int)analyzer.lastEntrelazadaLayer(),
+                             analyzer.lastLayerBand(0).toRawUTF8(), analyzer.lastLayerBand(analyzer.lastEntrelazadaLayer()).toRawUTF8());
+        }
+
         std::printf ("[probe]   temporal: 4 frames v2 (%d bytes), pico min=%.3f, dominante max=%.3f, "
                      "trayectoria f0=%.1f..%.1f Hz\n",
                      (int) tjson.length(), (double) minTop, (double) maxAmp0,
@@ -703,6 +745,74 @@ void probeWav (const juce::File& wav, const juce::File& outDir,
     }
 
     std::printf ("[probe]   OK: ciclo completo WAV->modelo->recarga->sampleFrame->engine\n");
+
+    // 2026-09-27: COMPARATIVA Descriptors vs EnvelopeCosine (corte dedicado)
+    // sobre el MISMO WAV, la MISMA f0 y los mismos 4 frames. No condiciona el
+    // OK: es el dato del plan sec 3.3 / sec 3 del dedicado (el dedicado 0.60
+    // tampoco separa, barrido 0.10..0.90 huecos invertidos).
+    {
+        NEURONiK::ModelMaker::Analysis::SpectralAnalyzer comp;
+        ComparativeRecord rec;
+        rec.name = wav.getFileName();
+        rec.f0   = f0;
+
+        // Descriptors (corte 0.55)
+        {
+            auto dModel = comp.analyzeTemporal (audio, sr, f0, 4, fixedGrid,
+                                                NEURONiK::ModelMaker::Analysis::LayerMetric::Descriptors);
+            (void) dModel;
+            rec.descLayers  = comp.lastLayerCount();
+            rec.descSkipped = comp.lastClusteringSkipped();
+            rec.fold        = comp.lastOctaveFold();
+            for (int l = 0; l < 3; ++l)
+                rec.descTraces[l] = comp.lastLayerTraces (l);
+        }
+        // EnvelopeCosine (corte DEDICADO 0.60)
+        {
+            auto cModel = comp.analyzeTemporal (audio, sr, f0, 4, fixedGrid,
+                                                NEURONiK::ModelMaker::Analysis::LayerMetric::EnvelopeCosine);
+            (void) cModel;
+            rec.cosineLayers  = comp.lastLayerCount();
+            rec.cosineSkipped = comp.lastClusteringSkipped();
+            // plegado es el mismo (no depende de metrica); si bi-rejilla, ambas saltan
+            // rec.fold ya esta, pero por si acaso se refresca (mismo valor)
+            // rec.fold = comp.lastOctaveFold();
+            for (int l = 0; l < 3; ++l)
+                rec.cosineTraces[l] = comp.lastLayerTraces (l);
+        }
+
+        gComparative.push_back (rec);
+
+        const auto tracesToString = [] (const int t[3], int layers, bool skipped) -> juce::String
+        {
+            if (skipped) return juce::String ("skip (plegado BI)");
+            if (layers <= 1) return juce::String (t[0]) + " (1 capa)";
+            juce::String s;
+            for (int l = 0; l < layers && l < 3; ++l)
+                s << (l == 0 ? "" : "+") << t[l];
+            s << " (" << layers << " capas)";
+            return s;
+        };
+
+        std::printf ("[probe]   -- comparativa metricas (4 frames, f0 %.1f Hz, corte dedicado) --\n",
+                     (double) f0);
+        std::printf ("[probe]     Descriptors (%.2f)%s: %d capa(s) [%s]%s\n",
+                     (double) NEURONiK::ModelMaker::Analysis::LayerClustering::kAffinityCut,
+                     rec.descSkipped ? " skip" : "",
+                     rec.descLayers,
+                     tracesToString (rec.descTraces, rec.descLayers, rec.descSkipped).toRawUTF8(),
+                     rec.fold.biGrid ? " | plegado BI" : " | plegado mono");
+        std::printf ("[probe]     EnvelopeCosine (%.2f)%s: %d capa(s) [%s]  -> %s\n",
+                     (double) NEURONiK::ModelMaker::Analysis::LayerClustering::kEnvelopeCosineCut,
+                     rec.cosineSkipped ? " skip" : "",
+                     rec.cosineLayers,
+                     tracesToString (rec.cosineTraces, rec.cosineLayers, rec.cosineSkipped).toRawUTF8(),
+                     (rec.descLayers != rec.cosineLayers ? "DIFIEREN" : "igual"));
+        std::printf ("[probe]     plegado: %.1f cents post (crudo %.1f, %d obs, %d saltos) => %s\n",
+                     (double) rec.fold.foldCents, (double) rec.fold.rawCents,
+                     rec.fold.observations, rec.fold.octaveFlips,
+                     rec.fold.biGrid ? "BI-REJILLA (no paga clustering)" : "mono-rejilla");
+    }
 }
 
 } // namespace
@@ -722,6 +832,59 @@ int main (int argc, char** argv)
 
     for (int i = 1; i < argc; ++i)
         probeWav (juce::File (juce::String::fromUTF8 (argv[i])), outDir, fmts);
+
+    // 2026-09-27: TABLA COMPARATIVA por patch (Descriptores vs EnvelopeCosine)
+    if (! gComparative.empty())
+    {
+        std::printf ("\n[probe] ============================================================\n");
+        std::printf ("[probe] TABLA COMPARATIVA DE CAPAS --- banco CZ101 (4 frames, f0 detectada)\n");
+        std::printf ("[probe]  Descriptors kAffinityCut=%.2f  |  EnvelopeCosine kEnvelopeCosineCut=%.2f (dedicado 2026-09-27)\n",
+                     (double) NEURONiK::ModelMaker::Analysis::LayerClustering::kAffinityCut,
+                     (double) NEURONiK::ModelMaker::Analysis::LayerClustering::kEnvelopeCosineCut);
+        std::printf ("[probe]  (el dedicado tampoco separa: barrido 0.10..0.90 huecos invertidos sin interseccion)\n");
+        std::printf ("[probe] ------------------------------------------------------------\n");
+        std::printf ("[probe]  %-14s  %7s  %-26s  %-13s  %-13s  %s\n",
+                     "patch", "f0(Hz)", "plegado(post/crudo, bi)", "Descriptors", "Cosine", "veredicto");
+        std::printf ("[probe]  %-14s  %7s  %-26s  %-13s  %-13s  %s\n",
+                     "--------------", "-------", "--------------------------", "-------------", "-------------", "---------");
+
+        for (const auto& rec : gComparative)
+        {
+            const juce::String foldStr = juce::String (rec.fold.foldCents, 1) + "/" + juce::String (rec.fold.rawCents, 1)
+                                         + (rec.fold.biGrid ? " BI" : " mono")
+                                         + " (" + juce::String (rec.fold.observations) + " obs)";
+
+            const auto tracesStr = [] (const int t[3], int layers, bool skipped) -> juce::String
+            {
+                if (skipped) return juce::String ("1 skip");
+                if (layers <= 1) return juce::String (layers) + " (" + juce::String (t[0]) + ")";
+                juce::String s = juce::String (layers) + " (";
+                for (int l = 0; l < layers && l < 3; ++l)
+                    s << (l == 0 ? "" : "+") << t[l];
+                s << ")";
+                return s;
+            };
+
+            const juce::String dStr = tracesStr (rec.descTraces, rec.descLayers, rec.descSkipped);
+            const juce::String cStr = tracesStr (rec.cosineTraces, rec.cosineLayers, rec.cosineSkipped);
+            const juce::String verdict = (rec.descLayers != rec.cosineLayers ? "DIFIEREN"
+                                        : (rec.fold.biGrid ? "igual (BI)" : "igual"));
+
+            std::printf ("[probe]  %-14s  %7.1f  %-26s  %-13s  %-13s  %s\n",
+                         rec.name.toRawUTF8(),
+                         (double) rec.f0,
+                         foldStr.toRawUTF8(),
+                         dStr.toRawUTF8(),
+                         cStr.toRawUTF8(),
+                         verdict.toRawUTF8());
+        }
+
+        std::printf ("[probe] ------------------------------------------------------------\n");
+        std::printf ("[probe]  Criterio sintetico (8 frames): Descriptors 2/2, Cosine 1/1 (dedicado 0.60)\n");
+        std::printf ("[probe]  CZ101 reales: Descriptors solo SWEP1 2 capas; Cosine 2 en BASS1 (FP) + 1 en SWEP1 (FN)\n");
+        std::printf ("[probe]  (RRISE es BI-rejilla: ambas metricas skip -> 1 capa, no paga clustering)\n");
+        std::printf ("[probe] ============================================================\n");
+    }
 
     std::printf ("[probe] RESULT: OK (%d wav(s) analizados -> %s)\n", argc - 1,
                  outDir.getFullPathName().toRawUTF8());

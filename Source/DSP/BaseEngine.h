@@ -49,8 +49,11 @@ public:
 
         Es el numero que dice si la reserva perezosa funciona: un motor recien
         creado reserva `activeVoiceLimit` voces —16 la aditiva, 8 la neurotik—,
-        no las 32 de antes; subir la polifonia las añade y bajarla NO las quita
-        (una voz sonando no se puede desalojar; ver `ensureVoices`). */
+        no las 32 de antes; subir la polifonia las añade y bajarla devuelve
+        solo las OCiosas (ver `setPolyphony`): una voz que aun suelta su cola
+        (isActive) no se desalojan; las demas, si. La CAPACIDAD en caliente
+        (reserve 32) se mantiene, solo baja el tamano; volver a subir solo
+        re-crea (prepare si ya estaba preparado). */
     int getNumAllocatedVoices() const noexcept { return (int) voices.size(); }
 
     /** MORPH del pad XY (2026-09-26): publica (morphX, morphY) en el canal
@@ -120,6 +123,12 @@ protected:
         lo esta). Se llama SOLO desde el hilo de mensajes —constructor, prepare y
         setPolyphony—: el hilo de audio nunca reserva, solo indexa. */
     void ensureVoices (int count);
+
+    /** Reclama voces ociosas al bajar el limite: solo las que no suenan
+        (isActive()==false). Las que aun tienen cola se compactan al frente
+        para no quedar cortadas; la capacidad reservada (32) no se toca,
+        solo baja `size()`. Hilo de mensajes con el cerrojo del procesador. */
+    void reclaimIdleVoices (int newLimit) noexcept;
 
     std::vector<std::unique_ptr<IVoice>> voices;
     std::atomic<int> activeVoiceLimit { 16 };

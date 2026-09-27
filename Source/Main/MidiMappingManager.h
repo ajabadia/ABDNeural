@@ -23,6 +23,23 @@ public:
 
     /** Sets a mapping. If CC is already used, it unassigns it from previous parameter. */
     void setMapping(const juce::String& paramID, int ccNumber);
+
+    /**
+     * RT-safe variant for the AUDIO thread (MIDI learn completing on a real CC
+     * message): the parameter travels as its INDEX in getLearnableParams(), so
+     * no String is built or copied while rendering — only the atomic slots move.
+     */
+    void setMappingByIndex(int paramIndex, int ccNumber);
+
+    /**
+     * RT-safe inverse lookup for the AUDIO thread: which learnable parameter
+     * (by INDEX, -1 if none) answers to this CC. One atomic load, no String.
+     */
+    int getParamIndexForCC(int ccNumber) const
+    {
+        if (ccNumber < 0 || ccNumber > 127) return -1;
+        return ccToIndex[(size_t) ccNumber].load();
+    }
     
     /** Removes any mapping for this parameter. */
     void clearMapping(const juce::String& paramID);

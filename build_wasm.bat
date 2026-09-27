@@ -116,6 +116,11 @@ echo [6/6] Sincronizando artefactos con WebUI\public\worklet ...
 node "%~dp0WebUI\scripts\sync-wasm.mjs"
 if errorlevel 1 goto :fail
 
+REM Guard por HASH (SHA256): el drift no se ve en el codigo y solo aparece como
+REM audio viejo en la WebUI. Compara build-wasm <-> public/worklet (y dist si existe).
+node "%~dp0Tests\workletSyncTest.mjs"
+if errorlevel 1 goto :fail
+
 echo.
 echo =======================================================
 echo  [EXITO] WASM compilado y validado (paridad + smoke + sync)

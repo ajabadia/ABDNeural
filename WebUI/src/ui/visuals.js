@@ -38,6 +38,9 @@ const MORPH_Z_TARGET = MOD_DESTINATIONS.findIndex((d) => d?.parameterId === 'mor
  * @param {(slot: number) => void} [options.onLoad]  carga de una ranura de modelo
  *   (`model-slots`): la ejecuta el host, así que la vista la recibe por aquí y no
  *   la pide al panel, que no sabe qué dibuja.
+ * @param {(slot: number) => void} [options.onForget]  olvido de una ranura
+ *   (`model-slots`): vacía la ranura y su memoria local, también por handler —
+ *   la vista no guarda estado de la memoria, solo dice a quién.
  * @param {(id: 'morphX'|'morphY', normalized: number,
  *          phase: 'begin'|'change'|'end') => void} [options.onEdit]  edición del
  *   pad XY (`model-slots`): el store la cierra con su protocolo de gestos.
@@ -93,7 +96,9 @@ export function createVisual(visualId, controls, options = {}) {
   // lienzo va el resumen (y el cajón da el detalle). Filas BOTON: el mismo salto
   // que las rutas de ENVOLVENTES — el opener llega tarde (setRouteOpener).
   if (visualId === 'mod-summary') {
-    const summary = createModSummary({ controls });
+    // Las barras de nivel ENV de sus filas viven del MISMO canal de frames que
+    // las agujas y las barras del cajon (opcional: los tests pueden omitirlo).
+    const summary = createModSummary({ controls, onTelemetry: options.onTelemetry ?? null });
 
     summary.setRouteOpener(options.onOpenRoute ?? null);
 
@@ -104,7 +109,16 @@ export function createVisual(visualId, controls, options = {}) {
   // lienzo solo lleva el pad XY (morphX/morphY con los nombres en las esquinas):
   // es el corazon del motor y no necesita mas en pantalla.
   if (visualId === 'model-xy') {
-    const pad = createXyPad({ onEdit: options.onEdit ?? null });
+    // El pad recibe el canal de telemetría para la DIVERGENCIA página<->nativo
+    // (frame.morph contra el snapshot en la fila de readout). Las esquinas
+    // A-D clicables piden abrir el cajón de MODELOS: el opener lo enchufa el
+    // panel DESPUÉS del arranque (app.js), mismo patrón que setRouteOpener.
+    let cornerOpener = null;
+    const pad = createXyPad({
+      onEdit: options.onEdit ?? null,
+      onTelemetry: options.onTelemetry ?? null,
+      onCornerClick: (slot) => cornerOpener?.(slot),
+    });
 
     // El anillo exterior (morphZ) vive de la TELEMETRIA: frame.modulation[t]
     // es la contribucion con signo que la matriz acumula sobre el destino.
@@ -131,6 +145,12 @@ export function createVisual(visualId, controls, options = {}) {
       setZMod(mod) {
         pad.setZMod(mod);
       },
+      // Esquinas A-D -> cajón de MODELOS en esa ranura. El slot viaja 0-based
+      // (A=0, como el motor); la conversión a fila del cajón (n1..n4) la hace
+      // el que cablea.
+      setCornerOpener(opener) {
+        cornerOpener = opener;
+      },
       destroy() {
         stopTelemetry?.();
         pad.destroy();
@@ -143,12 +163,48 @@ export function createVisual(visualId, controls, options = {}) {
   // cuatro ranuras. La mitad que el interface no ensena: mismos handlers, mismo
   // puente, mismas variables que el interface.
   if (visualId === 'model-slots') {
-    const slots = createModelSlots({ onLoad: options.onLoad ?? null });
+    const slots = createModelSlots({
+      onLoad: options.onLoad ?? null,
+      onForget: options.onForget ?? null,
+    });
     const spectral = createSpectral({ onFrame: options.onTelemetry ?? null });
 
     const element = document.createElement('div');
     element.className = 'model-block model-block--drawer';
     element.append(spectral.element, slots.element);
+
+    // AYUDA CONTEXTUAL: los gestos del pad (que vive en el LIENZO de esta
+    // misma ficha) documentados donde el usuario edita su eje z (los knobs de
+    // morphZ/capas están justo debajo). <details> nativo: plegado, accesible
+    // y sin CSS para funcionar. Ver ui/xyPad.js (los títulos de pad y aro son
+    // la versión corta de esto).
+    const help = document.createElement('details');
+    help.className = 'model-help';
+
+    const helpSummary = document.createElement('summary');
+    helpSummary.textContent = 'Gestos del pad XY';
+
+    const helpList = document.createElement('ul');
+    const helpItems = [
+      ['Pad', 'arrastrar = mover el punto (morphX/morphY); con Shift, movimiento relativo a 1/10'],
+      ['Aro (morphZ)', 'arrastrar = girar hasta el valor; con Shift, fino 1/10 por el camino corto'],
+      ['Aro (teclado)', 'flechas = ±1% · RePag/AvPag = ±10% · Inicio/Fin = 0/100% (con foco en el aro)'],
+      // La verdad de HOY: el clic en una esquina CARGADA abre este cajón en SU
+      // ranura (ui/xyPad.js, onCornerClick); el fondo del pad sigue siendo la
+      // superficie absoluta de siempre.
+      ['Esquinas A–D', 'pulsar una ranura cargada abre el cajón de MODELOS en esa ranura (Enter/Space con foco)'],
+    ];
+
+    for (const [term, description] of helpItems) {
+      const item = document.createElement('li');
+      const strong = document.createElement('strong');
+      strong.textContent = `${term}: `;
+      item.append(strong, document.createTextNode(description));
+      helpList.append(item);
+    }
+
+    help.append(helpSummary, helpList);
+    element.append(help);
 
     return {
       element,
@@ -158,6 +214,7 @@ export function createVisual(visualId, controls, options = {}) {
       destroy() {
         spectral.destroy();
         slots.destroy();
+        help.remove();
       },
     };
   }

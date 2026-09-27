@@ -16,10 +16,13 @@
  *   - onEdit conduce el PARÁMETRO REAL del store (pushParameter, fase 'end':
  *     el D-pad es un gesto de hardware, no un arrastre); los pasos discretos
  *     y el rango salen del contrato generado — el D-pad no inventa nada;
- *   - onAction ejecuta RESET_MIDI del árbol (hoy es un no-op honesto: el
- *     manager de mapeos MIDI CC no ha viajado aún a la WebUI);
- *   - los items 'cc' existen en el árbol por fidelidad con el original, pero su
- *     aprendizaje vive en el host: se muestran, no se editan aquí.
+ *   - onAction ejecuta RESET_MIDI del árbol: la tabla de mapeos CC vive en el
+ *     MOTOR (MidiMappingManager) y viaja por el bridge — la página la enseña y
+ *     la edita, nunca la posee (midiCcState + midiCcLearn/Clear/Reset);
+ *   - los items 'cc' del árbol MIDI CONTROL SON FUNCIONALES: su EDIT no mueve
+ *     el parámetro, GESTIONA SU CC — OK arma el learn (el próximo CC del motor
+ *     gana), ‹› asigna/desasigna el CC a mano y el valor en EDIT muestra el
+ *     CC actual ("CC 74" / "CC --" sin mapeo).
  */
 
 import { createLcdPanel } from '@abdsynths/shared/components';
@@ -132,7 +135,20 @@ export function createLcdTop({ store, engineType = null }) {
   const idleRef = {};
   const editValueRef = {};
 
-  hooksRef.onEdit = (paramId, dir) => {
+  hooksRef.onEdit = (paramId, dir, state) => {
+    // EDIT de un item 'cc' (MIDI CONTROL): no mueve el parametro — GESTIONA SU
+    // CC. El item editando viaja en el estado de la maquina (machine.editing).
+    // La tabla vive en el motor: con host, sendMidiCc* + midiCcState de vuelta;
+    // en local no hay tabla (midiCcMappings null) y el EDIT es honesto: nada.
+    if (state?.editing?.type === 'cc') {
+      const item = state.editing;
+
+      if (dir > 0) store.sendMidiCcLearn?.(item.paramId);      // OK/encoder+: armar learn
+      else if (dir < 0) store.sendMidiCcClear?.(item.paramId); // encoder-: desmapear
+
+      return;
+    }
+
     const control = controlOf(paramId);
 
     if (!control) return;
@@ -144,9 +160,9 @@ export function createLcdTop({ store, engineType = null }) {
   };
 
   hooksRef.onAction = (item) => {
-    // RESET_MIDI vive en el host (el manager de mapeos CC no ha viajado a la
-    // WebUI): la petición sale por el canal MIDI, el host decide.
-    if (item?.paramId === 'RESET_MIDI') store.sendMidiMessage?.({ kind: 'resetMappings' });
+    // RESET_MIDI: la tabla es del MOTOR — el reset viaja como acción y la
+    // respuesta (midiCcState fresco) repinta el menú. En local, no-op honesto.
+    if (item?.paramId === 'RESET_MIDI') store.sendMidiCcReset?.();
   };
 
   hooksRef.onPreview = (item) => {
@@ -160,6 +176,29 @@ export function createLcdTop({ store, engineType = null }) {
     panel.screen.preview(1, `> ${displayText(control, realFromNormalized(control, value))}`, {});
   };
 
+  /**
+   * PREVIEW de un parametro en la pantalla (el nombre del ID real, no un item
+   * del menu): lo llama el cable de EDITS DE USUARIO (store.onUserEdit) para
+   * que girar CUALQUIER control — celda, pad, aro, knob de cajon — muestre su
+   * valor en el LCD, como el encoder de hardware del original. Transitorio:
+   * la pantalla vuelve sola al reposo (previewMs del paquete).
+   */
+  function showParameterPreview (paramId, normalized) {
+    const control = controlOf(paramId);
+
+    if (!control) return;
+
+    const value = normalized ?? parameters()[paramId] ?? 0;
+
+    // En EDIT del menu el LCD esta contando otra cosa (el valor del item que
+    // se edita): no se le pisa — el reposo/preview de parametro vuelve al
+    // cerrar la edicion.
+    if (panel.machine.state === 'edit') return;
+
+    panel.screen.preview(0, control.label.toUpperCase(), {});
+    panel.screen.preview(1, `> ${displayText(control, realFromNormalized(control, value))}`, {});
+  }
+
   // Reposo del hardware original (updateLcdDefault): preset + estado.
   idleRef.idle = () => {
     const preset = store.getState().presetState?.current ?? '';
@@ -171,8 +210,17 @@ export function createLcdTop({ store, engineType = null }) {
     ];
   };
 
-  // El valor en EDIT: el snapshot manda (un edit nativo se ve en el LCD).
+  // El valor en EDIT: el snapshot manda (un edit nativo se ve en el LCD). Los
+  // items 'cc' muestran SU CC de la tabla del motor ("CC 74", "CC --" sin mapeo).
   editValueRef.editValue = (item) => {
+    if (item?.type === 'cc' && item.paramId !== 'RESET_MIDI') {
+      const entry = Array.isArray(store.getState().midiCcMappings)
+        ? store.getState().midiCcMappings.find((m) => m?.paramId === item.paramId)
+        : null;
+
+      return entry && entry.cc >= 0 ? `CC ${entry.cc}` : 'CC --';
+    }
+
     const control = controlOf(item?.paramId);
 
     if (!control) return '';
@@ -192,6 +240,13 @@ export function createLcdTop({ store, engineType = null }) {
   return {
     element,
     panel,
+
+    /**
+     * Preview transitorio de UN parametro (label + valor formateado del
+     * contrato). El cable de edits de usuario (app.js: store.onUserEdit) lo
+     * llama; tambien es usable a mano (p.ej. un gesto propio de una vista).
+     */
+    showParameterPreview,
 
     /**
      * El árbol depende del engineType: un cambio de motor reconstruye el menú.

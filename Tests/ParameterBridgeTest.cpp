@@ -255,6 +255,18 @@ namespace
         void allNotesOff() override { ++panics; held.clear(); }
     };
 
+    /** @brief `{ action: <name>, paramId? }`, the shape cc actions use. */
+    juce::var jsCcAction (const juce::String& action, const juce::String& paramId = {})
+    {
+        juce::DynamicObject::Ptr message = new juce::DynamicObject();
+        message->setProperty ("action", action);
+
+        if (paramId.isNotEmpty())
+            message->setProperty ("paramId", paramId);
+
+        return juce::var (message.get());
+    }
+
     /** @brief `{ action: <name>, ...fields }`, the shape MIDI messages use. */
     juce::var jsMidiAction (const juce::String& action, int note = -1,
                             double first = -999.0, double second = -999.0)
@@ -868,6 +880,63 @@ int main()
                "without a backend MIDI actions are accepted and dropped");
 
         bridge.setMidiController (nullptr);
+    }
+
+    // ============================================================================
+    // Section 10 — MIDI CC mappings (additive to v1): the page's MIDI CONTROL
+    // menu edits the SAME table the native MidiLearner edits.
+    // ============================================================================
+    {
+        std::cout << "\n--- section 10: midi cc mappings\n";
+        bridge.resetStats();
+        recorder.messages.clear();
+        bridge.setSender (recorder.sender());
+
+        struct FakeMidiCcController final : public MidiCcController
+        {
+            int learned = 0;
+            int cleared = 0;
+            int resets = 0;
+            std::vector<std::pair<juce::String, int>> table {
+                { "filterCutoff", 74 }, { "oscLevel", -1 },
+            };
+
+            void armLearn (const juce::String&) override { ++learned; }
+            void clearMapping (const juce::String&) override { ++cleared; }
+            void resetToDefaults() override { ++resets; }
+            std::vector<std::pair<juce::String, int>> getMappings() const override { return table; }
+        };
+
+        FakeMidiCcController cc;
+        bridge.setMidiCcController (&cc);
+
+        bridge.handleJsEvent (jsCcAction (BridgeActions::midiCcLearn, "filterCutoff"));
+        bridge.handleJsEvent (jsCcAction (BridgeActions::midiCcClear, "filterCutoff"));
+        bridge.handleJsEvent (jsCcAction (BridgeActions::midiCcReset));
+        check (cc.learned == 1 && cc.cleared == 1 && cc.resets == 1,
+               "cc actions reach the mapping backend");
+
+        // Every action answers with a fresh midiCcState (3 actions -> 3 states).
+        const auto ccStates = recorder.withAction (BridgeActions::midiCcState);
+        check ((int) ccStates.size() == 3, "each cc action answers with midiCcState");
+
+        if (! ccStates.empty())
+        {
+            const auto* mappings = ccStates.back().getDynamicObject()
+                                       ->getProperty ("mappings").getArray();
+            check (mappings != nullptr && mappings->size() == 2
+                       && mappings->getUnchecked (0).getDynamicObject()
+                              ->getProperty ("cc") == juce::var (74),
+                   "midiCcState carries one { paramId, cc } entry per learnable parameter");
+        }
+
+        // Without a backend the actions are accepted and silently dropped.
+        bridge.setMidiCcController (nullptr);
+        const auto statsBefore = bridge.getStats();
+        bridge.handleJsEvent (jsCcAction (BridgeActions::midiCcLearn, "morphX"));
+        check (bridge.getStats().midiForwarded == statsBefore.midiForwarded + 1
+                   && bridge.getStats().midiRejected == statsBefore.midiRejected,
+               "without a backend cc actions are accepted and dropped");
     }
 
     // --- 11. Telemetry (native -> JS, additive to protocol v1) --------------------

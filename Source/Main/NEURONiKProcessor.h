@@ -105,6 +105,18 @@ public:
     void clearMidiLearnForParameter(const juce::String& paramID);
     bool isMidiLearnActive() const { return midiLearnActive.load(); }
     juce::String getParameterToLearn() const { return parameterToLearn; }
+    /** Index into getLearnableParams() of the armed parameter (-1 when idle).
+        The AUDIO thread reads this one (the String member is message-thread). */
+    int getParameterToLearnIndex() const { return parameterToLearnIndex.load(); }
+
+    /**
+     * CC -> parameter application (the half the native learn never had): the
+     * audio thread scans the block's CCs against the mapping table and queues
+     * (paramIndex, normalized) pairs; the MESSAGE thread drains them (a host
+     * timer) into setValueNotifyingHost — parameter change messages must not
+     * be sent from the audio thread.
+     */
+    void applyPendingCcChanges();
 
     const std::array<juce::String, 4>& getModelNames() const { return modelNames; }
 
@@ -129,6 +141,10 @@ public:
     std::atomic<float> uiMorphY { 0.0f };
     std::atomic<float> lfo1ValueForUI { 0.0f };
     std::atomic<float> lfo2ValueForUI { 0.0f };
+    // Voces activas del motor para la UI (el medidor del panel en modo plugin:
+    // el mismo dato que el meter del worklet ensena en local). processBlock lo
+    // escribe, getVoiceCountForUI lo lee.
+    std::atomic<int> uiVoiceCount { 0 };
 
     void setPolyphony(int numVoices);
     int getPolyphony() const;
@@ -136,6 +152,7 @@ public:
     // --- IVisualizationSource Implementation ---
     void getSpectralDataForUI(float* destination64) const noexcept override;
     void getEnvelopeLevelsForUI(float& amp, float& filter) const noexcept override;
+    int getVoiceCountForUI() const noexcept override;
     float getLfoValueForUI(int lfoIndex) const noexcept override;
     float getModulationValueForUI(int targetIndex) const noexcept override;
     void getMorphCoordinatesForUI(float& x, float& y) const noexcept override;
@@ -212,6 +229,15 @@ private:
     std::atomic<int> currentPolyphony { 8 };
     std::atomic<bool> midiLearnActive { false };
     juce::String parameterToLearn;
+    /** Same idea as parameterToLearn, but usable from the audio thread. */
+    std::atomic<int> parameterToLearnIndex { -1 };
+
+    // CC values caught against the mapping table (audio thread) waiting for the
+    // message thread to apply them (see applyPendingCcChanges).
+    struct PendingCc { int paramIndex; float normalized; };
+    static constexpr int ccQueueSize = 64;
+    juce::AbstractFifo ccValueFifo { ccQueueSize };
+    std::array<PendingCc, ccQueueSize> ccValueQueue;
 
     // MIDI Queue for Lock-Free injection
     struct QueuedMidi { juce::MidiMessage message; int sampleOffset; };

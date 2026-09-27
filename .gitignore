@@ -77,3 +77,10 @@ CONTROL_FILESCODE*.txt
 Scripts/Temp/
 Testing/
 build-wasm/
+
+# Agent/session work scripts (parches y sondas temporales de sesiones de
+# agentes en la raiz; nunca producto). Anclados a la raiz a proposito: que no
+# se oculte un _*.py legitimo en un subdirectorio futuro.
+/_*.py
+/_t*.mjs
+/_e1_*

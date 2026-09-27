@@ -161,6 +161,38 @@ MainComponent::MainComponent()
     framesCombo.addItem("8 frames", 8);
     framesCombo.setSelectedId(1);
 
+    // 2026-09-27: selector de metrica de clustering (ver LayerMetric).
+    // Descriptors (0.55) es el defecto; EnvelopeCosine (0.60 dedicado) es la
+    // letra del plan (sec 3.3) y queda disponible para comparar sin re-compilar.
+    metricLabel.setText("Metrica capas:", juce::dontSendNotification);
+    metricLabel.setJustificationType(juce::Justification::centredRight);
+    metricLabel.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.70f));
+    addAndMakeVisible(metricLabel);
+    metricCombo.addItem("Descriptores (0.55, defecto)", 1);
+    metricCombo.addItem("Coseno envolventes (0.60)", 2);
+    metricCombo.setSelectedId(1, juce::dontSendNotification);
+    {
+        juce::String savedMetric = loadSetting("clusteringMetric");
+        if (savedMetric.isNotEmpty())
+        {
+            const int id = savedMetric.getIntValue();
+            if (id == 1 || id == 2)
+                metricCombo.setSelectedId(id, juce::dontSendNotification);
+        }
+    }
+    metricCombo.setTooltip("Metrica del clustering por forma de envolvente (FASE 11.2). "
+                           "Descriptores (defecto): 1 - dist(plano soporte, entropia) con corte 0.55 -- "
+                           "separa SWEP1 en 2 capas y es la que pasa el banco CZ101. "
+                           "Coseno: envolventes crudas con corte 0.60 dedicado 2026-09-27 -- calibrado NEGATIVO "
+                           "(ciego al soporte, 1 capa en ambos juegos). Cambia y pulsa Analizar para comparar.");
+    metricCombo.onChange = [this]
+    {
+        saveSetting("clusteringMetric", juce::String(metricCombo.getSelectedId()));
+        updateLayersSummary();
+        repaint();
+    };
+    addAndMakeVisible(metricCombo);
+
     noteCombo.onChange = [this] { updateFreqFromRootNote(); };
 
     addAndMakeVisible(octaveCombo);
@@ -174,6 +206,21 @@ MainComponent::MainComponent()
     addAndMakeVisible(waveBox);
     addAndMakeVisible(spectralBox);
     addAndMakeVisible(layersBox);
+
+    // 2026-09-27: resumen de capas visible ANTES de exportar (selector arriba +
+    // numero de capas resultantes). La fila vive entre la guardia de pitch y los
+    // visualizadores (ver resized) y se actualiza tras cada analisis con el
+    // veredicto real del analizador (lastLayerCount / lastLayerTraces y puerta
+    // de plegado), no con copia en la GUI. El usuario ve CUANTAS capas salieron
+    // y con QUE metrica antes de pulsar Exportar (o si quedo exento por bi-rejilla).
+    layersSummaryLabel.setFont(juce::Font(juce::FontOptions(13.0f)));
+    layersSummaryLabel.setJustificationType(juce::Justification::centredLeft);
+    layersSummaryLabel.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.85f));
+    layersSummaryLabel.setColour(juce::Label::backgroundColourId, juce::Colours::black.withAlpha(0.15f));
+    layersSummaryLabel.setTooltip("Numero de capas del ultimo analisis y reparto (visible antes de Exportar). "
+                                  "Cambia la metrica arriba y pulsa Analizar para comparar.");
+    addAndMakeVisible(layersSummaryLabel);
+    updateLayersSummary();
 
     // Footer
     addAndMakeVisible(playOriginalButton);
@@ -396,6 +443,10 @@ void MainComponent::stopRecording()
         pitchEditor.setText(juce::String(detectedFrequency, 2), juce::dontSendNotification);
         updateRootNoteFromFreq(detectedFrequency);
         updateGridIndicator();
+        // 2026-09-27: nuevo material invalida el modelo previo (ver loadFile).
+        currentModel.isValid = false;
+        currentLayerView = {};
+        updateLayersSummary();
     }
 }
 
@@ -501,6 +552,13 @@ void MainComponent::loadFile()
                 detectedFrequency = analyzer.detectPitch(loadedAudio, loadedSampleRate);
                 pitchEditor.setText(juce::String(detectedFrequency, 2), juce::dontSendNotification);
                 updateGridIndicator();
+
+                // 2026-09-27: nuevo material invalida el modelo previo: el resumen
+                // de capas pasa a "sin analisis" con la metrica actual, visible
+                // antes del proximo Analizar/Exportar.
+                currentModel.isValid = false;
+                currentLayerView = {};
+                updateLayersSummary();
 
                 analyzeButton.setEnabled(true);
                 playOriginalButton.setEnabled(true);
@@ -695,16 +753,120 @@ int MainComponent::selectedFrameCount() const
     return id > 1 ? id : 1;
 }
 
+Analysis::LayerMetric MainComponent::selectedMetric() const
+{
+    return metricCombo.getSelectedId() == 2
+        ? Analysis::LayerMetric::EnvelopeCosine
+        : Analysis::LayerMetric::Descriptors;
+}
+
+void MainComponent::updateLayersSummary()
+{
+    const auto selMetric = selectedMetric();
+    const juce::String selName = (selMetric == Analysis::LayerMetric::EnvelopeCosine
+                                      ? "Coseno envolventes"
+                                      : "Descriptores");
+    const juce::String selCut  = (selMetric == Analysis::LayerMetric::EnvelopeCosine
+                                      ? "0.60"
+                                      : "0.55");
+    const bool hasAudio = loadedAudio.getNumSamples() > 0;
+    const bool hasModel = currentModel.isValid;
+
+    if (! hasAudio)
+    {
+        layersSummaryLabel.setText("Capas: -- sin audio -- carga un WAV y pulsa Analizar  |  metrica actual: "
+                                       + selName + " (" + selCut + ")  |  Rejilla: sin medida",
+                                   juce::dontSendNotification);
+        return;
+    }
+
+    if (! hasModel)
+    {
+        const int wantFrames = selectedFrameCount();
+        juce::String msg = "Capas: sin analisis -- metrica actual: " + selName + " (" + selCut + ")  |  "
+                           + juce::String(wantFrames) + " frame" + (wantFrames == 1 ? "" : "s")
+                           + (wantFrames <= 1 ? " (estatico = 1 capa, sin clustering)" : " (temporal)")
+                           + " -- pulsa Analizar para ver capas antes de Exportar";
+        layersSummaryLabel.setText(msg, juce::dontSendNotification);
+        return;
+    }
+
+    const int nFrames = currentModel.frameCount;
+    if (nFrames <= 1)
+    {
+        juce::String msg = "Capas: 1 (analisis estatico -- sin clustering; con 2+ frames la metrica "
+                           + selName + " (" + selCut + ") habria buscado capas)  |  "
+                           + juce::String([&] { int c=0; for (int k=0;k<64;++k) if (std::abs(currentModel.amplitudes[(size_t)k]) > 1.0e-6f) ++c; return c; }()) + " parciales activos";
+        layersSummaryLabel.setText(msg, juce::dontSendNotification);
+        return;
+    }
+
+    const bool skipped = analyzer.lastClusteringSkipped();
+    const auto usedMetric = analyzer.lastLayerMetric();
+    const juce::String usedName = (usedMetric == Analysis::LayerMetric::EnvelopeCosine
+                                       ? "Coseno envolventes"
+                                       : "Descriptores");
+    const juce::String usedCut  = (usedMetric == Analysis::LayerMetric::EnvelopeCosine
+                                       ? "0.60"
+                                       : "0.55");
+    const bool pending = (usedMetric != selMetric);
+    const int nLayers = analyzer.lastLayerCount();
+    const auto& fold = analyzer.lastOctaveFold();
+
+    juce::String reparto;
+    if (skipped)
+        reparto = "exento";
+    else if (nLayers <= 1)
+        reparto = juce::String(analyzer.lastLayerTraces(0)) + " trazas en 1 capa (mono-rejilla)";
+    else
+    {
+        for (int l = 0; l < nLayers; ++l)
+        {
+            if (l > 0) reparto += "+";
+            reparto += juce::String(analyzer.lastLayerTraces(l));
+        }
+        reparto += " trazas en " + juce::String(nLayers) + " capas";
+    }
+
+    juce::String foldText;
+    if (fold.observations <= 0 || fold.foldCents < 0.0f)
+        foldText = "plegado: sin medida";
+    else if (fold.biGrid)
+        foldText = "plegado: bi-rejilla " + juce::String(fold.foldCents, 1) + "/" + juce::String(fold.rawCents, 1)
+                   + " cents (" + juce::String(fold.octaveFlips) + " salto(s)) -- exento";
+    else
+        foldText = "plegado: mono-rejilla " + juce::String(fold.foldCents, 1) + "/" + juce::String(fold.rawCents, 1)
+                   + " cents" + (fold.octaveFlips > 0 ? " (" + juce::String(fold.octaveFlips) + " salto(s) plegado(s))" : "")
+                   + " (" + juce::String(fold.observations) + " vent.)";
+
+    juce::String msg = "Capas: " + juce::String(nLayers) + (nLayers == 1 ? " capa" : " capas")
+                       + (skipped ? " (exento de clustering)" : "")
+                       + " -- metrica usada: " + usedName + " (" + usedCut + ")"
+                       + "  |  reparto: " + reparto
+                       + "  |  " + foldText;
+
+    if (nLayers > 1)
+        msg += "  |  frames: " + juce::String(nFrames);
+
+    if (pending)
+        msg += "  |  pendiente: re-analiza con " + selName + " (" + selCut + ") para comparar";
+
+    layersSummaryLabel.setText(msg, juce::dontSendNotification);
+}
+
 void MainComponent::performAnalysis(float f0, bool fixedGrid)
 {
     // FASE 10.4: el analisis temporal produce N frames cuando el usuario lo
     // pide; con 1 frame la llamada es equivalente al analisis estatico.
     // REJILLA FIJA (2026-09-25): el modo declarado viaja al analizador, que deja
     // de seguir el pitch por ventana y lo declara en el modelo (gridFixed).
+    // 2026-09-27: la metrica de clustering viaja tambien (selector expuesto en
+    // la GUI; Descriptors por defecto, EnvelopeCosine dedicado 0.60).
     const int nFrames = selectedFrameCount();
+    const auto metric = selectedMetric();
     currentModel = (nFrames <= 1)
         ? analyzer.analyze(loadedAudio, loadedSampleRate, f0, fixedGrid)
-        : analyzer.analyzeTemporal(loadedAudio, loadedSampleRate, f0, nFrames, fixedGrid);
+        : analyzer.analyzeTemporal(loadedAudio, loadedSampleRate, f0, nFrames, fixedGrid, metric);
     // GUARDIA (2026-09-23): aviso cuando el material no es cuasi-monotonico y
     // el modelo estatico saldria des-afinado. El analisis temporal (frames)
     // sigue el pitch por ventana y no dispara la guardia.
@@ -776,6 +938,7 @@ void MainComponent::performAnalysis(float f0, bool fixedGrid)
         ? Analysis::buildLayerView(currentModel)
         : Analysis::buildLayerView(currentModel, analyzer.lastOctaveFold());
 
+    updateLayersSummary();
     repaint();
 }
 
@@ -1043,6 +1206,21 @@ void MainComponent::resized()
         pitchGuardLabel.setBounds (area.removeFromTop (juce::roundToInt (20.0f * scaleY)));
     else
         pitchGuardLabel.setBounds ({});
+
+    // 2026-09-27: fila del SELECTOR de metrica + RESUMEN de capas visible
+    // ANTES de exportar. El selector (metricLabel + metricCombo) vive en la
+    // misma fila que el resumen numerico: el usuario elige la metrica y lee
+    // CUANTAS capas salieron (y el reparto) sin abrir la pestana CAPAS y sin
+    // haber exportado. La fila existe siempre (sin analisis pone "sin analisis").
+    {
+        auto metricRow = area.removeFromTop(juce::roundToInt(22.0f * scaleY));
+        metricLabel.setBounds(metricRow.removeFromLeft(juce::roundToInt(90.0f * scaleX)));
+        metricCombo.setBounds(metricRow.removeFromLeft(juce::roundToInt(210.0f * scaleX)));
+        metricRow.removeFromLeft(juce::roundToInt(10.0f * scaleX));
+        layersSummaryLabel.setBounds(metricRow);
+        metricLabel.setFont(juce::Font(juce::FontOptions(12.0f * scale)));
+        layersSummaryLabel.setFont(juce::Font(juce::FontOptions(12.0f * scale)));
+    }
 
     // Footer
     auto footerArea = area.removeFromBottom(juce::roundToInt(40.0f * scaleY));

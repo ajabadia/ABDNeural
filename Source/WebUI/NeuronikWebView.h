@@ -104,6 +104,12 @@ public:
         midiAdapter = std::make_unique<MidiInjectionAdapter> (processor);
         bridge->setMidiController (midiAdapter.get());
 
+        // Tabla de mapeos CC (el menu MIDI CONTROL del LCD): la MISMA tabla del
+        // MidiLearner nativo — learn/clear/reset como acciones y la tabla como
+        // midiCcState pegado a cada snapshot.
+        midiCcAdapter = std::make_unique<MidiCcMappingsAdapter> (processor);
+        bridge->setMidiCcController (midiCcAdapter.get());
+
         // El adaptador de modelos tambien CARGA (los slots A..D de la pagina: los
         // loadA..loadD del panel nativo). El dialogo es asincrono, asi que la
         // respuesta sale de sus dos callbacks y no del acto de pedirla: el cable lo
@@ -149,6 +155,10 @@ public:
     {
         if (bridge == nullptr)
             return;
+
+        // CC -> parametro (los CC que el bloque encolo): ANTES del sondeo, para
+        // que el parameterChanged del valor aplicado salga en el MISMO tick.
+        processor.applyPendingCcChanges();
 
         bridge->publishPendingChanges();
 
@@ -356,6 +366,7 @@ private:
     std::unique_ptr<PresetManagerAdapter> presetAdapter;
     std::unique_ptr<MidiInjectionAdapter> midiAdapter;
     std::unique_ptr<EngineModelsAdapter> modelsAdapter;
+    std::unique_ptr<MidiCcMappingsAdapter> midiCcAdapter;
     std::unique_ptr<RandomizerAdapter> randomizeAdapter;
     std::unique_ptr<VisualizationSourceAdapter> visualizationAdapter;
 

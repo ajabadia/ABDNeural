@@ -26,10 +26,11 @@ function makeHost() {
 }
 
 function makeStore(overrides = {}) {
+  const { sendMidiCcLearn, sendMidiCcClear, sendMidiCcReset, ...rest } = overrides;
   const state = {
     parameters: defaultNormalizedState(SCREEN_PARAMETER_IDS),
     presetState: { presets: [], current: 'INIT SOUND' },
-    ...overrides,
+    ...rest,
   };
   const push = vi.fn();
 
@@ -38,6 +39,10 @@ function makeStore(overrides = {}) {
     push,
     getState: () => state,
     pushParameter: push,
+    // Acciones MIDI CC del LCD (no son estado: van directas al retorno).
+    sendMidiCcLearn: sendMidiCcLearn ?? vi.fn(),
+    sendMidiCcClear: sendMidiCcClear ?? vi.fn(),
+    sendMidiCcReset: sendMidiCcReset ?? vi.fn(),
   };
 }
 
@@ -64,6 +69,60 @@ describe('lcdTop / el árbol del synth (LcdMenuManager migrado)', () => {
 
     // RESET ALL es una Action en ambos.
     expect(branch(neuronik, 'MIDI CONTROL').sub.find((i) => i.label === 'RESET ALL').type).toBe('action');
+  });
+});
+
+describe('lcdTop / showParameterPreview (el LCD ensena lo que giras)', () => {
+  it('un edit de usuario (id, normalizado) pinta label + valor del contrato en transitorio', () => {
+    const store = makeStore();
+    const view = createLcdTop({ store });
+    makeHost().append(view.element);
+
+    // El reposo pinta PATCH/READY; el preview pisa las dos lineas.
+    view.showParameterPreview('masterLevel', 0.5);
+
+    const lines = [...view.element.querySelectorAll('.abd-lcd__line')].map((el) => el.textContent);
+    expect(lines[0]).toContain('MASTER');
+    expect(lines[1]).toContain('> ');
+    // El valor formateado viene del contrato (displayText del real): un float
+    // sin unidad 0..1 se ensena en porcentaje (50%).
+    expect(lines[1]).toContain('50%');
+
+    view.destroy();
+  });
+
+  it('en EDIT del menu NO pisa: la pantalla sigue ensenando lo que se edita', () => {
+    const store = makeStore();
+    const view = createLcdTop({ store });
+    makeHost().append(view.element);
+
+    // Abrir EDIT de un parametro del menu (GLOBAL -> MASTER VOL).
+    const machine = view.panel.machine;
+    machine.onMenuPress();
+    machine.onOkPress();
+    machine.onOkPress();
+
+    expect(machine.state).toBe('edit');
+    view.panel.repaint(); // las llamadas directas a la maquina no repintan
+
+    view.showParameterPreview('morphX', 0.9);
+
+    const lines = [...view.element.querySelectorAll('.abd-lcd__line')].map((el) => el.textContent);
+    // Sigue el item del menu, no el preview del edit de usuario.
+    expect(lines[0]).toContain('MASTER VOL');
+    expect(lines[1]).not.toContain('MORPH');
+
+    view.destroy();
+  });
+
+  it('un id desconocido no revienta y el preview de native no se dispara solo', () => {
+    const store = makeStore();
+    const view = createLcdTop({ store });
+    makeHost().append(view.element);
+
+    expect(() => view.showParameterPreview('id-que-no-existe', 0.5)).not.toThrow();
+
+    view.destroy();
   });
 });
 
@@ -147,6 +206,113 @@ describe('lcdTop / el D-pad conduce parámetros REALES', () => {
     expect(machine.editing).toBeNull();
 
     view.destroy();
+  });
+});
+
+describe('lcdTop / los items cc del menu MIDI CONTROL son FUNCIONALES', () => {
+  it('EDIT de un cc: OK/encoder+ arma el learn, encoder- desmapea, y nada mueve el parametro', () => {
+    const store = makeStore({
+      midiCcMappings: [
+        { paramId: 'filterCutoff', cc: 74 },
+        { paramId: 'filterRes', cc: 71 },
+        { paramId: 'oscLevel', cc: -1 },
+      ],
+      sendMidiCcLearn: vi.fn(),
+      sendMidiCcClear: vi.fn(),
+      sendMidiCcReset: vi.fn(),
+    });
+    const view = createLcdTop({ store });
+    makeHost().append(view.element);
+
+    const machine = view.panel.machine;
+
+    // Entrar por navegacion: MENU -> MIDI CONTROL (4 a la derecha) -> OK ->
+    // primer item (CC CUTOFF) -> OK abre SU EDIT.
+    machine.onMenuPress();
+    for (let i = 0; i < 4; i += 1) machine.onArrow('right');
+    machine.onOkPress();
+    machine.onOkPress();
+
+    expect(machine.state).toBe('edit');
+    expect(machine.editing?.type).toBe('cc');
+
+    // El EDIT de un cc ensena SU CC de la tabla del motor (segunda linea).
+    view.panel.repaint();
+    const lines = [...view.element.querySelectorAll('.abd-lcd__line')].map((el) => el.textContent);
+    expect(lines[0]).toBe('CC CUTOFF');
+    expect(lines[1]).toBe('CC 74');
+
+    // Encoder+ (OK/‹›+): arma el learn de ESE parametro.
+    machine.onEncoderRotate(1);
+    expect(store.sendMidiCcLearn).toHaveBeenCalledWith('filterCutoff');
+
+    // Encoder-: desmapea.
+    machine.onEncoderRotate(-1);
+    expect(store.sendMidiCcClear).toHaveBeenCalledWith('filterCutoff');
+
+    // Y NADA empujo el parametro: el EDIT del cc no es un edit de valor.
+    expect(store.push).not.toHaveBeenCalled();
+
+    view.destroy();
+  });
+
+  it('el valor cc sin mapeo es CC --, RESET ALL llama al reset de la tabla y en local no revienta', () => {
+    const store = makeStore({
+      midiCcMappings: [{ paramId: 'filterCutoff', cc: -1 }],
+      sendMidiCcLearn: vi.fn(),
+      sendMidiCcClear: vi.fn(),
+      sendMidiCcReset: vi.fn(),
+    });
+    const view = createLcdTop({ store });
+    makeHost().append(view.element);
+
+    const machine = view.panel.machine;
+    const item = buildMenuTree(0)[4].sub[0]; // MIDI CONTROL -> CC CUTOFF
+
+    // Sin mapeo, el EDIT ensena CC -- (la pantalla real: enter/EDIT/repaint).
+    machine.onMenuPress();
+    for (let i = 0; i < 4; i += 1) machine.onArrow('right');
+    machine.onOkPress();
+    machine.onOkPress();
+    view.panel.repaint();
+    const ccLines = [...view.element.querySelectorAll('.abd-lcd__line')].map((el) => el.textContent);
+    expect(ccLines.some((text) => text.includes('CC --'))).toBe(true);
+
+    // Rehacer el arnes para la parte del RESET sin el EDIT abierto.
+    view.destroy();
+    const view2 = createLcdTop({ store });
+    makeHost().append(view2.element);
+    const machine2 = view2.panel.machine;
+
+    // RESET ALL (action): el reset viaja como accion de estado.
+    machine2.onMenuPress();
+    for (let i = 0; i < 4; i += 1) machine2.onArrow('right');
+    machine2.onOkPress();
+    machine2.onArrow('down');
+    machine2.onArrow('down');
+    machine2.onOkPress();
+    expect(store.sendMidiCcReset).toHaveBeenCalledTimes(1);
+
+    view2.destroy();
+
+    // Modo local: sin tabla ni acciones en el store, navegar hasta el EDIT
+    // de un cc no revienta (el EDIT es un no-op honesto).
+    const localView = createLcdTop({ store: makeStore() });
+    makeHost().append(localView.element);
+
+    const localMachine = localView.panel.machine;
+    localMachine.onMenuPress();
+    for (let i = 0; i < 4; i += 1) localMachine.onArrow('right');
+    localMachine.onOkPress();
+    localMachine.onOkPress();
+    localMachine.onEncoderRotate(1); // sin sendMidiCc* en el store: no-op
+
+    expect(localMachine.state).toBe('edit');
+    localView.panel.repaint();
+    const localLines = [...localView.element.querySelectorAll('.abd-lcd__line')].map((el) => el.textContent);
+    expect(localLines.some((text) => text.includes('CC --'))).toBe(true);
+
+    localView.destroy();
   });
 });
 

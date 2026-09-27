@@ -172,6 +172,30 @@ namespace BridgeActions
     // not parameter edits: the backend performs them on the APVTS itself.
     inline constexpr const char* randomize = "randomize";
 
+    // MIDI CC mappings (additive to protocol v1): the page's MIDI CONTROL menu
+    // edits the SAME mapping table the native MidiLearner edits. The table lives
+    // in the processor (MidiMappingManager: RT-safe, persisted in
+    // getStateInformation), so the page can neither own it nor guess it — it travels.
+    //
+    //   native -> JS
+    //     { action: "midiCcState", mappings: [ { paramId, cc }, ... ] }
+    //       one entry per LEARNABLE parameter (cc = -1 when unmapped); sent with
+    //       every snapshot and whenever the table changes.
+    //
+    //   JS -> native
+    //     { action: "midiCcLearn", paramId }        arm learn for ONE parameter
+    //     { action: "midiCcClear", paramId }        unmap that parameter
+    //     { action: "midiCcReset" }                 the manager's default table
+    //
+    //   midiCcLearn/midiCcClear/midiCcReset are STATE actions, not parameter
+    //   edits: the backend performs them on its own table and answers with a
+    //   fresh midiCcState. With no backend installed they still count as
+    //   accepted (same convention as MIDI in silent mode) — the page cannot tell.
+    inline constexpr const char* midiCcState = "midiCcState";
+    inline constexpr const char* midiCcLearn = "midiCcLearn";
+    inline constexpr const char* midiCcClear = "midiCcClear";
+    inline constexpr const char* midiCcReset = "midiCcReset";
+
     // Telemetry (additive to protocol v1; see bridge-protocol.json): one frame of
     // VISUAL data (spectral magnitudes, envelopes, LFOs, morph, live modulation)
     // polled from a VisualizationController. Emitted only when a frame differs
@@ -226,6 +250,33 @@ public:
 
     /** @returns how many parameters changed value (0 with nothing to do). */
     virtual int randomize() = 0;
+};
+
+/**
+ * @class MidiCcController
+ * @brief What the bridge needs from the MIDI CC mapping table, and nothing more.
+ *
+ * The table lives in the processor (`Main::MidiMappingManager`): RT-safe
+ * atomics, persisted with the plugin state, shared with the native MidiLearner.
+ * This controller is the wire side — the page asks, the table answers. All
+ * methods run on the message thread; the underlying slots are atomics anyway.
+ */
+class MidiCcController
+{
+public:
+    virtual ~MidiCcController() = default;
+
+    /** @brief Arm learn for ONE parameter (the next CC the plugin receives wins). */
+    virtual void armLearn (const juce::String& paramID) = 0;
+
+    /** @brief Unmap that parameter. */
+    virtual void clearMapping (const juce::String& paramID) = 0;
+
+    /** @brief Restore the manager's default table. */
+    virtual void resetToDefaults() = 0;
+
+    /** @brief The current view: one { paramId, cc } per learnable parameter. */
+    virtual std::vector<std::pair<juce::String, int>> getMappings() const = 0;
 };
 
 /**
@@ -326,6 +377,13 @@ public:
     /** Amp and filter envelope levels, 0..1. */
     virtual void getEnvelopeLevels (float& amp, float& filter) = 0;
 
+    /**
+     * Voces activas del motor (el medidor del panel). Con implementacion por
+     * defecto (0): los tests y cualquier fuente parcial no tienen por que
+     * conocer la polifonia.
+     */
+    virtual int getVoiceCount() { return 0; }
+
     /** LFO level by index (0..numLfos-1), 0..1. */
     virtual float getLfoValue (int lfoIndex) = 0;
 
@@ -417,6 +475,13 @@ public:
     void setRandomizeController (RandomizeController* newController) noexcept;
 
     /**
+     * @brief Install the MIDI CC mapping backend. Passing nullptr makes the page's
+     *        cc actions no-ops that still count as accepted (silent mode), same
+     *        rule as MIDI. Must be called on the message thread, before the page loads.
+     */
+    void setMidiCcController (MidiCcController* newController) noexcept;
+
+    /**
      * @brief Send one midiNoteState message (held notes + wheel positions)
      *        from the given external MIDI view. Called by the host poll so the
      *        page keyboard mirrors hardware/DAW MIDI. No-op without a sender.
@@ -452,6 +517,14 @@ public:
      *          failure: the page shows the reason next to the slot.
      */
     void sendModelError (int slot, const juce::String& detail);
+
+    /**
+     * @brief Publish the MIDI CC mapping table (midiCcState).
+     * @details Sent with every full snapshot and after every cc action (learn/
+     *          clear/reset), so the page's MIDI CONTROL menu repaints from the
+     *          SAME table the engine reads. No-op without a backend.
+     */
+    void sendMidiCcState();
 
     /**
      * @brief Handle one message from the WebUI.
@@ -515,6 +588,7 @@ private:
     unsigned int telemetrySeq = 0;
     std::array<float, 64> lastSpec {};
     float lastEnvAmp = -1.0f, lastEnvFilter = -1.0f;
+    int lastVoiceCount = -1; // -1: el primer frame siempre viaja
     float lastMorphX = -1.0f, lastMorphY = -1.0f;
     float lastLfo1 = -1.0f, lastLfo2 = -1.0f;
     std::vector<float> lastMod {};
@@ -545,6 +619,7 @@ private:
 
     /** @brief MIDI actions: validate ranges, forward to the controller. */
     void handleMidiAction (const juce::String& action, const juce::DynamicObject& message);
+    void handleMidiCcAction (const juce::String& action, const juce::DynamicObject& message);
 
     /** @brief loadModel: validate the slot, hand the request to the backend. */
     void handleLoadModel (const juce::DynamicObject& message);
@@ -571,6 +646,7 @@ private:
     MidiController* midi = nullptr;        //!< not owned; the host outlives it
     NativeModelController* models = nullptr; //!< not owned; the host outlives it
     RandomizeController* randomizer = nullptr; //!< not owned; the host outlives it
+    MidiCcController* midiCc = nullptr;        //!< not owned; the host outlives it
     int snapshotVersion = 0;
     Stats stats;
     juce::StringArray lastModelNames;   //!< los nombres ya publicados, por ranura

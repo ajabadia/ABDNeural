@@ -102,6 +102,69 @@ void ParameterBridge::setRandomizeController (RandomizeController* newController
     randomizer = newController;
 }
 
+void ParameterBridge::setMidiCcController (MidiCcController* newController) noexcept
+{
+    jassert (juce::MessageManager::existsAndIsCurrentThread());
+    midiCc = newController;
+}
+
+void ParameterBridge::sendMidiCcState()
+{
+    if (midiCc == nullptr)
+        return;
+
+    // One entry per LEARNABLE parameter — including cc = -1 (unmapped) — so the
+    // page's menu paints the WHOLE truth of the table, not just the hits.
+    juce::Array<juce::var> mappings;
+
+    for (const auto& [paramId, cc] : midiCc->getMappings())
+    {
+        juce::DynamicObject::Ptr entry = new juce::DynamicObject();
+        entry->setProperty ("paramId", paramId);
+        entry->setProperty ("cc", cc);
+        mappings.add (juce::var (entry.get()));
+    }
+
+    juce::DynamicObject::Ptr message = new juce::DynamicObject();
+    message->setProperty ("action", BridgeActions::midiCcState);
+    message->setProperty ("mappings", juce::var (mappings));
+
+    send (juce::var (message.get()), false);
+}
+
+void ParameterBridge::handleMidiCcAction (const juce::String& action, const juce::DynamicObject& message)
+{
+    // STATE actions on the mapping table: the backend answers with a fresh
+    // midiCcState, so the page repaints its menu from the result — no echo,
+    // no optimistic state on the page side.
+    ++stats.midiForwarded;
+
+    if (midiCc == nullptr)
+        return; // silent mode: accepted, not performed (same as MIDI without device)
+
+    if (action == BridgeActions::midiCcReset)
+    {
+        midiCc->resetToDefaults();
+        sendMidiCcState();
+        return;
+    }
+
+    const auto paramId = message.getProperty ("paramId").toString();
+
+    if (paramId.isEmpty())
+    {
+        ++stats.midiRejected;
+        return;
+    }
+
+    if (action == BridgeActions::midiCcLearn)
+        midiCc->armLearn (paramId);
+    else if (action == BridgeActions::midiCcClear)
+        midiCc->clearMapping (paramId);
+
+    sendMidiCcState();
+}
+
 int ParameterBridge::getParameterCount() const noexcept
 {
     return static_cast<int> (entries.size());
@@ -187,6 +250,10 @@ void ParameterBridge::sendFullSnapshot()
     ++snapshotVersion;
 
     send (snapshot, true);
+
+    // La tabla de mapeos CC no es del APVTS: los parametros no la cubren y viaja
+    // como los modelos — pegada a cada snapshot (y tras cada accion cc).
+    sendMidiCcState();
 
     // The page now knows every value: anything the native side changes from here on
     // is a delta, and nothing is re-sent on the next poll.
@@ -341,6 +408,8 @@ void ParameterBridge::sendTelemetry()
     float envAmp = 0.0f, envFilter = 0.0f;
     visualization->getEnvelopeLevels (envAmp, envFilter);
 
+    const int voices = visualization->getVoiceCount();
+
     const int numTargets = visualization->getModulationTargetCount();
     std::vector<float> mod ((size_t) std::max (0, numTargets), 0.0f);
     for (int i = 0; i < numTargets; ++i)
@@ -360,7 +429,8 @@ void ParameterBridge::sendTelemetry()
     {
         anyMoved = moved (envAmp, lastEnvAmp) || moved (envFilter, lastEnvFilter)
                    || moved (morphX, lastMorphX) || moved (morphY, lastMorphY)
-                   || moved (lfo1, lastLfo1) || moved (lfo2, lastLfo2);
+                   || moved (lfo1, lastLfo1) || moved (lfo2, lastLfo2)
+                   || voices != lastVoiceCount; // el medidor vive con cada voz
         if (! anyMoved && mod.size() != lastMod.size())
             anyMoved = true; // el numero de targets cambio: el frame importa
         if (! anyMoved)
@@ -377,6 +447,7 @@ void ParameterBridge::sendTelemetry()
     lastSpec = spec;
     lastEnvAmp = envAmp;
     lastEnvFilter = envFilter;
+    lastVoiceCount = voices;
     lastMorphX = morphX;
     lastMorphY = morphY;
     lastLfo1 = lfo1;
@@ -409,6 +480,7 @@ void ParameterBridge::sendTelemetry()
     message->setProperty ("seq", (int) ++telemetrySeq);
     message->setProperty ("spectral", juce::var (specVar));
     message->setProperty ("envelopes", juce::var (envVar));
+    message->setProperty ("voices", voices);
     message->setProperty ("lfos", juce::var (lfoVar));
     message->setProperty ("modulation", juce::var (modVar));
     message->setProperty ("morph", juce::var (morphVar));
@@ -748,6 +820,14 @@ void ParameterBridge::handleJsEvent (const juce::var& message)
      || action == BridgeActions::midiPanic)
     {
         handleMidiAction (action, *object);
+        return;
+    }
+
+    if (action == BridgeActions::midiCcLearn
+     || action == BridgeActions::midiCcClear
+     || action == BridgeActions::midiCcReset)
+    {
+        handleMidiCcAction (action, *object);
         return;
     }
 

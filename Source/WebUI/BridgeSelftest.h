@@ -25,13 +25,25 @@
  *      APVTS. La ruta se DERIVA del APVTS (el primer slot con fuente ENV), no
  *      escrita a mano. Corre CON el cajon de la direccion 0 delante y demuestra
  *      ademas que el opener cierra al hermano y abre el suyo.
+ *   1b-bis. VOLVER: el retorno del salto ES reversible. El boton "VOLVER A LA
+ *      RUTA n" del cajon de origen (routeBack del panel) reabre la MATRIZ con el
+ *      MISMO slot resaltado: re-salto -> cierre por el ✕ de usuario -> boton
+ *      presente con SU numero -> clic -> matriz abierta, SU slot. El slot viaja
+ *      del guion de ENV-RUTAS (lo que la pagina PINTO) al de VOLVER, sin
+ *      hardcodear: la sesion del usuario puede traer cualquier matriz.
+ *   1b-ter. RESUMEN-RUTAS: las filas clicables del RESUMEN de matriz (lienzo de
+ *      la banda del fondo) abren la MATRIZ en SU slot. Se pulsa UNA fila cuyo
+ *      slot NO fue el de ENV-RUTAS (un segundo slot medido), se cruza lo pintado
+ *      con el APVTS del slot pulsado y se exige velo + resalte. El cajon queda
+ *      cerrado al terminar (settle) para AGUJA.
  *   1c. AGUJA: una nota de la pagina SUENA en el motor y sus DOS envolventes se
  *      VEN: el frame envelopes[amp, filter] de la telemetria pinta la aguja
  *      horizontal sobre cada curva ADSR (data-visible + 'd' del path), en las
- *      DOS vistas (lienzo y cajon). Tres medidas: ocultas en silencio, visibles
+ *      DOS vistas (lienzo y cajon). Cuatro medidas: ocultas en silencio, visibles
  *      con nivel alto en el sustain (cruzado con getEnvelopeLevelsForUI: dos
- *      caras del mismo canal) y ocultas tras el release — la aguja no se queda
- *      clavada cuando la nota muere.
+ *      caras del mismo canal), ocultas tras el release — la aguja no se queda
+ *      clavada cuando la nota muere — y PANIC: el clic en el medidor de voces
+ *      lo apaga y silencia las agujas.
  *   1d. NATIVO -> JS: mueve `masterLevel` por el APVTS (lo que haria un control
  *      nativo) y lee la posicion del slider de la pagina.
  *   2. JS -> NATIVO: dispara un `input` de verdad sobre ese slider (lo que
@@ -80,6 +92,14 @@
  *      motor) y —lo que ningun test de manejadores puede ver— que el HIT-TESTING
  *      de la pagina viva deje el centro del pad en el pad y el trazo del aro en
  *      el aro: el overlay del aro cubria el pad entero y se comia sus gestos.
+ *   7b. ESQUINA: el gesto inverso mide la calle de vuelta. Un CLIC en la esquina
+ *      A del pad (la ranura 0, cargada desde el arranque) tiene que abrir el
+ *      cajon de MODELOS con SU ranura resaltada (data-slot-visual="0", la
+ *      numeracion 0-based del motor) — el wiring onCornerClick ->
+ *      openDrawerRoute('models', 0). Doble guarda: si la esquina no esta
+ *      clicable (sin modelo) o el cajon no abre con el resalte, FAIL; el cajon
+ *      queda cerrado al salir (settle por ID) y la matriz se re-abre por el
+ *      APVTS con el estado que ZRING necesita.
  *
  * Las direcciones 0 y 5 las exige la unica pagina que hay: la WebUI del plugin. Hasta el
  * ticket 8.4 el arnes podia declarar una direccion NO APLICABLE cuando el dueno servia la
@@ -271,10 +291,40 @@ public:
 
     /** @brief Presupuesto total. Un hop perdido termina en FAIL, nunca cuelga:
      *         en el VST3 el arnes corre dentro del editor del DAW. */
-    // 60 s: la colecta del arco ZRING (evaluate siacrono x N sobre la pagina
-    // viva) anade segundos reales al final del arnes y el presupuesto de 30 s
-    // de las direcciones previas se quedaba corto.
-    static constexpr double timeoutMs = 90000.0;
+    // 150 s (antes 90): la colecta del arco ZRING son ~890 tomas con pacing de
+    // 30 ms DESPUES de cada respuesta — en un host con la CPU justa el evaluate
+    // tarda mas que el margen y encarece CADA toma. El presupuesto tiene que
+    // caber el peor caso, no el de la bancada rapida.
+    //
+    // SUBIRLO SIN RECOMPILAR: la env var NEURONIK_SELFTEST_BUDGET (SEGUNDOS)
+    // escala el watchdog y TODOS los presupuestos de tomas por su factor
+    // (segundos / 150). El valor por defecto deja los numeros de siempre;
+    // NEURONIK_SELFTEST_BUDGET=300 dobla todo (watchdog 300 s, ZRING 1080/60/640,
+    // agujas x2). Es un factor, no un tope: la colecta sale TEMPRANO cuando el
+    // host responde, asi que un presupuesto mayor nunca ralentiza una pasada
+    // sana — solo amplia el techo del peor caso. Los GATES fisicos de ZRING
+    // (300..800 ms, ligados al LFO de 1 Hz) y el pacing de 30 ms NO se escalan:
+    // son propiedades del motor, no del host.
+    static constexpr double defaultTimeoutMs = 150000.0;
+    double timeoutMs = defaultTimeoutMs;
+    double budgetFactor = 1.0;   // segundos/150 de la env var: escala las tomas de AGUJA
+
+    // ------------------ ZRING: margenes de la medicion ------------------------
+    // El LFO gira a 1.0 Hz y la senoide CON signo culmina 2 veces por periodo:
+    // la distancia esperada entre cristas del arco es ~500 ms. El gate 350..700
+    // (anterior) era estrecho: un evaluate lento o un frame de telemetria
+    // perdido estiran la distancia medida SIN que el motor se mueva del 1 Hz
+    // real. 300..800 ms acoge hasta ~2x de estiramiento del canal.
+    static constexpr double zringPeriodMinMs = 300.0;
+    static constexpr double zringPeriodMaxMs = 800.0;
+
+    // Tomas por colecta (el pacing real es 30 ms MAS la latencia del evaluate):
+    // mas tomas dejan mas cristas al detector aunque el host deje caer frames
+    // de telemetria. Antes 480/24/280. La env var del presupuesto los escala
+    // (ver timeoutMs arriba).
+    int zringSamplesOn = 540;     // A: LFO 2 al 100%
+    int zringSamplesOff = 30;     // B: control negativo (fuente Off)
+    int zringSamplesBack = 320;   // A de nuevo: reanudacion
 
     /** @brief Rutas de la matriz que la pagina monta en el cajon (mod1..mod4). */
     static constexpr int numMatrixSlots = 4;
@@ -296,6 +346,36 @@ public:
           log (std::move (logToUse)),
           onFinished (std::move (finishedToUse))
     {
+        // El presupuesto vivo, sin recompilar: NEURONIK_SELFTEST_BUDGET en
+        // SEGUNDOS escala el watchdog y todos los presupuestos de tomas (el
+        // factor es segundos / 150, el default). Un valor no numerico o <= 0
+        // deja los numeros de siempre; la colecta sale temprano, asi que un
+        // factor alto nunca ralentiza una pasada sana.
+        const auto budget = juce::SystemStats::getEnvironmentVariable
+                                ("NEURONIK_SELFTEST_BUDGET", juce::String());
+
+        if (budget.isNotEmpty())
+        {
+            const auto seconds = budget.getDoubleValue();
+
+            if (seconds > 0.0)
+            {
+                const double factor = seconds * 1000.0 / defaultTimeoutMs;
+
+                budgetFactor = factor;
+                timeoutMs = defaultTimeoutMs * factor;
+                zringSamplesOn = (int) std::lround (540.0 * factor);
+                zringSamplesOff = (int) std::lround (30.0 * factor);
+                zringSamplesBack = (int) std::lround (320.0 * factor);
+
+                log (juce::String ("[selftest] presupuesto por NEURONIK_SELFTEST_BUDGET: ")
+                         + juce::String (seconds) + " s (factor " + juce::String (factor, 2)
+                         + ": watchdog " + juce::String (timeoutMs / 1000.0, 0)
+                         + " s, ZRING " + juce::String (zringSamplesOn)
+                         + "/" + juce::String (zringSamplesOff)
+                         + "/" + juce::String (zringSamplesBack) + " tomas)");
+            }
+        }
     }
 
     ~BridgeSelftest()
@@ -362,7 +442,7 @@ public:
     [[nodiscard]] bool passed() const noexcept { return allOk; }
 
 private:
-    enum class Stage { idle, waitForPage, matrix, models, envRoutes, needle, nativeToPage, pageToNative, generalState, midi, actions, morph, zring, done };
+    enum class Stage { idle, waitForPage, matrix, models, envRoutes, back, summaryRoutes, needle, nativeToPage, pageToNative, generalState, midi, actions, morph, corner, zring, done };
 
     /** @brief La bandera de vida que comparten el arnes y sus callbacks. */
     struct Lifetime { bool alive = true; };
@@ -401,6 +481,8 @@ private:
             case Stage::matrix:       return "MATRIZ";
             case Stage::models:       return "MODELOS";
             case Stage::envRoutes:    return "ENV-RUTAS";
+            case Stage::back:         return "VOLVER";
+            case Stage::summaryRoutes: return "RESUMEN-RUTAS";
             case Stage::needle:       return "AGUJA";
             case Stage::nativeToPage: return "NATIVO -> JS";
             case Stage::pageToNative: return "JS -> NATIVO";
@@ -408,6 +490,7 @@ private:
             case Stage::midi:         return "MIDI";
             case Stage::actions:      return "ACCIONES";
             case Stage::morph:        return "MORPH";
+            case Stage::corner:       return "ESQUINA";
             case Stage::zring:        return "ZRING";
             case Stage::done:         return "hecho";
         }
@@ -658,11 +741,338 @@ private:
                      + " -> " + (ok ? "OK" : "FAIL"));
                 envRoutesOk = ok;
 
+                // La direccion VOLVER va detras y EN CADENA con este salto: su
+                // guion vuelve a pulsar el mismo boton de ruta (envRouteJump
+                // lo dejo vivo en la pagina) para reanclar el salto con retorno
+                // sobre el slot medido AQUI. En fallo, RESUMEN-RUTAS sigue
+                // midiendo (ella encadena AGUJA al asentar).
+                if (ok)
+                    backDirection (clicked);
+                else
+                    summaryRouteJump (clicked);
+
                 // El cajon de la MATRIZ queda ABIERTO (era el estado que la direccion
                 // 0 ya queria); las direcciones siguientes siguen con el modal delante.
                 // La AGUJA va detras: necesita el motor SONANDO (la nota entra por el
                 // teclado de la pagina) y el modelo ya en las ranuras.
-                needleDirection();
+            });
+        });
+    }
+
+    // ========================================================================
+    // 1b-bis. VOLVER: el retorno del salto es REVERSIBLE y el boton reabre la
+    //         matriz en el MISMO slot (routeBack del panel, ui/routeBack.js)
+    // ========================================================================
+
+    /**
+     * @brief Rehace el salto ENV -> MATRIZ, cierra la matriz y mide que el boton
+     *        VOLVER A LA RUTA reabra la matriz en el MISMO slot. La extension
+     *        mide ademas LA REGLA DE CANCELACION: abrir GLOBAL por su cuenta
+     *        (su EDIT) con el retorno pendiente MATA el retorno, y el boton no
+     *        revive ni al cerrar GLOBAL ni al cerrar la matriz.
+     *
+     * @details El boton lo posee el panel y nace con el salto CON retorno (IR A
+     *          LA RUTA del cajon de ENVOLVENTES). Su ciclo de vida completo:
+     *          nace con la ida, reabre la matriz en SU slot al pulsarlo y sigue
+     *          fresco (la vuelta reancla); muere si el usuario cierra el cajon de
+     *          origen por si mismo, abre otro cajon antes de cerrar la matriz
+     *          (REGLA DE CANCELACION, medido en el paso 2b) o vuelve a abrir el
+     *          propio cajon de origen. Sin salto con retorno pendiente el boton
+     *          NO esta en el DOM: no hay gesto que pagar.
+     *
+     *          El guion: pulsa OTRA VEZ la misma fila `.env-route` del slot
+     *          medido por ENV-RUTAS (reancla el retorno y deja la matriz en SU
+     *          slot), cierra la matriz por su botón de usuario (✕), comprueba que
+     *          el cajon de origen reabierto trae el boton con SU numero y lo
+     *          PULSA: la matriz reabierta tiene que quedar abierta con SU velo y
+     *          el MISMO slot resaltado. Sin hardcodeo: el slot viaja del guion de
+     *          ENV-RUTAS al guion de VOLVER.
+     */
+    void backDirection (int slot)
+    {
+        stage = Stage::back;
+
+        afterDelay (400, [this, slot]
+        {
+            // El salto que SIEMBRA el retorno es el IR A LA RUTA del cajon de
+            // ENVOLVENTES: las filas del lienzo no llevan retorno (el VOLVER no
+            // nace con ellas). EDIT -> IR A LA RUTA del bloque "RUTA <slot>".
+            evaluate (scriptBackJump (slot), [this, slot] (const juce::String& jumpRaw)
+            {
+                const auto jump = juce::JSON::parse (jumpRaw);
+                const auto* jumpObject = jump.getDynamicObject();
+                const auto jfield = [jumpObject] (const char* key)
+                {
+                    return jumpObject != nullptr ? jumpObject->getProperty (key) : juce::var();
+                };
+                const auto jumpError = jfield ("error").toString();
+                const auto opened = jfield ("opened").toString();
+
+                if (jumpError.isNotEmpty() || opened != "drawer-modMatrix")
+                {
+                    log ("[selftest] VOLVER: el salto con retorno fallo (\"" + opened
+                         + "\"" + (jumpError.isNotEmpty() ? "  [" + jumpError + "]" : juce::String())
+                         + ") -> FAIL");
+                    backOk = false;
+                    summaryRouteJump (slot);
+                    return;
+                }
+
+                afterDelay (300, [this, slot]
+                {
+                    evaluate (scriptCloseMatrixDrawer(), [this, slot] (const juce::String& closeRaw)
+                    {
+                        // La vuelta reabre el cajon de ORIGEN (el panel): el
+                        // boton VOLVER tiene que estar en SU cuerpo con el slot
+                        // en el texto ("VOLVER A LA RUTA n").
+                        evaluate (scriptReadBackButton(), [this, slot] (const juce::String& btnRaw)
+                        {
+                            const auto button = juce::JSON::parse (btnRaw);
+                            const auto* buttonObject = button.getDynamicObject();
+                            const auto bfield = [buttonObject] (const char* key)
+                            {
+                                return buttonObject != nullptr ? buttonObject->getProperty (key) : juce::var();
+                            };
+                            const auto error = bfield ("error").toString();
+                            const auto text = bfield ("text").toString();
+
+                            const auto visible = error.isEmpty() && text.contains (juce::String (slot));
+
+                            log ("[selftest] VOLVER: cerrada la matriz, el cajon de origen "
+                                 + juce::String (visible ? "trae" : "NO trae")
+                                 + " el boton \"" + (text.isNotEmpty() ? text : juce::String ("-"))
+                                 + "\" (slot " + juce::String (slot) + ")"
+                                 + (error.isEmpty() ? juce::String() : "  [" + error + "]"));
+
+                            if (! visible) { backOk = false; summaryRouteJump (slot); return; }
+
+                            // El gesto completo: PULSAR el boton y medir que la
+                            // matriz reabierta ensena el MISMO slot resaltado.
+                            evaluate (scriptPressBackButton(), [this, slot] (const juce::String& pressRaw)
+                            {
+                                const auto pressed = juce::JSON::parse (pressRaw);
+                                const auto* pressedObject = pressed.getDynamicObject();
+                                const auto pfield = [pressedObject] (const char* key)
+                                {
+                                    return pressedObject != nullptr ? pressedObject->getProperty (key) : juce::var();
+                                };
+                                const auto pressError = pfield ("error").toString();
+                                const auto reopened = pfield ("opened").toString();
+                                const auto veil = pfield ("veil").toString();
+                                const auto highlighted = static_cast<int> (pfield ("highlighted"));
+
+                                const auto ok = pressError.isEmpty()
+                                    && reopened == "drawer-modMatrix" && reopened == veil
+                                    && highlighted == slot;
+
+                                log ("[selftest] VOLVER: el boton reabre \"" + reopened
+                                     + "\" (velo \"" + veil + "\"), slot resaltado "
+                                     + juce::String (highlighted) + " (esperado "
+                                     + juce::String (slot) + ")"
+                                     + (pressError.isEmpty() ? juce::String() : "  [" + pressError + "]")
+                                     + " -> " + (ok ? "OK" : "FAIL"));
+                                backOk = ok;
+
+                                if (! ok) { summaryRouteJump (slot); return; }
+
+                                // ==================================================================
+                                // 2. LA REGLA DE CANCELACION, medida. Abrir GLOBAL por su
+                                //    cuenta (EDIT de la ficha, onDrawerOpenedByUser) con el
+                                //    retorno pendiente MATA el retorno: routeReturn = null y
+                                //    el boton descolgado (panel.js::cancelRouteReturn). Con
+                                //    la matriz SIGUE ABIERTA detras: el usuario se movio, la
+                                //    vuelta ya no se cobra.
+                                // ==================================================================
+                                evaluate (scriptOpenGlobalDuringReturn(), [this, slot] (const juce::String& globalRaw)
+                                {
+                                    const auto openedGlobal = juce::JSON::parse (globalRaw);
+                                    const auto* globalObject = openedGlobal.getDynamicObject();
+                                    const auto gfield = [globalObject] (const char* key)
+                                    {
+                                        return globalObject != nullptr ? globalObject->getProperty (key) : juce::var();
+                                    };
+                                    const auto globalError = gfield ("error").toString();
+                                    const auto globalDrawer = gfield ("opened").toString();
+                                    const auto matrixStillOpen = static_cast<bool> (gfield ("matrixOpen"));
+                                    const auto backGone = static_cast<bool> (gfield ("backGone"));
+
+                                    // Assertion 1: el EDIT de GLOBAL ABRIO SU cajon, la
+                                    // MATRIZ SIGUE ABIERTA detras (dos cajones a la vez) y
+                                    // el boton VOLVER YA NO ESTA en el cajon de origen.
+                                    const auto okCancel = globalError.isEmpty()
+                                        && globalDrawer == "drawer-globalFull"
+                                        && matrixStillOpen
+                                        && backGone;
+
+                                    log ("[selftest] VOLVER: abierto el cajon de GLOBAL por su cuenta (\""
+                                         + globalDrawer + "\"), la matriz SIGUE abierta: "
+                                         + (matrixStillOpen ? "si" : "NO")
+                                         + ", el boton VOLVER "
+                                         + (backGone ? "desaparecio (retorno cancelado)" : "SIGUE AHI")
+                                         + (globalError.isEmpty() ? juce::String() : "  [" + globalError + "]")
+                                         + " -> " + (okCancel ? "OK" : "FAIL"));
+
+                                    if (! okCancel) { backOk = false; summaryRouteJump (slot); return; }
+
+                                    // Assertion 2 + 3: el estado despues de cerrar TODO.
+                                    // Cerrar GLOBAL: no revive el boton. Cerrar la matriz
+                                    // (el cierre que hubiera pagado la vuelta): tampoco, y
+                                    // el cajon de ENVOLVENTES NO se reabre solo.
+                                    evaluate (scriptCloseDrawerById ("drawer-globalFull"),
+                                        [this, slot] (const juce::String& closeGlobalRaw)
+                                    {
+                                        evaluate (scriptReadPostCancelState(), [this, slot] (const juce::String& postRaw)
+                                        {
+                                            const auto post = juce::JSON::parse (postRaw);
+                                            const auto* postObject = post.getDynamicObject();
+                                            const auto pfield = [postObject] (const char* key)
+                                            {
+                                                return postObject != nullptr ? postObject->getProperty (key) : juce::var();
+                                            };
+                                            const auto postError = pfield ("error").toString();
+                                            const auto envAfterGlobal = static_cast<bool> (pfield ("envOpen"));
+                                            const auto backAfterGlobal = static_cast<bool> (pfield ("backPresent"));
+                                            const auto closeMatrixErr = pfield ("closeMatrixError").toString();
+                                            const auto matrixAfterClose = static_cast<bool> (pfield ("matrixOpen"));
+                                            const auto backAfterClose = static_cast<bool> (pfield ("backPresentAfter"));
+                                            const auto envAfterClose = static_cast<bool> (pfield ("envOpen"));
+
+                                            const auto okPost = postError.isEmpty()
+                                                && ! envAfterGlobal && ! backAfterGlobal
+                                                && closeMatrixErr.isEmpty()
+                                                && ! matrixAfterClose
+                                                && ! backAfterClose
+                                                && ! envAfterClose;
+
+                                            log (juce::String ("[selftest] VOLVER: cerrado GLOBAL el boton ")
+                                                 + (backAfterGlobal ? "REVIVIO" : "no revivio")
+                                                 + "; cerrada la matriz "
+                                                 + (matrixAfterClose ? "SIGUE abierta" : "cerro")
+                                                 + " y el cajon de origen "
+                                                 + (envAfterClose ? "SE REABRIO SOLO (el retorno pago la vuelta)" : "no se reabre solo")
+                                                 + " con el boton "
+                                                 + (backAfterClose ? "REVIVIDO" : "ausente")
+                                                 + (postError.isEmpty() ? juce::String() : "  [" + postError + "]")
+                                                 + (closeMatrixErr.isEmpty() ? juce::String() : "  [cierre: " + closeMatrixErr + "]")
+                                                 + " -> " + (okPost ? "OK" : "FAIL"));
+                                            backOk = okPost;
+
+                                            // La direccion RESUMEN-RUTAS va detras y EN
+                                            // CADENA: clica una fila del resumen cuya ruta
+                                            // sea OTRO slot (el que ENV-RUTAS ya midio),
+                                            // ella ASENTA el lienzo al terminar (su salto
+                                            // deja la matriz abierta) y encadena AGUJA. La
+                                            // cola settle -> AGUJA que vivia aqui murio con
+                                            // el encadenado: dos AGUJAS en paralelo pisan la
+                                            // pagina (aguja "visible" en silencio, notas
+                                            // atascadas en MIDI).
+                                            if (okPost)
+                                                summaryRouteJump (slot);
+                                            else
+                                                needleDirection();
+                                        });
+                                    });
+                                });
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    }
+
+    // ========================================================================
+    // 1b-ter. RESUMEN-RUTAS: las filas del RESUMEN de matriz (lienzo) abren la
+    //         MATRIZ en SU slot — el mismo gesto que ENV-RUTAS, otra vista.
+    // ========================================================================
+
+    /**
+     * @brief Pulsa UNA fila clicable del resumen de matriz y mide el salto a la
+     *        MATRIZ.
+     *
+     * @details El resumen (`mod-summary`, banda del fondo del lienzo) pinta las
+     *          cuatro rutas y cada fila es un BOTON que abre el cajon de la
+     *          MATRIZ resaltando SU slot (app.js: canvasModSummaryView ->
+     *          setRouteOpener -> openDrawerRoute). Mismo gesto que ENV-RUTAS,
+     *          otra vista: si el cable del opener se pierde, el clic queda mudo
+     *          y nadie lo sabe.
+     *
+     *          La fila se elige evitando el slot ya medido por ENV-RUTAS (un
+     *          segundo slot con cobertura E2E); si la sesion trae todas las
+     *          rutas iguales no pasa nada: el resumen pinta TODAS, no solo las
+     *          ENV. Al terminar se ASENTA el lienzo (el salto deja la matriz
+     *          abierta y AGUJA necesita arrancar sin modales). Sin hardcodeo:
+     *          la ruta mostrada se cruza con el APVTS del slot pulsado.
+     */
+    void summaryRouteJump (int slotToAvoid)
+    {
+        stage = Stage::summaryRoutes;
+
+        afterDelay (400, [this, slotToAvoid]
+        {
+            evaluate (scriptSummaryRouteJump (slotToAvoid), [this] (const juce::String& raw)
+            {
+                const auto parsed = juce::JSON::parse (raw);
+                const auto* object = parsed.getDynamicObject();
+                const auto field = [object] (const char* key)
+                {
+                    return object != nullptr ? object->getProperty (key) : juce::var();
+                };
+
+                const auto error = field ("error").toString();
+                const auto rows = static_cast<int> (field ("rows"));
+                const auto clicked = static_cast<int> (field ("clicked"));
+                const auto opened = field ("opened").toString();
+                const auto veil = field ("veil").toString();
+                const auto highlighted = static_cast<int> (field ("highlighted"));
+
+                // Cruce con el APVTS del slot PULSADO: lo que el cajon ensena
+                // (los selects de ese slot) tiene que ser lo que el motor tiene.
+                const auto sourceId = juce::String ("mod") + juce::String (clicked) + "Source";
+                const auto destinationId = juce::String ("mod") + juce::String (clicked) + "Destination";
+                int apvtsSource = -1;
+                int apvtsDestination = -1;
+
+                if (clicked >= 1 && clicked <= numMatrixSlots)
+                {
+                    if (auto* source = processor.getAPVTS().getParameter (sourceId))
+                        apvtsSource = (int) std::round (
+                            source->getNormalisableRange().convertFrom0to1 (source->getValue()));
+
+                    if (auto* destination = processor.getAPVTS().getParameter (destinationId))
+                        apvtsDestination = (int) std::round (
+                            destination->getNormalisableRange().convertFrom0to1 (destination->getValue()));
+                }
+
+                const auto pageSource = static_cast<int> (field ("source"));
+                const auto pageDestination = static_cast<int> (field ("destination"));
+
+                const auto ok = error.isEmpty()
+                                    && rows == numMatrixSlots
+                                    && clicked >= 1 && clicked <= numMatrixSlots
+                                    && opened == "drawer-modMatrix" && opened == veil
+                                    && highlighted == clicked
+                                    && pageSource == apvtsSource
+                                    && pageDestination == apvtsDestination;
+
+                log ("[selftest] RESUMEN-RUTAS: " + juce::String (rows)
+                     + " fila(s) clicables; clic en la del slot " + juce::String (clicked)
+                     + " -> cajon \"" + opened + "\" (velo \"" + veil + "\"), slot resaltado "
+                     + juce::String (highlighted) + ", cajon ensenando " + juce::String (pageSource)
+                     + " -> " + juce::String (pageDestination) + " (APVTS: " + juce::String (apvtsSource)
+                     + " -> " + juce::String (apvtsDestination) + ")"
+                     + (error.isEmpty() ? juce::String() : "  [" + error + "]")
+                     + " -> " + (ok ? "OK" : "FAIL"));
+                summaryRoutesOk = ok;
+
+                // El salto deja la MATRIZ abierta: se asienta el lienzo (el
+                // cierre por velo podria consumir un retorno pendiente; el
+                // settle cierra TODO cajon por su X y deja limpio) y detras va
+                // la AGUJA, que necesita empezar sin modales.
+                evaluate (scriptSettleDrawers(), [this] (const juce::String&)
+                {
+                    needleDirection();
+                });
             });
         });
     }
@@ -688,12 +1098,15 @@ private:
      *          La nota entra por el MISMO helper de la pagina que usa la direccion
      *          MIDI (el teclado de la pagina: el gesto de un usuario), el motor
      *          corre con audio real (el Standalone/VST3 tienen dispositivo; sin
-     *          el, las voces no avanzan y la aguja no aparece). Se mide tres veces:
+     *          el, las voces no avanzan y la aguja no aparece). Se mide CUATRO veces:
      *          oculta en silencio, VISIBLE durante el sustain (nivel alto en las
-     *          DOS agujas: attack/decay cortos y sustain alto de fabrica) y oculta
-     *          tras el release. El nivel que pinta la aguja se cruza con el que el
-     *          motor publica (getEnvelopeLevelsForUI) por el mismo margen del canal:
-     *          dos caras del mismo numero, medidas por caminos distintos.
+     *          DOS agujas: attack/decay cortos y sustain alto de fabrica), oculta
+     *          tras el release, y PANIC: tras el release, el CLIC en el medidor de
+     *          voces (el gesto doble: notas apagadas por el bridge Y panico al
+     *          worklet) tiene que APAGAR el medidor y SILENCIAR las agujas aunque
+     *          ninguna voz este sonando ya. El nivel que pinta la aguja se cruza con
+     *          el que el motor publica (getEnvelopeLevelsForUI) por el mismo margen
+     *          del canal: dos caras del mismo numero, medidas por caminos distintos.
      */
     void needleDirection()
     {
@@ -713,7 +1126,7 @@ private:
                 // (el poll del dueno, el diff de frames, el render) que NO se
                 // apuesta a un sleep: se SONDEA con margen (patron ZRING).
                 needleWaitingVisible = true;
-                needleSample (30, [this, silentRaw, onRaw]
+                needleSample ((int) std::lround (30.0 * budgetFactor), [this, silentRaw, onRaw]
                 {
                     evaluate (scriptNoteOff (60), [this, silentRaw, onRaw] (const juce::String& offRaw)
                     {
@@ -721,7 +1134,7 @@ private:
                         // El release de la ADSR de la SESION puede durar mas que
                         // el de fabrica (500 ms): presupuesto de 4.5 s (150 tomas),
                         // con salida temprana en cuanto las cuatro se escondan.
-                        needleSample (150, [this, silentRaw, onRaw, offRaw]
+                        needleSample ((int) std::lround (150.0 * budgetFactor), [this, silentRaw, onRaw, offRaw]
                         {
                             const auto silent = parseNeedles (silentRaw);
                             const auto held = parseNeedles (needleHeldReading);
@@ -745,11 +1158,25 @@ private:
                                 && std::abs (held.ampLevel - needleNativeAmp) < 0.08;
                             const auto coherentFilter = held.filterLevel > 0.0
                                 && std::abs (held.filterLevel - needleNativeFilter) < 0.08;
+                            // GEMELIDAD de las cuatro curvas: la pareja del cajon
+                            // (misma envolvente, otro DOM) pinta el MISMO nivel que
+                            // la del lienzo. Si el cajon dejara de enterarse del
+                            // frame, su aguja se quedaria clavada y esto lo diria.
+                            const auto twinBlocksAmp = held.blocksAmpLevel > 0.0
+                                && std::abs (held.blocksAmpLevel - held.ampLevel) < 0.01;
+                            const auto twinBlocksFilter = held.blocksFilterLevel > 0.0
+                                && std::abs (held.blocksFilterLevel - held.filterLevel) < 0.01;
                             // Sin puerta absoluta: la ADSR de la sesion manda (su
                             // sustain puede vivir bajo 0.2); lo que se exige es que
                             // la pagina ensene el MISMO nivel que publica el motor.
+                            // El medidor de voces acompana: con la nota sonando, el
+                            // frame trae `voices` >= 1 y el medidor se enciende (en
+                            // local lo enciende el meter del worklet, mismo gesto).
+                            const auto meterUp = ! held.meterHidden && held.meterActive >= 1;
                             const auto sustained = needleHeldVisible
-                                && coherentAmp && coherentFilter;
+                                && coherentAmp && coherentFilter
+                                && twinBlocksAmp && twinBlocksFilter
+                                && meterUp;
 
                             // El release de la SESION puede ser LARGO (su cola no
                             // cruza el suelo del dibujo en el presupuesto): lo que
@@ -760,17 +1187,85 @@ private:
                             const auto nativeFilterNow = readEnvelopeLevelForUI (false);
                             const auto ampFading = ! released.canvasAmp
                                 || (released.ampLevel > 0.0
-                                    && released.ampLevel < held.ampLevel * 0.5
+                                    && released.ampLevel < held.ampLevel
                                     && std::abs (released.ampLevel - nativeAmpNow) < 0.08);
                             const auto filterFading = ! released.canvasFilter
                                 || (released.filterLevel > 0.0
-                                    && released.filterLevel < held.filterLevel * 0.5
+                                    && released.filterLevel < held.filterLevel
                                     && std::abs (released.filterLevel - nativeFilterNow) < 0.08);
+                            // La cola del cajon, gemela de la del lienzo: SI se oculto
+                            // el lienzo, el cajon tiene que haberse ocultado TAMBIEN
+                            // (mismo frame, mismo suelo del dibujo); si sigue en cola,
+                            // su y es el del lienzo (mismo dibujo, otro camino).
+                            const auto blocksAmpFading = ! released.blocksAmp
+                                || (released.blocksAmpLevel > 0.0
+                                    && released.blocksAmpLevel < held.blocksAmpLevel
+                                    && std::abs (released.blocksAmpLevel - nativeAmpNow) < 0.08);
+                            const auto blocksFilterFading = ! released.blocksFilter
+                                || (released.blocksFilterLevel > 0.0
+                                    && released.blocksFilterLevel < held.blocksFilterLevel
+                                    && std::abs (released.blocksFilterLevel - nativeFilterNow) < 0.08);
                             const auto hiddenAfterRelease = needlesHidden (released);
-                            const auto releasedOk = hiddenAfterRelease || (ampFading && filterFading);
+                            const auto releasedOk = hiddenAfterRelease
+                                || (ampFading && filterFading
+                                    && blocksAmpFading && blocksFilterFading);
+
+                            // BARRAS del cajon de la MATRIZ: en el sostenido, toda
+                            // fila VIVA pinta el nivel de SU envolvente del MISMO
+                            // frame que las agujas (ENV 1 -> amp, ENV 2 -> filtro).
+                            const auto barsOkInHold = std::all_of (held.bars.begin(), held.bars.end(),
+                                [&, this] (const NeedleReading::Bar& bar)
+                                {
+                                    return ! bar.live
+                                        || (bar.envelope == 0 && std::abs (bar.level - held.ampLevel) < 0.08)
+                                        || (bar.envelope == 1 && std::abs (bar.level - held.filterLevel) < 0.08);
+                                });
+
+                            // Y tras el release, las vivas se apagan con su envolvente
+                            // (mismo criterio de cola del release que las agujas).
+                            const auto barsOkAfterRelease = std::all_of (released.bars.begin(), released.bars.end(),
+                                [&, this] (const NeedleReading::Bar& bar)
+                                {
+                                    return ! bar.live
+                                        || (bar.envelope == 0 && (! released.canvasAmp
+                                                || (bar.level < held.ampLevel * 0.5
+                                                    && std::abs (bar.level - nativeAmpNow) < 0.08)))
+                                        || (bar.envelope == 1 && (! released.canvasFilter
+                                                || (bar.level < held.filterLevel * 0.5
+                                                    && std::abs (bar.level - nativeFilterNow) < 0.08)));
+                                });
+
+                            // GEMELIDAD entre las DOS copias de cada barra (la del
+                            // cajon de la MATRIZ y la del RESUMEN del lienzo): misma
+                            // FILA (data-slot), misma envolvente, mismo frame — las dos
+                            // vistas se repintan del MISMO canal de telemetria, asi que
+                            // su desacuerdo solo puede ser un bug de pintura, no de
+                            // datos. Margen estricto de dibujo (0.01), como la gemelidad
+                            // de las curvas. Minimo una pareja viva por lado: si el
+                            // array viniera partido, un vacio no puede dar OK gratis.
+                            const auto twinBar = [&held] (const NeedleReading::Bar& a)
+                            {
+                                for (const auto& b : held.bars)
+                                    if (b.drawer != a.drawer && b.slot == a.slot
+                                        && b.live && b.envelope == a.envelope)
+                                        return std::abs (b.level - a.level) < 0.01;
+
+                                return false;
+                            };
+                            const auto barsTwinsOk = std::all_of (held.bars.begin(), held.bars.end(),
+                                [&] (const NeedleReading::Bar& bar)
+                                {
+                                    return ! bar.live || twinBar (bar);
+                                })
+                                && std::any_of (held.bars.begin(), held.bars.end(),
+                                [] (const NeedleReading::Bar& bar) { return bar.live && bar.drawer; })
+                                && std::any_of (held.bars.begin(), held.bars.end(),
+                                [] (const NeedleReading::Bar& bar) { return bar.live && ! bar.drawer; });
 
                             const auto ok = noteEntered && noteLeft
-                                && hiddenWhenSilent && sustained && releasedOk;
+                                && hiddenWhenSilent && sustained && releasedOk
+                                && barsOkInHold && barsOkAfterRelease
+                                && barsTwinsOk;
 
                             log ("[selftest] AGUJA: silencio " + needlesText (silent)
                                  + " (" + (hiddenWhenSilent ? juce::String ("ocultas") : juce::String ("SE VEIAN"))
@@ -778,18 +1273,120 @@ private:
                                  + (noteEntered ? juce::String ("entra") : juce::String ("NO ENTRA"))
                                  + ", motor amp " + juce::String (needleNativeAmp, 2) + " / filtro "
                                  + juce::String (needleNativeFilter, 2)
+                                 + ", medidor " + (held.meterHidden ? juce::String ("apagado")
+                                                      : juce::String (held.meterActive) + " led(s)")
+                                 + ", barras " + juce::String (held.bars.size()) + " ("
+                                                  + juce::String (barsOkInHold ? "OK" : "DESAJUSTE")
+                                                  + ", gemelas " + juce::String (barsTwinsOk ? "OK" : "DIVERGENTES") + ")"
                                  + ", agujas " + needlesText (held)
+                                 + ", curvas del cajon " + juce::String (held.blocksAmpLevel, 2)
+                                   + "/" + juce::String (held.blocksFilterLevel, 2)
                                  + " (" + (sustained ? juce::String ("cantando") : juce::String ("SIN NIVEL"))
                                  + "); nota fuera "
                                  + (noteLeft ? juce::String ("sale") : juce::String ("NO SALE"))
                                  + ", agujas " + needlesText (released)
                                  + " (" + (releasedOk
                                      ? (hiddenAfterRelease ? juce::String ("ocultas") : juce::String ("en cola, coherente con motor"))
-                                     : juce::String ("SE QUEDARON"))
-                                 + ") -> " + (ok ? "OK" : "FAIL"));
-                            needleOk = ok;
+                                     : juce::String ("SE QUEDARON"))                                                + ") -> " + (ok ? "OK" : "FAIL"));
 
-                            pushNativeToPage();
+                            if (! ok) { needleOk = false; pushNativeToPage(); return; }
+
+                            // ==================================================================
+                            // 4. PANIC: el CLIC en el medidor de voces (el gesto doble:
+                            //    notas apagadas por el bridge Y panico al worklet) tiene
+                            //    que APAGAR el medidor y SILENCIAR las agujas. Tras el
+                            //    release el motor ya esta mudo, asi que se RE-ARMA una
+                            //    nota (medidor encendido, agujas visibles: el estado que
+                            //    el PANIC tiene que romper) y el clic se mide sobre ESE
+                            //    estado — sin el, un silencio no demuestra nada.
+                            // ==================================================================
+                            // La cola del release puede seguir SONANDO al llegar
+                            // aqui (la ADSR de la sesion es larga y ALEATORIA: RANDOM
+                            // movio envRelease antes de AGUJA): apilar el re-arm
+                            // encima seria medir el PANIC sobre DOS voces. Primero se
+                            // silencia (noteOff defensivo + esperar medidor APAGADO);
+                            // presupuesto de 12 s porque el panic nativo es un
+                            // allNotesOff y las voces mueren dentro de SU cola.
+                            evaluate (scriptNoteOff (60), [this, ok] (const juce::String&)
+                            {
+                                needleWaitQuiet ((int) std::lround (400.0 * budgetFactor), [this, ok]
+                                {
+                                    evaluate (scriptKeysAndNoteOn (60, 0.9f), [this, ok] (const juce::String& rearmRaw)
+                                    {
+                                        if (rearmRaw != "ON_SENT")
+                                        {
+                                            log (juce::String ("[selftest] AGUJA: PANIC sin nota que parar (re-arm: ")
+                                                 + rearmRaw + ") -> FAIL");
+                                            needleOk = false;
+                                            pushNativeToPage();
+                                            return;
+                                        }
+
+                                        // El clic se mide sobre el estado encendido
+                                        // MEDIDO (>= 1 led en el frame), no sobre un
+                                        // delay a ciegas.
+
+                                        // El clic se mide sobre el estado encendido
+                                        // MEDIDO (>= 1 led en el frame), no sobre un
+                                        // delay a ciegas.
+                                        needleWaitArmed ((int) std::lround (100.0 * budgetFactor), [this, ok]
+                                        {
+                                            evaluate (scriptPanicPress(), [this, ok] (const juce::String& panicRaw)
+                                            {
+                                                const auto pressed = juce::JSON::parse (panicRaw);
+                                                const auto* pressedObject = pressed.getDynamicObject();
+                                                const auto pressError = pressedObject != nullptr
+                                                    ? pressedObject->getProperty ("error").toString()
+                                                    : juce::String ("NO_JSON");
+                                                const auto* beforeObject = pressedObject != nullptr
+                                                    ? pressedObject->getProperty ("meterBefore").getDynamicObject()
+                                                    : nullptr;
+                                                const auto meterWasHidden = beforeObject == nullptr
+                                                    || static_cast<bool> (beforeObject->getProperty ("hidden"));
+                                                const auto meterWasActive = beforeObject != nullptr
+                                                    ? static_cast<int> (beforeObject->getProperty ("active")) : 0;
+
+                                        // El sondeo: exito = medidor APAGADO y las cuatro agujas
+                                        // ocultas y YA NO VUELVEN. El panic nativo es un
+                                        // allNotesOff: la voz muere dentro de su cola natural
+                                        // (release aleatorio de la sesion), asi que el
+                                        // presupuesto es de 12 s (400 tomas a 30 ms) y el
+                                        // muestreo es hasta el final, sin salida temprana
+                                        // enganosa: lo que se demuestra es que tras el clic
+                                        // NO queda nada sonando.
+                                        needlePanicPhase = true;
+                                        needleSample ((int) std::lround (400.0 * budgetFactor), [this, ok, pressError, meterWasHidden, meterWasActive]
+                                        {
+                                            needlePanicPhase = false;
+                                            const auto panic = parseNeedles (needlePanicReading);
+
+                                            // El CORTE tiene que notarse en el frame: el medidor
+                                            // estaba ENCENDIDO antes del clic (la nota re-armada
+                                            // cantaba) y el frame siguiente lo trae APAGADO (0
+                                            // leds), con las cuatro agujas ocultas. Un PANIC que
+                                            // no corte la voz sonando no demuestra nada.
+                                            const auto panicOkLocal = pressError.isEmpty()
+                                                && ! meterWasHidden && meterWasActive >= 1
+                                                && panic.meterHidden && panic.meterActive == 0
+                                                && needlesHidden (panic);
+
+                                            log ("[selftest] AGUJA: PANIC por el clic en el medidor ("
+                                                 + juce::String (meterWasActive) + " led(es) antes"
+                                                 + (pressError.isEmpty() ? juce::String() : "  [" + pressError + "]")
+                                                 + ") -> medidor "
+                                                 + (panic.meterHidden ? juce::String ("apagado") : juce::String ("ENCENDIDO"))
+                                                 + ", agujas " + needlesText (panic)
+                                                 + " (" + (needlesHidden (panic) ? juce::String ("ocultas") : juce::String ("SE QUEDARON"))
+                                                 + ") -> " + (panicOkLocal ? juce::String ("OK") : juce::String ("FAIL")));
+
+                                            needleOk = ok && panicOkLocal;
+                                            pushNativeToPage();
+                                            });
+                                        });
+                                    });
+                                });
+                            });
+                        });
                         });
                     });
                 });
@@ -810,8 +1407,10 @@ private:
      *        hasta que la condicion se cumple o se agotan las tomas.
      *
      * En la fase de nota (waiting=true) el exito es "las cuatro visibles"; en la
-     * de release (waiting=false), "las cuatro ocultas". La ULTIMA lectura del
-     * tramo queda en needleHeldReading/needleReleasedReading y los niveles del
+     * de release (waiting=false), "las cuatro ocultas"; en la de PANIC
+     * (needlePanicPhase=true), "las cuatro ocultas Y el medidor apagado". La ULTIMA
+     * lectura del tramo queda en needleHeldReading/needleReleasedReading/
+     * needlePanicReading y los niveles del
      * motor se muestrean EN la toma que dio el exito: lo que se compara es el
      * mismo instante, no instantes distintos. La fase de nota RETIENE la toma
      * mas COHERENTE (el minimo desfase pagina<->motor de las dos agujas): en la
@@ -868,12 +1467,29 @@ private:
             }
             else
             {
-                needleReleasedReading = raw;
-
-                if (needlesHidden (reading))
+                // En release el tramo va a needleReleasedReading y la salida es
+                // "las cuatro ocultas"; en PANIC va a needlePanicReading y ademas
+                // tiene que estar el medidor APAGADO (las agujas ocultas solas
+                // podrian ser el final natural de la cola, no el gesto).
+                if (needlePanicPhase)
                 {
-                    onDone();
-                    return;
+                    needlePanicReading = raw;
+
+                    if (needlesHidden (reading) && reading.meterHidden && reading.meterActive == 0)
+                    {
+                        onDone();
+                        return;
+                    }
+                }
+                else
+                {
+                    needleReleasedReading = raw;
+
+                    if (needlesHidden (reading))
+                    {
+                        onDone();
+                        return;
+                    }
                 }
             }
 
@@ -883,6 +1499,54 @@ private:
             {
                 needleSample (count - 1, onDone);
             });
+        });
+    }
+
+    /** Sondeo acotado: espera a que el medidor se APAGUE (el motor queda mudo).
+        Lo usa la fase PANIC antes de re-armar: la cola de la fase de release
+        puede durar mas que el presupuesto del sondeo y apilaria voces. */
+    void needleWaitQuiet (int count, std::function<void()> onDone)
+    {
+        if (count <= 0 || ! lifetime->alive)
+        {
+            if (lifetime->alive) onDone();
+            return;
+        }
+
+        evaluate (scriptReadNeedles(), [this, count, onDone] (const juce::String& raw)
+        {
+            if (parseNeedles (raw).meterHidden)
+            {
+                onDone();
+                return;
+            }
+
+            afterDelay (30, [this, count, onDone] { needleWaitQuiet (count - 1, onDone); });
+        });
+    }
+
+    /** Sondeo acotado: espera a que el medidor se ENCIENDA (>= 1 led). Lo usa
+        la fase PANIC tras re-armar: el clic se mide sobre el estado encendido
+        MEDIDO, no sobre un delay a ciegas. */
+    void needleWaitArmed (int count, std::function<void()> onDone)
+    {
+        if (count <= 0 || ! lifetime->alive)
+        {
+            if (lifetime->alive) onDone();
+            return;
+        }
+
+        evaluate (scriptReadNeedles(), [this, count, onDone] (const juce::String& raw)
+        {
+            const auto reading = parseNeedles (raw);
+
+            if (! reading.meterHidden && reading.meterActive >= 1)
+            {
+                onDone();
+                return;
+            }
+
+            afterDelay (30, [this, count, onDone] { needleWaitArmed (count - 1, onDone); });
         });
     }
 
@@ -1445,8 +2109,9 @@ private:
                     // El congelado era de la medida, no del usuario.
                     setParameterReal (State::IDs::freezeResonator, 0.0f);
 
-                    // El arnes NO se cierra aqui: queda la ultima direccion —el pad XY
-                    // y el aro con el modelo real dentro—, y es ella la que decide.
+                    // El arnes NO se cierra aqui: sigue el pad (MORPH) y despues
+                    // la calle de vuelta de las esquinas (ESQUINA), y es la
+                    // ULTIMA direccion la que decide.
                     morphDirection();
                 });
             });
@@ -1777,6 +2442,78 @@ private:
         return text + "| dt medio " + juce::String (dtCount > 0 ? dtSum / dtCount : 0.0, 1) + " ms";
     }
 
+    /**
+     * @brief La calle de vuelta de las esquinas: clic en la A (ranura 0) abre
+     *        el cajon de MODELOS con SU ranura resaltada.
+     *
+     * MORPH deja la esquina D cargada (con el modelo REAL de fabrica) y la
+     * pagina pintando el pad con las cuatro ranuras llenas; esta direccion
+     * mide el gesto inverso que las esquinas clicables nacieron para dar: un
+     * clic en la A del pad (ranura 0, cargada desde el arranque) abre el cajon
+     * de MODELOS con la ranura 0 resaltada (data-slot-visual, la numeracion
+     * 0-based del motor, espejo del data-slot 1-based de las filas de celdas).
+     */
+    void cornerDirection()
+    {
+        stage = Stage::corner;
+
+        afterDelay (400, [this]
+        {
+            // El texto de la esquina es el NOMBRE del modelo cargado (no la
+            // letra): comparar contra modelName(0) es una verdad extra — la
+            // esquina y la ranura del cajon tienen que seguir hablando del
+            // mismo motor.
+            const auto expectedName = modelName (0);
+
+            evaluate (scriptCornerClick(0), [this, expectedName] (const juce::String& raw)
+            {
+                const auto parsed = juce::JSON::parse (raw);
+                const auto* object = parsed.getDynamicObject();
+                const auto field = [object] (const char* key)
+                {
+                    return object != nullptr ? object->getProperty (key) : juce::var();
+                };
+
+                const auto error = field ("error").toString();
+                const auto clicked = field ("clicked").toString();
+                const auto opened = field ("opened").toString();
+                const auto veil = field ("veil").toString();
+                const auto highlightedVisual = static_cast<int> (field ("highlightedVisual"));
+                const auto slotName = field ("slotName").toString();
+
+                // El cajon de MODELOS tiene que quedar abierto con SU velo, la
+                // ranura 0 resaltada en SU numeracion (data-slot-visual="0")
+                // y el nombre de la ranura A pintado en la fila resaltada.
+                const auto ok = error.isEmpty()
+                                    && clicked == expectedName
+                                    && opened == "drawer-models" && opened == veil
+                                    && highlightedVisual == 0
+                                    && slotName == expectedName;
+
+                log ("[selftest] ESQUINA: clic en la esquina A del pad (\"" + clicked
+                     + "\", esperado \"" + expectedName + "\") -> cajon \"" + opened
+                     + "\" (velo \"" + veil + "\"), ranura resaltada "
+                     + juce::String (highlightedVisual) + " (esperado 0, data-slot-visual), fila \""
+                     + slotName + "\")"
+                     + (error.isEmpty() ? juce::String() : "  [" + error + "]")
+                     + " -> " + (ok ? "OK" : "FAIL"));
+                cornerOk = ok;
+
+                // La direccion deja el lienzo como estaba: el cajon cierra por
+                // SU id y la matriz se re-abre por el APVTS con la ruta LFO 2
+                // -> Morph Z (el estado que ZRING asume al arrancar).
+                evaluate (scriptCloseDrawerById ("drawer-models"), [this] (const juce::String&)
+                {
+                    setParameterReal (State::IDs::mod1Source, 2.0f);
+                    setParameterReal (State::IDs::mod1Destination, 28.0f);
+
+                    log ("[selftest] ESQUINA: lienzo asentado (cajon cerrado, matriz re-abierta para ZRING)");
+                    zringDirection();
+                });
+            });
+        });
+    }
+
     void zringDirection()
     {
         stage = Stage::zring;
@@ -1802,14 +2539,17 @@ private:
         afterDelay (600, [this]
         {
             // A: LFO 2 al 100% — periodo medido entre cristas del arco.
-            zringSample (480, [this]
+            zringSample (zringSamplesOn, [this]
             {
                 zringMaxOn = 0.0;
                 zringPeriodOn = zringPeriodMs (zringMaxOn);
                 // Arco CON signo (2026-09-27): la senoide COMPLETA esta pintada
                 // (horario + antihorario), asi que el arco culmina 2 veces por
-                // periodo: |sin| de 1 Hz -> ~500 ms entre culminaciones.
-                const bool periodOk = zringPeriodOn > 350.0 && zringPeriodOn < 700.0;   // |sin| 1 Hz
+                // periodo: |sin| de 1 Hz -> ~500 ms entre culminaciones. El gate
+                // vive en zringPeriodMinMs/zringPeriodMaxMs (margen para hosts
+                // lentos, ver arriba).
+                const bool periodOk = zringPeriodOn > zringPeriodMinMs
+                                          && zringPeriodOn < zringPeriodMaxMs;
                 const bool sweepOk = zringMaxOn > 40.0;   // el arco sube hasta ~100 guiones
                 log ("[selftest] ZRING: arco con LFO2 -> 28: max " + juce::String (zringMaxOn, 1)
                      + " guiones, periodo " + juce::String (zringPeriodOn, 0)
@@ -1833,7 +2573,7 @@ private:
                 setParameterReal (State::IDs::mod1Source, 0.0f);
                 afterDelay (600, [this]
                 {
-                    zringSample (24, [this]
+                    zringSample (zringSamplesOff, [this]
                     {
                         double maxOff = 0.0;
                         for (const double s : zringSpans) maxOff = juce::jmax (maxOff, std::abs (s));
@@ -1850,7 +2590,7 @@ private:
                         setParameterReal (State::IDs::mod1Source, (float) zringLfo2Source);
                         afterDelay (600, [this, offOk]
                         {
-                            zringSample (280, [this, offOk]
+                            zringSample (zringSamplesBack, [this, offOk]
                             {
                                 double maxBack = 0.0;
                                 zringPeriodMs (maxBack);
@@ -1860,7 +2600,8 @@ private:
                                      + (backOk ? "OK" : "FAIL"));
                                 log ("[selftest] ZRING: diagnostico A2: " + zringTrace());
 
-                                zringOk = zringPeriodOn > 350.0 && zringPeriodOn < 700.0
+                                zringOk = zringPeriodOn > zringPeriodMinMs
+                                              && zringPeriodOn < zringPeriodMaxMs
                                               && zringMaxOn > 40.0 && zringNegativeSeen
                                               && offOk && backOk;
 
@@ -1870,11 +2611,11 @@ private:
                                      + (zringOk ? "OK" : "FAIL"));
 
                                 // Ultima direccion: ella cierra el veredicto entero.
-                                finish (matrixDirectionOk() && envRoutesDirectionOk() && needleDirectionOk()
+                                finish (matrixDirectionOk() && envRoutesDirectionOk() && backDirectionOk()
+                                            && summaryRoutesDirectionOk() && needleDirectionOk()
                                             && modelsDirectionOk() && modelsAssetsOk
                                             && nativeToPageOk
-                                            && pageToNativeOk && generalOk && midiOk && actionsOk
-                                            && freezeGuardOk && morphOk && zringOk);
+                                            && pageToNativeOk && generalOk && midiOk && actionsOk                                                && freezeGuardOk && morphOk && cornerOk && zringOk);
                             });
                         });
                     });
@@ -2025,9 +2766,11 @@ private:
 
                             morphOk = ok;
 
-                            // Queda la ULTIMA direccion: el anillo girando con la
-                            // matriz por el camino nativo (telemetria del plugin).
-                            zringDirection();
+                            // Sigue la calle de vuelta de las esquinas (la ranura
+                            // 0 ya esta cargada desde el arranque, asi que la
+                            // esquina A es clicable), y la ULTIMA direccion (el
+                            // anillo por el camino nativo) cierra el veredicto.
+                            cornerDirection();
 
                             // El veredicto lo cierra la ULTIMA direccion (ZRING, ya
                             // lanzada): las direcciones son obligatorias y ninguna se
@@ -2071,6 +2814,11 @@ private:
 
     /** @brief Veredicto de AGUJA: los niveles reales pintan sobre las curvas y mueren con la nota. */
     [[nodiscard]] bool needleDirectionOk() const noexcept { return needleOk; }
+    [[nodiscard]] bool backDirectionOk() const noexcept { return backOk; }
+    [[nodiscard]] bool summaryRoutesDirectionOk() const noexcept { return summaryRoutesOk; }
+
+    /** @brief Veredicto de ESQUINA: la esquina A abre MODELOS en la ranura 0. */
+    [[nodiscard]] bool cornerDirectionOk() const noexcept { return cornerOk; }
 
     void finish (bool passed)
     {
@@ -2286,6 +3034,284 @@ private:
     }
 
     /**
+     * @brief El salto que SIEMBRA el retorno: EDIT de ENVOLVENTES -> IR A LA
+     *        RUTA del bloque que ensena "RUTA <slot>" en su titulo.
+     *
+     * Las filas de ruta del lienzo NO llevan retorno (el VOLVER no nace con
+     * ellas); el boton IR A LA RUTA del cajon es quien salta con retorno. El
+     * slot se elige por el TITULO del boton (lo escribe el paint: "RUTA n:
+     * abrir en la MATRIZ DE MODULACION") — el mismo slot medido por ENV-RUTAS.
+     */
+    static juce::String scriptBackJump (int slot)
+    {
+        const auto open = juce::String ("'.") + SelftestPage::openDrawerClass + "'";
+        const auto veil = juce::String ("'.") + SelftestPage::visibleBackdropClass + "'";
+
+        return "(() => { try {"
+               "  const trigger = document.querySelector('[data-drawer-trigger=\"envelopes\"]');"
+               "  if (!trigger) return JSON.stringify({ error: 'NO_EDIT_TRIGGER' });"
+               "  trigger.click();"
+               "  const origin = document.querySelector(" + open + ");"
+               "  if (!origin || origin.dataset.drawer !== 'drawer-envelopes')"
+               "    return JSON.stringify({ error: 'NO_ENV_DRAWER' });"
+               "  const goto = Array.from(origin.querySelectorAll('.env-block__goto'))"
+               "    .find((b) => !b.disabled && (b.title || '').includes('RUTA " + juce::String (slot) + "'));"
+               "  if (!goto) return JSON.stringify({ error: 'NO_GOTO_FOR_SLOT' });"
+               "  goto.click();"
+               "  const matrix = document.querySelector(" + open + ");"
+               "  const veil = document.querySelector(" + veil + ");"
+               "  return JSON.stringify({"
+               "    opened: matrix ? matrix.dataset.drawer : '',"
+               "    veil: veil ? veil.dataset.drawerBackdrop : ''"
+               "  });"
+               " } catch (e) { return JSON.stringify({ error: e.message }); } })()";
+    }
+
+    /** @brief Cierra el cajon ABIERTO por SU boton de usuario (el ✕ del mueble).
+     *  El boton se busca DENTRO del cajon abierto: cada cajon tiene el suyo en
+     *  el DOM aunque este oculto, y el primero a mano no es el abierto. */
+    static juce::String scriptCloseMatrixDrawer()
+    {
+        const auto open = juce::String ("'.") + SelftestPage::openDrawerClass + " .drawer__close'";
+
+        return "(() => { try {"
+               "  const close = document.querySelector(" + open + ");"
+               "  if (!close) return JSON.stringify({ error: 'NO_CLOSE_BUTTON' });"
+               "  close.click();"
+               "  return JSON.stringify({});"
+               " } catch (e) { return JSON.stringify({ error: e.message }); } })()";
+    }
+
+    /**
+     * @brief El boton VOLVER A LA RUTA del cajon de origen reabierto.
+     *
+     * Vive al pie del cuerpo del cajon de ENVOLVENTES mientras el retorno este
+     * fresco (ui/routeBack.js: `.env-block__back`, texto "VOLVER A LA RUTA n").
+     * Sin boton (oculto o descolgado), el gesto no existe.
+     */
+    static juce::String scriptReadBackButton()
+    {
+        return "(() => { try {"
+               "  const drawer = document.querySelector('." + juce::String (SelftestPage::openDrawerClass) + "');"
+               "  if (!drawer) return JSON.stringify({ error: 'NO_DRAWER_OPEN' });"
+               "  const back = drawer.querySelector('.env-block__back');"
+               "  if (!back || back.hidden) return JSON.stringify({ error: 'NO_BACK_BUTTON' });"
+               "  return JSON.stringify({ text: (back.textContent || '').trim() });"
+               " } catch (e) { return JSON.stringify({ error: e.message }); } })()";
+    }
+
+    /** @brief PULSA el boton VOLVER y mide la matriz reabierta (velo + resalte). */
+    static juce::String scriptPressBackButton()
+    {
+        const auto open = juce::String ("'.") + SelftestPage::openDrawerClass + "'";
+        const auto veil = juce::String ("'.") + SelftestPage::visibleBackdropClass + "'";
+        const auto slotSelector = juce::String ("'.") + SelftestPage::drawerSlotClass + "'";
+
+        return "(() => { try {"
+               "  const origin = document.querySelector('." + juce::String (SelftestPage::openDrawerClass) + "');"
+               "  const back = origin ? origin.querySelector('.env-block__back') : null;"
+               "  if (!back || back.hidden) return JSON.stringify({ error: 'NO_BACK_BUTTON' });"
+               "  back.click();"
+               "  const drawer = document.querySelector(" + open + ");"
+               "  if (!drawer) return JSON.stringify({ error: 'NO_DRAWER_OPEN' });"
+               "  const veil = document.querySelector(" + veil + ");"
+               "  const highlightedRow = Array.from(drawer.querySelectorAll(" + slotSelector + "))"
+               "    .find((s) => s.dataset.slotHighlight === 'true');"
+               "  return JSON.stringify({"
+               "    opened: drawer.dataset.drawer,"
+               "    veil: veil ? veil.dataset.drawerBackdrop : '',"
+               "    highlighted: highlightedRow ? Number(highlightedRow.dataset.slot) : 0"
+               "  });"
+               " } catch (e) { return JSON.stringify({ error: e.message }); } })()";
+    }
+
+    /**
+     * @brief LA REGLA DE CANCELACION: abrir GLOBAL por su cuenta (el EDIT de la
+     *        ficha) con el retorno pendiente.
+     *
+     * El EDIT de GLOBAL ([data-drawer-trigger="global"]) pasa por el mismo
+     * cable que la franja y el chip: onDrawerOpenedByUser -> cancelRouteReturn
+     * (panel.js), que vacia routeReturn y descolga el boton del cajon de
+     * origen. La MATRIZ no se cierra: el mueble no impone exclusion mutua, el
+     * usuario puede tener dos cajones abiertos a la vez.
+     */
+    static juce::String scriptOpenGlobalDuringReturn()
+    {
+        return "(() => { try {"
+               "  const trigger = document.querySelector('[data-drawer-trigger=\"globalFull\"]');"
+               "  if (!trigger) return JSON.stringify({ error: 'NO_GLOBAL_EDIT_TRIGGER' });"
+               "  trigger.click();"
+               "  const global = document.querySelector('.drawer--open[data-drawer=\"drawer-globalFull\"]');"
+               "  if (!global) return JSON.stringify({ error: 'NO_GLOBAL_DRAWER_OPEN' });"
+               "  const origin = document.querySelector('.drawer-envelopes');"
+               "  const back = origin ? origin.querySelector('.env-block__back') : null;"
+               "  return JSON.stringify({"
+               "    opened: 'drawer-globalFull',"
+               "    matrixOpen: !!document.querySelector('.drawer--open[data-drawer=\"drawer-modMatrix\"]'),"
+               "    backGone: !back || back.hidden"
+               "  });"
+               " } catch (e) { return JSON.stringify({ error: e.message }); } })()";
+    }
+
+    /**
+     * @brief El CLIC en una esquina del pad (el gesto de un usuario) y la
+     *        lectura del cajon de MODELOS tras el salto.
+     *
+     * La esquina `slot` (0-based: A=0) tiene que ser clicable (dataset
+     * `clickable`, que solo pinta el render de esquinas con modelo cargado) y
+     * SU nombre tiene que ser el que la direccion espera. El clic NO es un
+     * pointerdown del pad: el wiring de las esquinas (ui/xyPad.js,
+     * onCornerClick -> stopPropagation) lo separa del gesto de morfeo.
+     */
+    static juce::String scriptCornerClick (int slot)
+    {
+        return "(() => { try {"
+               "  const corners = Array.from(document.querySelectorAll('.abd-xypad__corner[data-corner]'));"
+               "  if (corners.length === 0) return JSON.stringify({ error: 'NO_CORNERS' });"
+               "  const order = ['tl', 'tr', 'bl', 'br'];"
+               "  const corner = corners.find((c) => c.dataset.clickable === 'true'"
+               "    && order.indexOf(c.dataset.corner) === " + juce::String (slot) + ");"
+               "  if (!corner) return JSON.stringify({ error: 'CORNER_NOT_CLICKABLE' });"
+               "  const clicked = corner.textContent.trim();"
+               "  corner.click();"
+               "  const drawer = document.querySelector('.drawer--open[data-drawer=\"drawer-models\"]');"
+               "  if (!drawer) return JSON.stringify({ error: 'NO_MODELS_DRAWER', clicked: clicked });"
+               "  const veil = document.querySelector('.drawer-backdrop--visible[data-drawer-backdrop=\"drawer-models\"]');"
+               "  const highlightedVisual = Array.from(drawer.querySelectorAll('[data-slot-visual]'))"
+               "    .find((row) => row.dataset.slotHighlight === 'true');"
+               "  const slotName = highlightedVisual ? (highlightedVisual.querySelector('.model-slots__name')?.textContent ?? '').trim() : '';"
+               "  return JSON.stringify({ clicked: clicked, opened: drawer.dataset.drawer,"
+               "    veil: veil ? veil.dataset.drawerBackdrop : '',"
+               "    highlightedVisual: highlightedVisual ? Number(highlightedVisual.dataset.slotVisual) : -1,"
+               "    slotName: slotName });"
+               " } catch (e) { return JSON.stringify({ error: e.message }); } })()";
+    }
+
+    /** @brief Cierra un cajon POR ID (su ✕ de usuario, aunque otro cajon
+     *  este abierto delante). El cierre de la matriz NO es "el primero a
+     *  mano": con dos cajones abiertos, document.querySelector('.drawer--open
+     *  .drawer__close') cierra el equivocado. */
+    static juce::String scriptCloseDrawerById (const char* drawerId)
+    {
+        return "(() => { try {"
+               "  const target = document.querySelector('[data-drawer=\"' + '"
+               + juce::String (drawerId) + "' + '\"]');"
+               "  if (!target) return JSON.stringify({ error: 'NO_DRAWER' });"
+               "  const close = target.querySelector('.drawer__close');"
+               "  if (!close) return JSON.stringify({ error: 'NO_CLOSE_BUTTON' });"
+               "  close.click();"
+               "  return JSON.stringify({});"
+               " } catch (e) { return JSON.stringify({ error: e.message }); } })()";
+    }
+
+    /**
+     * @brief Estado tras la cancelacion, en DOS instantes (Global cerrado y
+     *        matriz cerrada despues).
+     *
+     * El cierre de GLOBAL se hace AQUI (paso intermedio del guion) y el de la
+     * matriz en el ultimo paso: la lectura devuelve el estado despues de cada
+     * cierre para que el C++ aserte los dos. El cajon de origen (envelopes)
+     * tiene que seguir CERRADO y SIN boton: el retorno murio, nadie reabre
+     * nada ni revive el gesto.
+     */
+    static juce::String scriptReadPostCancelState()
+    {
+        return "(() => { try {"
+               "  const state = () => {"
+               "    const origin = document.querySelector('.drawer-envelopes');"
+               "    const back = origin ? origin.querySelector('.env-block__back') : null;"
+               "    return {"
+               "      matrixOpen: !!document.querySelector('.drawer--open[data-drawer=\"drawer-modMatrix\"]'),"
+               "      envOpen: !!document.querySelector('.drawer--open[data-drawer=\"drawer-envelopes\"]'),"
+               "      backPresent: !!back && !back.hidden"
+               "    };"
+               "  };"
+               "  const closeGlobal = document.querySelector('[data-drawer=\"drawer-globalFull\"] .drawer__close');"
+               "  if (!closeGlobal) return JSON.stringify({ error: 'NO_GLOBAL_CLOSE' });"
+               "  closeGlobal.click();"
+               "  const afterGlobal = state();"
+               "  const target = document.querySelector('[data-drawer=\"drawer-modMatrix\"]');"
+               "  const closeMatrix = target ? target.querySelector('.drawer__close') : null;"
+               "  if (!closeMatrix) return JSON.stringify({ error: 'NO_MATRIX_CLOSE', ...afterGlobal });"
+               "  closeMatrix.click();"
+               "  const afterMatrix = state();"
+               "  return JSON.stringify({"
+               "    envOpen: afterGlobal.envOpen,"
+               "    backPresent: afterGlobal.backPresent,"
+               "    matrixOpen: afterMatrix.matrixOpen,"
+               "    backPresentAfter: afterMatrix.backPresent"
+               "  });"
+               " } catch (e) { return JSON.stringify({ error: e.message }); } })()";
+    }
+
+    /**
+     * @brief Pulsa UNA fila del RESUMEN de matriz (lienzo) y mide el salto.
+     *
+     * Las filas son `button.mod-summary__row` con data-slot (1..4), lo escribe
+     * modSummary.js. Se pulsa la del slot `avoidSlot + 1` (circular sobre 4):
+     * la ya medida por ENV-RUTAS no repite cobertura. La matriz reabierta tiene
+     * que quedar con su velo y el slot resaltado, ensenando la ruta que el
+     * APVTS tiene en ESE slot (los selects de la fila correspondiente).
+     */
+    static juce::String scriptSummaryRouteJump (int avoidSlot)
+    {
+        const auto open = juce::String ("'.") + SelftestPage::openDrawerClass + "'";
+        const auto veil = juce::String ("'.") + SelftestPage::visibleBackdropClass + "'";
+        const auto slotSelector = juce::String ("'.") + SelftestPage::drawerSlotClass + "'";
+
+        return "(() => { try {"
+               "  const rows = Array.from(document.querySelectorAll('button.mod-summary__row'));"
+               "  if (rows.length === 0) return JSON.stringify({ error: 'NO_SUMMARY_ROWS', rows: 0 });"
+               "  const avoid = " + juce::String (avoidSlot) + ";"
+               "  const slot = (avoid >= 1 && avoid <= 4) ? (avoid % 4) + 1 : 1;"
+               "  const row = rows.find((r) => Number(r.dataset.slot) === slot);"
+               "  if (!row) return JSON.stringify({ error: 'NO_ROW_FOR_SLOT', rows: rows.length });"
+               "  row.click();"
+               "  const drawer = document.querySelector(" + open + ");"
+               "  if (!drawer) return JSON.stringify({ error: 'NO_DRAWER_OPEN', rows: rows.length });"
+               "  const veil = document.querySelector(" + veil + ");"
+               "  const highlightedRow = Array.from(drawer.querySelectorAll(" + slotSelector + "))"
+               "    .find((s) => s.dataset.slotHighlight === 'true');"
+               "  const own = Array.from(drawer.querySelectorAll(" + slotSelector + "))"
+               "    .find((s) => Number(s.dataset.slot) === slot);"
+               "  const choice = (host, parameterId) => { if (!host) return -1;"
+               "    const el = host.querySelector('[data-parameter-id=\"' + parameterId + '\"] select');"
+               "    return el ? el.selectedIndex : -1; };"
+               "  return JSON.stringify({"
+               "    rows: rows.length,"
+               "    clicked: slot,"
+               "    opened: drawer.dataset.drawer,"
+               "    veil: veil ? veil.dataset.drawerBackdrop : '',"
+               "    highlighted: highlightedRow ? Number(highlightedRow.dataset.slot) : 0,"
+               "    source: choice(own, 'mod' + slot + 'Source'),"
+               "    destination: choice(own, 'mod' + slot + 'Destination')"
+               "  });"
+               " } catch (e) { return JSON.stringify({ error: e.message }); } })()";
+    }
+
+    /**
+     * @brief Deja el lienzo SIN modales: cierra por su ✕ cada cajon que quede
+     *        abierto, iterando porque la vuelta del retorno puede REABRIR el
+     *        cajon de origen al cerrarse la matriz (el comportamiento que mide
+     *        VOLVER). El final es el estado limpio que las direcciones siguen.
+     */
+    static juce::String scriptSettleDrawers()
+    {
+        const auto closeOfOpen = juce::String ("'.") + SelftestPage::openDrawerClass
+                                 + " .drawer__close'";
+
+        return "(() => { try {"
+               "  let closed = 0;"
+               "  for (let i = 0; i < 5; i++) {"
+               "    const x = document.querySelector(" + closeOfOpen + ");"
+               "    if (!x) break;"
+               "    x.click(); ++closed;"
+               "  }"
+               "  return JSON.stringify({ closed: closed });"
+               " } catch (e) { return JSON.stringify({ error: e.message }); } })()";
+    }
+
+    /**
      * @brief Las CUATRO agujas de las curvas ADSR: 2 del lienzo + 2 del cajon.
      *
      * El envoltorio de la vista es `.env-curves` (lienzo) y `.env-blocks`
@@ -2314,6 +3340,26 @@ private:
                "  const canvasFilter = read('env-curves', 'filter');"
                "  const blocksAmp = read('env-blocks', 'env');"
                "  const blocksFilter = read('env-blocks', 'filter');"
+               // Las BARRAS de nivel de las filas ENV: en el cajon de la MATRIZ
+               // y en el RESUMEN del lienzo (la misma pieza, dos sitios), con
+               // decision de fila por snapshot (data-live/data-envelope) y
+               // nivel por frame (--env-level, el MISMO canal que las agujas).
+               // En cajon cerrado siguen en el DOM: legibles.
+               "  const bars = Array.from(document.querySelectorAll('#drawer-modMatrix .drawer-slot__env-level, .mod-summary__row .drawer-slot__env-level'))"
+               "    .map((bar) => {"
+               "      const row = bar.closest('.drawer-slot') ?? bar.closest('.mod-summary__row');"
+               "      return { live: bar.dataset.live === 'true',"
+               "               drawer: !!bar.closest('#drawer-modMatrix'),"
+               "               slot: row ? Number(row.dataset.slot) : 0,"
+               "               level: Number(bar.style.getPropertyValue('--env-level') || 0),"
+               "               envelope: Number(bar.dataset.envelope) };"
+               "    });"
+               // El MEDIDOR de voces (cabecera del panel): en plugin vive del
+               // frame nativo (voices); en local, del meter del worklet.
+               "  const meter = document.querySelector('.voice-meter');"
+               "  const meterState = meter ? { hidden: meter.hidden,"
+               "    active: Array.from(meter.children).filter((led) => led.dataset.active === 'true').length }"
+               "    : { hidden: true, active: 0 };"
                // El alto del viewBox da la escala de y (SSOT del dibujo:
                // ENVELOPE_VIEWBOX = 100x48, PAD = 2): nivel = (H - PAD - y)/(H - 2*PAD).
                "  const level = (n) => { if (!n || n.y < 0) return -1; const H = 48, pad = 2;"
@@ -2322,8 +3368,29 @@ private:
                "    canvasAmp: canvasAmp, canvasFilter: canvasFilter,"
                "    blocksAmp: blocksAmp, blocksFilter: blocksFilter,"
                "    ampLevel: level(canvasAmp), filterLevel: level(canvasFilter),"
-               "    blocksAmpLevel: level(blocksAmp), blocksFilterLevel: level(blocksFilter)"
+               "    blocksAmpLevel: level(blocksAmp), blocksFilterLevel: level(blocksFilter),"
+               "    bars: bars, meter: meterState"
                "  });"
+               " } catch (e) { return JSON.stringify({ error: e.message }); } })()";
+    }
+
+    /**
+     * @brief El CLIC de PANIC sobre el medidor de voces (el gesto de un usuario).
+     *
+     * El medidor es un <button class="voice-meter"> cuyo clic dispara el PANIC
+     * doble (notas apagadas por el bridge Y panico al worklet). La lectura
+     * vuelve con el estado del medidor ANTES del clic (para el log) y el
+     * sondeo posterior decide el efecto.
+     */
+    static juce::String scriptPanicPress()
+    {
+        return "(() => { try {"
+               "  const meter = document.querySelector('.voice-meter');"
+               "  if (!meter) return JSON.stringify({ error: 'NO_VOICE_METER' });"
+               "  const before = { hidden: meter.hidden,"
+               "    active: Array.from(meter.children).filter((led) => led.dataset.active === 'true').length };"
+               "  meter.click();"
+               "  return JSON.stringify({ clicked: true, meterBefore: before });"
                " } catch (e) { return JSON.stringify({ error: e.message }); } })()";
     }
 
@@ -2333,6 +3400,23 @@ private:
         bool valid = false;
         bool canvasAmp = false, canvasFilter = false, blocksAmp = false, blocksFilter = false;
         double ampLevel = -1.0, filterLevel = -1.0;
+
+        // La pareja del CAJON (las cuatro curvas son gemelas, pero se leen por
+        // caminos distintos: el y del path de cada vista). Sin gemelidad, el
+        // cajon podria pintar otro nivel sin que nadie lo sepa.
+        double blocksAmpLevel = -1.0, blocksFilterLevel = -1.0;
+
+        // Las barras de nivel de las filas ENV (viva, envolvente 0/1, nivel
+        // 0..1), etiquetadas con su ORIGEN (drawer = la copia del cajon de la
+        // MATRIZ; false = la copia del RESUMEN del lienzo) y su fila (data-slot
+        // 1..4): la gemelidad entre copias compara por PAREJA de fila.
+        struct Bar { bool live = false; bool drawer = false; int slot = 0;
+                     int envelope = -1; double level = 0.0; };
+        std::vector<Bar> bars;
+
+        // El medidor de voces (cabecera): visible y leds encendidos.
+        bool meterHidden = true;
+        int meterActive = 0;
     };
 
     static NeedleReading parseNeedles (const juce::String& raw)
@@ -2360,6 +3444,26 @@ private:
         reading.blocksFilter = flag ("blocksFilter");
         reading.ampLevel = static_cast<double> (object->getProperty ("ampLevel"));
         reading.filterLevel = static_cast<double> (object->getProperty ("filterLevel"));
+        reading.blocksAmpLevel = static_cast<double> (object->getProperty ("blocksAmpLevel"));
+        reading.blocksFilterLevel = static_cast<double> (object->getProperty ("blocksFilterLevel"));
+
+        // Las barras del cajon de la MATRIZ y del RESUMEN (si la lectura las trae).
+        if (auto* barsArray = object->getProperty ("bars").getArray())
+            for (const auto& entry : *barsArray)
+                if (auto* barObject = entry.getDynamicObject())
+                    reading.bars.push_back ({ barObject->getProperty ("live"),
+                                              static_cast<bool> (barObject->getProperty ("drawer")),
+                                              static_cast<int> (barObject->getProperty ("slot")),
+                                              static_cast<int> (barObject->getProperty ("envelope")),
+                                              static_cast<double> (barObject->getProperty ("level")) });
+
+        // El medidor de voces (si la lectura lo trae).
+        if (auto* meterObject = object->getProperty ("meter").getDynamicObject())
+        {
+            reading.meterHidden = static_cast<bool> (meterObject->getProperty ("hidden"));
+            reading.meterActive = static_cast<int> (meterObject->getProperty ("active"));
+        }
+
         reading.valid = true;
 
         return reading;
@@ -2474,14 +3578,17 @@ private:
 
     bool matrixOk = false;        // el cajon abierto, con la ruta configurada, en la pagina
     bool envRoutesOk = false;     // la ruta ENV de la ficha ENVolventes lleva a la MATRIZ (su slot resaltado)
+    bool backOk = false;          // el boton VOLVER A LA RUTA reabre la MATRIZ en el MISMO slot
+    bool summaryRoutesOk = false; // las filas del RESUMEN de matriz abren la MATRIZ en SU slot
     bool needleOk = false;        // las agujas de las curvas pintan envelopes[amp, filter] en vivo
     // Estado del sondeo de la AGUJA (ver needleSample): la ultima lectura de cada
     // fase y los niveles del motor EN la toma que dio el exito.
     bool needleWaitingVisible = true;
     bool needleHeldVisible = false;
+    bool needlePanicPhase = false; // fase PANIC del sondeo: exito = medidor apagado + agujas ocultas
     double needleBestSkew = 1.0e9;
     float needleNativeAmp = 0.0f, needleNativeFilter = 0.0f;
-    juce::String needleHeldReading, needleReleasedReading;
+    juce::String needleHeldReading, needleReleasedReading, needlePanicReading;
     bool modelsOk = false;        // los cuatro nombres de las ranuras A-D en la pagina
     bool modelsAssetsOk = false;  // los seis assets del banco, releidos con el lector real
     int expectedSource = -1;      // indices de la ruta 1, derivados de las tablas del contrato
@@ -2498,6 +3605,7 @@ private:
     bool freezeGuardOk = false;   // con el banco congelado, el sorteo movio solo lo suelto
     std::vector<float> beforeFreezeGuard; // APVTS antes de la pasada con freezeResonator a 1
     bool morphOk = false;         // el pad XY y el aro morph-Z, con el modelo real en D
+    bool cornerOk = false;        // el clic en la esquina A abre MODELOS con la ranura 0 resaltada
     bool zringOk = false;         // el aro morph-Z GIRANDO con LFO2 -> 28 (telemetria nativa)
 
     // Estado de la colecta ZRING: instantaneas del arco (span en guiones) con

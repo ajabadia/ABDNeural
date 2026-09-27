@@ -25,11 +25,34 @@
 import { AUDIO_OWNER, audioOwnerLabel } from '../audio/policy.js';
 import { latestTelemetry } from '../bridge/telemetry.js';
 import { choiceIndexFromNormalized, displayText, realFromNormalized } from '../contracts/paramValue.js';
+// Los defaults del contrato generado (linea defaultNormalized de cada
+// parametro): la referencia del modo `touched` del distintivo vivo.
+import { defaultNormalizedState, describeControl, toNormalized } from '../contracts/parameters.js';
 import { KEYS_TAB } from '../contracts/screens.js';
 import { createParameterControl } from './controls.js';
 // Cajon compartido de la familia (contenido estable: sin re-render al abrir).
 import { createDrawer } from '@abdsynths/shared/components';
 import { ENV1_SOURCE, ENV2_SOURCE } from './envelopeViews.js';
+// La verdad de "ranura cargada" es LA MISMA que pinta la vista del cajon de
+// MODELOS (displayableName), y los defaults del contrato (touched) son los que
+// siembra el store: importados, no reescritos.
+import { MODEL_SLOT_LABELS, displayableName as displayableModelName } from './modelSlots.js';
+
+/**
+ * Ranuras que expone el motor (`getNumModelSlots() == 4`, cuatro huecos en
+ * `modelNames`): el total del distintivo vivo de MODELOS. Si el motor publicara
+ * otra cosa, la vista model-slots ya pinta el desajuste; aqui el total se
+ * deriva de las etiquetas para no declarar el 4 dos veces.
+ */
+const MODEL_SLOT_COUNT = MODEL_SLOT_LABELS.length;
+/**
+ * Margen del modo `touched`: un valor a menos de medio paso minimo del default
+ * es "en default" (los floats pasan por el mapeo de la NormalisableRange, y el
+ * redondeo del cable puede devolver 0.7000001). Medio paso de la rejilla de
+ * 1/4096 del wire es generoso con el redondeo y estricto con el gesto.
+ */
+const TOUCH_EPSILON = 1 / 8192;
+import { createRouteBack } from './routeBack.js';
 import { ThemeSwitcher } from '@abdsynths/shared/components';
 
 /**
@@ -66,6 +89,16 @@ export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = nu
   // el paint necesita saber del contrato y no del nodo: hoy, que cuenta su
   // distintivo vivo (`liveBadge`).
   const drawerSpecs = new Map();
+  // Chips del LIENZO con el distintivo vivo (0/4 RANURAS, 0/8 GLOBAL): la MISMA
+  // verdad que la cabecera del cajon, pero a la vista. Se registran por ficha
+  // para que el paint los reescriba con el resultado del MISMO calculo (un dato,
+  // dos destinos). Solo los monta quien lo pide con `liveBadge.onCard`.
+  const liveBadgeChips = new Map();
+  // El CONMUTADOR de la ruta local del pad (ficha MATRIZ, modo local): sus
+  // piezas, para que el paint las repinte con el MISMO snapshot que las
+  // celdas. `state` es la ultima verdad pintada: el proximo clic ya sabe
+  // hacia donde va (la vista no decide el estado, lo refleja).
+  const localRoutes = new Map();
   // id -> view-model. Lo pide ese mismo distintivo (para leer un `choice` hacen
   // falta sus `options`); el repintado normal va por el array `controls`.
   const controlsById = new Map();
@@ -90,6 +123,14 @@ export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = nu
   // solo comparten velo), asi que la vuelta la ejecuta el dueño de los cajones:
   // el panel reabre ENVOLVENTES al cerrarse la matriz.
   let routeReturn = null;
+  // VOLVER A LA RUTA: el boton que reabre la MATRIZ en el MISMO slot mientras
+  // el retorno este fresco. Es del panel (el dueño del gesto vive aqui) pero
+  // se cuelga del cajon de ORIGEN: es alli donde el usuario mira al decidir
+  // "vuelve a lo que estaba editando". Ciclo de vida = el de routeReturn:
+  // nace con el salto con retorno, se REANCLA en cada ida y vuelta completa
+  // (cerrar la matriz reabre ENVOLVENTES -> anchor) y muere cuando el usuario
+  // cierra el cajon por si mismo (el onClose limpia routeReturn y el boton).
+  const routeBack = createRouteBack();
   // La fila del LCD (ver el bloque de abajo: solo existe con lcdSlot).
   let lcdRowSlot = null;
 
@@ -99,9 +140,42 @@ export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = nu
 
     highlightedSlot = null;
 
-    for (const drawer of drawers.values())
+    for (const drawer of drawers.values()) {
       for (const row of drawer.body.querySelectorAll('.drawer-slot'))
         row.dataset.slotHighlight = 'false';
+
+      // La mitad de vistas (model-slots) pinta sus propias filas: mismas dos
+      // familias que openDrawerRoute resalta.
+      for (const row of drawer.body.querySelectorAll('[data-slot-visual]'))
+        row.dataset.slotHighlight = 'false';
+    }
+  }
+
+  /**
+   * Cuelga el boton VOLVER en el cuerpo del cajon de origen y arma su gesto.
+   * El click vuelve a saltar con retorno (reabre la matriz en el slot fresco
+   * y deja el retorno vivo), como cualquier IR A LA RUTA. El ciclo de vida lo
+   * gobierna el panel: cuelga aqui (una vez) y descolga routeBack.clear().
+   */
+  function mountRouteBack(sectionId) {
+    const origin = drawers.get(sectionId);
+
+    if (!origin || origin.body.contains(routeBack.element)) return;
+
+    routeBack.onBack((slot) => openDrawerRoute('modMatrix', slot, { returnTo: sectionId }));
+    origin.body.append(routeBack.element);
+  }
+
+  /**
+   * El usuario ABRE un cajon por su cuenta (EDIT de ficha, franja de GLOBAL):
+   * el retorno pendiente muere AQUI, con la vuelta todavia por cobrar. La
+   * vuelta era el cierre de la MATRIZ, y el usuario ya se movio por su pie;
+   * abrir el propio cajon de origen TAMBIEN cancela (cerrarlo luego es un
+   * cierre propio, el mismo trato que le da el onClose).
+   */
+  function cancelRouteReturn() {
+    routeReturn = null;
+    routeBack.clear();
   }
 
   const element = document.createElement('section');
@@ -192,11 +266,15 @@ export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = nu
         knobsById,
         drawers,
         drawerSpecs,
+        liveBadgeChips,
+        localRoutes,
         gatedControls,
         visuals,
         handlers,
         // Los chips de la franja de GLOBAL (los llena buildCard, los repinta paint).
         onGlobalStrip: (items) => { globalStripItems = items; },
+        // El usuario abre un cajon por su cuenta: cancela el retorno pendiente.
+        onDrawerOpenedByUser: () => { cancelRouteReturn(); },
         onBaseline: (built) => {
           baselineSlider = built.slider;
           baselineControl = built.control;
@@ -207,13 +285,28 @@ export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = nu
         // silencioso (close(true), el que hace el propio salto con el origen)
         // no llega aqui: el mueble solo avisa por closeDrawer() de usuario.
         onDrawerClosed: (sectionId) => {
+          // El slot fresco se captura ANTES de limpiar el resalte (que lo
+          // anula): es el que reancla el boton VOLVER.
+          const returnSlot = highlightedSlot?.sectionId === sectionId
+            ? highlightedSlot.slot : null;
+
           clearRouteHighlight(sectionId);
 
           const returnTo = routeReturn;
           routeReturn = null; // consumo UNICO: cerrar otra vez ya no vuelve
 
           const back = returnTo && drawers.get(returnTo);
-          if (returnTo && back) back.open();
+          if (returnTo && back) {
+            back.open();
+            // La vuelta completa REANCLA el boton en el slot que trajo aqui:
+            // el retorno sigue fresco mientras el usuario no cierre el cajon.
+            routeBack.anchor(returnSlot);
+          } else {
+            // Cierre de usuario (o de un cajon sin retorno pendiente): el gesto
+            // murio con el boton. El consumo unico de arriba ya vacio
+            // routeReturn; esto solo descolga el boton del cajon de origen.
+            routeBack.clear();
+          }
         },
         readouts: baselineReadouts,
       }));
@@ -308,15 +401,69 @@ export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = nu
       if (engine !== undefined) control.setEngine(engine);
     }
 
-    // El distintivo VIVO de los cajones que lo declaran (la MATRIZ: rutas
-    // ASIGNADAS) se reescribe con el MISMO snapshot que pinta las celdas, y con
-    // `setHeader` del mueble compartido — que no reconstruye nada, solo el dato.
-    // Un cajon sin `liveBadge` (los inventarios: 2 ADSR, 4 LFO, 4 RANURAS, 8
-    // GLOBAL) conserva el literal de su ficha: no cambia con el uso.
+    // El distintivo VIVO de los cajones que lo declaran se reescribe con el
+    // MISMO snapshot que pinta las celdas, y con `setHeader` del mueble
+    // compartido — que no reconstruye nada, solo el dato. La MATRIZ cuenta
+    // rutas ASIGNADAS, MODELOS ranuras cargadas (fuera del APVTS:
+    // state.models) y GLOBAL celdas tocadas (defaults del contrato); el modo
+    // lo declara cada ficha (ver liveDrawerBadge). Un cajon sin `liveBadge`
+    // (2 ADSR, 4 LFO) conserva el literal de su ficha: no cambia con el uso.
     for (const [sectionId, spec] of drawerSpecs) {
-      const badge = liveDrawerBadge(spec, controlsById, parameters);
+      const badge = liveDrawerBadge(spec, controlsById, state);
 
-      if (badge !== null) drawers.get(sectionId)?.setHeader({ badge });
+      if (badge === null) continue;
+
+      drawers.get(sectionId)?.setHeader({ badge });
+
+      // El chip del lienzo (si la ficha lo pide) muestra ESE MISMO dato: no
+      // hay segundo calculo que pueda discrepar del distintivo del cajon. La
+      // etiqueta accesible se rehace con el dato para que el nombre accesible
+      // contenga el texto visible (WCAG 2.5.3), y el title anade el destino.
+      const chip = liveBadgeChips.get(sectionId);
+
+      if (chip) {
+        chip.textContent = shortLiveBadge(badge);
+        chip.setAttribute('aria-label', `${badge}: abrir el cajón de ${chip.dataset.cardTitle}`);
+        chip.title = `${chip.dataset.cardTitle}: ${badge} — se edita en el cajón lateral`;
+      }
+    }
+
+    // EL CONMUTADOR de la ruta local del pad: mismo snapshot, misma verdad. Con
+    // host se pinta deshabilitado (la matriz es del APVTS y la siembra local no
+    // existe) y en OFF su selector de LFO tambien: se guarda el LFO elegido
+    // para cuando se vuelva a encender.
+    for (const [sectionId, parts] of localRoutes) {
+      const route = state.localMorphRoute;
+
+      if (!route) continue;   // un snapshot sin el campo: no se inventa
+
+      parts.state = route;
+
+      const withHost = state.bridgeAvailable === true;
+      const title = withHost
+        ? `${sectionId}: solo en MODO LOCAL (sin host) — con plugin manda la matriz del APVTS`
+        : `${route.enabled ? 'Quitar' : 'Sembrar'} la ruta del pad (${route.source} → Morph Z) en la fila 3 de la matriz`;
+
+      parts.toggle.setAttribute('aria-pressed', String(route.enabled));
+      parts.toggle.classList.toggle('is-on', route.enabled);
+      parts.toggle.title = title;
+      parts.toggle.disabled = withHost;
+      parts.select.disabled = withHost || !route.enabled;
+      parts.select.title = title;
+
+      // Las OPCIONES son las que publique el store (la tabla de fuentes del
+      // contrato). Se rellenan la primera vez y solo se refrescan si la lista
+      // cambia, que seria un contrato nuevo: repintar opciones en cada paint
+      // robaria el foco del desplegable.
+      const sources = Array.isArray(route.sources) ? route.sources : [];
+      const sourceKey = sources.join('|');
+
+      if (parts.sourceKey !== sourceKey) {
+        parts.sourceKey = sourceKey;
+        parts.select.replaceChildren(...sources.map((label) => new Option(label, label)));
+      }
+
+      if (sources.includes(route.source)) parts.select.value = route.source;
     }
 
     // ¿Qué filas del cajón de la MATRIZ vienen de una ENVOLVENTE? La verdad la
@@ -381,10 +528,17 @@ export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = nu
   /** El host (Standalone) declara 8 voces; el meter puede cantar más. */
   const MAX_VOICES_UI = 8;
 
-  const voiceMeter = document.createElement('div');
+  const voiceMeter = document.createElement('button');
+  voiceMeter.type = 'button';
   voiceMeter.className = 'voice-meter';
   voiceMeter.hidden = true;
-  voiceMeter.setAttribute('role', 'img');
+  // Clic = PANIC (el MISMO gesto doble del botón de la franja: notas apagadas
+  // por el bridge Y pánico al worklet). El tooltip lo dice y cuenta las voces
+  // que va a parar — la intención es visible sin abrir la consola. El aria-label
+  // lo reescribe setVoiceMeter con el conteo vivo.
+  voiceMeter.setAttribute('aria-label', 'PANIC: parar todas las voces');
+  voiceMeter.title = 'PANIC: parar todas las voces';
+  voiceMeter.addEventListener('click', () => handlers.onPanic?.());
   for (let index = 0; index < MAX_VOICES_UI; index += 1) {
     const led = document.createElement('span');
     led.className = 'voice-meter__led';
@@ -401,7 +555,12 @@ export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = nu
     const voices = Math.max(0, Number.isFinite(count) ? Math.floor(count) : 0);
 
     voiceMeter.hidden = voices === 0;
-    voiceMeter.setAttribute('aria-label', `${voices} ${voices === 1 ? 'voz activa' : 'voces activas'}`);
+    // El nombre accesible y el tooltip describen la ACCION del boton, con el
+    // conteo vivo de las voces que va a parar.
+    const label = `PANIC: parar ${voices} ${voices === 1 ? 'voz activa' : 'voces activas'}`;
+
+    voiceMeter.setAttribute('aria-label', label);
+    voiceMeter.title = label;
 
     for (const led of voiceMeter.children) {
       const index = Number(led.dataset.led);
@@ -454,7 +613,14 @@ export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = nu
   // las agujas): se suscribe aquí y muere con el panel. Solo con host: en modo
   // local los frames no existen y la decisión vive en el paint de snapshots.
   const stopEnvLevels = typeof onTelemetry === 'function'
-    ? onTelemetry(() => paintEnvLevels(lastParameters))
+    ? onTelemetry((frame) => {
+      paintEnvLevels(lastParameters);
+
+      // El medidor de voces en PLUGIN: el frame nativo trae `voices` (el MISMO
+      // dato que el meter del worklet ensena en local). Sin propiedad, no toca
+      // nada — el dueño en local sigue siendo onWorkletVoices (app.js).
+      if (frame?.voices !== undefined) setVoiceMeter(frame.voices);
+    })
     : null;
 
   /**
@@ -509,10 +675,12 @@ export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = nu
     visuals.length = 0;
     gatedControls.length = 0;
     drawerSpecs.clear();
+    liveBadgeChips.clear();
     controlsById.clear();
     drawers.clear();
     highlightedSlot = null;
     routeReturn = null;
+    routeBack.clear();
     globalStripItems = [];
     element.textContent = '';
   }
@@ -551,14 +719,29 @@ export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = nu
     // lo cierro AQUI: no es un cierre de usuario y no tiene nada que limpiar.
     // Al volver, lo reabre el handler de cierre de la matriz.
     for (const [otherId, other] of drawers)
-      if (otherId !== sectionId && other.isOpen()) other.close();
+      if (otherId !== sectionId && other.isOpen()) other.close();    routeReturn = returnTo;
 
-    routeReturn = returnTo;
+    if (returnTo) {
+      mountRouteBack(returnTo);
+      routeBack.anchor(slot);
+    } else {
+      // Salto SIN retorno (rutas del lienzo, EDIT): el gesto VOLVER que pudiera
+      // quedar de un salto anterior ya no esta pendiente. Sin boton colgado,
+      // es un no-op.
+      routeBack.clear();
+    }
 
     highlightedSlot = { sectionId, slot: Number(slot) || 0 };
 
     for (const row of drawer.body.querySelectorAll('.drawer-slot'))
       row.dataset.slotHighlight = String(Number(row.dataset.slot) === highlightedSlot.slot);
+
+    // Resalte por CLASE de vista (no solo por filas de celdas): el cajón de
+    // MODELOS no tiene celdas del APVTS — sus cuatro filas son la vista
+    // model-slots, en la numeración 0-based del motor (data-slot 0..3). Así el
+    // mismo gesto (esquina A-D del pad -> ranura) resalta en ambos mundos.
+    for (const row of drawer.body.querySelectorAll('[data-slot-visual]'))
+      row.dataset.slotHighlight = String(Number(row.dataset.slotVisual) === highlightedSlot.slot);
 
     drawer.open();
 
@@ -574,6 +757,7 @@ export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = nu
     paintAudio,
     toggleKeys,
     openDrawerRoute,
+    routeBack,
     setVoiceMeter,
     destroy,
     isKeysCollapsed: () => keysCollapsed,
@@ -637,6 +821,73 @@ function buildCard(section, context) {
     heading.append(actionButton);
   }
 
+  // Distintivo VIVO en el lienzo (0/4 RANURAS, 0/8 GLOBAL): el mismo dato que
+  // la cabecera del cajon — aqui a la vista, y con el mismo gesto que la franja
+  // de GLOBAL & MASTER: pulsarlo ABRE el cajon. Lo piden las fichas con
+  // `liveBadge.onCard`; nace con el literal del contrato (el inventario, que es
+  // lo unico cierto antes del primer paint) y el paint lo reescribe con la
+  // verdad. Va justo antes del EDIT porque es el `margin-left: auto` del
+  // primero el que empuja la pareja al borde derecho de la cabecera.
+  if (drawer && section.drawer.liveBadge?.onCard) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'card__badge';
+    chip.dataset.liveBadge = section.id;
+    chip.dataset.cardTitle = section.title;
+    chip.textContent = shortLiveBadge(section.drawer.badge);
+    chip.setAttribute('aria-label', `${section.drawer.badge}: abrir el cajón de ${section.title}`);
+    chip.title = `${section.title}: ${section.drawer.badge} — se edita en el cajón lateral`;
+    chip.addEventListener('click', () => {
+      context.onDrawerOpenedByUser?.();
+      drawer.open();
+    });
+
+    context.liveBadgeChips.set(section.id, chip);
+    heading.append(chip);
+  }
+
+  // EL CONMUTADOR de la ruta local del pad: la fila del pad se enciende y
+  // apaga, y se elige que LFO la mueve. Vive en la CABECERA y no en el cuerpo:
+  // el cuerpo de la MATRIZ tiene altura FIJA para las cuatro filas del resumen
+  // y añadir una linea mas lo descuadra. Con host se ve pero no se toca: el
+  // paint lo deshabilita (con un plugin delante no hay nada local que sembrar).
+  if (section.localRoute) {
+    const tools = document.createElement('div');
+    tools.className = 'mod-route';
+    tools.dataset.localRoute = section.id;
+
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'mod-route__toggle';
+    toggle.dataset.localRouteToggle = section.id;
+    toggle.textContent = section.localRoute.label;
+    toggle.setAttribute('aria-pressed', 'false');
+    // Deshabilitado hasta el primer paint (el patron de la accion RANDOM): antes
+    // del snapshot no hay estado que invertir, y un clic a ciegas no es un
+    // gesto que la vista pueda atribuir.
+    toggle.disabled = true;
+
+    // El paint sabe si estaba encendida: la vista no guarda el estado, lo
+    // refleja, y el gesto solo dice hacia donde va.
+    const parts = { toggle, select: null, state: null, sourceKey: null };
+
+    toggle.addEventListener('click', () => {
+      context.handlers.onLocalRoute?.({ enabled: !(parts.state?.enabled ?? false) });
+    });
+
+    const select = document.createElement('select');
+    select.className = 'mod-route__source synth-select';
+    select.dataset.localRouteSource = section.id;
+    select.setAttribute('aria-label', 'LFO de la ruta del pad');
+    select.addEventListener('change', () =>
+      context.handlers.onLocalRoute?.({ source: select.value }));
+
+    parts.select = select;
+    tools.append(toggle, select);
+    context.localRoutes.set(section.id, parts);
+    heading.append(tools);
+  }
+
   // Abridor del cajón: es una acción de VISTA (como plegar el teclado), no del
   // host, así que no pasa por SECTION_ACTIONS ni por el store.
   if (drawer) {
@@ -650,7 +901,10 @@ function buildCard(section, context) {
     trigger.insertAdjacentHTML('beforeend', PENCIL_ICON_SVG);
     trigger.setAttribute('aria-label', `${section.drawer.trigger} ${section.title}`);
     trigger.title = `${section.title}: se edita en el cajón lateral`;
-    trigger.addEventListener('click', () => drawer.open());
+    trigger.addEventListener('click', () => {
+      context.onDrawerOpenedByUser?.();
+      drawer.open();
+    });
 
     heading.append(trigger);
   }
@@ -778,10 +1032,14 @@ function buildCard(section, context) {
     strip.tabIndex = 0;
     strip.setAttribute('aria-label', 'GLOBAL & MASTER: abrir el cajón');
     strip.title = 'Tempo, MIDI y aleatorio se editan en el cajón';
-    strip.addEventListener('click', () => drawer?.open());
+    strip.addEventListener('click', () => {
+      context.onDrawerOpenedByUser?.();
+      drawer?.open();
+    });
     strip.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
+        context.onDrawerOpenedByUser?.();
         drawer?.open();
       }
     });
@@ -826,7 +1084,10 @@ function drawerFor(section, context) {
 
   if (existing) return existing;
 
-  context.drawerSpecs.set(section.id, section.drawer);
+  // La spec viaja con los ids de SU ficha: el distintivo vivo 'touched' los
+  // deriva (celdas del cajon, sin el control base) sin duplicarlos en el
+  // contrato.
+  context.drawerSpecs.set(section.id, { ...section.drawer, ids: section.ids });
 
   const drawer = createDrawer({
     id: `drawer-${section.id}`,
@@ -844,18 +1105,184 @@ function drawerFor(section, context) {
 }
 
 /**
+ * Texto VISIBLE del chip del lienzo: la FRACCION del distintivo vivo ('0/4'),
+ * no su rotulo entero ('0/4 RANURAS'). La cabecera de una ficha es una fila
+ * FIJA y la de MODELOS ya va justa (su subtitulo se aprieta a cero): con el
+ * rotulo completo el chip empujaba el EDIT fuera de la ficha. La palabra se
+ * queda en el `title` y en la etiqueta accesible, donde si cabe. La
+ * cabecera del cajon —que si tiene sitio— sigue mostrando el rotulo entero.
+ *
+ * @param {string} badge  el distintivo vivo completo
+ * @returns {string} lo que cabe en la cabecera de la ficha
+ */
+function shortLiveBadge(badge) {
+  return String(badge).split(' ')[0];
+}
+
+/**
  * El distintivo VIVO de un cajón, o `null` si su ficha no declara ninguno.
  *
- * `liveBadge` lista los ids de FUENTE que cuentan (`ids`): una ruta está cuando
- * su fuente no es la primera opción de la lista —"Off", índice 0, que es la
- * convención del contrato generado—, así que el distintivo dice cuántas rutas
- * están ASIGNADAS sobre el total declarado. Una fuente que el snapshot no traiga
- * cuenta como Off: no se inventa una asignación que el cable no lleva.
+ * El MODO lo declara la ficha (`liveBadge.mode`) y el dato lo trae el snapshot:
+ *
+ *   - `assigned` (la MATRIZ): `ids` lista los ids de FUENTE que cuentan — una
+ *     ruta está cuando su fuente no es la primera opción de la lista ("Off",
+ *     índice 0, la convención del contrato generado). Una fuente que el
+ *     snapshot no traiga cuenta como Off: no se inventa una asignación que el
+ *     cable no lleva. (Es el modo por defecto: las fichas que solo traen
+ *     `ids` + `label` siguen funcionando igual.)
+ *   - `loaded` (MODELOS): cuántas ranuras del MOTOR traen modelo. El dato no
+ *     es un parámetro: vive en `state.models` y la verdad es la MISMA que
+ *     pinta la vista model-slots (entry con nombre != 'EMPTY', via
+ *     displayableName — un nombre con `isValid: false` cuenta como cargada:
+ *     el fichero se cargó, lo que falla es el fichero).
+ *   - `touched` (GLOBAL): cuántas CELDAS del cajón se han apartado del default
+ *     del contrato generado (defaultNormalized). Un id que el snapshot no
+ *     traiga cuenta como en default: no se inventa un gesto que no hubo.
+ *   - `active` (las fichas CON MOTOR): cuántas celdas consume el motor que está
+ *     sonando, con la cobertura que el propio gating usa (ver
+ *     `activeCellsBadge`). Si el CONTRATO no declara el selector de motor no
+ *     hay distintivo: no se inventa un gating que el contrato no dice.
  */
-function liveDrawerBadge(spec, controlsById, parameters) {
+/**
+ * Las CELDAS que cuenta un distintivo vivo: las que la ficha declara en
+ * `liveBadge.ids` o, si no, las suyas (drawerFor anexa los ids de la ficha a la
+ * spec). masterLevel queda fuera en ambos casos por contrato 8.1 2c: no es celda
+ * del cajon, vive en la ficha, y contar en los dos sitios seria contar dos veces
+ * lo mismo.
+ */
+function drawerCellIds(live, spec) {
+  if (Array.isArray(live.ids) && live.ids.length > 0) return live.ids;
+
+  return (spec.ids ?? []).filter((id) => id !== 'masterLevel');
+}
+
+/**
+ * Distintivo VIVO de CELDAS ACTIVAS: cuantas de las celdas de la ficha consume el
+ * motor que esta sonando. No duplica cobertura: lee la MISMA que usa el gating
+ * de la UI, y solo cambia el punto de vista (de celda a ficha).
+ *
+ *   - Celda GATEADA (choice con `engineParameter`: los destinos de la MATRIZ):
+ *     activa si la OPCION que tiene seleccionada es alcanzable con el motor
+ *     activo — la misma regla con la que `setEngine` deshabilita opciones
+ *     (`engine !== 'both' && engine !== active`). Un destino de NEUROTIK
+ *     seleccionado mientras suena NEURONiK es una celda apagada, y el distintivo
+ *     lo dice en vez de contar un destello que no suena.
+ *   - Celda normal: la cobertura POR PARAMETRO (`engines`, la que el host deriva
+ *     con `engineCoverageFor`). La consumen `both` y el motor activo; `host` la
+ *     consume el procesador, asi que cambiar de motor no la apaga y cuenta
+ *     siempre; `none` no la consume nadie y nunca cuenta.
+ *
+ * El motor activo lo dice el MISMO choice que la UI usa para gatear: el
+ * `engineParameter` de la celda, o el que nombre la ficha en `live.engine`
+ * (engineType por defecto). Un VALOR ausente cuenta como su default del
+ * contrato, igual que en los modos `assigned` y `touched` — el store siempre
+ * siembra los defaults—; lo que no se inventa es el SELECTOR: si el contrato no
+ * lo declara, o su lista de opciones no nombra ningún motor, no hay distintivo
+ * (`null`), porque un 'activo' sin motor que lo sostenga sería un número inventado.
+ *
+ * @returns {string|null} '3/5 ACTIVAS', o null si el snapshot no dice el motor
+ */
+function activeCellsBadge(live, spec, controlsById, parameters) {
+  const ids = drawerCellIds(live, spec);
+
+  if (ids.length === 0) return null;
+
+  // Motor activo por parametro, en memo: varias celdas pueden gatear por el
+  // mismo choice y leerlo dos veces seria leer el contrato dos veces.
+  const activeEngine = new Map();
+  const engineFor = (gateId) => {
+    if (!activeEngine.has(gateId)) {
+      // El selector de motor se resuelve por CONTRATO si no es celda de la
+      // ficha: su cobertura por opcion (`optionEngines`) es del contrato, no
+      // de la ficha, y una ficha que no tenga el ENGINE TYPE en su lienzo
+      // seguiria teniendo motor (es global, lo elige la ficha OSCILADOR).
+      const control = controlsById.get(gateId) ?? describeControl(gateId);
+      const index = control
+        ? choiceIndexFromNormalized(control, parameters[gateId] ?? 0)
+        : -1;
+      const name = index >= 0 ? (control.optionEngines ?? [])[index] : undefined;
+
+      // 'both'/'host'/'none' no son motores: un selector de motor que no nombra
+      // uno deja el gating sin verdad, y sin verdad no hay distintivo.
+      activeEngine.set(gateId, ['neuronik', 'neurotik'].includes(name) ? name : null);
+    }
+
+    return activeEngine.get(gateId);
+  };
+
+  const gateId = live.engine ?? 'engineType';
+
+  // Sin selector en el contrato no hay distintivo: un 0/N sin motor que lo
+  // sostenga significaria "no lo se", que no es lo que dice un distintivo.
+  if (engineFor(gateId) === null) return null;
+
+  const active = ids.filter((id) => {
+    const control = controlsById.get(id);
+
+    if (!control) return false;
+
+    if (control.engineParameter && (control.optionEngines ?? []).length > 0) {
+      const chosen = choiceIndexFromNormalized(control, parameters[id] ?? 0);
+      const optionEngine = (control.optionEngines ?? [])[chosen] ?? 'both';
+      const running = engineFor(control.engineParameter);
+
+      if (running === null) return false;
+
+      return optionEngine === 'both' || optionEngine === running;
+    }
+
+    // `host` la consume el procesador (no es cosa de un motor): sigue viva con
+    // los dos motores. `none` no la consume nadie: nunca cuenta.
+    return control.engines === 'both'
+      || control.engines === 'host'
+      || control.engines === engineFor(gateId);
+  }).length;
+
+  return `${active}/${ids.length} ${live.label ?? 'ACTIVAS'}`;
+}
+
+function liveDrawerBadge(spec, controlsById, state) {
   const live = spec.liveBadge;
 
   if (!live) return null;
+
+  const parameters = state.parameters;
+
+  if (live.mode === 'loaded') {
+    const models = Array.isArray(state.models) ? state.models : [];
+    const loaded = models.filter((entry) => displayableModelName(entry) !== null).length;
+
+    return `${loaded}/${MODEL_SLOT_COUNT} ${live.label ?? 'RANURAS'}`;
+  }
+
+  if (live.mode === 'active') return activeCellsBadge(live, spec, controlsById, parameters);
+
+  if (live.mode === 'touched') {
+    const ids = drawerCellIds(live, spec);
+    // Los defaults se resuelven UNA vez para toda la fila, no celda a celda: el
+    // distintivo se repinta en cada paint y `defaultNormalizedState` es una
+    // llamada por id (mapa + conversiones) que aqui solo depende del contrato.
+    const contractDefaults = defaultNormalizedState(ids);
+
+    const touched = ids.filter((id) => {
+      const value = parameters[id];
+
+      if (value === undefined) return false;
+
+      const control = controlsById.get(id);
+      // El default del contrato puede venir del descriptor (con el skew del
+      // mapeo) o del propio generated (defaultNormalized); si no trae ninguno,
+      // un parametro se nace a "0 en real" y ese es su default. Nunca
+      // undefined: un default ausente contaria TODAS las celdas como tocadas.
+      const fallbackDefault = control ? realFromNormalized(control, 0) : 0;
+      const def = contractDefaults[id]
+        ?? (control ? toNormalized(control, fallbackDefault) : fallbackDefault);
+
+      return Math.abs(value - def) > TOUCH_EPSILON;
+    }).length;
+
+    return `${touched}/${ids.length} ${live.label ?? 'GLOBAL'}`;
+  }
 
   const assigned = live.ids.filter((id) => {
     const control = controlsById.get(id);

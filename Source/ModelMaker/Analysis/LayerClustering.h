@@ -57,6 +57,21 @@ struct LayerClustering
         media sea >= este valor (afinidad = 1 - distancia, ver abajo). */
     static constexpr float kAffinityCut = 0.55f;
 
+    /** Corte PROPIO para EnvelopeCosine (2026-09-27, calibrado). Barrido
+        0.10..0.90 sobre los DOS juegos del test: sinteticas (drone-voz
+        0.49, voz-voz adyacente 0.44, disjuntas 0.00) y reales CZ-RRISE
+        9 ventanas (drone-n7 0.69, drone-n15 0.55, n7-n15 0.09) NINGUNO
+        separa ambos. Sinteticas piden corte >0.49 para no fusionar
+        drone-voz Y <=0.44 para mantener la voz junta; reales piden
+        >0.69 Y <=0.09: huecos INVERTIDOS y sin interseccion. La
+        aglomeracion + clamp a 3 + guardia delgada colapsan el resto
+        (medido: sinteticas 6->3->1, reales 2->1 a 0.55 y 3->1 a >=0.70).
+        El valor 0.60 es el intento dedicado (centro entre 0.49 y 0.69)
+        y TAMPOCO separa: sinteticas 1 capa, reales 1 capa. El coseno no
+        falla por el corte sino por ceguera al SOPORTE (traza plana vs
+        parcial). Ver plan sec 3.3 y test seccion E. */
+    static constexpr float kEnvelopeCosineCut = 0.60f;
+
     /** Guardia de degeneracion (plan seccion 3.7). */
     static constexpr int   kMinLayerTraces = 2;
     static constexpr float kMinLayerEnergy = 0.10f;
@@ -116,9 +131,15 @@ struct LayerClustering
     audio de punta a punta con el coseno: 1 capa (con descriptores, 2). El
     coseno no falla por su forma —separa n7 de n15, de soportes disjuntos— sino
     por su ceguera al SOPORTE: el drone, plano, correlaciona con todo lo que
-    dure parte del fichero, y lo que no correlaciona tampoco llega al corte. Por
-    eso el defecto son descriptores (seccion 3 del plan) y el coseno queda
-    expuesto, medido y disponible para material con trazas LARGAS y disjuntas. */
+    dure parte del fichero, y lo que no correlaciona tampoco llega al corte.
+
+    CALIBRACION 2026-09-27 (corte propio): barrido 0.10..0.90 en ambos juegos
+    con su corte DEDICADO (kEnvelopeCosineCut = 0.60). Resultado NEGATIVO:
+    NINGUN corte separa drone/voz en los DOS juegos a la vez —sinteticas
+    0.49 vs 0.44 y reales 0.69 vs 0.09 piden huecos invertidos sin
+    interseccion—, con el dedicado sinteticas 1 capa y reales 1 capa
+    (descriptores dan 2 y 2). El coseno queda disponible pero NO es el
+    defecto (plan sec 3.3, sec 3 para el dedicado). */
 enum class LayerMetric
 {
     Descriptors,     // por defecto: 1 - distancia en (soporte, entropia)
@@ -129,7 +150,9 @@ enum class LayerMetric
     (seccion 3.3). Se expone para poder MEDIR que no es la que decide por
     defecto, y para ELEGIRLA (LayerMetric::EnvelopeCosine): una traza
     plana (drone) correlaciona con cualquier traza de soporte parcial, y en el
-    RRISE real el drone y el armonico n7 dan 0.79 (dos capas distintas). */
+    RRISE real el drone y el armonico n7 dan 0.69 (dos capas distintas).
+    Con su corte DEDICADO (kEnvelopeCosineCut = 0.60) sigue sin separar
+    (plan sec 3.3, test E). */
 inline float envelopeCosine (const float* a, const float* b, int numFrames)
 {
     double dot = 0.0, na = 0.0, nb = 0.0;
@@ -335,7 +358,8 @@ inline LayerClustering clusterTraces (const float* traces, int numTraces, int nu
         return true;
     };
 
-    while (mergeBestPair (LayerClustering::kAffinityCut)) {}
+    const float cut = (metric == LayerMetric::EnvelopeCosine ? LayerClustering::kEnvelopeCosineCut : LayerClustering::kAffinityCut);
+    while (mergeBestPair (cut)) {}
 
     // 3. Medoide: colapsa las cadenas del single-linkage sin volver a cortar -
     for (int iteration = 0; iteration < 4; ++iteration)

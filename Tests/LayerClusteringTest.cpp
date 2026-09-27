@@ -18,10 +18,11 @@
                          lleva el emparejador por indice, no el clustering).
                       3. MEDICION NEGATIVA: con las trazas REALES del plan
                          (seccion 2, CZ-RRISE: drone n1 y voz n7/n15) el coseno
-                         literal del diseno daria 0.79 entre el drone y n7 (>= el
-                         corte 0.55: los fusionaria); la metrica de descriptores
+                         literal del diseno daria 0.69 entre el drone y n7 (>= el
+                         corte DEDICADO 0.60: los fusionaria); la metrica de descriptores
                          los separa. Queda pinneado para que nadie vuelva al
-                         coseno sin medirlo.
+                         coseno sin medirlo (2026-09-27: con su corte propio TAMPOCO
+                         separa, barrido 0.10..0.90 huecos invertidos).
                       4. Robustez: ruido +-15 % y escalas muy distintas (x20) no
                          mueven el reparto.
                       5. Guardia de degeneracion: una capa de UN parcial, o con
@@ -761,12 +762,16 @@ int main()
     }
 
     // ======================================================================
-    // E. LA METRICA, SELECCIONABLE (2026-09-26)
+    // E. LA METRICA, SELECCIONABLE (2026-09-26) + CORTE DEDICADO (2026-09-27)
     // ======================================================================
     // El plan (seccion 3.3) pide el coseno por envolvente; el modulo decide por
     // descriptores. Aqui se corren LAS DOS sobre los mismos datos para fijar
     // donde coinciden y donde no: el coseno vale en las trazas sinteticas del
     // criterio de aceptacion y falla en las trazas reales del plan.
+    // 2026-09-27: el coseno lleva SU corte propio (kEnvelopeCosineCut = 0.60,
+    // calibrado con barrido 0.10..0.90 en ambos juegos) y TAMPOCO separa
+    // (barrido medido: huecos invertidos sin interseccion, sinteticas 1
+    // capa / reales 1 capa con el dedicado, 2 y 2 con descriptores).
     std::printf ("\nE. Metrica seleccionable (LayerMetric)\n");
 
     // ---------- 17. Las dos metricas, sobre las trazas sinteticas ----------
@@ -787,12 +792,18 @@ int main()
         check (d.layerCount == 2, "sinteticas + descriptores: 2 capas (el caso de aceptacion)");
         check (c.layerCount == 1,
                "sinteticas + coseno del plan: 1 capa (el coseno no separa NI AQUI)");
-        check (cosDV < LayerClustering::kAffinityCut,
-               "coseno drone-voz = " + juce::String (cosDV, 2) + " < corte "
-                   + juce::String (LayerClustering::kAffinityCut, 2)
-                   + ": ninguna pareja llega al corte");
+        check (cosDV < LayerClustering::kEnvelopeCosineCut,
+               "coseno drone-voz = " + juce::String (cosDV, 2) + " < corte DEDICADO "
+                   + juce::String (LayerClustering::kEnvelopeCosineCut, 2)
+                   + " (ninguna pareja llega al corte)" + " [antes corte comun "
+                   + juce::String (LayerClustering::kAffinityCut, 2) + "]");
         note ("sin NINGUNA fusion en el corte, el clamp a 3 y la guardia de "
               "degeneracion colapsan lo que el coseno no separo: por eso sale 1 capa");
+        check (LayerClustering::kEnvelopeCosineCut == 0.60f,
+               "el corte DEDICADO del coseno es 0.60 (calibrado 2026-09-27: barrido 0.10..0.90 sin hueco)");
+        check (envelopeCosine (ts.trace (3), ts.trace (5), 8) < 0.15f,
+               "sinteticas: voz-voz disjuntas coseno = " + juce::String (envelopeCosine (ts.trace (3), ts.trace (5), 8), 2)
+                   + " (el coseno separa n7 de n15, pero el drone lo estropea)");
     }
 
     // ---------- 18. Las dos metricas, sobre las trazas REALES del plan ----------
@@ -821,8 +832,18 @@ int main()
                "reales + coseno: 1 capa (aqui por lo contrario: fusiona de mas)");
         note ("reales: coseno(n1,n7) = "
               + juce::String (envelopeCosine (ts.trace (0), ts.trace (2), 9), 2)
-              + " >= corte " + juce::String (LayerClustering::kAffinityCut, 2)
+              + " >= corte DEDICADO " + juce::String (LayerClustering::kEnvelopeCosineCut, 2)
               + " => fusiona dos capas distintas; en las sinteticas ni fusiona ni separa");
+        check (envelopeCosine (ts.trace (0), ts.trace (2), 9) >= LayerClustering::kEnvelopeCosineCut,
+               "reales: coseno(n1,n7) = " + juce::String (envelopeCosine (ts.trace (0), ts.trace (2), 9), 2)
+                   + " >= corte DEDICADO " + juce::String (LayerClustering::kEnvelopeCosineCut, 2)
+                   + " lo fusiona");
+        check (envelopeCosine (ts.trace (2), ts.trace (3), 9) < 0.15f,
+               "reales: coseno voz-voz disjuntas n7-n15 = " + juce::String (envelopeCosine (ts.trace (2), ts.trace (3), 9), 2)
+                   + " (separa n7 de n15, el coseno si lo hace)");
+        note ("calibrado 2026-09-27: barrido 0.10..0.90 en ambos juegos, huecos invertidos "
+              "(sinteticas >0.49 y <=0.44 vs reales >0.69 y <=0.09) sin interseccion; "
+              "con el dedicado 0.60: sinteticas 1 capa, reales 1 capa (descriptores 2 y 2)");
     }
 
     // ---------- 19. La metrica llega al analizador de punta a punta ----------

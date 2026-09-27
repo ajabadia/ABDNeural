@@ -12,7 +12,9 @@
                  modelos por voz. Y la reserva es PEREZOSA: el motor nace con
                  las voces de su limite (16 la aditiva, 8 la neurotik) y crece
                  solo si el limite sube —antes eran 32 fijas para cualquier
-                 polifonia—. De ahi sale un motor de 1,6-3,2 MB en su default,
+                 polifonia—; bajar la polifonia devuelve SOLO las ociosas (las
+                 que suenan conservan su cola, ver BaseEngine::reclaimIdleVoices).
+                 De ahi sale un motor de 1,6-3,2 MB en su default,
                  6,4 MB al maximo, mas la cola de comandos del procesador
                  (32 modelos). La seccion 3 mide esa reserva: cuantas voces tiene
                  el motor y cuanto ocupan.
@@ -304,14 +306,22 @@ int main()
     }
 
     {
-        const auto before = liveNow();
-        auto engine = std::make_unique<DSP::NeuronikEngine>();
-        engine->prepare (48000.0, 512);
-        engine->setPolyphony (32);
-        allocated32 = engine->getNumAllocatedVoices();
-        engine->setPolyphony (4);                     // bajar NO devuelve voces
-        allocatedAfterLower = engine->getNumAllocatedVoices();
-        additiveEngine32 = liveNow() - before;
+        // Medir el techo (32) aislado: additiveEngine32 es el heap con 32 voces,
+        // ANTES de bajarlo. La rama que baja a 4 se mide en otro bloque para no
+        // contaminar la pendiente por voz.
+        std::size_t heapAt32 = 0;
+        {
+            const auto before = liveNow();
+            auto engine = std::make_unique<DSP::NeuronikEngine>();
+            engine->prepare (48000.0, 512);
+            engine->setPolyphony (32);
+            allocated32 = engine->getNumAllocatedVoices();
+            heapAt32 = liveNow() - before;
+            // bajar devuelve solo las ociosas (0 activas -> 4): presupuesto en otra variable
+            engine->setPolyphony (4);
+            allocatedAfterLower = engine->getNumAllocatedVoices();
+        }
+        additiveEngine32 = heapAt32;
     }
 
     {
@@ -343,12 +353,67 @@ int main()
     check (allocated16 == 16 && allocatedNeuro8 == 8,
            "un motor recien creado reserva SU limite (16 / 8), no las 32 de antes");
 
-    check (allocated32 == 32 && allocatedAfterLower == 32,
-           "subir la polifonia reserva hasta el techo y bajarla NO devuelve voces ("
-               + juce::String (allocatedAfterLower) + " tras bajar a 4)");
+    check (allocated32 == 32 && allocatedAfterLower == 4,
+           "subir la polifonia reserva hasta el techo y bajarla devuelve solo las ociosas ("
+               + juce::String (allocatedAfterLower) + " tras bajar a 4, 0 activas)");
 
     check (additiveSlope >= (std::size_t) additiveBytes && additiveSlope < kVoiceBudget,
            "cada voz nueva del heap (con su jitter) pesa lo de una voz: " + bytes (additiveSlope));
+
+    // Bajar con voces sonando: solo las ociosas vuelven al heap.
+    // Hilo de mensajes con cerrojo: el test simula el gesto del menu
+    // (cabecera MIDI) disparando notas y luego bajando la polifonia;
+    // el hilo de audio no participa.
+    {
+        auto engine = std::make_unique<DSP::NeuronikEngine>();
+        engine->prepare (48000.0, 512);
+        engine->setPolyphony (16);
+
+        // 3 notas -> 3 activas
+        engine->handleMidiMessage (dsp::MidiMessage::noteOn  (1, 60, 0.8f));
+        engine->handleMidiMessage (dsp::MidiMessage::noteOn  (1, 62, 0.8f));
+        engine->handleMidiMessage (dsp::MidiMessage::noteOn  (1, 64, 0.8f));
+        check (engine->getNumActiveVoices() == 3, "con 3 notas, 3 voces suenan");
+
+        // Bajar a 8 con 3 activas: las ociosas si vuelven, las que suenan se quedan
+        engine->setPolyphony (8);
+        check (engine->getNumAllocatedVoices() == 8,
+               "bajar a 8 con 3 activas: tamanio 8 (8 >= 3 activas, ociosas devueltas)");
+        check (engine->getNumActiveVoices() == 3,
+               "y siguen sonando 3 tras bajar a 8");
+
+        // Bajar a 2 con 3 activas: no puede bajar de 3 (max(limit, activas))
+        engine->setPolyphony (2);
+        check (engine->getNumAllocatedVoices() == 3,
+               "bajar a 2 con 3 activas: tamanio 3 (max(2, 3 activas)), nada de la cola se corta");
+        check (engine->getNumActiveVoices() == 3,
+               "y siguen sonando 3 tras bajar a 2 (la cola intacta)");
+
+        // Soltar notas -> colas en release; forzamos reset para medir la rama ociosa
+        engine->handleMidiMessage (dsp::MidiMessage::noteOff (1, 60, 0.0f));
+        engine->handleMidiMessage (dsp::MidiMessage::noteOff (1, 62, 0.0f));
+        engine->handleMidiMessage (dsp::MidiMessage::noteOff (1, 64, 0.0f));
+        engine->allNotesOff();
+        engine->reset();
+        check (engine->getNumActiveVoices() == 0, "tras reset, 0 activas");
+
+        engine->setPolyphony (1);
+        check (engine->getNumAllocatedVoices() == 1,
+               "bajar a 1 con 0 activas: tamanio 1 (todas ociosas devueltas)");
+    }
+
+    // Reserva en caliente: capacity 32 intacta, subir no reasigna
+    {
+        auto engine = std::make_unique<DSP::NeuronikEngine>();
+        engine->prepare (48000.0, 512);
+        engine->setPolyphony (16);
+        engine->setPolyphony (4);
+        check (engine->getNumAllocatedVoices() == 4,
+               "bajar a 4 sin notas: tamanio 4 (ociosas devueltas)");
+        engine->setPolyphony (32);
+        check (engine->getNumAllocatedVoices() == 32,
+               "reserva en caliente: bajar a 4 y subir a 32 queda en 32 (capacity 32 intacta)");
+    }
 
     check (additiveEngine16 < additiveEngine32 && neurotikEngine8 < neurotikEngine32,
            "y el heap crece con el limite: " + bytes (additiveEngine16) + " -> " + bytes (additiveEngine32));

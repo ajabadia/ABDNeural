@@ -68,6 +68,22 @@ void MidiMappingManager::setMapping(const juce::String& paramID, int ccNumber)
     ccToIndex[ccNumber].store(paramIdx);
 }
 
+void MidiMappingManager::setMappingByIndex(int paramIndex, int ccNumber)
+{
+    if (paramIndex < 0 || paramIndex >= (int) getLearnableParams().size()) return;
+    if (ccNumber < 0 || ccNumber > 127) return;
+
+    // 1. Unassign this parameter from any other CC (same rule as setMapping).
+    for (int i = 0; i < 128; ++i)
+    {
+        if (ccToIndex[i].load() == paramIndex)
+            ccToIndex[i].store(-1);
+    }
+
+    // 2. Claim the CC for it (conflict resolution).
+    ccToIndex[ccNumber].store(paramIndex);
+}
+
 void MidiMappingManager::clearMapping(const juce::String& paramID)
 {
     int idx = getParamIndex(paramID);

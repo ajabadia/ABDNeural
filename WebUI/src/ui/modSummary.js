@@ -13,6 +13,9 @@
  */
 
 import { displayText, realFromNormalized } from '../contracts/paramValue.js';
+import { choiceIndexFromNormalized } from '../contracts/paramValue.js';
+import { ENV1_SOURCE, ENV2_SOURCE } from './envelopeViews.js';
+import { latestTelemetry } from '../bridge/telemetry.js';
 
 /** Campos de una ruta, en el orden en que se leen (== el orden de los ids). */
 const FIELDS = ['Source', 'Destination', 'Amount'];
@@ -23,7 +26,7 @@ const FIELDS = ['Source', 'Destination', 'Amount'];
  *   lectura (fuente, destino, cantidad por ruta): de ahí salen los 4 grupos.
  * @returns {{ element: HTMLElement, rows: object[], paint: Function }}
  */
-export function createModSummary({ controls }) {
+export function createModSummary({ controls, onTelemetry = null }) {
   // Cuatro rutas de tres campos: la agrupación sale del PROPIO orden declarado en
   // SECTION_VISUALS['mod-summary'].parameterIds (y un test exige que coincida con
   // las rutas del cajón), en vez de repetir aquí la lista de ids.
@@ -73,6 +76,16 @@ export function createModSummary({ controls }) {
       return { control, element: value };
     });
 
+    // La BARRA de nivel de envolvente, junto al amount: la misma pieza que las
+    // filas ENV del cajon (`.drawer-slot__env-level`), aqui en el LIENZO. Viva
+    // solo si la fuente de esta ruta es ENV 1/ENV 2 (lo decide paint con el
+    // snapshot; sin fuente ENV es un tubo sin fondo, invisible). PREPEND: la
+    // primera pista del grid de la fila es la suya (5px), como en el cajon.
+    const envLevel = document.createElement('span');
+      envLevel.className = 'drawer-slot__env-level';
+      envLevel.dataset.live = 'false';
+      row.prepend(envLevel);
+
     element.append(row);
 
     return { row, painted };
@@ -82,6 +95,56 @@ export function createModSummary({ controls }) {
   // quedan en texto informativo (el click no lleva a ninguna parte): el opener
   // es wiring, no estado — un repintado no lo toca.
   let openRoute = null;
+  let lastParameters = {};
+  // El ultimo par de niveles visto por la SUSCRIPCION (el frame mas fresco que
+  // esta vista ha recibido): paint sin frame a mano usa este, no una lectura
+  // global que puede no existir (el canal de la vista es inyectable).
+  let lastEnvelopes = null;
+
+  /**
+   * La DECISION de qué filas tienen barra viva corre con cada snapshot (la
+   * fuente de cada ruta, contra el orden del desplegable): ENV 1 -> el par
+   * envelopes[0], ENV 2 -> envelopes[1]. El NIVEL por frame es la misma
+   * pintura de telemetría que las agujas y las barras del cajón. Sin canal,
+   * la decisión vive igualmente en paint (el nivel se queda en el último
+   * frame recibido, como en el cajón).
+   */
+  function paintEnvLevels(parameters, envelopes = null) {
+    rows.forEach(({ row }, index) => {
+      const sourceControl = controls[index * FIELDS.length];
+      const value = sourceControl ? parameters[sourceControl.id] : undefined;
+      const optionIndex = sourceControl && value !== undefined
+        ? choiceIndexFromNormalized(sourceControl, value)
+        : -1;
+
+      const envLevel = row.querySelector('.drawer-slot__env-level');
+      const envelope = optionIndex === ENV1_SOURCE ? 0 : optionIndex === ENV2_SOURCE ? 1 : -1;
+
+      envLevel.dataset.live = String(envelope >= 0);
+
+      if (envelope >= 0) {
+        // El nivel viene del FRAME que dispara la pintura (el mismo dato que
+        // ven las agujas); sin frame a mano, el ultimo que la vista recibio.
+        const levels = envelopes ?? lastEnvelopes ?? [];
+        const level = levels[envelope] ?? 0;
+
+        envLevel.style.setProperty('--env-level', String(Math.min(1, Math.max(0, level))));
+      }
+    });
+  }
+
+  // El frame repinta el nivel SIN paint intermedio (el canal es su dueño),
+  // igual que las barras del cajón. Muere con la vista.
+  const stopTelemetry = typeof onTelemetry === 'function'
+    ? onTelemetry((frame) => {
+      lastEnvelopes = Array.isArray(frame?.envelopes) ? frame.envelopes : lastEnvelopes;
+
+      return paintEnvLevels(
+        lastParameters,
+        Array.isArray(frame?.envelopes) ? frame.envelopes : null,
+      );
+    })
+    : null;
 
   return {
     element,
@@ -89,6 +152,8 @@ export function createModSummary({ controls }) {
 
     /** Repinta las cuatro rutas desde el snapshot normalizado del store. */
     paint(parameters) {
+      lastParameters = parameters ?? {};
+
       for (const { painted } of rows) {
         for (const { control, element: span } of painted) {
           const normalized = parameters[control.id] ?? 0;
@@ -96,6 +161,8 @@ export function createModSummary({ controls }) {
           span.textContent = displayText(control, realFromNormalized(control, normalized));
         }
       }
+
+      paintEnvLevels(lastParameters);
     },
 
     /**
@@ -104,6 +171,10 @@ export function createModSummary({ controls }) {
      */
     setRouteOpener(opener) {
       openRoute = typeof opener === 'function' ? opener : null;
+    },
+
+    destroy() {
+      stopTelemetry?.();
     },
   };
 }

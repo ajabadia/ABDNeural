@@ -53,7 +53,7 @@ import {
   getWorkletMorph,
   startAudioEngine,
 } from './audio/audioWorkletEngine.js';
-import { readModelFile, emptyLocalModels } from './audio/localModels.js';
+import { emptyLocalModels } from './audio/localModels.js';
 import { engineIndexFromNormalized } from './wasm/audioParams.js';
 
 /**
@@ -152,6 +152,11 @@ const bands = BANDS.map((band) => band.map((section) => {
       onLoad: (slot) => store.loadModel(slot, {
         requestLocalFile: (nextSlot) => { localModelSlot = nextSlot; localModelInput.click(); },
       }),
+      // OLVIDAR una ranura: la vacia y saca su texto de la memoria local, para
+      // que un F5 no la devuelva. Solo tiene efecto en modo local (con host manda
+      // el preset), asi que el store es quien lo dice con su return value, no la
+      // vista, que no guarda estado de la memoria.
+      onForget: (slot) => store.forgetLocalModel(slot),
       onEdit: (id, value, phase) => store.pushParameter(id, value, phase),
       onTelemetry: store.onTelemetry,
       // ENVOLVENTES: la vista del cajón reparte los knobs de la ficha dentro
@@ -177,6 +182,10 @@ const bands = BANDS.map((band) => band.map((section) => {
         onLoad: (slot) => store.loadModel(slot, {
           requestLocalFile: (nextSlot) => { localModelSlot = nextSlot; localModelInput.click(); },
         }),
+        // El mismo OLVIDAR que en el cajon: la vista del lienzo de MODELOS es el
+        // pad, pero el handler viaja igual para que las dos superficies de la
+        // ficha hablen con el store por la misma puerta.
+        onForget: (slot) => store.forgetLocalModel(slot),
         // El pad de la ficha MODELOS edita morphX/morphY: un gesto suyo son DOS
         // gestos coordinados (uno por eje) con fase completa. pushParameter es
         // la primitiva; handleChange solo sabe cerrar UN id.
@@ -187,6 +196,9 @@ const bands = BANDS.map((band) => band.map((section) => {
         // ENVOLVENTES: las rutas de la matriz que pinta debajo de cada curva y
         // el canal de frames para la AGUJA de nivel (envelopes=[amp, filter]).
         routeControls,
+        // El RESUMEN de la matriz: sus filas ENV llevan la barra de nivel del
+        // MISMO canal que las barras del cajon (envelopes=[amp, filter]).
+        onTelemetry: store.onTelemetry,
       })
       : null,
   };
@@ -244,6 +256,14 @@ if (root) {
     engineType: () => store.getState().parameters.engineType ?? 0,
   });
 
+  // PREVIEW en el LCD de CUALQUIER edit de usuario (celdas, pad, aro, knobs de
+  // cajon): el mismo gesto de hardware del original — giras y el LCD ensena el
+  // parametro con su nombre y valor del contrato, y vuelve solo al reposo. El
+  // canal es de EDITS DE USUARIO: un cambio nativo (host, automatizacion, un
+  // preset) no lo dispara — no es tu mano la que gira. showParameterPreview
+  // guarda el estado del propio LCD (en EDIT del menu no pisa).
+  store.onUserEdit((id, normalized) => lcdTop.showParameterPreview(id, normalized));
+
   const panel = createPanel({
     bands,
     baselineId: BASELINE_PARAMETER_ID,
@@ -259,6 +279,11 @@ if (root) {
       onAction: (id) => {
         if (id === 'randomize') store.randomize();
       },
+      // El conmutador de la ruta local del pad (ficha MATRIZ): el store
+      // escribe la fila 3 y guarda su estado, con el mismo camino que
+      // cualquier otro gesto (el paint y el motor local se enteran por el
+      // snapshot).
+      onLocalRoute: (change) => store.setLocalMorphRoute(change),
       // PANIC stops everything the plugin sounds; in local mode the worklet has
       // no panic path of its own in the host, and here it is a no-op without engine.
       onPanic: () => {
@@ -293,6 +318,16 @@ if (root) {
   drawerEnvBlocksView?.setRouteOpener((slot) =>
     panel.openDrawerRoute('modMatrix', slot, { returnTo: 'envelopes' }));
   canvasModSummaryView?.setRouteOpener((slot) => panel.openDrawerRoute('modMatrix', slot));
+
+  // Esquinas A-D del pad (ficha MODELOS): clic en una ranura CARGADA abre su
+  // cajón en esa ranura — el gesto inverso a IR A LA RUTA. Sin retorno: quien
+  // abrió fue el LIENZO, cerrar deja el lienzo como estaba (mismo criterio que
+  // las rutas del lienzo de ENVOLVENTES). El slot viaja en la numeración de
+  // las filas del cajón destino (0-based, la del motor: A=0). El estado de
+  // openDrawerRoute ya limpia cualquier resalte/retorno de un salto anterior
+  // (no se apilan gestos).
+  canvasMorphZView?.setCornerOpener?.((slot) =>
+    panel.openDrawerRoute('models', slot));
 
   // Anillos de modulacion: el frame de telemetria suma sobre cada destino;
   // el mapa de knobs lo alimenta la misma coleccion que pinta los snapshots.
@@ -345,7 +380,16 @@ if (root) {
   // bridge no se toca: el modelsState del host manda y llegara en su momento.
   if (!store.getState().bridgeAvailable) {
     store.seedLocalModels(emptyLocalModels());
+    // Y las ranuras que la pagina RECUERDA (localStorage): en el navegador no hay
+    // preset que las traiga, asi que la ultima carga ES el preset. Sin memoria no
+    // hace nada (las cuatro siguen EMPTY); con host no se llama a nada de esto.
+    store.restoreLocalModels();
     store.setLocalModelReady(true);   // el input de fichero ya vive en el DOM
+    // Y una ruta de la MATRIZ a Morph Z (LFO 2 -> Morph Z): sin host el motor
+    // nace con la matriz del contrato (slot 3 en Off) y el anillo del pad se
+    // queda quieto. Sembrarla aqui es lo que hace que el arco gire con el LFO
+    // desde el primer SOUND ON, sin tocar nada a mano.
+    store.seedLocalMorphZRoute();
   }
 
   const keyboard = mountKeyboard({
@@ -376,9 +420,27 @@ if (root) {
 
   // The engine reports on its own channel: its state changes outside store
   // updates (loading, ready, sample rate). Fires immediately with the current one.
+  // AL LLEGAR A READY se re-aplica el estado de la pagina: el motor acaba de
+  // nacer con el MIRROR por defecto del worklet, y syncEngine() se corta en
+  // seco mientras no haya motor (`!isAudioEngineReady()`), asi que este es el
+  // unico momento en que la matriz, los modelos y el pad llegan a un motor
+  // recien arrancado con SOUND ON. Un repintado de mas no cuesta nada: el
+  // guard de lastEngineIndex y el de lastMorph evitan repeticiones.
+  //
+  // La COPIA no es cosmetica: `engine` es el MISMO objeto vivo del modulo
+  // (`audioEngineState`, mutado en el sitio), asi que guardarlo por referencia
+  // hacia que `wasReady` fuese SIEMPRE true -su status ya es 'ready' cuando
+  // llega el aviso- y el re-sync no disparaba NUNCA. Medido en Chromium real:
+  // sin esta copia el worklet arrancaba y procesaba, pero no le llegaba ni un
+  // `neuronik:params` (matriz, LFO y pad en los defaults del struct: el anillo
+  // del pad no bailaba). Lo caza el E2E de Playwright (e2e/localMode.spec.js).
   onAudioEngineChange((engine) => {
-    engineSnapshot = engine;
+    const wasReady = engineSnapshot.status === 'ready';
+
+    engineSnapshot = { ...engine };
     renderAudio();
+
+    if (engine.status === 'ready' && !wasReady) paint(store.getState());
   });
 
   /**
