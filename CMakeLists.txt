@@ -1362,6 +1362,22 @@ else()
     message(STATUS "node not found: NEURONiK_WorkletSync test skipped")
 endif()
 
+# Ficheros REFERENCIADOS: todo lo que el build y el E2E nombran tiene que estar
+# versionado. Sin esto, un fichero que se queda sin `git add` funciona en la
+# maquina donde se escribio y rompe en un clone limpio con un 404 o con un
+# target que no compila. Ya ocurrio con la pagina de prueba de la aguja
+# (`/needle-probe/`): el `playwright.config.js` levantaba un servidor para ella
+# y ni el spec ni su fixture estaban versionados -los 22 tests de E2E en verde
+# aqui, timeout en el clone-. El guard nombra el fichero que falta y quien lo
+# nombro. Sin git (tarball, zip) avisa y pasa.
+if(NEURONIK_NODE_EXECUTABLE)
+    add_test(NAME NEURONiK_ReferencedFiles
+        COMMAND ${NEURONIK_NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/Tests/referencedFilesExist.mjs"
+    )
+else()
+    message(STATUS "node not found: NEURONiK_ReferencedFiles test skipped")
+endif()
+
 # Ruta local del pad: en MODO LOCAL (navegador, sin host) la pagina siembra una ruta
 # de la MATRIZ a Morph Z (LFO 2 -> Morph Z) para que el anillo del pad baile con el LFO.
 # Este test la lleva al MOTOR REAL (build-wasm) por el MISMO camino que la pagina -el store

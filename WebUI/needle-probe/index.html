@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- El motor (audioWorkletEngine) resuelve worklet/ y el .wasm contra
+         document.baseURI: en la app servida desde la raiz el relativo ya vale,
+         aqui la pagina vive bajo /needle-probe/ y sin <base> el fetch iria a
+         /needle-probe/worklet/... (404). Con el base en la raiz, la resolucion
+         es la misma que la del plugin. -->
+    <base href="/" />
+    <title>NEURONiK · prueba visual de la aguja (motor WASM)</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 12px 16px;
+        background: #10151b;
+        color: #f0f7ff;
+        font-family: system-ui, sans-serif;
+        font-size: 13px;
+      }
+      .needle-probe__bar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        padding-bottom: 8px;
+      }
+      .needle-probe__bar button {
+        cursor: pointer;
+      }
+      #status[data-status='ready'] { color: #7dd87d; }
+      #status[data-status='error'],
+      #status[data-status='blocked'] { color: #ff8f8f; }
+      .needle-probe__body {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      .needle-probe__body h2 {
+        font-size: 12px;
+        color: #8b98a5;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="needle-probe__bar">
+      <strong>Prueba visual de la AGUJA (modo navegador, motor WASM)</strong>
+      <span id="status" data-status="idle">sin arrancar</span>
+      <button type="button" id="start">SOUND ON</button>
+      <button type="button" id="note-on">Nota ON (60)</button>
+      <button type="button" id="note-off">Nota OFF (60)</button>
+    </header>
+    <main class="needle-probe__body">
+      <section>
+        <h2>Lienzo (.env-curves)</h2>
+        <div id="canvas-mount"></div>
+      </section>
+      <section>
+        <h2>Cajón (.env-blocks)</h2>
+        <div id="drawer-mount"></div>
+      </section>
+    </main>
+    <script type="module" src="/needle-probe/needleProbe.js"></script>
+  </body>
+</html>
