@@ -6078,19 +6078,16 @@ defaults.
    modo `active` (FILTRO `2/2` → `0/2`, RESONADOR `0/3` → `3/3`, OSCILADOR `9/12` → `6/12`; cifras
    medidas en el navegador el 2026-09-27, a repetir si se toca el gating). Envolvente en un cajon o
    renunciar al dato: es una decision de superficie, no un bug.
-7. **ENVOLVENTES tiene cajon pero no declara distintivo, y su numero SI se mueve** (`8/8` → `4/8` al
-   cambiar de motor, medido el 2026-09-27). Es el unico caso de los cinco donde la ficha PODria colgar el
-   `liveBadge` `active` y no lo hace: una incoherencia entre el criterio de "no colgar nada si el dato no
-   cambia" y este caso, que si cambia. O se declara, o se escribe por que se deja fuera.
-8. **CZ101: el distintivo de bloques solo se ve con el cajon abierto**, y el gesto que lo haria util —saber
-   que bloque esta movido ANTES de abrirlo— es justo el que el cajon esconde. En la superficie cada bloque
-   ya tiene su boton EDIT (`WebUI/src/ui/blockDrawer.js` y el marcado de `index.html`): ahi es donde
-   tendria que vivir la señal, si se decide que viva.
-9. **La regresion visual solo cubre el lienzo** (medido 2026-09-27): once referencias en
-   `WebUI/e2e/snapshots/` (nueve fichas, el lienzo entero y el lienzo en tema claro). No hay referencia de
-   cajones, modales, tooltips ni del `title` de un control — un fallo ahi solo lo pilla el resto de la
-   suite. Anadir una por cajon (con su propio portal, porque un cajon cerrado esta `inert` y fuera de
-   pantalla) es el siguiente escalon natural.
+7. ~~**ENVOLVENTES tiene cajon pero no declara distintivo, y su numero SI se mueve**~~ —
+   **RESUELTO (2026-09-28)**: la ficha declara `liveBadge: { mode: 'active', label: 'ACTIVAS',
+   onCard: true }`, cuelga su chip pulsable en la cabecera (abre SU cajon) y las dos cifras estan
+   MEDIDAS en el navegador: **8/8 con NEURONiK, 4/8 con NEUROTIK** (las dos ADSR enteras, o solo
+   las del filtro). Es el unico caso donde el criterio "si el dato no se mueve, no cuelgues nada"
+   no se sostenia, y la incoherencia no la cazaba ningun test: ahora la fija
+   `appContract.test.js` ("toda ficha con cajon cuelga distintivo", con la lista de fichas con
+   cajon a la vista) y la leen el panel y el E2E del modo local. Referencia visual de la ficha
+   regenerada: el cambio son 132 pixeles en una caja de 31x13 en la esquina de su cabecera, y
+   nada mas se movio.
 
 ### C. Verificaciones que no se hicieron (y por que)
 

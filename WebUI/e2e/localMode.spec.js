@@ -390,17 +390,23 @@ test('el conmutador de la ruta del pad apaga y cambia el LFO (y el anillo respon
   await expect.poll(filaEnMotor).toEqual([[28, 2], [29, 28], [30, 1]]);
 });
 
-test('el distintivo vivo del lienzo abre SU cajon (MODELOS y GLOBAL)', async ({ page }) => {
+test('el distintivo vivo del lienzo abre SU cajon (MODELOS, GLOBAL y ENVOLVENTES)', async ({ page }) => {
   // El chip cuelga de la cabecera de la ficha, al lado del EDIT, y lleva la
   // fraccion del dato vivo: la cabecera de MODELOS es una fila fija y justa, asi
   // que el rotulo entero vive en el title y en la etiqueta accesible.
   const modelsChip = page.locator('[data-live-badge="models"]');
   const globalChip = page.locator('[data-live-badge="globalFull"]');
+  const envelopesChip = page.locator('[data-live-badge="envelopes"]');
 
   await expect(modelsChip).toHaveText('0/4');
   await expect(globalChip).toHaveText('0/8');
+  // ENVOLVENTES entro el 2026-09-28: con NEURONiK suena su ADSR entera, o sea
+  // las ocho celdas de la ficha (las dos envelopes por sus cuatro knobs).
+  await expect(envelopesChip).toHaveText('8/8');
   await expect(modelsChip).toHaveAttribute('aria-label', /^0\/4 RANURAS: abrir el caj/);
-  await expect(page.locator('.card__badge')).toHaveCount(3);
+  // MODELOS, GLOBAL, LFO y ENVOLVENTES. La MATRIZ conserva su resumen y no
+  // cuelga chip, y las cuatro fichas sin cajon no pueden colgarlo.
+  await expect(page.locator('.card__badge')).toHaveCount(4);
 
   // El texto visible no es decoracion: el EDIT de la MISMA ficha tiene que
   // seguir dentro de la cabecera (un chip que empuja el EDIT fuera dejaria a la
@@ -450,6 +456,24 @@ test('el distintivo vivo del lienzo abre SU cajon (MODELOS y GLOBAL)', async ({ 
 
   await expect(page.locator('[data-live-badge="models"]')).toHaveText('1/4');
   await expect(page.locator('#drawer-models .drawer__badge')).toHaveText('1/4 RANURAS');
+
+  // ENVOLVENTES: su chip abre SU cajon y el dato es el MISMO en los dos sitios.
+  await envelopesChip.click();
+  await expect(page.locator('#drawer-envelopes')).toHaveAttribute('aria-hidden', 'false');
+  await expect(page.locator('#drawer-envelopes .drawer__badge')).toHaveText('8/8 ACTIVAS');
+
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#drawer-envelopes')).toHaveAttribute('aria-hidden', 'true');
+
+  // Y el dato SE MUEVE, que es lo que justificaba declararlo: con NEUROTIK solo
+  // viven las celdas del filtro, asi que el chip baja a 4/8 sin abrir nada.
+  await page.getByRole('radio', { name: 'Neurotik' }).click();
+  await expect(envelopesChip).toHaveText('4/8');
+
+  // De vuelta a NEURONiK recupera las ocho: el chip lee el snapshot, no guarda
+  // un historial de lo que se vio.
+  await page.getByRole('radio', { name: 'Neuronik' }).click();
+  await expect(envelopesChip).toHaveText('8/8');
 });
 
 test('el distintivo ACTIVE lee el MISMO gating que la celda pinta', async ({ page }) => {

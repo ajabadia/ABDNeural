@@ -322,6 +322,17 @@ export const SECTIONS = [
     visual: 'envelope-curves',
     drawer: {
       badge: '2 ADSR',
+      // EL DISTINTIVO que faltaba (2026-09-28). El criterio de la ficha es "si
+      // el dato no se mueve, no cuelgues nada", y ENVOLVENTES era el UNICO caso
+      // donde ese criterio no se sostenia: tiene cajon y su numero SI se mueve
+      // —8/8 con NEURONiK, 4/8 con NEUROTIK, medido el 2026-09-27— porque sus
+      // celdas se apagan por motor igual que las de LFO. Cuelga el chip pulsable
+      // de la cabecera (abre SU cajon, patron de MODELOS y GLOBAL) y el dato
+      // vivo en la del cajon, del MISMO calculo: una cuenta, dos destinos.
+      // Antes era la unica ficha con cajon y sin distintivo, y la incoherencia no
+      // la cazaba ningun test: ahora la fija appContract.test.js ("toda ficha con
+      // cajon cuelga distintivo"), para que una ficha nueva no la reintroduzca.
+      liveBadge: { mode: 'active', label: 'ACTIVAS', onCard: true },
       trigger: 'EDIT',
       // La vista del cajon NO reparte celdas: el detalle la monta el panel
       // entera (ver buildCard) y las celdas caen dentro por `blockOf`.

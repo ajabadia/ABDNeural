@@ -648,18 +648,20 @@ describe('panel / ficha de cajon (matriz de modulacion)', () => {
     const panel = mountPanel();
     const chipOf = (id) => document.querySelector(`[data-live-badge="${id}"]`);
 
-    // Solo lo piden las fichas que lo declaran (`liveBadge.onCard`): MODELOS y
-    // GLOBAL. La MATRIZ conserva su resumen y las fichas con literal fijo (LFO,
-    // ENVOLVENTES) no cuelgan nada: un chip con un dato que no cambia de valor
-    // seria ruido con apariencia de dato vivo.
+    // Solo lo piden las fichas que lo declaran (`liveBadge.onCard`): MODELOS,
+    // GLOBAL, LFO y ENVOLVENTES. La MATRIZ conserva su resumen y no cuelga chip
+    // (su dato ya esta en la ficha). Un chip con un dato que NO cambia de valor
+    // seria ruido con apariencia de dato vivo: por eso las cuatro fichas sin
+    // cajon (OSCILLATOR, RESONADOR, FILTRO, EFECTOS) no cuelgan ninguna, y
+    // ENVOLVENTES se sumo al mundo de los que si cambian (ver el test de abajo).
     panel.paint(makeState());
 
-    expect(document.querySelectorAll('.card__badge')).toHaveLength(3);
+    expect(document.querySelectorAll('.card__badge')).toHaveLength(4);
     expect(chipOf('models')).not.toBeNull();
     expect(chipOf('globalFull')).not.toBeNull();
     expect(chipOf('lfo')).not.toBeNull();
+    expect(chipOf('envelopes')).not.toBeNull();
     expect(chipOf('modMatrix')).toBeNull();
-    expect(chipOf('envelopes')).toBeNull();
 
     // Vive en la cabecera de SU ficha, al lado del EDIT que ya abria el cajon.
     const chip = chipOf('models');
@@ -721,6 +723,34 @@ describe('panel / ficha de cajon (matriz de modulacion)', () => {
 
     expect(drawer.isOpen()).toBe(true);
     expect(drawer.body.querySelector('[data-parameter-id="freezeFilter"]')).not.toBeNull();
+  });
+
+  it('el chip de ENVOLVENTES cuenta las celdas del motor que suena (8/8 -> 4/8)', () => {
+    // El caso que motivo declararlo: la ficha tiene cajon y sus ocho celdas se
+    // apagan por motor, asi que su numero SI se mueve. Los dos numeros estan
+    // MEDIDOS (no son de cuenta a mano): con NEURONiK las dos ADSR enteras, con
+    // NEUROTIK solo las del filtro.
+    const panel = mountPanel();
+    const state = makeState();
+    const chip = () => document.querySelector('[data-live-badge="envelopes"]').textContent;
+    const badge = () => panel.drawers.get('envelopes').header.querySelector('.drawer__badge').textContent;
+
+    panel.paint(state);
+
+    expect(chip()).toBe('8/8');
+    expect(badge()).toBe('8/8 ACTIVAS');
+
+    panel.paint({ ...state, parameters: { ...state.parameters, engineType: 1 } });
+
+    expect(chip()).toBe('4/8');
+    expect(badge()).toBe('4/8 ACTIVAS');
+
+    // El chip abre SU cajon, como los otros tres.
+    const drawer = panel.drawers.get('envelopes');
+
+    expect(drawer.isOpen()).toBe(false);
+    document.querySelector('[data-live-badge="envelopes"]').click();
+    expect(drawer.isOpen()).toBe(true);
   });
 
   it('el distintivo ACTIVE cuenta las celdas que consume el motor que SUENA', () => {

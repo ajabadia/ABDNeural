@@ -22,6 +22,8 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
+import { BANDS } from '../src/contracts/sections.js';
+
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (...segments) => readFileSync(join(here, ...segments), 'utf8');
 
@@ -271,5 +273,46 @@ describe('WebUI entry contract', () => {
   it('paints the shared tintable background on the page root', () => {
     expect(html).toContain('<body class="abd-theme-bg">');
     expect(app).toContain("'@abdsynths/shared/styles/components/backgrounds.css'");
+  });
+});
+
+// EL CRITERIO del distintivo vivo, sobre el CONTRATO REAL (no sobre el texto):
+// una ficha con cajon cuelga el dato que se mueve, en la cabecera y en el
+// cajon. ENVOLVENTES vivia sin él siendo la unica con cajon cuyo numero SI se
+// mueve (8/8 -> 4/8 al cambiar de motor, medido el 2026-09-27), y nadie lo
+// notaba porque la excepcion no la miraba ningun test: una ficha nueva con
+// cajon y sin distintivo habria entrado igual.
+describe('el criterio del distintivo vivo (una cuenta, dos destinos)', () => {
+  const cards = BANDS.flat();
+  const withDrawer = cards.filter((card) => card.drawer);
+
+  it('toda ficha con cajon cuelga distintivo vivo', () => {
+    const missing = withDrawer
+      .filter((card) => !card.drawer.liveBadge)
+      .map((card) => card.id);
+
+    expect(missing).toEqual([]);
+    // El numero de fichas con cajon, para que la lista se note al anadir una.
+    expect(withDrawer.map((card) => card.id).sort())
+      .toEqual(['envelopes', 'globalFull', 'lfo', 'modMatrix', 'models']);
+  });
+
+  it('el distintivo declara DE QUE se cuenta, y el chip solo si se pide', () => {
+    for (const card of withDrawer) {
+      const badge = card.drawer.liveBadge;
+
+      // Modo (`active`/`touched`/`loaded`) o ids de rutas asignadas: lo que sea,
+      // pero dicho. Un distintivo sin declare es un literal disfrazado.
+      expect(badge.mode ?? badge.ids, card.id).toBeTruthy();
+    }
+
+    // El chip del lienzo es opcional a proposito: la MATRIZ lleva su propio
+    // resumen y su dato ya esta en la ficha. Lo demas lo pide con `onCard`.
+    const withChip = withDrawer
+      .filter((card) => card.drawer.liveBadge.onCard)
+      .map((card) => card.id)
+      .sort();
+
+    expect(withChip).toEqual(['envelopes', 'globalFull', 'lfo', 'models']);
   });
 });
