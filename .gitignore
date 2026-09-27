@@ -79,8 +79,19 @@ Testing/
 build-wasm/
 
 # Agent/session work scripts (parches y sondas temporales de sesiones de
-# agentes en la raiz; nunca producto). Anclados a la raiz a proposito: que no
-# se oculte un _*.py legitimo en un subdirectorio futuro.
+# agentes; nunca producto). Anclados a la raiz a proposito: que no se oculte
+# un _*.py legitimo en un subdirectorio futuro.
+#
+# Y las mismas reglas donde caen de verdad: una sonda se escribe junto a lo que
+# sonda (WebUI/, Tests/), no en la raiz. Sin esto, cada commit tenia que
+# revisar la lista de untracked a mano y el scratch se colaba en el arbol.
 /_*.py
 /_t*.mjs
 /_e1_*
+/_*.part.txt
+/_*.md5
+/_t*.sh
+/WebUI/_*.py
+/Tests/_*probe*
+/.freebuff/
+/.agents/

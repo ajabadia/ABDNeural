@@ -6055,9 +6055,14 @@ defaults.
    `ARP_GATE`, la pagina escribe 0.8 y el contrato 0.5). No se toco ninguno: con que valor arranca el
    motor es decision de la pagina. Si el distintivo debe salir en `0/N` al abrir, hay que alinear markup o
    contrato — y eso cambia lo que el motor arranca leyendo, no solo lo que se ve.
-4. **Scripts de un solo uso sin trackear en `ABDNeural/WebUI/`**: `_live_badges_*.py` (8), `_edit.py`,
-   `_dbg2.py`. Son scratch de esta misma sesion. Preguntado dos veces (2026-09-27) si se borran; sin
-   respuesta. No se tocan porque no son producto, pero ensucian `git status`.
+4. ~~**Scripts de un solo uso sin trackear**~~ — **RESUELTO (2026-09-28)**: borrado el scratch de
+   las sesiones cerradas de los dos repos (los `_live_badges_*.py`, `_edit.py`, `_dbg2.py` de
+   `WebUI/`, las sondas `Tests/_inter_probe*.cpp` y `_mod28_probe.mjs` — su target ya no estaba en
+   el `CMakeLists.txt`—, mas `_*.md5`, `_*.part.txt`, `_t17_matrix.sh` y los `_apply_*.py` /
+   `_fix_*.py` / `patch_entrelazada.py` de la raiz del monorepo) y añadida la REGLA que lo
+   evita: `.gitignore` con `/WebUI/_*.py`, `/Tests/_*probe*`, `/_*.md5`, `/_*.part.txt`,
+   `/_t*.sh`, `/.freebuff/`, `/.agents/` aqui y los equivalentes en la raiz de la suite. Ya no
+   hay que revisar la lista de untracked commit a commit.
 
 ### B. Huecos tecnicos conocidos, con el sitio exacto
 
