@@ -25,11 +25,15 @@ namespace
 {
     // Pinned so adding or removing a parameter is a deliberate, visible change.
     // FASE 10: 70 historicos + oscExciteBow + morphZ = 72.
-    constexpr int EXPECTED_PARAMETER_COUNT = 72;
+    // FASE 11.3: + morphZ2/morphZ3 (los z de las capas 1 y 2) = 74.
+    // 2026-09-26: - filterEnvAmount (la ruta ENV 2 -> Filter Cutoff de la matriz
+    // es LA profundidad; el knob era la misma profundidad dos veces) = 73.
+    constexpr int EXPECTED_PARAMETER_COUNT = 73;
     // Audited against the real references in Source/, not against an assumption:
     // see the DSP_PARAMETERS.md section "Estado de implementación DSP".
     // FASE 10: 65 historicos + oscExciteBow + morphZ = 67.
-    constexpr int EXPECTED_IMPLEMENTED_COUNT = 67;
+    // FASE 11.3: + morphZ2/morphZ3 (con consumidor en el motor) = 69.
+    constexpr int EXPECTED_IMPLEMENTED_COUNT = 68;
     constexpr int EXPECTED_UI_ONLY_COUNT = 4;
     constexpr int EXPECTED_NOT_ROUTED_COUNT = 1;
 
@@ -359,10 +363,11 @@ int main()
     // mod slot means. Pinning the labels makes a reorder a deliberate, visible act.
     const auto& destinations = getModDestinationTable();
 
-    // FASE 10: "Morph Z" se anade al FINAL (indice 28): los choice de la
-    // matriz guardan indice de preset, insertar en medio los re-mapearia.
-    check (destinations.size() == 29,
-           "the destination table still has 29 entries ("
+    // FASE 10: "Morph Z" se anade al FINAL (indice 28); FASE 11.3: "Morph Z 2"
+    // (29) y "Morph Z 3" (30), tambien al final: los choice de la matriz guardan
+    // indice de preset, insertar en medio los re-mapearia.
+    check (destinations.size() == 31,
+           "the destination table still has 31 entries ("
                + juce::String (destinations.size()) + ")");
 
     const char* expectedLabels[] =
@@ -479,12 +484,18 @@ int main()
                 ++both;
         }
 
-        check (neuronikOnly.trim() == "2 3 10 11 12 13 14 15 16 20 21 22",
+        // 2026-09-26: el 12 deja de ser Neuronik-only (el parametro que
+        // decidia su cobertura se retiro; queda neutro, ver "both").
+        check (neuronikOnly.trim() == "2 3 10 11 13 14 15 16 20 21 22",
                "Neuronik-only destinations: " + neuronikOnly.trim());
         check (neurotikOnly.trim() == "23 24 25 26",
                "Neurotik-only destinations: " + neurotikOnly.trim());
-        // FASE 10: Morph Z (28) es del motor neutro => 12 + 1 = 13.
-        check (both == 13, "engine independent destinations: " + juce::String (both));
+        // Del motor NEUTRO (los que alimentan las dos voces): los 12 de siempre,
+        // Morph Z (28, FASE 10), los z de las capas 1 y 2 (29/30, FASE 11.3) y
+        // el 12 "Filter Env Amt" sin parametro (retirado 2026-09-26; el motor
+        // aditivo lo suma al factor de routing ENV 2, el resonador no tiene
+        // filtro): sin parametro que puerce, coverage NEUTRO.
+        check (both == 16, "engine independent destinations: " + juce::String (both));
     }
 
     // Lists that do not depend on the engine must stay ungated: gating them would

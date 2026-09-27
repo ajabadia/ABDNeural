@@ -50,8 +50,10 @@ export const CANVAS = {
   // fondo ahora la manda el FRONTAL del LFO (2 filas de rate+depth); la
   // matriz y el global son armazon de cajon. La CSS declara el MISMO numero
   // (--abd-canvas-h, test de geometria); el fit-stage escala en ventanas
-  // menores.
-  height: 892,
+  // menores. 946 = 892 + la fila del LCD superior (GEOMETRY.lcd = 54, la
+  // migracion del LcdDisplay del C++) + 8 de aire (regla del test de encaje);
+  // el editor C++ entrega este alto (canvasHeight de NEURONiKEditor.h).
+  height: 946,
   /** Carriles de la rejilla horizontal; las bandas suman exactamente esto. */
   lanes: 12,
 };
@@ -70,6 +72,7 @@ export const CANVAS = {
 export const GEOMETRY = {
   knob: 48,          // diámetro del dial (--abd-knob-size): manda el alto de celda
   top: 40,           // cabecera: título, estado del puente, contrato
+  lcd: 54,           // fila del LCD superior (pantalla 2 líneas + D-pad, con aire ≥8: regla del test de encaje)
   bandGap: 10,       // separación entre bandas
   cardHeader: 20,    // título de la ficha
   cardPadding: 16,   // relleno interior de la ficha (8 + 8)
@@ -113,9 +116,42 @@ export const GEOMETRY = {
  * (nombre cargado por ranura) llega por el puente en `modelsState`.
  */
 export const SECTION_VISUALS = {
-  'amp-envelope': {
-    id: 'amp-envelope',
-    parameterIds: ['envAttack', 'envDecay', 'envSustain', 'envRelease'],
+  /*
+   * ENVOLVENTES (diseño 9.x): la única curva ADSR se retira y entran las DOS
+   * vistas de la ficha, una por sitio:
+   *
+   *   - `envelope-curves` es el LIENZO: dos columnas (ENV 1 amp / ENV 2
+   *     filtro), cada una con su curva y debajo las rutas que la MATRIZ tiene
+   *     asignadas a su fuente (6/7), con su amount. Se alimenta de las ocho
+   *     ADSR y de los doce ids de la matriz: lo que pinta es lo que el cable
+   *     lleva, sin copia de las rutas.
+   *   - `envelope-blocks` es el CAJÓN: un bloque por envolvente con SU curva
+   *     encima de sus cuatro knobs. El panel monta las celdas dentro de los
+   *     bloques que devuelve la vista (`blockOf`).
+   *
+   * Ninguna reparte celdas (son vistas, como el resumen de la matriz): con la
+   * ficha pasada a cajón, sus ids ya no empujan el encaje del lienzo.
+   */
+  'envelope-curves': {
+    id: 'envelope-curves',
+    parameterIds: [
+      'envAttack', 'envDecay', 'envSustain', 'envRelease',
+      'filterAttack', 'filterDecay', 'filterSustain', 'filterRelease',
+      'mod1Source', 'mod1Destination', 'mod1Amount',
+      'mod2Source', 'mod2Destination', 'mod2Amount',
+      'mod3Source', 'mod3Destination', 'mod3Amount',
+      'mod4Source', 'mod4Destination', 'mod4Amount',
+    ],
+    // Cuerpo que cierra SU banda (la de ENVOLVENTES + MODELOS + EFECTOS): 206
+    // de ficha - 42 de armazon = 164, el MISMO cuerpo que piden el pad de
+    // MODELOS y el cuerpo real de la banda en el navegador. Es el mecanismo del
+    // pad; el sobrante lo absorbe el SVG (fila 1fr), asi que con cero rutas las
+    // curvas estiran y nada queda hueco.
+    minBodyHeight: 164,
+  },
+  'envelope-blocks': {
+    id: 'envelope-blocks',
+    parameterIds: ['envAttack', 'envDecay', 'envSustain', 'envRelease', 'filterAttack', 'filterDecay', 'filterSustain', 'filterRelease'],
   },
   // El pad SOLO: es lo que vive en la ficha del lienzo (el cuerpo de la ficha
   // lo cierra su minBodyHeight). Edita morphX/morphY: UN control UN nodo — la
@@ -124,8 +160,13 @@ export const SECTION_VISUALS = {
     id: 'model-xy',
     parameterIds: ['morphX', 'morphY'],
     // Cuerpo del pad en el lienzo: es lo que cierra su banda (antes lo cerraba
-    // el bloque compuesto de ranuras + pad).
-    minBodyHeight: 150,
+    // el bloque compuesto de ranuras + pad). BALANCEO 9.x: 164, no 150 — la
+    // banda la manda ENVOLVENTES (164 de cuerpo) y el pad se estira con ella;
+    // a 150 dejaba 16 px muertos en el centro de la banda. El 220x150+14 del
+    // constructor vive en ui/xyPad.js (mismo numero, dos caras del mismo
+    // acuerdo: pad 150 + fila de readout X/Y % = 164); el test de la ficha
+    // MODELOS exige que esto sea > 0.
+    minBodyHeight: 164,
   },
   // El detalle del cajon: espectral de parciales en vivo + las cuatro ranuras
   // A-D. Los morph van en `parameterIds` porque el espectral se alimenta del
@@ -150,6 +191,12 @@ export const SECTION_VISUALS = {
       'mod4Destination',
       'mod4Amount',
     ],
+    // TRANSICION 9.3: con el LFO en la banda del motor, la banda del fondo es
+    // matriz + global (ambas fichas de cajon, sin filas): sin cuerpo propio la
+    // banda colapsa al armazon (42). El cuerpo de la casa (164, el mismo del
+    // pad y las curvas) la mantiene a 206 hasta el reparto definitivo de la
+    // fila que el usuario decidira.
+    minBodyHeight: 164,
   },
 };
 
@@ -208,25 +255,73 @@ export const SECTIONS = [
     title: 'FILTRO',
     subtitle: 'Filtro multimodo',
     // SEPARACION 8.3: la antigua FILTRO & ENVOLVENTE se parte en dos fichas.
-    // El filtro se queda en la banda del motor (tras el resonador) con sus
-    // 3 controles en una fila; filterEnvAmount es la profundidad de la ruta
-    // ENV 2 -> Filter Cutoff de la matriz.
-    span: 4,
-    columns: 4,
-    ids: ['filterCutoff', 'filterRes', 'filterEnvAmount'],
+    // BALANCEO 9.3: filterEnvAmount se RETIRO (2026-09-26) — la ruta ENV 2 ->
+    // Filter Cutoff de la matriz es LA profundidad (su amount, bipolar) y el
+    // knob era una segunda profundidad en el mismo camino. Con dos controles,
+    // la ficha se ESTRECHA a 2 carriles y los APILA (una columna, un control
+    // encima de otro); el LFO sube a SU derecha (misma banda del motor).
+    span: 2,
+    columns: 1,
+    ids: ['filterCutoff', 'filterRes'],
+  },
+  {
+    // BALANCEO 9.3: la caja LFO SUBE a la banda del motor, a la derecha del
+    // FILTRO (que al perder filterEnvAmount se estrecho a 2 carriles apilados).
+    // Mismo mueble: frontal 2x2 (rate/depth de cada LFO), cajon con forma,
+    // sync y division. Su salida ya es de matriz (fuentes 1 y 2).
+    id: 'lfo',
+    title: 'LFO 1 & 2',
+    subtitle: 'Forma, tempo y profundidad',
+    // CAJA 8.3: en el lienzo quedan rate + depth de cada LFO (2x2); forma,
+    // sync y division viven en el cajon (EDIT). Su SALIDA ya es de matriz
+    // (LFO 1 y LFO 2 son las fuentes 1 y 2): la profundidad del LFO es el
+    // trim de su fuente y las rutas concretas se editan en la MATRIZ.
+    span: 2,
+    columns: 2,
+    drawer: {
+      badge: '4 LFO',
+      trigger: 'EDIT',
+      // Los cuatro del frontal NO se replican en el cajon (un control, un
+      // nodo DOM; patron masterLevel en GLOBAL & MASTER).
+      frontal: ['lfo1RateHz', 'lfo1Depth', 'lfo2RateHz', 'lfo2Depth'],
+    },
+    ids: [
+      'lfo1RateHz',
+      'lfo1Depth',
+      'lfo2RateHz',
+      'lfo2Depth',
+      'lfo1Waveform',
+      'lfo1SyncMode',
+      'lfo1RhythmicDivision',
+      'lfo2Waveform',
+      'lfo2SyncMode',
+      'lfo2RhythmicDivision',
+    ],
   },
   {
     id: 'envelopes',
     title: 'ENVOLVENTES',
-    subtitle: 'ENV 1 amplitud · ENV 2 filtro',
-    // SEPARACION 8.3: las DOS envolventes juntas (la de amplitud y la del
-    // filtro, antes enterrada como filterAttack..filterRelease). Las curvas
-    // se editan AQUI; lo que MODULAN se conecta en la MATRIZ (ENV 1 y ENV 2
-    // son fuentes 6 y 7 desde la separacion). Hereda la rejilla 6x2 y la
-    // celda libre de la curva ADSR de la antigua ficha.
+    subtitle: 'ENV 1 y ENV 2 · destinos desde la matriz',
+    // DISENO 9.x: las DOS ADSR se editan en su CAJON (un bloque por
+    // envolvente, su curva encima de sus cuatro knobs); en el lienzo quedan
+    // las dos curvas y, debajo de cada una, las rutas que la MATRIZ tiene
+    // asignadas a su fuente (ENV 1/ENV 2 son fuentes 6 y 7). La profundidad
+    // de la ruta ENV 2 -> Filter Cutoff es el amount de la propia ruta (el
+    // knob filterEnvAmount se retiro: era la misma profundidad dos veces).
     span: 5,
-    columns: 6,
-    visual: 'amp-envelope',
+    columns: 2,
+    visual: 'envelope-curves',
+    drawer: {
+      badge: '2 ADSR',
+      trigger: 'EDIT',
+      // La vista del cajon NO reparte celdas: el detalle la monta el panel
+      // entera (ver buildCard) y las celdas caen dentro por `blockOf`.
+      visual: 'envelope-blocks',
+      blocks: [
+        ['envAttack', 'envDecay', 'envSustain', 'envRelease'],
+        ['filterAttack', 'filterDecay', 'filterSustain', 'filterRelease'],
+      ],
+    },
     ids: [
       'envAttack',
       'envDecay',
@@ -263,7 +358,13 @@ export const SECTIONS = [
     // su celda vive SOLO en el cajon (bajo la vista de ranuras), el lienzo se
     // queda con el pad. El anillo del pad puede modularlo desde la matriz
     // (destino 28), que es el gesto Neuron por excelencia.
-    ids: ['morphZ'],
+    //
+    // FASE 11.3: morphZ2/morphZ3 son los z de las CAPAS 1 y 2 del modelo (el
+    // sampler por capa). Son parametros del APVTS, asi que la pagina tiene que
+    // POSEERLOS —el store ignora los mensajes de un id que no tiene, y el motor
+    // los mueve: un preset, la matriz, la automatizacion— y su control va aqui,
+    // junto al de morphZ: las tres perillas del eje temporal, una por capa.
+    ids: ['morphZ', 'morphZ2', 'morphZ3'],
   },
   {
     id: 'fx',
@@ -290,41 +391,15 @@ export const SECTIONS = [
   },
 
   {
-    id: 'lfo',
-    title: 'LFO 1 & 2',
-    subtitle: 'Forma, tempo y profundidad',
-    // CAJA 8.3: en el lienzo quedan rate + depth de cada LFO (2x2); forma,
-    // sync y division viven en el cajon (EDIT). Su SALIDA ya es de matriz
-    // (LFO 1 y LFO 2 son las fuentes 1 y 2): la profundidad del LFO es el
-    // trim de su fuente y las rutas concretas se editan en la MATRIZ.
-    span: 2,
-    columns: 2,
-    drawer: {
-      badge: '4 LFO',
-      trigger: 'EDIT',
-      // Los cuatro del frontal NO se replican en el cajon (un control, un
-      // nodo DOM; patron masterLevel en GLOBAL & MASTER).
-      frontal: ['lfo1RateHz', 'lfo1Depth', 'lfo2RateHz', 'lfo2Depth'],
-    },
-    ids: [
-      'lfo1RateHz',
-      'lfo1Depth',
-      'lfo2RateHz',
-      'lfo2Depth',
-      'lfo1Waveform',
-      'lfo1SyncMode',
-      'lfo1RhythmicDivision',
-      'lfo2Waveform',
-      'lfo2SyncMode',
-      'lfo2RhythmicDivision',
-    ],
-  },
-  {
     id: 'modMatrix',
     title: 'MATRIZ DE MODULACIÓN',
     subtitle: '4 rutas: fuente → destino → cantidad',
-    span: 6,
-    columns: 6,
+    // TRANSICION 9.3: con el LFO subido a la banda del motor, esta banda queda
+    // matriz + global: la matriz toma los 2 carriles que el LFO dejo libres
+    // (el resumen respira mas ancho). PENDIENTE: el usuario decidira el
+    // reparto final de esta ultima fila mas adelante.
+    span: 8,
+    columns: 8,
     // Sus 12 celdas viven en el cajón (ver la cabecera): en el lienzo queda el
     // resumen de las 4 rutas y el botón. `groups` es la agrupación con la que el
     // cajón las pinta (una fila por ruta) y el test exige que sea, en orden, `ids`.
@@ -333,6 +408,17 @@ export const SECTIONS = [
     // el selftest del host lo usa como ancla del cajón de la matriz.
     drawer: {
       badge: '4 RUTAS',
+      // El distintivo es un DATO VIVO, no una constante de la ficha: `liveBadge`
+      // declara de QUE se cuenta —los ids de FUENTE, una ruta por cada uno— y el
+      // panel lo recalcula con cada snapshot y lo escribe con `setHeader` del
+      // mueble compartido (ver ui/panel.js). Una ruta esta ASIGNADA cuando su
+      // fuente no es la primera opcion ("Off"); con los defaults del contrato son
+      // dos (ENV 1 y ENV 2), y el literal '4 RUTAS' no podia decirlo. El literal
+      // queda para lo que si es: el inventario antes del primer paint.
+      liveBadge: {
+        ids: ['mod1Source', 'mod2Source', 'mod3Source', 'mod4Source'],
+        label: 'RUTAS',
+      },
       trigger: 'EDIT',
       groups: [
         ['mod1Source', 'mod1Destination', 'mod1Amount'],
@@ -361,15 +447,13 @@ export const SECTIONS = [
     // MUDANZA 8.3: GLOBAL & MASTER vive al final del lienzo, abajo a la
     // izquierda (primera de su banda: cierra la lectura). Patron de la
     // matriz: en el lienzo queda el master visible y EDITAR abre el cajon
-    // con el resto (tempo, MIDI, congelados). La geometria la paga el LFO,
-    // que se muda a los carriles que esta ficha dejo libres arriba: mismas
-    // filas, mismo alto de banda, el lienzo no cambia. RANDOM vive aqui por
-    // ser accion de ESTADO (todo el APVTS, con los freeze como filtro).
+    // con el resto (tempo, MIDI, congelados). RANDOM vive aqui por ser
+    // accion de ESTADO (todo el APVTS, con los freeze como filtro).
     id: 'globalFull',
     title: 'GLOBAL & MASTER',
     subtitle: 'Tempo, MIDI, congelados y aleatorio',
-    // Con la caja LFO (2) la banda del fondo es de TRES: LFO + matriz (6)
-    // + global (4). El master sigue en la primera celda de su rejilla.
+    // TRANSICION 9.3: la banda del fondo es MATRIZ (8) + global (4) — el LFO
+    // vive ahora en la banda del motor. El master sigue en la primera celda.
     span: 4,
     columns: 4,
     action: 'randomize',
@@ -488,6 +572,7 @@ export function canvasHeight() {
 
   return GEOMETRY.panelPadding
     + GEOMETRY.top
+    + GEOMETRY.lcd
     + bands
     + GEOMETRY.keys
     + GEOMETRY.footer

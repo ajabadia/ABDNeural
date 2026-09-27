@@ -61,6 +61,38 @@ export function onWorkletMorphZ(listener) {
   morphZModListeners.push (listener);
 }
 
+/**
+ * MORPH state (pad XY + eje temporal) last pushed to the worklet. The page
+ * keeps it so an engine switch can re-apply the pad position: the switch
+ * rebuilds the DSP and the new engine wakes at the struct defaults (0.5,
+ * 0.5, 0). Standalone only — inside a host the APVTS is the truth.
+ */
+const morphState = { x: 0.5, y: 0.5, z: 0.0, z2: 0.0, z3: 0.0 };
+
+/**
+ * Active voice count from the worklet meter (0..8, engine polyphony).
+ * Standalone only: inside the plugin the count lives in the native engine and
+ * the page has no control over it — there the indicator just stays at 0.
+ * Fires at the meter cadence (~21 ms) whenever the meter carries the number.
+ */
+const voicesListeners = [];
+
+export function onWorkletVoices(listener) {
+  voicesListeners.push (listener);
+}
+
+/**
+ * Envelope levels from the worklet meter ([amp, filter], 0..1): the SAME feed
+ * the native bridge sends as telemetry `envelopes` — the WebUI's ADSR needles
+ * live in the browser too (SOUND ON). Subscribers fire at the meter cadence
+ * (~21 ms); only when the meter actually carries the pair.
+ */
+const envelopeLevelListeners = [];
+
+export function onWorkletEnvelopeLevels(listener) {
+  envelopeLevelListeners.push (listener);
+}
+
 let context = null;
 let node = null;
 
@@ -158,8 +190,13 @@ function waitForReady(workletNode, timeoutMs) {
         resolve ({ ok: false, error: event.data.error });
       } else if (type === 'neuronik:meter') {
         audioEngineState.voices = event.data.voices;
+        if (typeof event.data.voices === 'number')
+          for (const listener of voicesListeners) listener (event.data.voices);
         if (typeof event.data.morphZMod === 'number')
           for (const listener of morphZModListeners) listener (event.data.morphZMod);
+
+        if (Array.isArray (event.data.envelopes) && event.data.envelopes.length === 2)
+          for (const listener of envelopeLevelListeners) listener (event.data.envelopes);
       }
     }
 
@@ -183,6 +220,36 @@ function blocked(reason) {
   audioEngineState.error = reason;
   notify();
   return audioEngineState;
+}
+
+/**
+ * Push the pad's morph (morphX, morphY, morphZ real units 0..1) to the
+ * worklet — `neuronikSetVoiceMorph`, the export that makes the pad reach
+ * the WASM engine at all (morph is VoiceParams, not GlobalParams). The
+ * page remembers the value for the engine-switch re-apply.
+ *
+ * FASE 11.4: z2/z3 son el VOLUMEN de las capas 1 y 2 (neuronikSetVoiceLayerMorph).
+ * undefined = sin cambio: el worklet no toca el export y el motor conserva.
+ */
+export function pushMorphToWorklet(x, y, z = 0.0, z2, z3) {
+  morphState.x = x;
+  morphState.y = y;
+  morphState.z = z;
+  if (z2 !== undefined) morphState.z2 = z2;
+  if (z3 !== undefined) morphState.z3 = z3;
+
+  if (!node) return false;
+
+  const message = { type: 'neuronik:morph', x, y, z };
+  if (z2 !== undefined) message.z2 = z2;
+  if (z3 !== undefined) message.z3 = z3;
+  node.port.postMessage (message);
+  return true;
+}
+
+/** Morph values last pushed (for the engine-switch re-apply). */
+export function getWorkletMorph() {
+  return { ...morphState };
 }
 
 /** Push a full parameter snapshot (id -> normalised) to the worklet. */

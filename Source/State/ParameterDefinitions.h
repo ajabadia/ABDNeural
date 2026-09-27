@@ -35,6 +35,13 @@ namespace IDs {
     // child is dropped the next time they are saved (see PresetManager migration).
     static constexpr const char* morphX           = "morphX";
     static constexpr const char* morphZ           = "morphZ";
+    // FASE 11.3: eje temporal de las capas 1 y 2 (sampler por capa). Son dos
+    // parametros de verdad —no estado interno— porque la matriz tiene que
+    // poder modularlos y un preset tiene que guardarlos; su default (0.0) es el
+    // frame canonico, asi que con un modelo de una capa (todo el legado) son
+    // inertes y el sonido no cambia.
+    static constexpr const char* morphZ2          = "morphZ2";
+    static constexpr const char* morphZ3          = "morphZ3";
     static constexpr const char* morphY           = "morphY";
     static constexpr const char* oscExciteNoise   = "oscExciteNoise";
     static constexpr const char* excitationColor  = "excitationColor";
@@ -59,7 +66,14 @@ namespace IDs {
     // Filter
     static constexpr const char* filterCutoff    = "filterCutoff";
     static constexpr const char* filterRes       = "filterRes";
-    static constexpr const char* filterEnvAmount = "filterEnvAmount";
+    // filterEnvAmount was retired on 2026-09-26: with ENV 2 travelling through
+    // the mod matrix (default route ENV 2 -> Filter Cutoff), the knob was the
+    // SECOND depth on the same path (matrix amount × knob). The matrix amount
+    // is now THE depth (bipolar, +/-1: negative inverts the envelope); the
+    // destination "Filter Env Amt" (index 12) survives and adds to the 1.0
+    // routing factor, so the label keeps its meaning. Old presets that still
+    // contain it load normally and the child is dropped on next save
+    // (see PresetManager migration, same precedent as harmMix).
     static constexpr const char* filterAttack    = "filterAttack";
     static constexpr const char* filterDecay     = "filterDecay";
     static constexpr const char* filterSustain   = "filterSustain";
@@ -161,7 +175,12 @@ inline const std::vector<ModDestination>& getModDestinationTable()
         { "Amp Release",    IDs::envRelease },
         { "Filter Cutoff",  IDs::filterCutoff },
         { "Filter Res",     IDs::filterRes },
-        { "Filter Env Amt", IDs::filterEnvAmount },
+        // Index 12: "Filter Env Amt" — the parameter was retired (2026-09-26;
+        // the matrix amount IS the depth) but the destination LABEL stays: the
+        // indices are the preset format. The engine adds it to the 1.0 routing
+        // factor of ENV 2 (AdditiveVoice::modEnvFltDepth), so the label keeps
+        // its meaning: more/less/inverted envelope through the route.
+        { "Filter Env Amt", nullptr },
         { "Flt Attack",     IDs::filterAttack },
         { "Flt Decay",      IDs::filterDecay },
         { "Flt Sustain",    IDs::filterSustain },
@@ -180,6 +199,8 @@ inline const std::vector<ModDestination>& getModDestinationTable()
         // APPEND siempre: los choice de la matriz guardan INDICE de preset
         // (insertar en medio re-mapearia presets guardados).
         { "Morph Z",        IDs::morphZ },
+        { "Morph Z 2",      IDs::morphZ2 },
+        { "Morph Z 3",      IDs::morphZ3 },
     };
 
     return table;
@@ -229,6 +250,10 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     // Morph Z (FASE 10): eje temporal sobre los frames del modelo. Default 0.0
     // = frame canonico => bit-compatible con todo el legado (paridad A-E).
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::morphZ, "Morph Z", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
+    // FASE 11.3: los z de las capas 1 y 2 (mismo rango y mismo default que
+    // morphZ). Con un modelo de una capa no llegan al sonido.
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::morphZ2, "Morph Z 2", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::morphZ3, "Morph Z 3", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::oscExciteNoise, "Excite Noise", juce::NormalisableRange<float>(0.0f, 1.0f), 0.1f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::excitationColor, "Excite Color", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::impulseMix, "Impulse Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 0.8f));
@@ -246,9 +271,6 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::envRelease, "Release", juce::NormalisableRange<float>(0.01f, 5.0f, 0.0f, 0.5f), 0.5f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::filterCutoff, "Cutoff", juce::NormalisableRange<float>(20.0f, 20000.0f, 0.0f, 0.3f), 20000.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::filterRes, "Resonance", juce::NormalisableRange<float>(0.0f, 1.0f), 0.1f));
-    // 1.0: la ruta por defecto ENV 2 -> Filter Cutoff (insertada al crear preset)
-    // nace CANTANDO (pluck clasico); la migracion NO toca el valor guardado.
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::filterEnvAmount, "Filter Env Amount", juce::NormalisableRange<float>(-1.0f, 1.0f), 1.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::filterAttack, "Filter Attack", juce::NormalisableRange<float>(0.001f, 5.0f, 0.0f, 0.5f), 0.01f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::filterDecay, "Filter Decay", juce::NormalisableRange<float>(0.001f, 5.0f, 0.0f, 0.5f), 0.1f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::filterSustain, "Filter Sustain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.7f));

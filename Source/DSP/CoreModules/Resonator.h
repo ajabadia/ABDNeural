@@ -16,6 +16,7 @@
 #include <vector>
 #include "Oscillator.h"
 #include "SpectralModel.h"
+#include "../FrameSampler.h"   // FASE 11.3: LayerMorphZ + sampler por capa
 
 namespace NEURONiK::DSP::Core {
 
@@ -42,9 +43,34 @@ public:
      * cache es O(128) por slot y SOLO cuando z cambia (latch), llamado desde
      * updateHarmonicsFromModels.
      */
-    void setMorphZ (float z) noexcept
+    void setMorphZ (float z) noexcept { setLayerMorphZ (0, z); }
+
+    /**
+     * FASE 11.4: el VOLUMEN de UNA capa (0..1) en el frame efectivo.
+     * Es otro parametro de voz del slot —como su z (11.3)— pero la capa a
+     * 0.0 queda CALLADA (y su z deja de importar); a 1.0 suena entera.
+     * Con el reparto del analizador (cada indice pertenece a UNA capa)
+     * el gesto es lineal sobre esa capa, no un barrido de frames: MANDA
+     * EL Z de la capa, y la ganancia la sube y baja.
+     */
+    void setLayerGain (int layer, float gain) noexcept
     {
-        morphZ = juce::jlimit (0.0f, 1.0f, z);
+        constexpr int kMax = NEURONiK::Common::SpectralModel::kMaxLayers;
+        layerGains[(size_t) juce::jlimit (0, kMax - 1, layer)] =
+            juce::jlimit (0.0f, 1.0f, gain);
+    }
+
+
+    /**
+     * FASE 11.3: el eje temporal de UNA capa (0 = `morphZ` de siempre, 1..2 =
+     * `morphZ2`/`morphZ3`). Solo tiene efecto si el modelo cargado TIENE esa
+     * capa: con layerCount == 1 los z de arriba quedan inertes y el sonido es
+     * el de siempre, bit a bit.
+     */
+    void setLayerMorphZ (int layer, float z) noexcept
+    {
+        layerZ[(size_t) juce::jlimit (0, SpectralModel::kMaxLayers - 1, layer)] =
+            juce::jlimit (0.0f, 1.0f, z);
     }
 
     // --- Real-time safe processing ---
@@ -93,10 +119,14 @@ private:
 
     // FASE 10: cache de frames muestreados (lo que realmente morfean los
     // bucles). frameCacheValid=false obliga a refrescar (loadModel/z nuevo).
+    // FASE 11.3: el cache es del frame EFECTIVO del slot (la SUMA de sus capas,
+    // cada una con su propio z).
     std::array<SpectralModel, 4> frameCache;
-    float morphZ = 0.0f;
-    float lastMorphZ = -1.0f;
-    float lastConsumedZ = -1.0f;
+    NEURONiK::Common::LayerMorphZ layerZ = NEURONiK::Common::restLayerMorphZ();
+    NEURONiK::Common::LayerGains layerGains = NEURONiK::Common::restLayerGains();
+    NEURONiK::Common::LayerMorphZ lastLayerZ { { -1.0f, -1.0f, -1.0f } };
+    NEURONiK::Common::LayerMorphZ lastConsumedZ { { -1.0f, -1.0f, -1.0f } };
+    NEURONiK::Common::LayerGains lastLayerGains { -1.0f, -1.0f, -1.0f };
     bool  frameCacheValid = false;
 
     float baseFrequency = 440.0f;

@@ -48,6 +48,9 @@ Será la referencia inicial para el adaptador web y el futuro piloto Next.js. Lo
 | `oscRoughness` | float | `0..0.5` | `0` | Entropía/roughness |
 | `morphX` | float | `0..1` | `0` | Morphing espectral X |
 | `morphY` | float | `0..1` | `0` | Morphing espectral Y |
+| `morphZ` | float | `0..1` | `0` | Eje temporal del modelo (frames) de la capa 0 |
+| `morphZ2` | float | `0..1` | `0` | Eje temporal de la CAPA 1 (FASE 11.3); inerte con modelos de una capa |
+| `morphZ3` | float | `0..1` | `0` | Eje temporal de la CAPA 2 (FASE 11.3); inerte con modelos de una capa |
 | `resonatorRolloff` | float | `0.1..4` | `1` | Caída armónica |
 | `resonatorParity` | float | `0..1` | `0.5` | Balance pares/impares |
 | `resonatorShift` | float | `0.5..2` | `1` | Desplazamiento espectral |
@@ -391,3 +394,127 @@ malformado y preset sin parámetros.
 El contrato describe el parámetro APVTS; no garantiza su efecto. La validación auditiva de los
 parámetros recién conectados (`delay sync`, `chorus rate/depth`, `reverb size/damping/width`)
 sigue pendiente de oído, porque no hay forma de cubrirla con un test automático.
+
+## Analizador de pitch (ModelMaker) — semántica pinneada
+
+El estimador de f0 vive en `Source/ModelMaker/Analysis/SpectralAnalyzer`. Es **offline** (lo usa el
+ModelMaker, no el motor en tiempo real): su salida es la raíz del modelo (`frameSpanHz` / `frameF0`) y,
+con ella, la referencia de reproducción (`n·base`) y la escalera de parciales. Esto es lo aprendido y
+pinneado, para no volver a descubrirlo. `detectPitch(audio, sr)` estima la f0 del fichero completo;
+`detectPitchFromSpectrum(sr)` la de una ventana (es la que alimenta la f0 por frame).
+
+### 1. Ancla y suelo
+
+- El **ancla** es el pico crudo del espectro en `[anchorFloorHz(sr), 2000 Hz]`, refinado sub-bin.
+- `anchorFloorHz` = 50 Hz cuantizados al bin = **48,45 Hz a 44,1 kHz**. Por debajo, el estimador **no
+  puede anclar la raíz**: lee su 2º armónico (medido: E1 = 41,62 Hz → 83,24 Hz). Es una limitación
+  medida, no un fallo de análisis; la vía honesta para ese material es la f0 manual del ModelMaker
+  (`PROBE_F0`, `PROBE_FIXED`) — con el coste declarado de que `frameSpanHz` es también la referencia de
+  **reproducción**.
+
+### 2. Los tres movimientos de la escalera de octava
+
+Sobre el ancla el estimador hace HPS (`hps[b] = m[b]·m[2b]·m[3b]·m[4b]`) y el pico del producto se
+acota a la ventana `[ancla/2 − 1, ancla·2 + 1]` **en bins**. Después, los únicos tres movimientos
+posibles:
+
+| Paso | Condición exacta | Efecto |
+|---|---|---|
+| **4. ÷2 por producto** | `abs(1200·log2(prodHz/(0,5·anclaHz))) ≤ 60` **y** `m[prodBin] ≥ 0,01·m[ancla]` | `base = prodBin` (una octava abajo) |
+| **5a. ÷2 por bandas** | `m2 > 0` **y** `mOdd < 0,15·m2` **y** `m3 < 0,15·m2` | `base /= 2` (otra octava abajo) |
+| **5b. ×2 por bandas** | `m2 > mOdd` **y** `m2 > m3` **y** `m2 > 2·mOdd` **y** `m4 < 0,25·m3` | `base *= 2` (una octava arriba) |
+
+donde `mOdd/m2/m3/m4` son el pico (±25 %) alrededor de `f0/2f0/3f0/4f0`. El paso 5b solo se evalúa si
+5a no disparó (`else`), así que son mutuamente excluyentes. Nunca sube más de una octava ni baja más de
+dos (5a requiere base != ancla; ver §4).
+
+### 3. La cuantización es ASIMÉTRICA (el hallazgo que hay que recordar)
+
+A 44,1 kHz / `fftSize` 8192 el bin mide **5,383 Hz**. El paso 4 usa una ventana **absoluta** de ±60
+cents sobre `ancla/2`: a ~62 Hz eso es **el ancho de un bin**, así que el ancla tiene que caer en un
+**bin par** para que `ancla/2` caiga en un bin.
+
+- El estimador **no puede bajar a 62 Hz** desde una raíz de 62: el ancla (124) cae en el **bin 23
+  (impar)** y las candidatas —bin 11 = 59,2 y bin 12 = 64,6— quedan a **±75 cents**, fuera de la ventana.
+- **Sí baja a 64,5 Hz**: el ancla (129) cae en el **bin 24 (par)** y `ancla/2` = bin 12 = 64,5 Hz.
+- El paso 5b (subir) es una ventana **relativa** (±25 %): **no** sufre esto. El paso 5a tampoco es una
+  resta sobre el ancla, pero exige que el candidato ya sea débil (ver §4).
+
+Consecuencia práctica: cualquier caso que quiera pinear la **bajada** a un valor concreto debe elegir
+una raíz cuya mitad caiga en un bin — de ahí que el gemelo del SWEP1 use **64,5 Hz** y no 62. En la
+exploración de nueve candidatas con raíz ~62 solo bajó la del ancla en bin par (**64,5 Hz**); las demás
+se quedaron en 124-125 Hz.
+
+### 4. Las dos familias de «fundamental débil» (y por qué no se confunden)
+
+| Firma | Respuesta correcta | Qué la decide |
+|---|---|---|
+| Fundamental débil + sub-octava fuerte, serie que **MUERE** tras el 3er parcial (CZ-SWEP1: 62/0,39, 124/1,00, 186/0,56, 248/0,05) | **NO baja**: la nota del parche vive en 124 | el 3er parcial es fuerte (186 = 0,56), así que 5a no dispara; y 5b tampoco (m4 no es flojo respecto de m3) |
+| Fundamental débil + 2f0 dominante, serie **CONTINUA** (193/258 poblados) | **SÍ baja** una octava a la raíz real | el paso 4 por producto |
+
+El discriminador **no** es la potencia del sub-armónico, sino **si la serie sigue o muere**. Y el 3er
+parcial cumple doble papel: es lo que evita que 5a baje **otra** octava cuando el candidato ya es débil
+(con `base = ancla`, 5a es imposible: el ancla es el máximo del espectro, luego `mOdd ≥ m2` y
+`mOdd < 0,15·m2` no puede cumplirse).
+
+### 5. f0 por ventana y la puerta de plegado de octava
+
+- `analyzeTemporal` estima la f0 de **cada** ventana (HPS como semilla + mínimos cuadrados
+  `fitGridFromSpectrum`), salvo con el modo **REJILLA FIJA** declarado o por debajo del suelo del
+  ancla. El frame 0 conserva siempre la f0 del llamador.
+- **Puerta de plegado de octava** (`measureOctaveFold`, plan §10.3): pliega cada f0 por ventana contra
+  la rejilla del llamador (módulo 1200 → `(−600, +600]`) y mide la dispersión **post-plegado**. Plegar
+  es lo que hace comparable la evidencia: un **salto de octava del estimador** —una ventana lee f0 y
+  otra 2f0; medido en BASS1: 1194,4 cents **crudos**, 1 de 4 ventanas— colapsa a ~0 ⇒ **mono-rejilla**;
+  una raíz genuinamente distinta sobrevive al plegado —una quinta: 701,96 → **−498,04**— ⇒ **bi-rejilla**
+  al pasar de `kOctaveFoldCents = 100`.
+- Es un **PRE-FILTRO del análisis temporal** (plan §10.4): se mide antes de la rejilla común y del
+  clustering, y el material bi-rejilla **no paga** clustering (se declara el modelo de una capa con f0
+  por frame). Diagnósticos: `lastOctaveFold()`, `lastClusteringSkipped()`, `lastLayerGridRejected()`.
+
+### 6. Medido en el banco CZ101 (referencia rápida)
+
+| WAV | post-plegado | crudo | saltos | veredicto | capas |
+|---|---:|---:|---:|---|---|
+| BASS1 | 9,4 | 1194,4 | 1 | mono-rejilla | 1 |
+| HAMOG | 0,0 | 0,0 | 0 | mono-rejilla | 1 |
+| PAD1 | 4,2 | 4,2 | 0 | mono-rejilla | 1 |
+| SWEP1 | 17,5 | 17,5 | 0 | mono-rejilla | 2 (48 + 16) |
+| RRISE | 502,5 | 1702,5 | 3 | bi-rejilla | 1 |
+
+### 7. Guardias y umbrales
+
+- `pitchGuardCents = 150`: desviación de pitch respecto de la raíz; un barrido de una octava la dispara
+  (el modelo estático no es representable).
+- `kPartialFloor = 1e-3` (−60 dB): por debajo, la amplitud del parcial es 0.
+- `kFrameRmsFloor = 1e-4`: umbral de actividad por ventana.
+- `kMinLsObservations = 4`: observaciones mínimas del ajuste de rejilla.
+
+### 8. Dónde está pinneado (mapa de back-references)
+
+- **Los tests que fijan esta semántica** (verdes en `ctest` = sigue viva):
+  - `NEURONiK_SpectralAnalyzerTest` (`Tests/SpectralAnalyzerTest.cpp`): la escalera de
+    octava con su condición exacta, el suelo E1 (48,45 Hz), la sub-octava en material
+    mono-familiar (PAD1), la rejilla fija y el **gemelo a 64,5 Hz** (§3).
+  - `NEURONiK_LayerClusteringTest` (`Tests/LayerClusteringTest.cpp`): la puerta de
+    plegado como pre-filtro (§5) y el clustering que depende de ella — mitades A–D,
+    con la decisión de métrica (descriptores, no coseno) pinneada en la A.3.
+  - `NEURONiK_Cz101ResidualRangesTest` (`Tests/Cz101ResidualRangesTest.cpp`): el RANGO
+    de residuo de rejilla por WAV de la tabla §6; si un cambio del analizador mueve una
+    banda, este test lo dice antes que el ojo (cruzar una frontera de banda es una
+    DECISION documentada, no una regresión).
+- **La sonda que imprime el veredicto**: `NEURONiK_ModelMakerRealWavProbe`
+  (`Tests/ModelMakerRealWavProbe.cpp`; CLI:
+  `build-reference/Release/NEURONiK_ModelMakerRealWavProbe.exe <wav...>`). Conduce el
+  flujo REAL de producción (WAV → `detectPitch` → analyze → escritor v2/2.1 →
+  `loadModelFromFile` → `sampleFrame`) sobre el banco CZ101 — los WAV viven en el repo
+  hermano (`ABDCZ101/DOCS/info/samples/`) — y escribe los modelos de prueba en
+  `build-reference/probe-models/` (los `CZ-*-temporal.neuronikmodel`). Imprime el
+  veredicto por WAV (mono-rejilla / bi-rejilla, la salida de §5) y cierra con
+  `[probe] RESULT: OK (...)`.
+- **El plan donde se decidió**: `DOCS/ARCHITECTURE/LAYER_SEPARATION_PLAN.MD` — la
+  separación de capas sobre ESTE estimador: §10.3 la puerta de plegado (hallazgo del
+  barrido de tonales), §10.4 su papel de pre-filtro del análisis temporal, 11.2 el
+  clustering por forma de envolvente y el listado de lo que NO es (multi-pitch), con
+  las trazas reales del banco como material de diseño. La tabla §6 y las guardias de
+  §7 son el contrato medido que ese plan y los tests de arriba comparten.

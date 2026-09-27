@@ -23,11 +23,13 @@
  */
 
 import { AUDIO_OWNER, audioOwnerLabel } from '../audio/policy.js';
-import { displayText, realFromNormalized } from '../contracts/paramValue.js';
+import { latestTelemetry } from '../bridge/telemetry.js';
+import { choiceIndexFromNormalized, displayText, realFromNormalized } from '../contracts/paramValue.js';
 import { KEYS_TAB } from '../contracts/screens.js';
 import { createParameterControl } from './controls.js';
 // Cajon compartido de la familia (contenido estable: sin re-render al abrir).
 import { createDrawer } from '@abdsynths/shared/components';
+import { ENV1_SOURCE, ENV2_SOURCE } from './envelopeViews.js';
 import { ThemeSwitcher } from '@abdsynths/shared/components';
 
 /**
@@ -42,7 +44,7 @@ import { ThemeSwitcher } from '@abdsynths/shared/components';
  * @param {() => void} [options.handlers.onStartSound]  SOUND ON (solo modo local)
  * @returns {{ element: HTMLElement, keysRoot: HTMLElement, drawers: Map, paint: Function, paintAudio: Function, toggleKeys: Function, destroy: Function }}
  */
-export function createPanel({ bands, baselineId, handlers = {} }) {
+export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = null, lcdSlot = null }) {
   const controls = [];
   // Mapa id -> control para consumidores de TELEMETRIA (el anillo de modulacion
   // pinta sobre el knob, no escribe el parametro): su acceso es por id y su
@@ -60,12 +62,53 @@ export function createPanel({ bands, baselineId, handlers = {} }) {
   // Cajones laterales, uno por ficha que declara `drawer` (ver contracts/sections.js).
   // Se crean al montar y se quedan: abrir y cerrar es una clase CSS, no reconstruir.
   const drawers = new Map();
+  // La DECLARACION del cajon de cada ficha (su `drawer` del contrato), para lo que
+  // el paint necesita saber del contrato y no del nodo: hoy, que cuenta su
+  // distintivo vivo (`liveBadge`).
+  const drawerSpecs = new Map();
+  // id -> view-model. Lo pide ese mismo distintivo (para leer un `choice` hacen
+  // falta sus `options`); el repintado normal va por el array `controls`.
+  const controlsById = new Map();
   let baselineSlider = null;
   let baselineControl = null;
+  // Parametros del ULTIMO snapshot: los necesita el repintado por frame de las
+  // barras ENV del cajón de la MATRIZ (la decisión de fila vive en el snapshot,
+  // el nivel en el frame).
+  let lastParameters = {};
+  // Chips de la franja de estado de GLOBAL & MASTER (los llena buildCard).
+  let globalStripItems = [];
   const baselineReadouts = new Map();
+  // Resalte de slot pedido por una vista (rutas de ENVOLVENTES -> matriz). Es un
+  // gesto, no estado: nace con openDrawerRoute y MUERE con el cierre del cajon
+  // (onClose del mueble compartido). No lo reevalua el paint a proposito: la
+  // verdad del slot la dice su contenido (los selects del cajon), no un borde.
+  let highlightedSlot = null;
+  // De donde vino el salto de ruta (rutas del lienzo de ENVOLVENTES / bloques
+  // IR A LA RUTA de su cajon). Mismo trato que el resalte: un GESTO, no estado
+  // — nace en openDrawerRoute y se CONSUME una unica vez al cerrar la matriz.
+  // El mueble compartido no encadena retornos (un open() no cierra al hermano,
+  // solo comparten velo), asi que la vuelta la ejecuta el dueño de los cajones:
+  // el panel reabre ENVOLVENTES al cerrarse la matriz.
+  let routeReturn = null;
+  // La fila del LCD (ver el bloque de abajo: solo existe con lcdSlot).
+  let lcdRowSlot = null;
+
+  /** Limpia el resalte del cajon dado (o del que lo tenga). */
+  function clearRouteHighlight(sectionId) {
+    if (highlightedSlot && sectionId && highlightedSlot.sectionId !== sectionId) return;
+
+    highlightedSlot = null;
+
+    for (const drawer of drawers.values())
+      for (const row of drawer.body.querySelectorAll('.drawer-slot'))
+        row.dataset.slotHighlight = 'false';
+  }
 
   const element = document.createElement('section');
   element.className = 'panel';
+
+  // NOTA: `lcdRowSlot` y la clase .panel--has-lcd se deciden antes de construir
+  // la cabecera (el append del LCD va entre header y canvas, al final).
 
   // --- cabecera -------------------------------------------------------------
 
@@ -116,6 +159,21 @@ export function createPanel({ bands, baselineId, handlers = {} }) {
 
   header.append(title, audioRow, status, contractLine);
 
+  // --- fila del LCD (opcional) ----------------------------------------------
+  // El LCD superior del synth: la página lo crea (ui/lcdTop.js) y el panel solo
+  // le da SU fila — DEBAJO del título (la cabecera) y ENCIMA de las bandas,
+  // justo por encima de la banda del motor (OSCILADOR · RESONADOR · FILTRO).
+  // SIN LCD la fila no existe: los gap del grid cuentan por pista (no por
+  // hijo) y una fila vacía metería un hueco de banda que el contrato no cuenta.
+  // Con LCD el panel marca .panel--has-lcd y su CSS declara la quinta fila.
+  if (lcdSlot) {
+    const lcdRow = document.createElement('div');
+    lcdRow.className = 'lcd-row';
+    lcdRow.append(lcdSlot);
+    lcdRowSlot = lcdRow;
+    element.classList.add('panel--has-lcd');
+  }
+
   // --- lienzo: bandas de fichas --------------------------------------------
 
   const canvas = document.createElement('div');
@@ -133,12 +191,29 @@ export function createPanel({ bands, baselineId, handlers = {} }) {
         controls,
         knobsById,
         drawers,
+        drawerSpecs,
         gatedControls,
         visuals,
         handlers,
+        // Los chips de la franja de GLOBAL (los llena buildCard, los repinta paint).
+        onGlobalStrip: (items) => { globalStripItems = items; },
         onBaseline: (built) => {
           baselineSlider = built.slider;
           baselineControl = built.control;
+        },
+        // Cierre real de un cajon (✕/velo/ESC): el resalte muere y, si este
+        // cajon fue el DESTINO de un salto de ruta con retorno pendiente, el
+        // panel REABRE el origen — "vuelve a ENVOLVENTES al cerrar". Un cierre
+        // silencioso (close(true), el que hace el propio salto con el origen)
+        // no llega aqui: el mueble solo avisa por closeDrawer() de usuario.
+        onDrawerClosed: (sectionId) => {
+          clearRouteHighlight(sectionId);
+
+          const returnTo = routeReturn;
+          routeReturn = null; // consumo UNICO: cerrar otra vez ya no vuelve
+
+          const back = returnTo && drawers.get(returnTo);
+          if (returnTo && back) back.open();
         },
         readouts: baselineReadouts,
       }));
@@ -146,6 +221,13 @@ export function createPanel({ bands, baselineId, handlers = {} }) {
 
     canvas.append(bandElement);
   });
+
+  // El indice id -> view-model DEL CONTRATO (los que traen `options`): lo pide lo
+  // que se pinta FUERA de la celda, porque la celda ya montada no guarda el
+  // descriptor. Hoy lo consume el distintivo vivo del cajon (lee un `choice`).
+  for (const band of bands)
+    for (const section of band)
+      for (const control of section.controls) controlsById.set(control.id, control);
 
   // --- franja de interpretación --------------------------------------------
   // El teclado compartido viene de src/ui/keyboard.js y append su strip dentro de
@@ -193,7 +275,7 @@ export function createPanel({ bands, baselineId, handlers = {} }) {
 
   footer.append(footerText, footerState);
 
-  element.append(header, canvas, performance, footer);
+  element.append(header, ...(lcdRowSlot ? [lcdRowSlot] : []), canvas, performance, footer);
 
   let keysCollapsed = false;
 
@@ -207,6 +289,8 @@ export function createPanel({ bands, baselineId, handlers = {} }) {
   /** Repinta desde un snapshot del store. Barato: solo escribe valores. */
   function paint(state) {
     const { parameters, snapshotVersion, bridgeAvailable } = state;
+
+    lastParameters = parameters;
 
     status.textContent = bridgeAvailable
       ? `bridge: conectado al host (WebView2) · snapshot #${snapshotVersion}`
@@ -222,6 +306,40 @@ export function createPanel({ bands, baselineId, handlers = {} }) {
       const engine = parameters[control.engineParameter];
 
       if (engine !== undefined) control.setEngine(engine);
+    }
+
+    // El distintivo VIVO de los cajones que lo declaran (la MATRIZ: rutas
+    // ASIGNADAS) se reescribe con el MISMO snapshot que pinta las celdas, y con
+    // `setHeader` del mueble compartido — que no reconstruye nada, solo el dato.
+    // Un cajon sin `liveBadge` (los inventarios: 2 ADSR, 4 LFO, 4 RANURAS, 8
+    // GLOBAL) conserva el literal de su ficha: no cambia con el uso.
+    for (const [sectionId, spec] of drawerSpecs) {
+      const badge = liveDrawerBadge(spec, controlsById, parameters);
+
+      if (badge !== null) drawers.get(sectionId)?.setHeader({ badge });
+    }
+
+    // ¿Qué filas del cajón de la MATRIZ vienen de una ENVOLVENTE? La verdad la
+    // dice el snapshot (los índices de opción del Select de fuente, 0 = Off),
+    // leído del MISMO snapshot que pinta las celdas — sin duplicar el cruce.
+    paintEnvLevels(parameters);
+
+    // Franja de estado de GLOBAL & MASTER: mismo displayText que las celdas, el
+    // MISMO snapshot (cada chip lleva el item que buildCard le asignó).
+    for (const { item, value } of globalStripItems) {
+      const control = item.control;
+      const normalized = parameters[control.id] ?? 0;
+      let text = displayText(control, realFromNormalized(control, normalized));
+
+      // MIDI suma su toggle: "Omni" + Thru = "Omni · THRU" (la verdad del canal
+      // de entrada y del eco al host en un solo chip).
+      if (item.extra) {
+        const thruOn = choiceIndexFromNormalized(item.extra, parameters[item.extra.id] ?? 0) > 0;
+
+        if (thruOn) text += ' · THRU';
+      }
+
+      value.textContent = text;
     }
 
     // Las vistas se repintan con el MISMO snapshot: los parámetros (curva ADSR,
@@ -253,6 +371,91 @@ export function createPanel({ bands, baselineId, handlers = {} }) {
     // EL contrato del host: estado normalizado como JSON (ver la cabecera).
     footerState.textContent = JSON.stringify(parameters);
   }
+
+  /**
+   * Indicadores de actividad por voz junto a la fila de audio. Es PINTURA en
+   * vivo (app.js lo alimenta del meter del worklet), no estado del snapshot:
+   * el estado del motor viaja por paintAudio, las voces por su propio camino
+   * — mismo patrón que la aguja de las curvas o el anillo morphZ.
+   */
+  /** El host (Standalone) declara 8 voces; el meter puede cantar más. */
+  const MAX_VOICES_UI = 8;
+
+  const voiceMeter = document.createElement('div');
+  voiceMeter.className = 'voice-meter';
+  voiceMeter.hidden = true;
+  voiceMeter.setAttribute('role', 'img');
+  for (let index = 0; index < MAX_VOICES_UI; index += 1) {
+    const led = document.createElement('span');
+    led.className = 'voice-meter__led';
+    led.dataset.led = String(index + 1);
+    voiceMeter.append(led);
+  }
+  audioRow.append(voiceMeter);
+
+  /**
+   * Pinta el número de voces activas (0..N). Un número mayor que los leds se
+   * muestra en el aria-label (la polifonía real del motor) sin inventar leds.
+   */
+  function setVoiceMeter(count) {
+    const voices = Math.max(0, Number.isFinite(count) ? Math.floor(count) : 0);
+
+    voiceMeter.hidden = voices === 0;
+    voiceMeter.setAttribute('aria-label', `${voices} ${voices === 1 ? 'voz activa' : 'voces activas'}`);
+
+    for (const led of voiceMeter.children) {
+      const index = Number(led.dataset.led);
+      led.dataset.active = index <= voices ? 'true' : 'false';
+    }
+  }
+
+  /**
+   * Nivel de envolvente de las filas del cajón de la MATRIZ cuya fuente es
+   * ENV 1/ENV 2. La DECISIÓN (qué filas) corre con cada snapshot (`paint`);
+   * el NIVEL lo repinta el canal de telemetría a ~15 Hz llamando a esta misma
+   * función SIN parámetros — el nivel de la última decisión, fresco por frame.
+   * Orden del par: envelopes=[amp, filter] → ENV 1, ENV 2 (contrato puente).
+   */
+  function paintEnvLevels(parameters = null) {
+    const matrixDrawer = drawers.get('modMatrix');
+    const sourceIds = ['mod1Source', 'mod2Source', 'mod3Source', 'mod4Source'];
+    const envByOptionIndex = new Map([[ENV1_SOURCE, 0], [ENV2_SOURCE, 1]]);
+
+    for (const row of matrixDrawer?.body.querySelectorAll('.drawer-slot') ?? []) {
+      const envLevel = row.querySelector('.drawer-slot__env-level');
+
+      if (!envLevel) continue;
+
+      if (parameters !== null) {
+        const sourceControl = controlsById.get(sourceIds[Number(row.dataset.slot) - 1]);
+        const value = sourceControl ? parameters[sourceControl.id] : undefined;
+        const optionIndex = sourceControl && value !== undefined
+          ? choiceIndexFromNormalized(sourceControl, value)
+          : -1;
+
+        envLevel.dataset.envelope = String(envByOptionIndex.get(optionIndex) ?? -1);
+      }
+
+      const envelope = Number(envLevel.dataset.envelope);
+      const live = envelope >= 0;
+
+      envLevel.dataset.live = String(live);
+
+      if (live) {
+        const frame = latestTelemetry();
+        const level = frame?.envelopes?.[envelope] ?? 0;
+
+        envLevel.style.setProperty('--env-level', String(Math.min(1, Math.max(0, level))));
+      }
+    }
+  }
+
+  // El nivel por frame es PINTURA fuera del ciclo de estado (mismo camino que
+  // las agujas): se suscribe aquí y muere con el panel. Solo con host: en modo
+  // local los frames no existen y la decisión vive en el paint de snapshots.
+  const stopEnvLevels = typeof onTelemetry === 'function'
+    ? onTelemetry(() => paintEnvLevels(lastParameters))
+    : null;
 
   /**
    * Línea de audio: quién posee el motor y (solo en modo local) cómo arrancarlo.
@@ -301,11 +504,65 @@ export function createPanel({ bands, baselineId, handlers = {} }) {
     knobsById.clear();
     for (const visual of visuals) visual.destroy?.();
     for (const drawer of drawers.values()) drawer.destroy();
+    stopEnvLevels?.();
     controls.length = 0;
     visuals.length = 0;
     gatedControls.length = 0;
+    drawerSpecs.clear();
+    controlsById.clear();
     drawers.clear();
+    highlightedSlot = null;
+    routeReturn = null;
+    globalStripItems = [];
     element.textContent = '';
+  }
+
+  /**
+   * Abre el cajón de UNA sección en un SLOT concreto y lo resalta. Es la mitad
+   * receptora del gesto "pulsa una ruta de ENVOLVENTES y vete a la matriz": la
+   * vista pide (setRouteOpener), el panel ejecuta — es el dueño de los cajones
+   * y de las filas RUTA n.
+   *
+   * El resalte PERSISTE hasta que otro paint lo reevalúe: un paint con la ruta
+   * ya no asignada a ENV lo limpia (el slot se queda marcado solo mientras el
+   * estado dice lo mismo que el botón que trajo aquí).
+   *
+   * @param {string} sectionId  'modMatrix' hoy; el método es genérico a propósito
+   * @param {number} slot  el RUTA n (1..4) a resaltar
+   * @param {{ returnTo?: string }} [options]  cajón a reabrir cuando ESTE se
+   *   cierre ('envelopes' desde los botones IR A LA RUTA del cajón de
+   *   ENVOLVENTES). Se consume UNA vez: el siguiente cierre ya no vuelve.
+   * @returns {boolean} true si el cajón existía y se abrió
+   */
+  function openDrawerRoute(sectionId, slot, { returnTo = null } = {}) {
+    const drawer = drawers.get(sectionId);
+
+    if (!drawer) return false;
+
+    // Un salto nuevo SUSTITUYE al anterior (resalte y retorno): primero se
+    // limpia TODO. El retorno viejo muere ANTES de cerrar el cajon de origen:
+    // el mueble compartido no tiene cierre silencioso (close() SIEMPRE avisa
+    // por onClose), asi que ese cierre consumiria un retorno vivo y reabriria
+    // lo que estamos cerrando. Con null en el camino, su onClose es un no-op.
+    clearRouteHighlight();
+    routeReturn = null;
+
+    // El cajón de origen ABIERTO (IR A LA RUTA vive en el cajón de ENVOLVENTES)
+    // lo cierro AQUI: no es un cierre de usuario y no tiene nada que limpiar.
+    // Al volver, lo reabre el handler de cierre de la matriz.
+    for (const [otherId, other] of drawers)
+      if (otherId !== sectionId && other.isOpen()) other.close();
+
+    routeReturn = returnTo;
+
+    highlightedSlot = { sectionId, slot: Number(slot) || 0 };
+
+    for (const row of drawer.body.querySelectorAll('.drawer-slot'))
+      row.dataset.slotHighlight = String(Number(row.dataset.slot) === highlightedSlot.slot);
+
+    drawer.open();
+
+    return true;
   }
 
   return {
@@ -316,6 +573,8 @@ export function createPanel({ bands, baselineId, handlers = {} }) {
     paint,
     paintAudio,
     toggleKeys,
+    openDrawerRoute,
+    setVoiceMeter,
     destroy,
     isKeysCollapsed: () => keysCollapsed,
   };
@@ -420,17 +679,24 @@ function buildCard(section, context) {
   // Destino de cada celda: el cuerpo de la ficha, o su hueco en el cajón. Un
   // cajón CON `groups` (la matriz) monta una fila por ruta; SIN `groups`
   // (GLOBAL & MASTER) apila las celdas en una columna con distintivo n1..nN.
+  // CON `blocks` (ENVOLVENTES) las celdas caen dentro del bloque de SU
+  // envolvente, que ya montó la vista del cajón (curva encima, knobs debajo).
+  // `claimBlocks()` VACIA los contenedores antes: la vista puede sobrevivir al
+  // panel (la suite la construye una vez y monta varias) y sin eso los knobs
+  // se acumularian entre montajes.
   const slotOf = drawer
     ? (section.drawer.groups
         ? buildSlotRows(section, drawer.body)
-        : buildSlotColumn(
-            // FRONTAL primero (caja LFO): esos controles viven en el lienzo
-            // y el cajon no recibe copia (patron masterLevel en GLOBAL).
-            section.ids.filter(
-              (id) => !section.drawer.frontal?.includes(id) && id !== context.baselineId,
-            ),
-            drawer.body,
-          ))
+        : section.drawer.blocks
+          ? section.drawerVisual?.claimBlocks?.() ?? new Map()
+          : buildSlotColumn(
+              // FRONTAL primero (caja LFO): esos controles viven en el lienzo
+              // y el cajon no recibe copia (patron masterLevel en GLOBAL).
+              section.ids.filter(
+                (id) => !section.drawer.frontal?.includes(id) && id !== context.baselineId,
+              ),
+              drawer.body,
+            ))
     : null;
 
   for (const control of section.controls) {
@@ -467,6 +733,60 @@ function buildCard(section, context) {
   if (section.visual?.element && typeof section.visual.paint === 'function') {
     context.visuals.push(section.visual);
     body.append(section.visual.element);
+  }
+
+  // FRANJA de estado de GLOBAL & MASTER: tempo / MIDI / aleatorio SIN abrir el
+  // cajón (los tres controles viven dentro). Es PINTURA del snapshot — lectura
+  // de los view-models que la ficha ya tiene, con el mismo displayText que las
+  // celdas: cero fuentes nuevas, cero parámetros extra en el recuento.
+  if (section.id === 'globalFull') {
+    const strip = document.createElement('div');
+    strip.className = 'global-strip';
+
+    const byId = Object.fromEntries(section.controls.map((control) => [control.id, control]));
+    const items = [
+      { key: 'tempo', label: 'TEMPO', control: byId.masterBPM },
+      { key: 'midi', label: 'MIDI', control: byId.midiChannel, extra: byId.midiThru },
+      { key: 'random', label: 'RANDOM', control: byId.randomStrength },
+    ].filter((item) => item.control);
+
+    const stripItems = items.map((item) => {
+      const chip = document.createElement('span');
+      chip.className = 'global-strip__chip';
+      chip.dataset.key = item.key;
+
+      const label = document.createElement('span');
+      label.className = 'global-strip__label';
+      label.textContent = item.label;
+
+      const value = document.createElement('span');
+      value.className = 'global-strip__value';
+
+      chip.append(label, value);
+      strip.append(chip);
+
+      return { item, value };
+    });
+
+    // buildCard es función de MÓDULO: el estado vivo del panel (lo que paint
+    // repinta) le llega por context — mismo camino que onBaseline.
+    context.onGlobalStrip(stripItems);
+
+    // Franja clicable: lleva al cajón donde viven los controles reales (mismo
+    // patrón del resumen de la matriz: el frontal resume, el cajón edita).
+    strip.role = 'button';
+    strip.tabIndex = 0;
+    strip.setAttribute('aria-label', 'GLOBAL & MASTER: abrir el cajón');
+    strip.title = 'Tempo, MIDI y aleatorio se editan en el cajón';
+    strip.addEventListener('click', () => drawer?.open());
+    strip.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        drawer?.open();
+      }
+    });
+
+    body.append(strip);
   }
 
   card.append(heading, body);
@@ -506,15 +826,44 @@ function drawerFor(section, context) {
 
   if (existing) return existing;
 
+  context.drawerSpecs.set(section.id, section.drawer);
+
   const drawer = createDrawer({
     id: `drawer-${section.id}`,
     title: section.title,
     badge: section.drawer.badge,
+    // El resalte de ruta (ENVOLVENTES -> matriz) es un GESTO, no estado: con el
+    // cajón cerrado muere, para que al reabrir por su EDIT no herede un borde
+    // viejo. onClose del mueble compartido dispara UNA vez por cierre real.
+    onClose: () => context.onDrawerClosed?.(section.id),
   });
 
   context.drawers.set(section.id, drawer);
 
   return drawer;
+}
+
+/**
+ * El distintivo VIVO de un cajón, o `null` si su ficha no declara ninguno.
+ *
+ * `liveBadge` lista los ids de FUENTE que cuentan (`ids`): una ruta está cuando
+ * su fuente no es la primera opción de la lista —"Off", índice 0, que es la
+ * convención del contrato generado—, así que el distintivo dice cuántas rutas
+ * están ASIGNADAS sobre el total declarado. Una fuente que el snapshot no traiga
+ * cuenta como Off: no se inventa una asignación que el cable no lleva.
+ */
+function liveDrawerBadge(spec, controlsById, parameters) {
+  const live = spec.liveBadge;
+
+  if (!live) return null;
+
+  const assigned = live.ids.filter((id) => {
+    const control = controlsById.get(id);
+
+    return control ? choiceIndexFromNormalized(control, parameters[id] ?? 0) > 0 : false;
+  }).length;
+
+  return `${assigned}/${live.ids.length} ${live.label}`;
 }
 
 /**
@@ -533,6 +882,14 @@ function buildSlotRows(section, host) {
     const badge = document.createElement('span');
     badge.className = 'drawer-slot__badge';
     badge.textContent = `RUTA ${index + 1}`;
+
+    // Nivel de envolvente en vivo: SI la fila acabara con fuente ENV 1/ENV 2,
+    // aqui pende su barra (se activa en paint). Montarla siempre evita pedirle
+    // a paint decidir DOM por frame: paint solo reevalua data-live.
+    const envLevel = document.createElement('span');
+    envLevel.className = 'drawer-slot__env-level';
+    envLevel.dataset.live = 'false';
+    row.append(envLevel);
 
     row.append(badge);
     host.append(row);

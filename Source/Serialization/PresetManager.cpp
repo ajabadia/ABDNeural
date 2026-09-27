@@ -15,6 +15,89 @@ namespace NEURONiK::Serialization {
 
 const juce::String PresetManager::presetExtension = ".neuronikpreset";
 
+namespace
+{
+    /**
+     * FASE 11.1: lee UNA capa del bloque "layers" del formato v2.1 al modelo
+     * (frames, nombre, peso estatico y pesos temporales). Devuelve los frames
+     * leidos, o 0 si la capa no es valida (sin "frames" o con el primero
+     * recortado): esa capa y las siguientes se descartan y el modelo conserva
+     * las que si se leyeron — la misma politica que un modelo con mas frames de
+     * los que caben.
+     *
+     * El frameF0 por frame es opcional; sin el, la capa hereda la rejilla comun
+     * del fichero (frameSpanHz), que es lo que genera la separacion de capas
+     * (todas las capas comparten la f0, ver LAYER_SEPARATION_PLAN §5).
+     */
+    /**
+     * Nombre y mezcla estatica de una capa: lo que viaja fuera de sus frames.
+     * Se lee para la capa 0 tambien, porque su nombre y su peso SOLO existen aqui
+     * (la raiz del v2 lleva el nombre del MODELO). Los frames de la capa 0 no se
+     * leen nunca del bloque: son los de la raiz, que es donde los dejo el v2 y
+     * quien manda si el fichero se contradice.
+     */
+    void readLayerHeader (const juce::var& layerVar, NEURONiK::Common::SpectralModel& model,
+                          int layer)
+    {
+        const auto* layerObj = layerVar.getDynamicObject();
+        if (layerObj == nullptr) return;
+
+        model.setLayerNameAt (layer, layerObj->getProperty ("name").toString());
+
+        // El peso estatico ausente vale 1.0, pero 0 es un valor legitimo (capa
+        // silenciada): la ausencia se distingue con isVoid(), no con el valor.
+        if (! layerObj->getProperty ("weight").isVoid())
+            model.setLayerWeightAt (layer, (float) (double) layerObj->getProperty ("weight"));
+    }
+
+    int readLayer (const juce::var& layerVar, NEURONiK::Common::SpectralModel& model, int layer)
+    {
+        const auto* layerObj = layerVar.getDynamicObject();
+        if (layerObj == nullptr) return 0;
+
+        readLayerHeader (layerVar, model, layer);
+
+        const auto* frames = layerObj->getProperty ("frames").getArray();
+        if (frames == nullptr) return 0;
+
+        const auto* weights = layerObj->getProperty ("frameWeights").getArray();
+        const int maxFrames = NEURONiK::Common::SpectralModel::kMaxFrames;
+        int count = 0;
+
+        for (int f = 0; f < frames->size() && f < maxFrames; ++f)
+        {
+            const auto* frameObj = (*frames)[f].getDynamicObject();
+            if (frameObj == nullptr) break;
+
+            const auto* amps = frameObj->getProperty ("amplitudes").getArray();
+            const auto* offsets = frameObj->getProperty ("frequencyOffsets").getArray();
+
+            if (amps == nullptr || offsets == nullptr
+                    || amps->size() < 64 || offsets->size() < 64) break;
+
+            float* ampOut = model.ampsOf (layer, f);
+            float* offsetOut = model.offsetsOf (layer, f);
+
+            for (int i = 0; i < 64; ++i)
+            {
+                ampOut[(size_t) i] = (float) (double) (*amps)[i];
+                offsetOut[(size_t) i] = (float) (double) (*offsets)[i];
+            }
+
+            const auto& frameF0 = frameObj->getProperty ("frameF0");
+            model.setF0At (layer, f, frameF0.isVoid() ? model.frameSpanHz
+                                                     : (float) (double) frameF0);
+
+            if (weights != nullptr && f < weights->size())
+                model.setFrameWeightAt (layer, f, (float) (double) (*weights)[f]);
+
+            ++count;
+        }
+
+        return count;
+    }
+} // namespace
+
 Common::SpectralModel PresetManager::loadModelFromFile(const juce::File& file)
 {
     Common::SpectralModel model;
@@ -64,6 +147,20 @@ Common::SpectralModel PresetManager::loadModelFromFile(const juce::File& file)
                 model.frameSpanHz = static_cast<float> (
                     static_cast<double> (modelObject->getProperty ("frameSpanHz")));
 
+            // 2026-09-25: REJILLA FIJA (procedencia del modo declarado del
+            // ModelMaker). Opcional: ausente = false (el modelo de siempre), asi
+            // que un fichero v1/v2 no se lee distinto por esto.
+            if (!modelObject->getProperty ("gridFixed").isVoid())
+                model.gridFixed = modelObject->getProperty ("gridFixed");
+
+            // 2026-09-25: OFFSETS TRANSPONIBLES (ratio delta-n/n). Opcional:
+            // ausente = false (el modelo de siempre), asi que un fichero
+            // v1/v2/v2.1 sin la clave no se lee distinto. La rejilla de
+            // referencia es frameSpanHz (ya leida arriba); el sampler la
+            // transporta al snapshot y el motor la usa para escalar.
+            if (!modelObject->getProperty ("offsetsTranspose").isVoid())
+                model.offsetsTranspose = modelObject->getProperty ("offsetsTranspose");
+
             // FASE 10: frames temporales (formato v2). Opcional: sin "frames"
             // (v1) el modelo queda estatico. Con "frames", el elemento [0] es
             // el canonico ya leido; los demas llenan extraAmps/extraOffsets.
@@ -98,6 +195,50 @@ Common::SpectralModel PresetManager::loadModelFromFile(const juce::File& file)
                 }
 
                 model.frameCount = 1 + count;
+            }
+
+            // FASE 11.1: CAPAS (formato v2.1). OPCIONAL y aditivo: sin "layers"
+            // el modelo es v2 puro (layerCount = 1) y todo lo de arriba es el
+            // modelo. El bloque va DESPUES de los frames de la raiz porque esos
+            // SON la capa 0: un lector v2 antiguo (y el puente WASM, que cruza
+            // 128 floats planos) suena esa capa y ni siquiera ve "layers" — de
+            // ahi que el formato sea compatible hacia atras.
+            if (const auto* layersBlock = modelObject->getProperty ("layers").getDynamicObject())
+            {
+                const auto* layerArray = layersBlock->getProperty ("layers").getArray();
+
+                // La capa 0 es la raiz (sus frames no se releen), pero su nombre y
+                // su mezcla viven SOLO en este bloque: la raiz del v2 lleva el
+                // nombre del MODELO, no el de la capa.
+                if (layerArray != nullptr && layerArray->size() > 0)
+                    readLayerHeader ((*layerArray)[0], model, 0);
+
+                // Una sola capa no aporta nada nuevo: la raiz ya es esa capa.
+                if (layerArray != nullptr && layerArray->size() > 1)
+                {
+                    // Un fichero con MAS capas de las que caben se trunca, como
+                    // un modelo con mas frames de los que caben (no se rechaza).
+                    const int declared = (int) layersBlock->getProperty ("layerCount");
+                    const int kMaxLayers = Common::SpectralModel::kMaxLayers;
+                    int wanted = juce::jmin ((int) layerArray->size(), kMaxLayers);
+
+                    if (declared > 0)
+                        wanted = juce::jmin (wanted, declared);
+
+                    int read = 0;
+
+                    for (int l = 1; l < wanted; ++l)   // la capa 0 es la raiz: no se relee
+                    {
+                        const int layerFrames = readLayer ((*layerArray)[l], model, l);
+                        if (layerFrames <= 0) break;   // capa invalida: se para aqui
+
+                        model.setNumFramesOf (l, layerFrames);
+                        read = l;
+                    }
+
+                    if (read > 0)
+                        model.setLayerCount (read + 1);
+                }
             }
 
             return model;

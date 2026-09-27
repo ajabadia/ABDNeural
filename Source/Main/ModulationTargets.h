@@ -19,7 +19,7 @@ enum class ModulationTarget
     AmpRelease = 9,
     FilterCutoff = 10,
     FilterRes = 11,
-    FilterEnvAmount = 12,
+    FilterEnvAmount = 12, // índice vivo: el motor lo suma al factor de routing ENV 2 (modEnvFltDepth). El parámetro filterEnvAmount se retiró (2026-09-26)
     FilterAttack = 13,
     FilterDecay = 14,
     FilterSustain = 15,

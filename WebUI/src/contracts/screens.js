@@ -18,7 +18,7 @@
  *      use tal cual (si alguien lo renombra, falla aquí y no dentro de WebView2).
  */
 
-import { SECTION_PARAMETER_IDS } from './sections.js';
+import { SECTION_PARAMETER_IDS, SECTION_VISUALS } from './sections.js';
 
 /** Ids de la pestaña GENERAL del panel nativo (mirador del contrato del host). */
 export const GENERAL_PARAMETER_IDS = [
@@ -30,11 +30,26 @@ export const GENERAL_PARAMETER_IDS = [
 ];
 
 /**
- * Todos los ids que posee el store: ahora los 70 del lienzo, en orden de lectura.
- * Antes eran "los del puente + los de GENERAL"; con el lienzo único la página
- * cubre el contrato entero y no queda ningún parámetro sin control.
+ * Los ids que solo viven en una VISTA, sin celda de ficha que los reclame: el pad
+ * XY de MODELOS edita morphX/morphY, que dejaron las celdas en la FASE 10 (camino
+ * B). Salen del catálogo (`SECTION_VISUALS`), no de una lista escrita aquí.
  */
-export const SCREEN_PARAMETER_IDS = SECTION_PARAMETER_IDS;
+export const VISUAL_PARAMETER_IDS = [
+  ...new Set(Object.values(SECTION_VISUALS).flatMap((visual) => visual.parameterIds ?? [])),
+].filter((id) => !SECTION_PARAMETER_IDS.includes(id));
+
+/**
+ * Todos los ids que posee el store: los 70 del lienzo, en orden de lectura, MÁS los
+ * que solo viven en una vista.
+ *
+ * Los dos importan por lo MISMO, y es una regla del store, no un detalle: ignora
+ * los mensajes nativos de un id que no tiene (`entry.id in parameters`), así que un
+ * id sin dueño se queda en su valor local para siempre — el motor lo mueve (un
+ * preset, el RANDOM, el XYPad nativo, la automatización) y la página no se entera.
+ * Con morphX/morphY fuera de esta lista, el pad dibujaba una esquina que el motor
+ * ya no tenía: la divergencia salió en vivo, con el banco CZ101 cargado.
+ */
+export const SCREEN_PARAMETER_IDS = [...SECTION_PARAMETER_IDS, ...VISUAL_PARAMETER_IDS];
 
 /** Valor del atributo `data-tab` de la franja de teclado. */
 export const KEYS_TAB = 'keys';

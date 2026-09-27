@@ -157,8 +157,15 @@ class NeuronikProcessor extends AudioWorkletProcessor {
 
     this.gpMirror = new ArrayBuffer (this.gpSize);
     this.gpF32 = new Float32Array (this.gpMirror);
-    this.gpF64 = new Float64Array (this.gpMirror);
     this.gpI32 = new Int32Array (this.gpMirror);
+
+    // 2 floats para los niveles de envolvente: neuronikGetEnvelopeLevels escribe
+    // por punteros y el meter los lee cada ~21 ms. SIEMPRE asignados (no como
+    // los buffers de modelos, que son perezosos): el meter corre desde el primer
+    // bloque, con o sin preset cargado.
+    this.envPtr = Module._malloc (8);
+    this.envView = Module.HEAPF32.subarray (this.envPtr >> 2, (this.envPtr >> 2) + 2);
+    this.gpF64 = new Float64Array (this.gpMirror);
 
     this.leftView = null;
     this.rightView = null;
@@ -203,6 +210,13 @@ class NeuronikProcessor extends AudioWorkletProcessor {
     this.modelsView = Module.HEAPF32.subarray (
       this.modelsPtr >> 2, (this.modelsPtr >> 2) + this.modelFloats);
     this.engineType = 0;
+
+    // FASE 11.3: scratch de la capa extra (193 floats/frame x 16 frames
+    // + 16 pesos = 3104 floats). Se asigna UNA vez y se rellena por slot.
+    this.layerFloats = 3 * 64 * 16 + 1 + 16;
+    this.layersPtr = Module._malloc (4 * this.layerFloats);
+    this.layersView = Module.HEAPF32.subarray (
+      this.layersPtr >> 2, (this.layersPtr >> 2) + this.layerFloats);
   }
 
   handleMessage(message) {
@@ -239,6 +253,54 @@ class NeuronikProcessor extends AudioWorkletProcessor {
           for (let i = 0; i < 64; ++i)
             this.modelsView[64 + i] = freqsOk ? freqs[i] : 0;
 
+          // FASE 11.3: si el slot trae capa 1 (bridge modelsState enriquecido
+          // o parser local), la serializa y carga el slot COMPLETO en UNA
+          // llamada (loadModel reemplaza el struct: en dos llamadas se
+          // perderia la raiz). Sin capa, el camino v1 es identico.
+          const layers = slotEntry.layers;
+          const frames = layers?.frames;
+
+          if (Number (layers?.layerCount) >= 2 && Array.isArray (frames)
+              && frames.length > 0 && this.layersView) {
+            const floatsPerFrame = 3 * 64 + 1;
+            const count = Math.min (frames.length, 16);
+            let serializado = true;
+
+            this.layersView.fill (0);
+
+            for (let f = 0; f < count; ++f) {
+              const frame = frames[f];
+              const base = f * floatsPerFrame;
+              const frameAmps = frame?.amplitudes;
+              const frameFreqs = frame?.frequencyOffsets;
+
+              if (!Array.isArray (frameAmps) || frameAmps.length !== 64) {
+                serializado = false;
+                break;
+              }
+
+              for (let i = 0; i < 64; ++i) {
+                this.layersView[base + i] = frameAmps[i];
+                this.layersView[base + 64 + i] = Array.isArray (frameFreqs) && frameFreqs.length === 64 ? frameFreqs[i] : 0;
+              }
+              this.layersView[base + 128] = Number (frame?.frameF0) || 0;
+            }
+
+            const weightsBase = count * floatsPerFrame;
+            const fw = layers.frameWeights;
+            for (let f = 0; f < count; ++f)
+              this.layersView[weightsBase + f] = Number (fw?.[f]) || 1.0;
+
+            if (serializado) {
+              this.module._neuronikLoadModelLayers (
+                slot, this.engineType, this.modelsPtr, slotEntry.isValid ? 1 : 0,
+                this.layersPtr, count,
+                Number (layers.weight) || 1.0,
+                this.layersPtr + 4 * weightsBase);
+              break;
+            }
+          }
+
           this.module._neuronikLoadModel (
             slot, this.engineType, this.modelsPtr, slotEntry.isValid ? 1 : 0);
         }
@@ -252,6 +314,26 @@ class NeuronikProcessor extends AudioWorkletProcessor {
         }
         break;
  }
+
+      case 'neuronik:morph': {
+        // Pad XY + eje temporal (2026-09-26): morphX/morphY/morphZ son
+        // VoiceParams — neuronikSetVoiceMorph es el export que los hace
+        // llegar al motor (read-modify-write de pendingVoiceParams). El
+        // clampeo a [0,1] lo hace el propio export en la frontera.
+        if (this.ready) {
+          const fin = (value) => (Number.isFinite (value) ? value : 0);
+          this.module._neuronikSetVoiceMorph (
+            fin (message.x), fin (message.y), fin (message.z));
+
+          // FASE 11.4: el VOLUMEN de las capas 1 y 2 (exports propios;
+          // ausentes = sin cambio, el motor conserva lo ultimo).
+          if (typeof message.z2 === 'number' || typeof message.z3 === 'number')
+            this.module._neuronikSetVoiceLayerMorph (
+              Math.min (1, Math.max (0, fin (message.z2))),
+              Math.min (1, Math.max (0, fin (message.z3))));
+        }
+        break;
+      }
 
       case 'neuronik:midi': {
         if (!this.ready) return;
@@ -370,6 +452,10 @@ class NeuronikProcessor extends AudioWorkletProcessor {
     if (this.blockCounter === 0) console.log('[worklet-dbg] process(): primer bloque ejecutado');
     // Lightweight telemetry for the page (~every 21 ms at 128/48k x 32).
     if ((++this.blockCounter & 31) === 0) {
+      // ENV 1/ENV 2: los mismos niveles que el puente nativo manda como
+      // telemetry envelopes [amp, filter] — la aguja de las curvas ADSR en modo
+      // navegador. out params por punteros al heap del worklet (8 bytes fijos).
+      this.module._neuronikGetEnvelopeLevels (this.envPtr, this.envPtr + 4);
       this.port.postMessage ({
         type: 'neuronik:meter',
         voices: this.module._neuronikNumActiveVoices(),
@@ -377,6 +463,8 @@ class NeuronikProcessor extends AudioWorkletProcessor {
         // Destino 28 (morphZ): contribucion CON SIGNO de la matriz — el anillo
         // exterior del pad la suma a la base para pintar la posicion real.
         morphZMod: this.module._neuronikGetMod (MORPH_Z_DESTINATION),
+        // frame.envelopes-compatible: [amp, filter] (mismo orden del puente nativo).
+        envelopes: [this.envView[0], this.envView[1]],
       });
     }
 

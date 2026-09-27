@@ -119,7 +119,11 @@ afterEach(() => {
 });
 
 describe('E2E / acción de ficha RANDOM (sin host)', () => {
-  it('el botón está deshabilitado y el clic no finge un sorteo', async () => {
+  // Los tres recorridos arrancan la PAGINA entera (modulo app.js + store + panel
+  // + teclado): el timeout por defecto de 5 s es justo cuando la suite corre en
+  // paralelo y la CPU va cargada (flaky real en maquinas lentas, no un fallo del
+  // recorrido). 15 s de margen explicito.
+  it('el botón está deshabilitado y el clic no finge un sorteo', { timeout: 15_000 }, async () => {
     const button = await bootPage();
 
     // Sin backend no hay host al otro lado, y el modo es el local.
@@ -150,7 +154,7 @@ describe('E2E / acción de ficha RANDOM (sin host)', () => {
 });
 
 describe('E2E / acción de ficha RANDOM (con host)', () => {
-  it('el clic saca {action:randomize} por el cable y el sorteo vuelve pintando la página', async () => {
+  it('el clic saca {action:randomize} por el cable y el sorteo vuelve pintando la página', { timeout: 15_000 }, async () => {
     const host = installFakeJuce();
     const button = await bootPage();
 
@@ -203,7 +207,7 @@ describe('E2E / acción de ficha RANDOM (con host)', () => {
     expect(readout.textContent).toBe('42%');
   });
 
-  it('el sorteo no toca ningún parámetro por su cuenta (el estado sólo cambia cuando el host contesta)', async () => {
+  it('el sorteo no toca ningún parámetro por su cuenta (el estado sólo cambia cuando el host contesta)', { timeout: 15_000 }, async () => {
     const host = installFakeJuce();
     const button = await bootPage();
 

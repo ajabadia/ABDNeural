@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <vector>
 #include "../Serialization/PresetManager.h"
 #include "MidiMappingManager.h"
@@ -49,6 +50,16 @@ public:
      */
     bool loadModel(const juce::File& file, int slot);
     void reloadModels();
+
+    /**
+     * Directorio donde el plugin instala los modelos de fabrica
+     * (`Documents/NEURONiK/Models`): fuente UNICA de una ruta que
+     * `installFactoryModels()` escribe y a la que apunta el `modelPath` de un
+     * preset de fabrica. El selftest del puente carga desde aqui el
+     * `CZ-SWEP1.neuronikmodel` — el MISMO fichero que resuelve un preset, no una
+     * copia de prueba — en vez de volver a componer la ruta por su cuenta.
+     */
+    static juce::File factoryModelsDirectory();
 
     /**
      * Current spectral model slot as the WebUI bridge publishes it (message
@@ -226,10 +237,26 @@ private:
         int slot;
         NEURONiK::Common::SpectralModel modelData;
     };
-    std::array<Command, 32> commandQueue;
+    // FASE 11.1: la cola NO puede ser un array inline. El struct de capas
+    // multiplica por 3 el modelo (~25 KB: 3 capas x 16 frames x 129 floats), y
+    // 32 comandos inline eran 800 KB dentro de un objeto que los tests — y la
+    // bancada del piloto — crean en la PILA (1 MB): dos NEURONiKProcessor en un
+    // mismo main tumbaban el proceso al arrancar, sin un solo mensaje. Se reserva
+    // UNA vez en el constructor (hilo de mensajes): el hilo de audio solo indexa,
+    // igual que antes, sin asignar.
+    std::unique_ptr<Command[]> commandQueue;
     juce::AbstractFifo commandFifo;
 
     std::array<juce::String, 4> modelNames;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NEURONiKProcessor)
 };
+
+// FASE 11.1: el presupuesto de este objeto es una GUARDIA, no una nota. Su
+// talla la fijan los arrays inline que llevan modelos dentro (hoy ninguno: la
+// cola de comandos vive en el heap, ver arriba) y quien lo instancia suele
+// tener 1 MB de pila. Un campo nuevo con modelos dentro (otra cola, un cache
+// por slot) se lleva por delante tests y bancada con un crash mudo, asi que
+// aqui revienta el COMPILADOR, que es donde tiene que reventar.
+static_assert (sizeof (NEURONiKProcessor) < 128 * 1024,
+               "NEURONiKProcessor se ha ido de talla: no lo crees en la pila (Fase 11.1)");

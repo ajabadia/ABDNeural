@@ -17,9 +17,16 @@ namespace NEURONiK::DSP {
 
 NeurotikEngine::NeurotikEngine()
 {
+    // Reserva PEREZOSA: nace con OCHO voces (su limite por defecto), no 32.
     activeVoiceLimit.store(8);
-    for (int i = 0; i < 32; ++i)
-        voices.push_back(std::make_unique<Synthesis::NeurotikVoice>(i));
+    ensureVoices (activeVoiceLimit.load());
+}
+
+std::unique_ptr<IVoice> NeurotikEngine::createVoice(int index)
+{
+    // El indice es la semilla del ruido de excitacion: sin el, el unison sonaria
+    // con ruido identico en todas las voces (artefacto audible).
+    return std::make_unique<Synthesis::NeurotikVoice>(index);
 }
 
 void NeurotikEngine::prepare(double sampleRate, int samplesPerBlock)
@@ -116,14 +123,29 @@ void NeurotikEngine::applyModulation()
                     for (auto& v : voices) v->modCutoff += rawMod * 18000.0f; 
                 break;
             case 11: for (auto& v : voices) v->modFilterRes += rawMod; break; 
-            // Destinos de la ADSR del filtro (12/13): solo responden a ENV 2.
+            // Destinos 12-16 ("Filter Env Amt" 12 = suma al factor de routing;
+            // 13-16 = ADSR del filtro): solo responden a ENV 2. El motor
+            // resonador no tiene filtro, pero IVoice es el contrato comun y los
+            // campos existen (el destino queda sin efecto audible aqui).
             case 12:
                 if (route.source == 7)
-                    for (auto& v : voices) v->modEnvFltAttack += route.amount;
+                    for (auto& v : voices) v->modEnvFltDepth += route.amount;
                 break;
             case 13:
                 if (route.source == 7)
+                    for (auto& v : voices) v->modEnvFltAttack += route.amount;
+                break;
+            case 14:
+                if (route.source == 7)
                     for (auto& v : voices) v->modEnvFltDecay += route.amount;
+                break;
+            case 15:
+                if (route.source == 7)
+                    for (auto& v : voices) v->modEnvFltSustain += route.amount;
+                break;
+            case 16:
+                if (route.source == 7)
+                    for (auto& v : voices) v->modEnvFltRelease += route.amount;
                 break;
             case 17: currentGlobalParams.saturationAmt += rawMod; break;
             case 18: currentGlobalParams.delayTime += rawMod; break; 
@@ -137,6 +159,10 @@ void NeurotikEngine::applyModulation()
             case 26: for (auto& v : voices) v->modResonance += rawMod; break;
             case 27: for (auto& v : voices) v->modUnison += rawMod; break;
             case 28: for (auto& v : voices) v->modMorphZ += rawMod; break;
+            // FASE 11.3: los z de las capas 1 y 2 (destinos 29/30, al final de la
+            // tabla: los choice de la matriz se guardan por INDICE).
+            case 29: for (auto& v : voices) v->modMorphZ2 += rawMod; break;
+            case 30: for (auto& v : voices) v->modMorphZ3 += rawMod; break;
             default: break;
         }
     }
@@ -204,6 +230,27 @@ void NeurotikEngine::loadModel(const NEURONiK::Common::SpectralModel& model, int
 void NeurotikEngine::setVoiceParams(const NEURONiK::DSP::Synthesis::NeurotikVoice::Params& p)
 {
     pendingVoiceParams = p;
+}
+
+// MORPH del pad XY (mismo contrato que NeuronikEngine::setMorph).
+void NeurotikEngine::setMorph (float morphX, float morphY)
+{
+    pendingVoiceParams.morphX = morphX;
+    pendingVoiceParams.morphY = morphY;
+}
+
+// Eje temporal del morph (FASE 10).
+void NeurotikEngine::setMorphZ (float morphZ)
+{
+    pendingVoiceParams.morphZ = morphZ;
+}
+
+// FASE 11.4: el VOLUMEN de las capas 1 y 2 (la capa 0 es el fondo, siempre
+// al maximo). Mismo canal RT-safe que setMorphZ.
+void NeurotikEngine::setVoiceLayerMorph (float layerGain2, float layerGain3)
+{
+    pendingVoiceParams.layerGain2 = layerGain2;
+    pendingVoiceParams.layerGain3 = layerGain3;
 }
 
 void NeurotikEngine::handleMidiEvent(const dsp::MidiMessage& m)

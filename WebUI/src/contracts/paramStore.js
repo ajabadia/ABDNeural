@@ -61,10 +61,13 @@ export function createParameterStore({ ids = PILOT_PARAMETER_IDS, scope = global
     // amplitudes[64], frequencyOffsets[64] }, ...] — preset timbre data outside
     // the APVTS. `name` is what the page shows next to A..D (it cannot read the
     // model directory).
-    models: null,
+    models: null,   // modo local: `emptyLocalModels()` en el arranque (app.js)
     // Last model load that did NOT happen (bridge modelError), or null. The view
     // shows it instead of letting a click fail in silence.
     modelError: null,
+    // MODO LOCAL: el camino de carga local esta montado (input de fichero).
+    // La ficha RANURAS lo usa para habilitar CARGAR sin host.
+    localModelReady: false,
   };
 
   let transport = null;
@@ -161,13 +164,64 @@ export function createParameterStore({ ids = PILOT_PARAMETER_IDS, scope = global
    * llega por el cable como `models` nuevo o como `modelError`. En modo local no hay
    * a quien pedirselo, asi que no se finge una carga: devuelve false.
    */
-  function loadModel(slot) {
-    if (!state.bridgeAvailable) return false;
+  function loadModel(slot, { requestLocalFile = null } = {}) {
+    if (!state.bridgeAvailable) {
+      // MODO LOCAL: la pagina SI puede pedir un fichero (input oculto de
+      // app.js). Sin handler no se finge nada: devuelve false como siempre.
+      if (typeof requestLocalFile === 'function' && slot >= 0 && slot <= 3) {
+        requestLocalFile(slot);
+        return true;
+      }
+      return false;
+    }
 
     // El error anterior es de OTRO intento: abrir el dialogo lo deja obsoleto, y
     // dejar ahi el mensaje viejo mientras el usuario elige un fichero miente.
     setState({ modelError: null });
     transport?.sendLoadModel(slot);
+    return true;
+  }
+
+  /**
+   * MODO LOCAL: el usuario ya eligio el fichero — parsear, meterlo en el
+   * estado `models` (lo que pinta la ficha RANURAS) y dejar que el paint
+   * del motor lo lleve al worklet por `neuronik:models`. El error del
+   * parser se pinta en el MISMO sitio que el modelError del host.
+   */
+  async function loadLocalModel(file, slot) {
+    const { readModelFile } = await import('../audio/localModels.js');
+
+    try {
+      const parsed = await readModelFile(file);
+      const models = Array.isArray(state.models) ? [...state.models] : null;
+
+      if (!models) return false;
+
+      models[slot] = { ...parsed, slot };
+      setState({ models, modelError: null });
+      return true;
+    } catch (error) {
+      setState({ modelError: { slot, detail: String(error?.message ?? error) } });
+      return false;
+    }
+  }
+
+  /**
+   * MODO LOCAL: declara que el camino de carga local esta montado (app.js
+   * lo llama cuando el input de fichero existe en el DOM).
+   */
+  function setLocalModelReady(ready) {
+    if (state.bridgeAvailable || state.localModelReady === ready) return;
+    setState({ localModelReady: ready === true });
+  }
+
+  /**
+   * MODO LOCAL: siembra las ranuras que el host llenaria (solo si no hay
+   * bridge: con host, modelsState manda y esto no se llama).
+   */
+  function seedLocalModels(slots) {
+    if (state.bridgeAvailable || !Array.isArray(slots)) return false;
+    setState({ models: slots });
     return true;
   }
 
@@ -312,6 +366,9 @@ export function createParameterStore({ ids = PILOT_PARAMETER_IDS, scope = global
     savePreset,
     randomize,
     loadModel,
+    loadLocalModel,
+    seedLocalModels,
+    setLocalModelReady,
     sendMidiNoteOn,
     sendMidiNoteOff,
     sendMidiPitchBend,

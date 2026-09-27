@@ -20,7 +20,7 @@
  * que cada una lee lo suyo.
  */
 
-import { createEnvelopeCurve } from './envelopeCurve.js';
+import { createEnvelopeBlocks, createEnvelopeCurves } from './envelopeViews.js';
 import { createSpectral } from './spectral.js';
 import { createModelSlots } from './modelSlots.js';
 import { createModSummary } from './modSummary.js';
@@ -49,11 +49,56 @@ const MORPH_Z_TARGET = MOD_DESTINATIONS.findIndex((d) => d?.parameterId === 'mor
  *   avisa en consola en vez de pintar un hueco vacío).
  */
 export function createVisual(visualId, controls, options = {}) {
-  if (visualId === 'amp-envelope') return createEnvelopeCurve({ controls });
+  // La ficha ENVOLVENTES pinta DOS curvas (ENV 1 amp / ENV 2 filtro), cada una
+  // con debajo sus rutas de matriz. El catálogo `envelope-curves` pide las ocho
+  // ADSR + los doce de la matriz: `routeControls` viaja por options porque los
+  // demás catálogos no lo necesitan (y el test de la fábrica no lo suelta).
+  if (visualId === 'envelope-curves') {
+    const curves = createEnvelopeCurves({
+      controls,
+      routeControls: options.routeControls ?? [],
+      // Aguja de nivel: el frame de telemetria trae envelopes=[amp, filter].
+      onTelemetry: options.onTelemetry ?? null,
+    });
+
+    // El opener llega TARDE (la vista se fabrica antes del panel): app.js lo
+    // conecta con setRouteOpener cuando ya tiene el panel a mano.
+    curves.setRouteOpener(options.onOpenRoute ?? null);
+
+    return curves;
+  }
+
+  // El cuerpo del CAJÓN de ENVOLVENTES: un bloque por envolvente (curva encima
+  // de sus cuatro knobs). Los knobs los monta el panel dentro de los bloques
+  // que devuelve la vista (`blockOf`); aquí solo se fabrica con los ids.
+  if (visualId === 'envelope-blocks') {
+    const blocks = createEnvelopeBlocks({
+      controls,
+      ids: options.ids ?? [],
+      // IR A LA RUTA: resuelve el slot contra el snapshot (los doce de la
+      // matriz), igual que las rutas del lienzo.
+      routeControls: options.routeControls ?? [],
+      // Aguja de nivel del cajon: el MISMO canal que el lienzo (el app.js ya
+      // se lo pasa; la vista lo consumia desde el paro).
+      onTelemetry: options.onTelemetry ?? null,
+    });
+
+    // El opener llega TARDE (la vista se fabrica antes del panel).
+    blocks.setRouteOpener(options.onOpenRoute ?? null);
+
+    return blocks;
+  }
 
   // Las 4 rutas de la matriz: sus 12 controles viven en el cajón, así que en el
-  // lienzo va el resumen (y el cajón da el detalle).
-  if (visualId === 'mod-summary') return createModSummary({ controls });
+  // lienzo va el resumen (y el cajón da el detalle). Filas BOTON: el mismo salto
+  // que las rutas de ENVOLVENTES — el opener llega tarde (setRouteOpener).
+  if (visualId === 'mod-summary') {
+    const summary = createModSummary({ controls });
+
+    summary.setRouteOpener(options.onOpenRoute ?? null);
+
+    return summary;
+  }
 
   // La ficha MODELOS A-D vive en el CENTRO del synthe (mudanza 8.3) y en el
   // lienzo solo lleva el pad XY (morphX/morphY con los nombres en las esquinas):

@@ -14,10 +14,25 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { createVisual } from '../src/ui/visuals.js';
 import { createXyPad } from '../src/ui/xyPad.js';
 
 import { MOD_DESTINATIONS } from '../generated/parameters.generated.js';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const read = (...segments) => readFileSync(join(here, ...segments), 'utf8');
+
+/** El bloque de una regla de la hoja de estilos (selector -> sus declaraciones). */
+function cssBlock (styles, selector) {
+  const start = styles.indexOf(`${selector} {`);
+  if (start < 0) return '';
+
+  return styles.slice(start, styles.indexOf('}', start));
+}
 
 function makeHost() {
   const host = document.createElement('div');
@@ -95,6 +110,67 @@ describe('xyPad / wiring de morphX-morphY', () => {
     view.destroy();
   });
 
+  it('arrastre fino: Shift = movimiento relativo a 1/10, sin salto al entrar ni al soltar', () => {
+    const onEdit = vi.fn();
+    const view = createXyPad({ onEdit });
+    host.append(view.element);
+
+    const padElement = view.element.querySelector('.abd-xypad__pad');
+    stubRect(padElement, 200, 100);
+
+    // Drag normal a (0.5, 0.5): salto absoluto de siempre.
+    padElement.dispatchEvent(pointer('pointerdown', 100, 50));
+    expect(view.pad.getValue()).toEqual({ x: 0.5, y: 0.5 });
+
+    // Primer Shift+move: ANCLA el modo fino (valor actual con puntero actual) —
+    // cero salto al entrar, aunque la posición del puntero haya cambiado.
+    padElement.dispatchEvent(new PointerEvent('pointermove', {
+      clientX: 115, clientY: 50, bubbles: true, shiftKey: true, pointerId: 1 }));
+    expect(view.pad.getValue()).toEqual({ x: 0.5, y: 0.5 });
+
+    // +30 px de arrastre fino: 0.15 normalizado * 0.1 = +0.015 (relativo),
+    // NO 0.725 (que sería el salto absoluto del compartido).
+    padElement.dispatchEvent(new PointerEvent('pointermove', {
+      clientX: 145, clientY: 50, bubbles: true, shiftKey: true, pointerId: 1 }));
+    expect(view.pad.getValue().x).toBeCloseTo(0.515, 5);
+    expect(view.pad.getValue().y).toBeCloseTo(0.5, 5);
+
+    // Volver al ancla: valor base exacto (relativo al anclaje, no compone).
+    padElement.dispatchEvent(new PointerEvent('pointermove', {
+      clientX: 115, clientY: 50, bubbles: true, shiftKey: true, pointerId: 1 }));
+    expect(view.pad.getValue().x).toBeCloseTo(0.5, 5);
+
+    // Soltar y mover SIN shift: salto absoluto normal (el gesto fino murió).
+    padElement.dispatchEvent(pointer('pointerup', 130, 50));
+    padElement.dispatchEvent(pointer('pointerdown', 0, 0));
+    padElement.dispatchEvent(pointer('pointerup', 0, 0));
+    expect(view.pad.getValue()).toEqual({ x: 0, y: 1 });
+
+    // El fine drag es un GESTO normal para el store: begin/change/end completos.
+    const phases = onEdit.mock.calls.filter(([id]) => id === 'morphX').map(([, , phase]) => phase);
+    expect(phases[0]).toBe('begin');
+    expect(phases).toContain('change');
+    expect(phases.at(-1)).toBe('end');
+
+    view.destroy();
+  });
+
+  it('sin Shift el salto absoluto pasa intacto (el fino no interfiere)', () => {
+    const view = createXyPad({});
+    host.append(view.element);
+
+    const padElement = view.element.querySelector('.abd-xypad__pad');
+    stubRect(padElement, 200, 100);
+
+    // pointerdown + move SIN shift: el compartido aplica su salto absoluto.
+    padElement.dispatchEvent(pointer('pointerdown', 40, 20));
+    padElement.dispatchEvent(pointer('pointermove', 180, 80));
+    expect(view.pad.getValue().x).toBeCloseTo(0.9, 5);
+    expect(view.pad.getValue().y).toBeCloseTo(0.2, 5);
+
+    view.destroy();
+  });
+
   it('paint repinta sin eco y no pega con el dedo durante un drag', () => {
     const onEdit = vi.fn();
     const view = createXyPad({ onEdit });
@@ -112,6 +188,35 @@ describe('xyPad / wiring de morphX-morphY', () => {
     view.paint({ morphX: 0, morphY: 0 }, {});
 
     expect(view.pad.getValue()).toEqual({ x: 1, y: 1 });
+
+    view.destroy();
+  });
+
+  it('el readout X/Y % vive FUERA del pad (fila espejo) y sigue los tres caminos de render', () => {
+    const view = createXyPad({});
+    host.append(view.element);
+
+    const mirror = view.element.querySelector('.xy-pad__readout-row span');
+    const internal = view.element.querySelector('.abd-xypad__readout');
+
+    expect(mirror).not.toBeNull();
+    expect(internal).not.toBeNull();
+
+    // Arranque: el espejo nace con el texto del readout interno.
+    expect(mirror.textContent).toBe(internal.textContent);
+
+    // 1) setValue silencioso (los snapshots): render() repinta el interno y el
+    //    espejo lo sigue — sin gesto, sin eco al store.
+    view.paint({ morphX: 0.25, morphY: 0.75 }, {});
+    expect(mirror.textContent).toBe(internal.textContent);
+    expect(mirror.textContent).toContain('25%');
+    expect(mirror.textContent).toContain('75%');
+
+    // 2) teclado (edición sin gesto): el render del pad actualiza el espejo.
+    view.element.querySelector('.abd-xypad__pad').dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    expect(mirror.textContent).toBe(internal.textContent);
+    expect(mirror.textContent).toContain('26%');
 
     view.destroy();
   });
@@ -134,6 +239,14 @@ describe('xyPad / wiring de morphX-morphY', () => {
     expect(corner('tr')).toBeNull();      // EMPTY = ranura vacía: esquina oculta
     expect(corner('bl')).toBe('Bell');    // divergente se MARCA, no se oculta
     expect(corner('br')).toBe('Glass');
+
+    // El estado de las esquinas es el MISMO que el de las ranuras del cajón:
+    // data-divergent (el color lo pone la CSS de la página con --color-warning).
+    const divergentCorner = view.element.querySelector('[data-corner="bl"]');
+    expect(divergentCorner.dataset.divergent).toBe('true');
+    expect(divergentCorner.title).toContain('no ha podido cargar');
+    expect(view.element.querySelector('[data-corner="tl"]').dataset.divergent).toBe('false');
+    expect(view.element.querySelector('[data-corner="br"]').dataset.divergent).toBe('false');
 
     // Sin modelos (modo local, snapshot sin modelsState): sin esquinas.
     paintModels(null);
@@ -244,24 +357,49 @@ describe('xyPad / el anillo exterior de morph-Z (FASE 10)', () => {
     svg.dispatchEvent(pointer('pointerdown', 100, 50));
     svg.dispatchEvent(pointer('pointerup', 100, 50));
 
-    const phases = onEdit.mock.calls.map(([, , phase]) => phase);
+    const phases = onEdit.mock.calls.filter(([id]) => id === 'morphZ').map(([, , phase]) => phase);
     expect(phases).toEqual(['begin', 'change', 'end']);
 
     const change = onEdit.mock.calls.find(([, , phase]) => phase === 'change');
     expect(change[0]).toBe('morphZ');
     expect(change[1]).toBeCloseTo(0.25, 5);
 
+    // FASE 11.4: el aro mezcla CAPAS — cada fase viaja tambien como
+    // morphZ2/morphZ3 (cada capa sigue su propia linea de frames).
+    const layerPhases = onEdit.mock.calls.filter(([id]) => id === 'morphZ2').map(([, , phase]) => phase);
+    expect(layerPhases).toEqual(['begin', 'change', 'end']);
+    expect(onEdit).toHaveBeenCalledWith('morphZ2', expect.any(Number), 'change');
+    expect(onEdit).toHaveBeenCalledWith('morphZ3', expect.any(Number), 'change');
+
     view.destroy();
   });
 
-  it('el interior NO es del aro: los hits solo capturan el trazo (el pad sigue intacto)', () => {
+  /**
+   * Quien recibe el puntero sobre el pad lo decide el HIT-TESTING del navegador,
+   * no el arbol del DOM: jsdom no tiene layout ni `elementFromPoint`, y un test
+   * de manejadores pasa con el pad TAPADO (fue el caso: el contenedor del aro es
+   * una caja con `inset` negativo y `pointer-events` por defecto, asi que se
+   * comia los gestos del pad en todo su interior; lo destapo el selftest en vivo,
+   * direccion MORPH). Aqui se fija la REGLA de la hoja de estilos —que es lo que
+   * jsdom si puede leer— y el hit-testing de verdad se mide en la pagina viva
+   * con `document.elementFromPoint`.
+   */
+  it('el interior NO es del aro: su caja deja pasar el puntero y el trazo sigue siendo suyo', () => {
+    const styles = read('../src/styles/main.css');
+    const container = cssBlock(styles, '.xy-pad__zring');
+    const hit = cssBlock(styles, '.xy-pad__zring .zring-hit');
+
+    // la caja del aro es un overlay sobre el pad: transparente al puntero
+    expect(container).toMatch(/pointer-events:\s*none/);
+    // y el trazo (11 unidades del viewBox, ancho de dedo) sigue agarrable
+    expect(hit).toMatch(/pointer-events:\s*stroke/);
+    expect(hit).toMatch(/stroke-width:\s*11/);
+
+    // el componente no pinta las reglas en linea: viven en la hoja de estilos
     const view = createXyPad({});
     host.append(view.element);
 
-    const hit = view.element.querySelector('.zring-hit');
-    expect(hit).not.toBeNull();
-    // la regla CSS del paquete: pointer-events solo en el trazo
-    expect(hit.style.pointerEvents).toBe('');
+    expect(view.element.querySelector('.zring-hit').style.pointerEvents).toBe('');
 
     view.destroy();
   });
@@ -276,21 +414,27 @@ describe('xyPad / el anillo exterior de morph-Z (FASE 10)', () => {
     ring.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
     ring.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp', bubbles: true }));
 
-    // 0.01 + 0.1 = 0.11: dos pasos, dos END
+    // 0.01 + 0.1 = 0.11: dos pasos, dos END — en los TRES z (FASE 11.4: el
+    // aro mezcla capas, cada paso mueve morphZ2/morphZ3 con el mismo valor).
     expect(onEdit.mock.calls).toEqual([
-      ['morphZ', 0.01, 'end'],
-      ['morphZ', 0.11, 'end'],
+      ['morphZ', 0.01, 'end'], ['morphZ2', 0.01, 'end'], ['morphZ3', 0.01, 'end'],
+      ['morphZ', 0.11, 'end'], ['morphZ2', 0.11, 'end'], ['morphZ3', 0.11, 'end'],
     ]);
 
     onEdit.mockClear();
     // End -> 1; y un segundo End no viaja (no cambió: dedupe honesto)
     ring.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
     ring.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
-    expect(onEdit.mock.calls).toEqual([['morphZ', 1, 'end']]);
+    expect(onEdit.mock.calls).toEqual([
+      ['morphZ', 1, 'end'], ['morphZ2', 1, 'end'], ['morphZ3', 1, 'end'],
+    ]);
 
-    // Home -> 0
+    // Home -> 0 (FASE 11.4: End ya gasto las llamadas [0..2]; Home son [3..5])
     ring.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
-    expect(onEdit.mock.calls[1]).toEqual(['morphZ', 0, 'end']);
+    expect(onEdit.mock.calls).toEqual([
+      ['morphZ', 1, 'end'], ['morphZ2', 1, 'end'], ['morphZ3', 1, 'end'],
+      ['morphZ', 0, 'end'], ['morphZ2', 0, 'end'], ['morphZ3', 0, 'end'],
+    ]);
 
     // aria sigue al valor
     expect(ring.getAttribute('aria-valuenow')).toBe('0');
@@ -345,13 +489,13 @@ describe('xyPad / anillo morphZ con la modulación en vivo (destino 28)', () => 
     return { modulation };
   }
 
-  it('setZMod pinta el arco base->efectivo y no viaja al store', () => {
+  it('setZMod pinta el arco CON SIGNO desde la base y no viaja al store', () => {
     const onEdit = vi.fn();
     const view = createXyPad({ onEdit });
     host.append(view.element);
 
     view.paint({ morphX: 0, morphY: 0, morphZ: 0.25 }, {});
-    view.setZMod(0.5); // efectivo 0.75: arco de 0.25 a 0.75
+    view.setZMod(0.5); // horario: NACE en la base (0.25), span 50
 
     const mod = view.element.querySelector('.zring-mod');
     expect(mod.getAttribute('stroke-dashoffset')).toBe('-25');
@@ -362,12 +506,12 @@ describe('xyPad / anillo morphZ con la modulación en vivo (destino 28)', () => 
     view.destroy();
   });
 
-  it('contribución negativa: el arco corre hacia atrás (efectivo < base)', () => {
+  it('contribución negativa: el arco corre ANTIHORARIO y TERMINA en la base', () => {
     const view = createXyPad({});
     host.append(view.element);
 
     view.paint({ morphX: 0, morphY: 0, morphZ: 0.25 }, {});
-    view.setZMod(-0.25); // efectivo 0
+    view.setZMod(-0.25); // antihorario: de 0.00 a 0.25 (termina en la base)
 
     const mod = view.element.querySelector('.zring-mod');
     expect(mod.getAttribute('stroke-dashoffset')).toBe('0');
@@ -376,16 +520,34 @@ describe('xyPad / anillo morphZ con la modulación en vivo (destino 28)', () => 
     view.destroy();
   });
 
-  it('el efectivo se clamp a 0..1 (la misma matemática de la voz)', () => {
+  it('la contribucion pasa de 1 sin recorte: el arco envuelve por las 12', () => {
     const view = createXyPad({});
     host.append(view.element);
 
     view.paint({ morphX: 0, morphY: 0, morphZ: 0.9 }, {});
-    view.setZMod(0.5); // efectivo clamp a 1: arco de 0.9 a 1
+    view.setZMod(0.5); // sin clamp: 50 guiones desde 0.90 (10 + 40 tras envolver por 0)
 
     const mod = view.element.querySelector('.zring-mod');
     expect(mod.getAttribute('stroke-dashoffset')).toBe('-90');
-    expect(mod.getAttribute('stroke-dasharray')).toBe('10 100');
+    expect(mod.getAttribute('stroke-dasharray')).toBe('50 100');
+
+    view.destroy();
+  });
+
+  it('morphZ a 0 + contribucion negativa: la semionda se VE (envuelve por las 12)', () => {
+    const view = createXyPad({});
+    host.append(view.element);
+
+    // El caso que mando el recorte viejo al olvido: con la base en reposo, la
+    // semionda negativa del LFO es INVISIBLE (el arco quedaba clampeado a 0).
+    // Ahora el arco entra en el lado antihorario del aro: termina en la base
+    // (las 12) y cubre el lado negativo (0.95 -> 0.00).
+    view.paint({ morphX: 0, morphY: 0, morphZ: 0 }, {});
+    view.setZMod(-0.95);
+
+    const mod = view.element.querySelector('.zring-mod');
+    expect(mod.getAttribute('stroke-dashoffset')).toBe('-5');
+    expect(mod.getAttribute('stroke-dasharray')).toBe('95 100');
 
     view.destroy();
   });
@@ -416,7 +578,7 @@ describe('xyPad / anillo morphZ con la modulación en vivo (destino 28)', () => 
     notify(frameWith(0.5));
 
     const mod = view.element.querySelector('.zring-mod');
-    expect(mod.getAttribute('stroke-dasharray')).toBe('50 100');
+    expect(mod.getAttribute('stroke-dasharray')).toBe('50 100'); // positivo: nace en la base
 
     view.destroy();
     expect(unsubs.length).toBe(1); // destroy cancela la suscripción

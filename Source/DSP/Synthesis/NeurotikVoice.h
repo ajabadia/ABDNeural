@@ -34,6 +34,13 @@ public:
         float resonatorResonance = 0.99f;
         float morphX = 0.5f, morphY = 0.5f;
         float morphZ = 0.0f; // FASE 10: frame canonico por defecto
+        // FASE 11.3: el eje temporal de las CAPAS 1 y 2 (solo suenan si el modelo
+        // cargado las tiene). Default 0.0 = frame canonico: el legado no se mueve.
+        float morphZ2 = 0.0f;   // FASE 11.3: z de la capa 1
+        float morphZ3 = 0.0f;   // FASE 11.3: z de la capa 2
+        // FASE 11.4: el VOLUMEN de las capas 1 y 2 (0 = callada). Default 1.0: el legado.
+        float layerGain2 = 1.0f;
+        float layerGain3 = 1.0f;
         float excitationNoise = 1.0f;
         float excitationColor = 0.5f; // 0.0 (Brown) to 1.0 (Violet?)
         float impulseMix = 0.0f;     // Mix between noise and impulse
@@ -99,6 +106,12 @@ private:
     dsp::LinearSmoothedValue<float> morphXSmoother;
     dsp::LinearSmoothedValue<float> morphYSmoother;
     dsp::LinearSmoothedValue<float> morphZSmoother;
+    // FASE 11.3: los z de las capas 1 y 2, con el mismo glide que morphZ.
+    dsp::LinearSmoothedValue<float> morphZ2Smoother;
+    dsp::LinearSmoothedValue<float> morphZ3Smoother;
+    // FASE 11.4: el volumen de las capas 1 y 2, con el mismo glide (20 ms).
+    dsp::LinearSmoothedValue<float> layerGain2Smoother;
+    dsp::LinearSmoothedValue<float> layerGain3Smoother;
     dsp::LinearSmoothedValue<float> resonanceSmoother;
     dsp::LinearSmoothedValue<float> unisonDetuneSmoother;
 

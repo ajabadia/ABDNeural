@@ -7,10 +7,14 @@
 
                  Every factory preset is the REAL APVTS layout at its defaults
                  (createLayoutApvts — the full processor is never built) with
-                 `modelPath0` pointing at one of the six .neuronikmodel files
-                 the ModelMaker probe extracted from the real CZ101 WAVs. The
-                 rest of the parameters stay at their layout default: the
-                 factory sound IS the default engine pointed at a real model.
+                 `modelPath<slot>` pointing at the .neuronikmodel files the
+                 ModelMaker probe extracted from the real CZ101 WAVs: one preset
+                 per embedded model (slot A) plus ONE BANK PRESET that fills the
+                 four slots with the four tonal patches, so the XY pad morphs
+                 the whole bank (morphX/morphY stay at their defaults = 0: it
+                 opens on slot A and the pad walks B/C/D). The rest of the
+                 parameters stay at their layout default: the factory sound IS
+                 the default engine pointed at real models.
 
                  The path travels with the {{FACTORY_MODELS}} marker because
                  modelPath<slot> is an ABSOLUTE path (per machine) and the
@@ -59,19 +63,28 @@ namespace
 
     struct FactoryPreset
     {
-        const char* modelFile;   // filename inside Assets/Models (embedded too)
         const char* presetName;  // preset basename -> <name>.neuronikpreset
+        const char* models[4];   // slot A..D, fichero dentro de Assets/Models
+                                 // (nullptr = ranura vacia, como hoy)
     };
 
     // One preset per embedded model, named after it so browser entry, preset
-    // file and slot model line up 1:1 (all six sort together under "CZ").
+    // file and slot model line up 1:1 (all six sort together under "CZ"), plus
+    // the BANK preset: los cuatro patches TONALES del banco CZ101 en las cuatro
+    // esquinas del pad XY (A=BASS1, B=HAMOG, C=PAD1, D=SWEP1). CZ-RRISE no entra
+    // en el banco: es un barrido de pitch y el banco es material estatico (su
+    // preset temporal ya existe aparte). El pad arranca en la esquina A
+    // (morphX/morphY = 0 es el default del layout) y al arrastrarlo recorre los
+    // otros tres patches: es el banco entero en un solo preset.
     const FactoryPreset kFactoryPresets[] = {
-        { "CZ-BASS1.neuronikmodel",          "CZ-BASS1" },
-        { "CZ-HAMOG.neuronikmodel",          "CZ-HAMOG" },
-        { "CZ-PAD1.neuronikmodel",           "CZ-PAD1" },
-        { "CZ-SWEP1.neuronikmodel",          "CZ-SWEP1" },
-        { "CZ-RRISE-temporal.neuronikmodel", "CZ-RRISE-temporal" },
-        { "CZ-BASS1-temporal.neuronikmodel", "CZ-BASS1-temporal" },
+        { "CZ-BASS1",          { "CZ-BASS1.neuronikmodel", nullptr, nullptr, nullptr } },
+        { "CZ-HAMOG",          { "CZ-HAMOG.neuronikmodel", nullptr, nullptr, nullptr } },
+        { "CZ-PAD1",           { "CZ-PAD1.neuronikmodel", nullptr, nullptr, nullptr } },
+        { "CZ-SWEP1",          { "CZ-SWEP1.neuronikmodel", nullptr, nullptr, nullptr } },
+        { "CZ-RRISE-temporal", { "CZ-RRISE-temporal.neuronikmodel", nullptr, nullptr, nullptr } },
+        { "CZ-BASS1-temporal", { "CZ-BASS1-temporal.neuronikmodel", nullptr, nullptr, nullptr } },
+        { "CZ101-BANK",        { "CZ-BASS1.neuronikmodel", "CZ-HAMOG.neuronikmodel",
+                                   "CZ-PAD1.neuronikmodel", "CZ-SWEP1.neuronikmodel" } },
     };
 } // namespace
 
@@ -104,11 +117,20 @@ int main (int argc, char** argv)
 
     for (const auto& factory : kFactoryPresets)
     {
-        // Slot A carries the model; slots B-D stay unset (absent property ==
-        // no model) and morphX/Y default to 0, so A is what sounds.
-        apvts.state.setProperty ("modelPath0",
-                                 juce::String (kModelsMarker) + "/" + factory.modelFile,
-                                 nullptr);
+        // Ranuras limpias antes de cada preset: el estado es UNO y se reutiliza,
+        // asi que sin esto el banco (que llena A-D) dejaria modelos en los
+        // presets siguientes. Slot sin modelo = propiedad AUSENTE (no vacia):
+        // es lo que el processor lee como "sin modelo".
+        for (int slot = 0; slot < 4; ++slot)
+            apvts.state.removeProperty ("modelPath" + juce::String (slot), nullptr);
+
+        for (int slot = 0; slot < 4; ++slot)
+        {
+            if (const auto* modelFile = factory.models[slot])
+                apvts.state.setProperty ("modelPath" + juce::String (slot),
+                                         juce::String (kModelsMarker) + "/" + modelFile,
+                                         nullptr);
+        }
 
         const auto file = outDir.getChildFile (juce::String (factory.presetName)
                                                + Serialization::PresetManager::presetExtension);
@@ -132,19 +154,45 @@ int main (int argc, char** argv)
         // root and still holds the models marker (that is what
         // installFactoryPresets() substitutes at install time).
         auto back = juce::parseXML (file);
-        const bool carriesMarker = back != nullptr
-                                   && back->hasTagName (kProductionRootTag)
-                                   && back->hasAttribute ("modelPath0")
-                                   && back->getStringAttribute ("modelPath0").contains (kModelsMarker);
+
+        // Guardia de round trip por RANURA: lo escrito parsea, lleva la raiz de
+        // produccion y cada slot declarado conserva el marcador que
+        // installFactoryPresets() sustituye al instalar. Un slot declarado que
+        // llegue sin marcador (o un slot extra que se cuele) rompe aqui.
+        bool carriesMarker = back != nullptr && back->hasTagName (kProductionRootTag);
+
+        if (carriesMarker)
+        {
+            for (int slot = 0; slot < 4; ++slot)
+            {
+                const auto attribute = "modelPath" + juce::String (slot);
+                const bool declared = factory.models[slot] != nullptr;
+                const bool present = back->hasAttribute (attribute);
+
+                if (present != declared
+                        || (declared && ! back->getStringAttribute (attribute).contains (kModelsMarker)))
+                {
+                    carriesMarker = false;
+                    std::cerr << "[gen] FALLO: " << file.getFileName() << ": ranura " << slot
+                              << (declared ? " declarada sin marcador" : " sin declarar y presente") << '\n';
+                }
+            }
+        }
+
         if (! carriesMarker)
         {
             std::cerr << "[gen] FALLO: " << file.getFileName()
-                      << " no quedo con raiz <Parameters> y modelPath0 marcado\n";
+                      << " no quedo con raiz <Parameters> y sus modelPath<slot> marcados\n";
             return 1;
         }
 
-        std::cout << "  [ok]   " << file.getFullPathName()
-                  << "  (modelPath0 = " << back->getStringAttribute ("modelPath0") << ")\n";
+        std::cout << "  [ok]   " << file.getFullPathName();
+
+        for (int slot = 0; slot < 4; ++slot)
+            if (factory.models[slot] != nullptr)
+                std::cout << "\n           modelPath" << slot << " = " << factory.models[slot];
+
+        std::cout << '\n';
     }
 
     std::cout << "[gen] RESULT: OK ("

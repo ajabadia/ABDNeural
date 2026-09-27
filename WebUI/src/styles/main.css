@@ -18,8 +18,9 @@
 
   /* --- geometría del lienzo (espejo de contracts/sections.js) -------------- */
   --abd-canvas-w: 1440px;
-  --abd-canvas-h: 892px;   /* canvasHeight(): banda del fondo con el frontal LFO (8.3) */
+  --abd-canvas-h: 946px;   /* canvasHeight(): 892 de fichas + 54 del LCD + 8 de aire */
   --abd-top-h: 40px;
+  --abd-lcd-h: 54px;       /* fila del LCD superior (GEOMETRY.lcd, con el aire del test de encaje) */
   --abd-band-gap: 10px;
   --abd-card-header-h: 20px;
   --abd-card-pad: 8px;      /* GEOMETRY.cardPadding = 8 + 8 */
@@ -30,6 +31,11 @@
   --abd-footer-h: 44px;
   --abd-panel-pad: 10px;    /* GEOMETRY.panelPadding = 6 + 4 */
   --abd-knob-size: 48px;    /* GEOMETRY.knob: manda el alto de celda */
+  /* BALANCEO 9.x: espejo de SECTION_VISUALS['envelope-curves'].minBodyHeight
+     (y del 164 del pad de MODELOS). El SVG de las curvas no puede mandar con su
+     alto de aspecto: con esta variable el cuerpo de la banda mide lo que dice
+     el contrato y las tres fichas de la banda cierran a 206. */
+  --abd-env-body: 164px;
 }
 
 html,
@@ -55,6 +61,10 @@ body {
 
 .panel {
   display: grid;
+  /* Cuatro filas SIN LCD (selftest/tests: cabecera, bandas, teclado y pie).
+     Con pantalla, .panel--has-lcd añade la quinta — los gap del grid cuentan
+     por pista y una fila vacía SIEMPRE metería un hueco de banda que el
+     contrato no cuenta: la fila existe o no existe, sin grados. */
   grid-template-rows: auto auto auto auto;
   gap: var(--abd-band-gap);
   align-content: start;
@@ -113,6 +123,35 @@ body {
 .audio-mode__detail {
   color: var(--color-text-dim, #4a637a);
   font-variant-numeric: tabular-nums;
+}
+
+/* --- actividad por voz (fila de audio, standalone) ------------------------- */
+
+/*
+ * Un LED por voz del motor (0..8): encendido = esa voz esta sonando. Es
+ * PINTURA en vivo (app.js lo alimenta del meter del worklet, ~21 ms), no
+ * estado del snapshot — mismo camino que la aguja de las curvas. En plugin no
+ * aparece: el contador vive en el motor nativo y la pagina no lo mueve.
+ */
+.voice-meter {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.voice-meter__led {
+  width: 5px;
+  height: 9px;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 8%);
+  border: 1px solid rgb(255 255 255 / 12%);
+  transition: background 80ms linear, box-shadow 80ms linear;
+}
+
+.voice-meter__led[data-active='true'] {
+  background: var(--color-accent, #00c3ff);
+  border-color: var(--color-accent, #00c3ff);
+  box-shadow: 0 0 5px rgb(var(--color-accent-rgb, 0 195 255) / 0.55);
 }
 
 .audio-start,
@@ -270,6 +309,245 @@ body {
   stroke: none;
 }
 
+/*
+ * AGUJA de nivel (telemetria en vivo): la senal que la envolvente esta sacando
+ * AHORA (frame.envelopes[amp|filter]), como una linea a lo ancho de la curva.
+ * Autoiluminada como el LCD del espectral: no cambia con el tema, para que la
+ * senal se lea igual en oscuro y en claro. Oculta (opacity 0) por debajo del
+ * suelo de silencio — dataset.visible lo conmuta la vista.
+ */
+.envelope-curve__level {
+  fill: none;
+  stroke: var(--color-lcd-text, #44ff77);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0;
+  transition: opacity 120ms linear;
+  vector-effect: non-scaling-stroke;
+}
+
+.envelope-curve__level[data-visible="true"] {
+  opacity: 0.9;
+}
+
+/* --- ENVOLVENTES: dos curvas + rutas de la matriz (lienzo) ---------------- */
+
+/*
+ * DISENO 9.x de la ficha: en el lienzo NO hay knobs de envolvente (viven en el
+ * cajon) — aqui quedan las DOS curvas, una columna por ADSR, y debajo de cada
+ * una las rutas que la MATRIZ tiene asignadas a su fuente. El alto de la ficha
+ * lo fija SECTION_VISUALS['envelope-curves'].minBodyHeight (SSOT del encaje).
+ * BALANCEO 9.x: altura DEFINIDA (--abd-env-body, espejo del minBodyHeight del
+ * contrato), no content-size: con height auto el SVG manda por su alto de
+ * aspecto y la banda crece 3-6 px sobre las otras. Definida, la fila de curvas
+ * es 1fr y el sobrante lo absorbe el SVG — con cero rutas las curvas estiran y
+ * nunca queda un hueco; con rutas, ceden lo justo.
+ */
+.env-curves {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* AIRE entre las dos curvas (pedido 2026-09-25): no comparten marco, se
+     leen como dos graficos, no como uno partido. */
+  gap: 18px;
+  height: var(--abd-env-body, 164px);
+  width: 100%;
+}
+
+.env-curves__column {
+  display: grid;
+  grid-template-rows: minmax(64px, 1fr) auto;
+  gap: 6px;
+  /* El relleno de abajo recorta la curva (el SVG ocupa la fila 1fr del
+     interior) y el sobrante cae como aire BAJO las rutas: la banda no cambia
+     de alto — la fija --abd-env-body, espejo del minBodyHeight del contrato —
+     pero el dibujo deja de tocar el mueble. */
+  padding: 0 3px 5px;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* La curva llena SU fila (sin el centrado de la vista suelta): etiqueta y
+   dibujo a lo ancho de la columna. */
+.env-curves__column .card__visual {
+  align-items: stretch;
+}
+
+.env-curves__routes {
+  display: grid;
+  gap: 3px;
+  align-content: start;
+}
+
+/* Una ruta ENV: destino -> amount. Mismo vocabulario (y colores) que el
+   resumen de la matriz, porque ES la misma informacion vista desde la
+   fuente: lo que pinta aqui es lo que el cable lleva, no una copia.
+   Es un BOTON (pulsarla abre la matriz en su slot): reset de tipografia y
+   gesto de boton, con el foco visible de la casa. */
+.env-route {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 12px 44px;
+  align-items: center;
+  gap: 4px;
+  /* 3px vertical: la fila sale a 18-19 px reales en WebView2 (16 se quedaba
+     por debajo del minimo comodo de 24 para punteros, WCAG 2.5.8); el sobrante
+     lo absorbe la fila 1fr de la curva, el encaje no se mueve. */
+  padding: 3px 8px;
+  font: inherit;
+  font-size: var(--text-sm, 9px);
+  color: inherit;
+  text-align: left;
+  background: rgb(255 255 255 / 3%);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.env-route:hover:not(.env-route--empty) {
+  background: color-mix(in srgb, var(--color-accent, #00c3ff) 14%, transparent);
+}
+
+.env-route:focus-visible {
+  outline: 1px solid var(--color-accent, #00c3ff);
+  outline-offset: 1px;
+}
+
+.env-route--empty {
+  cursor: default;
+}
+
+.env-route__destination {
+  color: var(--color-text-main, #f0f7ff);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.env-route__arrow {
+  color: var(--color-text-dim, #4a637a);
+}
+
+.env-route__amount {
+  color: var(--color-accent, #00c3ff);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Sin rutas para esa envolvente (o amount a 0): se DICE, no se calla. */
+.env-route--empty {
+  grid-template-columns: minmax(0, 1fr);
+  color: var(--color-text-dim, #4a637a);
+  font-style: italic;
+}
+
+/* --- ENVOLVENTES: bloques del cajon (curva encima de sus knobs) ----------- */
+
+/*
+ * Un bloque por envolvente, patrón de las rutas de la matriz: distintivo +
+ * curva + los cuatro knobs. El panel monta las celdas DENTRO del bloque (la
+ * vista devuelve blockOf); aqui solo se da el mueble.
+ */
+.env-blocks {
+  display: grid;
+  gap: 10px;
+}
+
+.env-block {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  background: rgb(255 255 255 / 3%);
+  border: 1px solid var(--color-panel-border, rgb(0 195 255 / 20%));
+  border-radius: 6px;
+}
+
+/* Barra del bloque: titulo + IR A LA RUTA. El titulo hereda el papel de la
+   caption de la curva (que aqui va sin etiqueta: el bloque ya dice quien es). */
+.env-block__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.env-block__title {
+  font-size: var(--text-sm, 9px);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted, #7e9bb5);
+}
+
+/* El mismo lenguaje que .card__action (RANDOM, EDIT) y .model-slots__load,
+   mas alto que una fila de ruta: vive en el cajon, hay sitio. Deshabilitado
+   (sin ruta para esa envolvente) se apaga, como RANDOM sin host. */
+.env-block__goto {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  font-family: inherit;
+  font-size: var(--text-2xs, 8px);
+  line-height: 1;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-accent, #00c3ff);
+  background: var(--color-panel-surface, #101c27);
+  border: 1px solid var(--color-accent, #00c3ff);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.env-block__goto:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent, #00c3ff) 22%, transparent);
+}
+
+.env-block__goto:focus-visible {
+  outline: 1px solid var(--color-accent, #00c3ff);
+  outline-offset: 1px;
+}
+
+.env-block__goto:disabled {
+  color: var(--color-text-dim, #4a637a);
+  border-color: var(--color-text-dim, #4a637a);
+  cursor: default;
+}
+
+.env-block .card__visual {
+  /* ALTURA FIJA (pedido 2026-09-25). Antes era `min-height: 56px` y mandaba la
+     proporcion intrinseca del SVG (viewBox 100x48) sobre el ancho del cajon:
+     con ~570 px de caja cada curva medIa ~275 px y las dos se comian la
+     pestana. Fija, el SVG la llena (flex) y manda el diseno. */
+  height: 120px;
+  min-height: 0;
+  align-items: stretch;
+}
+
+/* Los destinos de la envolvente, junto a su grafica: misma fila (destino ->
+   amount) que el lienzo, porque es el MISMO dato visto desde la fuente. */
+.env-block__routes {
+  display: grid;
+  gap: 3px;
+  align-content: start;
+  min-height: 18px;
+}
+
+/* Los cuatro knobs del bloque, en una fila. En el cajon hay ancho de sobra,
+   pero un dial de 64 no cabe cuatro veces: la variable del mueble compartido
+   baja SOLO aqui (la rejilla del lienzo sigue en 48). */
+.env-block__knobs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.env-block__knobs .cell {
+  height: auto;
+}
+
+.env-block__knobs .cell--knob {
+  --abd-knob-size: 40px;
+}
+
 /* --- celda de control ----------------------------------------------------- */
 
 .cell {
@@ -346,6 +624,68 @@ body {
   text-align: left;
 }
 
+/* BALANCEO banda 3: en GLOBAL & MASTER la celda base llena el cuerpo (164, el
+   SSOT de la banda) con su contenido centrado; en OSCILADOR (Spectral
+   Unison) sigue siendo una celda normal de 80. Antes: 84 px muertos bajo el
+   slider. El height:auto libera el var(--abd-cell-h) de .cell. */
+.card[data-section-id='globalFull'] .card__body {
+  align-content: stretch;
+}
+
+.card[data-section-id='globalFull'] .cell--baseline {
+  height: auto;
+}
+
+/*
+ * Franja de estado de GLOBAL & MASTER (tempo / MIDI / aleatorio sin abrir el
+ * cajón): PINTURA del snapshot — cada chip lee el MISMO displayText que las
+ * celdas. La franja entera es clicable y abre su cajón (patrón resumen de la
+ * matriz: el frontal resume, el cajón edita).
+ */
+.global-strip {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 8px;
+  background: rgb(255 255 255 / 3%);
+  border: 1px solid var(--color-panel-border, rgb(0 195 255 / 20%));
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: var(--text-sm, 9px);
+}
+
+.global-strip:hover {
+  background: color-mix(in srgb, var(--color-accent, #00c3ff) 10%, transparent);
+}
+
+.global-strip:focus-visible {
+  outline: 1px solid var(--color-accent, #00c3ff);
+  outline-offset: 1px;
+}
+
+.global-strip__chip {
+  display: flex;
+  gap: 4px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.global-strip__label {
+  color: var(--color-text-dim, #4a637a);
+  font-size: var(--text-2xs, 7px);
+  letter-spacing: 0.08em;
+}
+
+.global-strip__value {
+  color: var(--color-text-main, #f0f7ff);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* --- ficha de cajón (matriz de modulación) -------------------------------- */
 
 /*
@@ -363,10 +703,25 @@ body {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/* BALANCEO banda 3: el cuerpo de la ficha estira su fila y el resumen reparte
+   las 4 rutas en filas 1fr (164 = el SSOT de la banda; antes quedaban 91 px
+   muertos bajo la ruta 4). Las pildoras ya centran su contenido
+   (.mod-summary__row, align-items: center). El estiro del cuerpo va por
+   seccion: otras fichas de cajon (MODELOS, ENVOLVENTES) llenan el suyo por
+   su cuenta. */
 .mod-summary {
   display: grid;
   gap: 3px;
-  align-content: start;
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  /* TRANSICION 9.3: con el LFO en la banda del motor, esta banda es de cajones
+     puros y el resumen CIERRA su banda (SECTION_VISUALS['mod-summary']
+     .minBodyHeight = 164, el cuerpo de la casa): altura DEFINIDA como las
+     curvas (con auto la banda colapsa al armazon de 42). */
+  height: var(--abd-env-body, 164px);
+}
+
+.card[data-section-id='modMatrix'] .card__body {
+  align-content: stretch;
 }
 
 .mod-summary__row {
@@ -378,6 +733,28 @@ body {
   font-size: var(--text-sm, 9px);
   background: rgb(255 255 255 / 3%);
   border-radius: 4px;
+}
+
+/* Fila BOTON (el mismo gesto que las rutas de ENVOLVENTES): reset de boton,
+   hover con acento y foco visible de la casa. El resto del aspecto lo pone la
+   regla base de arriba (grid, fondo, padding) — aquí solo el gesto. */
+button.mod-summary__row {
+  appearance: none;
+  font: inherit;
+  width: 100%;
+  color: inherit;
+  text-align: left;
+  border: none;
+  cursor: pointer;
+}
+
+button.mod-summary__row:hover {
+  background: color-mix(in srgb, var(--color-accent, #00c3ff) 14%, transparent);
+}
+
+button.mod-summary__row:focus-visible {
+  outline: 1px solid var(--color-accent, #00c3ff);
+  outline-offset: 1px;
 }
 
 .mod-summary__slot {
@@ -543,10 +920,146 @@ body {
 
 .spectral[data-active="false"] .spectral__bar { opacity: 0.35; }
 
+/* --- LCD superior (primera fila, bajo la nav-bar) -------------------------- */
+
+/*
+ * La migración del LcdDisplay.h + LcdMenuManager.h + D-pad del interface C++
+ * (retirados en c811b75). La MECÁNICA es el lcdPanel del paquete compartido
+ * (pantalla + máquina + botones con hold-repeat) — que aún no trae CSS propio:
+ * esta página lo viste con la fidelidad del original (paint del LcdDisplay.cpp):
+ * marco plástico 0xFF151515, backlight del tema (--color-lcd-*), retícula 16x2
+ * y mono bold. Los DATOS (árbol, reposo, pasos) viven en ui/lcdTop.js.
+ */
+.lcd-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 10px;
+  /* ALTO CERRADO: 54 = GEOMETRY.lcd del contrato (pantalla/botones 44 + 10 de
+     relleno vertical). El lienzo es de presupuesto FIJO y esta fila se lo
+     descuenta — el test de encaje cuenta el aire restante (≥8). */
+  height: var(--abd-lcd-h, 54px);
+  box-sizing: border-box;
+  padding: 6px 10px;
+  background: #151515;
+  border-radius: 6px;
+}
+
+.lcd-top .abd-lcd-panel__screen {
+  min-width: 0;
+  height: 42px;
+  box-sizing: border-box;
+  background: var(--color-lcd-bg, #6a8f6a);
+  border: 1px solid rgb(0 0 0 / 60%);
+  border-radius: 4px;
+  box-shadow: inset 0 0 14px rgb(0 0 0 / 85%);
+  font-family: var(--font-lcd, var(--font-mono, ui-monospace, monospace));
+  color: var(--color-lcd-text, #d8ffde);
+  padding: 6px 12px;
+  overflow: hidden;
+  /* Retícula 16x2 (la matriz de pixels del original, 20% negro). */
+  background-image:
+    repeating-linear-gradient(to right,
+      rgb(0 0 0 / 20%) 0 1px, transparent 1px calc(100% / 16)),
+    linear-gradient(to bottom,
+      transparent calc(50% - 1px), rgb(0 0 0 / 20%) calc(50% - 1px),
+      rgb(0 0 0 / 20%) calc(50% + 0px), transparent calc(50% + 1px));
+}
+
+.lcd-top .abd-lcd__line {
+  min-height: 1.35em;
+  font-size: var(--text-sm, 11px);
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  line-height: 1.35;
+  white-space: pre;
+}
+
+.lcd-top .abd-lcd-panel__pad {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.lcd-top .abd-lcd-panel__btn {
+  appearance: none;
+  font: inherit;
+  font-size: var(--text-2xs, 7px);
+  letter-spacing: 0.06em;
+  color: var(--color-text-main, #f0f7ff);
+  background: rgb(255 255 255 / 5%);
+  border: 1px solid var(--color-panel-border-strong, rgb(0 195 255 / 45%));
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.lcd-top .abd-lcd-panel__btn:hover {
+  background: color-mix(in srgb, var(--color-accent, #00c3ff) 14%, transparent);
+}
+
+.lcd-top .abd-lcd-panel__btn:active {
+  background: color-mix(in srgb, var(--color-accent, #00c3ff) 28%, transparent);
+}
+
+/* Con LCD: quinta fila (entre cabecera y bandas). */
+.panel--has-lcd {
+  grid-template-rows: auto auto auto auto auto;
+}
+
+.lcd-row {
+  min-height: 0;
+}
+
+/* El LCD anidado en SU fila del panel: debajo del título, encima de las
+   bandas (OSCILADOR · RESONADOR · FILTRO). El alto cerrado ya lo pone
+   .lcd-top (54 = GEOMETRY.lcd del contrato); aqui solo el ancho completo. */
+.lcd-row .lcd-top {
+  width: 100%;
+}
+
+.lcd-row:empty {
+  display: none;
+}
+
 .xy-pad {
   position: relative;  /* ancla del aro morph-Z (absolute) */
   display: grid;
   place-items: center;
+}
+
+/* Readout X/Y % DEBAJO del pad: el componente compartido esconde su readout
+   interno cuando hay esquinas A-D (las esquinas dicen QUE hay, no dónde), y
+   esta fila espejo mantiene el valor visible SIEMPRE. Altura cerrada: el pad
+   mide 150 y esta fila 14 — 164, el SSOT del cuerpo de la banda (los tres
+   números viven explicados en ui/xyPad.js). aria-hidden: el valor accesible
+   sigue siendo el aria-valuetext del pad. */
+/* Esquinas A–D con el ESTADO de la ranura que nombran (el mismo del cajón:
+   data-divergent sobre el span, lo pone ui/xyPad.js con el mismo criterio de
+   modelSlots.js — displayableName + isValid). Cargada normal = texto del tema;
+   divergente = el ámbar de advertencia de la casa. Las vacías no existen (el
+   componente omita el span): su estado es el fondo del pad. */
+.xy-pad .abd-xypad__corner[data-divergent='true'] {
+  color: var(--color-warning, #ffaa00);
+}
+
+.xy-pad__readout-row {
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--color-text-dim, #8b98a5);
+  overflow: hidden;
+}
+
+/* BALANCEO 9.x: el pad comparte SSOT con ENVOLVENTES (164 de cuerpo) y su
+   componente declaraba width/height + border en content-box: el borde sumaba
+   2 px al cuerpo y la ficha central pasaba de 206. Aqui manda el numero del
+   contrato (height:164 en ui/xyPad.js), borde incluido. */
+.xy-pad .abd-xypad__pad {
+  box-sizing: border-box;
 }
 
 /* --- anillo morph-Z (tercer eje del pad, FASE 10) ------------------------- */
@@ -562,6 +1075,14 @@ body {
   inset: -7px;
   border-radius: 50%;
   outline: none;
+  /* El aro es un OVERLAY y su caja cubre todo el pad (inset negativo). Sin
+     esto se traga TODOS sus gestos: el hit-testing del navegador devuelve el
+     contenedor (no el pad) y un arrastre en el interior no llega a ninguna
+     parte. El trazo de agarre NO depende de esta regla: `.zring-hit` declara
+     `pointer-events: stroke`, y un descendiente reactiva el puntero bajo un
+     ancestro transparente a el. Medido en la pagina viva: con la caja sin
+     pointer-events, el centro del pad vuelve a ser del pad. */
+  pointer-events: none;
 }
 
 .xy-pad__zring svg {
@@ -628,7 +1149,10 @@ body {
 /* Una fila por ruta: distintivo + los tres campos de la ruta. */
 .drawer-slot {
   display: grid;
-  grid-template-columns: 56px repeat(3, minmax(0, 1fr));
+  /* La 1a columna es la barra de nivel de envolvente (siempre montada: una
+     columna uniforme en las 4 filas — sin ella, las filas ENV desalinearian
+     sus celdas respecto a las filas Off). Invisible sin fuente ENV. */
+  grid-template-columns: 5px 56px repeat(3, minmax(0, 1fr));
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
@@ -637,12 +1161,47 @@ body {
   border-radius: 6px;
 }
 
+/*
+ * Nivel de envolvente en vivo (cajón de la MATRIZ): SOLO en las filas cuya
+ * fuente es ENV 1/ENV 2 — paint lo decide con el snapshot (data-live). Barra
+ * fina rellena de abajo a arriba con --env-level (0..1, del frame de
+ * telemetría en el MISMO instante que las agujas de las curvas). Sin fuente
+ * ENV, la barra no existe visualmente (data-live=false, sin fondo).
+ */
+.drawer-slot__env-level {
+  width: 5px;
+  height: 16px;
+  border-radius: 2px;
+  justify-self: start;
+  background:
+    linear-gradient(to top,
+      var(--color-accent, #00c3ff) 0,
+      var(--color-accent, #00c3ff) calc(var(--env-level, 0) * 100%),
+      transparent calc(var(--env-level, 0) * 100%))
+      rgb(255 255 255 / 6%);
+  transition: none; /* ~15 Hz: el frame ya ES la animación */
+}
+
+.drawer-slot__env-level[data-live='false'] {
+  background: none;
+}
+
 /* Variante columna (cajón de GLOBAL & MASTER, sin rutas): distintivo a la
    izquierda y UNA celda — el control llena el resto del ancho del cajón. */
 .drawer-slot--column {
   grid-template-columns: 56px minmax(0, 1fr);
   gap: 8px;
   padding: 2px 0;
+}
+
+/* BALANCEO del cajón de GLOBAL (medido en WebView2 1440x900): las 8 filas son
+   uniformes (85.6 px) pero quedaban ~106 px muertos al fondo (el cuerpo del
+   mueble compartido pinta align-content: start). Aquí el cuerpo ESTIRA las
+   filas (97 px) y el contenido llena el cajón — mismo mecanismo que el
+   resumen de la MATRIZ (align-content: stretch). Los controles siguen
+   centrados en su fila (align-items: center de .drawer-slot). */
+#drawer-globalFull .drawer__body {
+  align-content: stretch;
 }
 
 .drawer-slot__badge {
@@ -655,6 +1214,33 @@ body {
    al ancho que necesita en la rejilla del lienzo. */
 .drawer .cell--choice .abd-select__field {
   max-width: none;
+}
+
+/*
+ * Resalte de RUTA pedido desde ENVOLVENTES (pulsa una ruta -> el cajón de la
+ * matriz abre marcando su fila): el BORDE de acento es inmediato (se ve venir
+ * con la fila durante el deslizamiento) y el DESTELLO va retrasado: el cajón
+ * compartido tarda 0.24s en deslizarse (widgets.css, transition transform de
+ * .drawer), y un destello que arranque en el click muere detrás del borde que
+ * aún está fuera de pantalla. 0.26s = asentado + 20 ms de gracia. Lo pone
+ * panel.openDrawerRoute() como data-attribute; el paint no lo reevalua a
+ * proposito (es un gesto, no estado).
+ */
+.drawer-slot[data-slot-highlight="true"] {
+  border-color: var(--color-accent, #00c3ff);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent, #00c3ff) 60%, transparent),
+    0 0 10px color-mix(in srgb, var(--color-accent, #00c3ff) 25%, transparent);
+  animation: drawer-slot-flash 640ms ease-out 0.26s 1 both;
+}
+
+@keyframes drawer-slot-flash {
+  0% {
+    background: color-mix(in srgb, var(--color-accent, #00c3ff) 28%, transparent);
+  }
+
+  100% {
+    background: rgb(255 255 255 / 3%);
+  }
 }
 
 /* --- franja de interpretación (ruedas + teclado) -------------------------- */

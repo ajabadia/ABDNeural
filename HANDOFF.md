@@ -3822,3 +3822,1503 @@ morphZ; (4) el diseño de la Fase 11 (capas) y la puerta de plegado de octava vi
 `DOCS/ARCHITECTURE/LAYER_SEPARATION_PLAN.MD`. Regla práctica que deja el hallazgo: en
 material CZ101, **primero ajustar la rejilla, después leer la trayectoria** — una cresta
 migrante sobre una serie fija es timbre que evoluciona, no nota que se mueve.
+
+## 2026-09-24 (t): Fase 11.1 — las capas entran en el struct y el v2.1 en el fichero (y el procesador que se pasó de la pila)
+
+El diseño de `DOCS/ARCHITECTURE/LAYER_SEPARATION_PLAN.MD` arranca por el formato, que es
+lo que no se puede cambiar después sin romper ficheros: **el struct de capas y el
+`.neuronikmodel` v2.1**. Esta entrada es el contrato de lo que ya está implementado y las
+tres decisiones que cualquier lector futuro debe conocer.
+
+**1. La capa 0 ES la raíz, y no hay copia.** `SpectralModel` gana `layerCount` (1..3),
+`extraLayers[2]` (solo los frames de las capas 1 y 2), `layerWeights`, `layerFrameWeights`
+y `layerNames`. La capa 0 no tiene almacén propio: sus frames son `amplitudes` /
+`extraAmps` / `extraOffsets` / `extraF0` y su rejilla `frameSpanHz`. Eso da tres cosas
+gratis: ningún camino v1/v2 se entera de que existen capas, no hay dos copias del mismo
+frame que puedan divergir, y el puente WASM (`memcpy` de 128 floats sobre
+`amplitudes`+`frequencyOffsets`) sigue siendo válido sin tocar el layout. La API de capas
+(`numFramesOf`, `ampAt(l,f,i)`, `ampsOf(l,f)`, `f0At(l,f)`, `frameWeightAt`, `layerWeightAt`,
+`layerNameAt`, `setLayerCount`, …) resuelve el índice 0 contra la raíz: la asimetría del
+almacenaje no se filtra. Índices **0-based** (la capa "1" del diseño humano es la 0 del
+código). Con `layerCount == 1` todo queda inerte.
+
+**2. El dialecto tiene UN escritor, y el lector es tolerante.** `Source/Common/
+SpectralModelWriter.h` (`Common::modelToJson` / `writeModelToFile`) es el único sitio que
+escribe `.neuronikmodel`; `exportModel()` de la GUI se queda con la política (nombre,
+guardia de afinación, diálogo), el roundtrip y la sonda RealWav llaman al mismo código. El
+v2 puro **no cambia ni un byte** (sin `layers`, `format` sigue siendo el entero 2). El v2.1
+añade `layers { layerCount, layers[ {name, weight, frames, frameWeights} ] }` y sube a
+`format: 2.1`; el lector lo acepta si está y lo ignora si no está. Detalles que costaron un
+test: el **nombre y el peso de la capa 0 se leen del bloque** (la raíz del v2 lleva el
+nombre del MODELO), y sus frames **no** se releen (manda la raíz). Un fichero con más de 3
+capas se trunca, una capa sin frames válidos corta la lectura sin invalidar el modelo.
+
+**3. El presupuesto real no era el WASM, era la pila.** El modelo pasa de ~8 KB a ~25 KB
+(2 capas extra × 16 frames × 129 floats) y `NEURONiKProcessor` se fue a ~1 MB: su cola de
+comandos llevaba `std::array<Command, 32>` con un `SpectralModel` **inline** por comando
+(800 KB). Los tests y la bancada crean el procesador en la PILA, así que
+`StatePersistenceTest` y `ModelSlotTest` empezaron a morir al arrancar, en silencio (ctest
+reportaba SEGFAULT y 13 s de "ejecución", con stdout perdido por el buffer). Arreglo: la
+cola se reserva en el constructor (`std::make_unique<Command[]>(32)`) — el hilo de audio
+solo indexa, como antes, sin asignar — y el procesador lleva
+`static_assert (sizeof (NEURONiKProcessor) < 128 * 1024)` para que la próxima regresión de
+ese tipo la pare el compilador y no un crash mudo. El clamp del v1 WASM
+(`layerCount = 1` en `neuronikLoadModel`) es la misma decisión por el otro lado: el worklet
+cruza 128 floats planos (su buffer es fijo, no depende de `sizeof`), así que suena la capa 0
+y el bloque por slot se queda en ~33 KB.
+
+**Verificación de la 11.1 (todo verde, 2026-09-24):**
+
+```text
+cmake --build build-reference --config Release --parallel   -> OK
+ctest --test-dir build-reference -C Release                 -> 28/28 (7,7 s)
+NEURONiK_WasmParityTest <scratch>.json + cmp con la referencia -> idéntico BYTE a BYTE
+node Tests/neuronik_wasm_parity.mjs build-wasm/neuronik_dsp.js -> 5 esc. x 9 casos, 0 ulps (184 320 muestras)
+NEURONiK Web Pilot.exe --selftest                           -> EXIT=0, "RESULT: OK"
+```
+
+El roundtrip v2.1 vive en `Tests/ModelMakerRoundTripTest.cpp` (§9 "Capas (v2.1)" y §10 "el
+v2 puro no cambia"): 2 capas con nombres, mezclas, frames bit a bit (con el clamp de banda
+del escritor), `frameF0` por frame, pesos temporales, truncado de 5 capas a 3, la ranura
+del engine exponiendo la capa 0 y un modelo por defecto de 1 capa (el invariante del puente
+WASM). El binario WASM versionado (`WebUI/public/worklet`) no se regeneró: el DSP no cambió
+y el clamp lo hace innecesario; cuando se reconstruya, la paridad sigue siendo el árbitro.
+
+## 2026-09-24 (u): el refinado del HPS, verificado con la sonda (SWEP1 en su octava) y el esbozo del producto que no hace nada
+
+Encargo de la jornada: «implementa el refinado del HPS (esbozo del pico antes del producto de
+armónicos) y verifica con la sonda que SWEP1 sale en la octava correcta». **El refinado lleva en
+producción desde la entrada (p)** (2026-09-23, commit `d1a83d2`, en `detectPitchImpl`), así que
+lo que faltaba era la verificación de punta a punta y un matiz de documentación: el esbozo elige
+el **ancla**, no se aplica a los factores del producto (que multiplica bins crudos,
+`hps[i] = m[i]*m[2i]*m[3i]*m[4i]`). El contrato está pinneado en `SpectralAnalyzerTest` §4
+(«Fundamental débil con sub-octava fuerte»: 62@0.39 / 124@1.0 / 186@0.56 / 248@0.05 / 372@0.06
+⇒ detecta **123.97 Hz** y la tabla honesta 124=1.000, 248=0.000).
+
+**Verificación con la sonda (2026-09-24, los cinco WAV del banco CZ101):**
+
+```bash
+cd ABDNeural
+./build-reference/Release/NEURONiK_ModelMakerRealWavProbe.exe \
+  ../ABDCZ101/DOCS/patches/CZ-{BASS1,HAMOG,PAD1,SWEP1,RRISE}.wav    # RESULT: OK
+```
+
+| WAV | f0 (sonda) | estático | lectura |
+|---|---|---|---|
+| CZ-SWEP1 | **124.6 Hz — la octava correcta** | parcial 1 **−3.5 cents**, mediana −4.5 sobre 8 parciales reales (máx 212.9 en el 4: artefacto de las dos familias de la fuente, no del estimador) | escalera: f0/2 61.9 Hz mag **117.9** / f0 124.1 mag **301.8** / 2f0 264.1 mag **2.94** (vacío ⇒ la candidatura de sub-octava muere ahí) / 3f0 372.4 mag 91.7; frames 123.3–124.3 Hz; rejilla 25.2 cents de residuo con 365 observaciones |
+| CZ-BASS1 / CZ-HAMOG / CZ-PAD1 | 124.3 / 124.3 / 124.6 Hz | medianas −3.4 / **−1.6** / **−0.1** cents (máx 3.1 en PAD1) | sin cambio respecto al registro de (p) |
+| CZ-RRISE | 273.2 Hz, desviación 548 cents | exento de check estático (barrido 256→601 Hz) | el temporal con f0 por frame sigue reproduciendo la trayectoria |
+
+`ctest` **28/28**. La sonda no mueve un byte de los modelos CZ exportados.
+
+**La medición negativa (para que nadie la repita):** se implementó la variante que faltaba
+— esbozo (±1 bin) aplicado a **todo el espectro antes del producto** — y se midió antes/después:
+los **cinco modelos CZ salen byte a byte idénticos**, el log de la sonda es idéntico línea a
+línea y `ctest` sigue 28/28. Para no depender de un solo banco se portó `detectPitchImpl` a
+Python (`_hps_proto.py`: mismo ancla, misma ventana del producto, misma guardia de soporte y
+misma escalera de octava) y se barrieron 28 casos sintéticos (serie 1/k, firma SWEP1, fundamental
+débil, series inarmónicas a +20/+40/+60 cents acumulados, huecos en los pares, armónicos altos
+dominantes): **ninguna decisión de octava cambia**; la única diferencia son unos pocos Hz dentro
+de un caso que ambas variantes fallan. Conclusión: la octava la deciden el ancla y la escalera
+musical, no los factores del producto — la variante se revirtió y el doc del HPS lo dice ahora
+explícitamente. El barrido deja además el límite conocido por escrito: el estimador solo baja
+UNA octava desde el ancla, así que material con la fundamental muy débil y los armónicos 4+ dominantes
+se queda en el armónico ancla (caso "armónicos altos" del barrido). El reproducer queda en el
+repo para futuras series.
+
+## 2026-09-24 (v): el banco CZ101 en UN preset (CZ101-BANK) — las cuatro ranuras y el pad XY tocando el banco
+
+Encargo de la jornada: «empaqueta los modelos de los cinco patches CZ101 como assets de
+ejemplo y anade un preset de fabrica que los use». **El empaquetado ya estaba** (entrada (m) y
+commit `f6921d2`: los seis modelos y los seis presets en `Assets/` viajan embebidos en
+`NEURONiK_FactoryModels` y `installFactoryPresets()` los deja en `Documents/NEURONiK` solo si
+faltan), asi que lo genuinamente nuevo es el preset de BANCO, que es justo lo que ningun preset
+de un solo modelo podia hacer: llenar las CUATRO ranuras.
+
+**Que se hizo.** (1) `Tests/FactoryPresetGenerator.cpp`: la tabla pasa de `{presetName,
+modelFile}` a `{presetName, models[4]}` (ranuras A-D, `nullptr` = ranura no declarada), se
+`removeProperty` de las cuatro `modelPath<slot>` antes de cada preset y solo se escriben las
+declaradas; la guardia de round-trip comprueba POR RANURA que declarado == presente y con
+marcador. La septima fila es `CZ101-BANK` con BASS1/HAMOG/PAD1/SWEP1. (2) Regenerados los
+ficheros con el generador: **7 presets OK** y `md5sum -c` confirma que los seis presets previos
+salen **byte a byte identicos** (el cambio de tabla no toca lo ya versionado). (3)
+`Assets/Presets/CZ101-BANK.neuronikpreset` (3655 bytes) al `juce_add_binary_data` →
+`NeuronikFactoryModels::CZ101BANK_neuronikpreset`. (4) `installFactoryPresets()` gana su
+entrada. (5) `FactoryPresetAudioTest` gana la §5 del banco.
+
+**El orden de las ranuras no es decorativo.** El morfeo bilineal del resonador
+(`Resonator::updateHarmonicsFromModels`) es `ampTop = lerp(A,B,morphX)`,
+`ampBottom = lerp(C,D,morphX)` y `lerp(top,bottom,morphY)`, asi que la esquina (0,0) es la
+ranura A y la diagonal (1,1) la D. El banco se coloca para que el pad se lea como un tablero:
+X = bajo↔HAMOG, Y = pad↔sweep, esquina A = CZ-BASS1. Cualquier reordenacion futura de la tabla
+del generador cambia el mapa del pad, no solo el preset.
+
+**§5 del test de fabrica (lo que caza).** Carga real del preset de banco desde el stage,
+`slotsOk` (los cuatro `modelPath` en el APVTS + `getModelNames()` = nombres de fichero sin
+extension), y luego la tabla de parciales de 64 bins que el motor publica para la UI
+(`spectralDataForUI`) en la esquina A (0,0) y en el centro (0.5,0.5) tras un `processBlock` con
+la nota 47 (B2, la f0 de los cuatro patches): si las ranuras B-D no estuvieran cargadas o el pad
+no llegara al motor, la tabla del centro seria la de A y la distancia acumulada seria 0 — este
+es el check que lo caza (medido: **0.169**, umbral 0.05). Mas RMS finito y > 1e-4 en ambas
+posiciones (0.13879 y 0.20737), sin contrato de cents: el render del banco suma cuatro modelos.
+Trampa encontrada al escribirlo: `stage.deleteRecursively()` vivia ANTES de la nueva seccion y
+borraba los modelos del stage que el preset de banco necesita para cargar — el borrado se movio
+al final del test.
+
+**Verificacion (2026-09-24):** `NEURONiK_FactoryPresetAudioTest` **EXIT=0**, «All checks
+passed» (los seis presets de un modelo intactos + banco: instalado sin marcador y con las cuatro
+rutas reales, A-D cargadas, pad moviendo la tabla, banco sonando en las dos posiciones);
+`ctest` **28/28** (7.13 s); selftest del piloto WebView2 **EXIT=0 / RESULT: OK** con las cuatro
+direcciones ACCIONES en verde.
+
+**Pendiente apuntado:** el banco toca el pad XY como selector de tablero, pero la ranura D
+(SWEP1) vive en la diagonal, que es la esquina mas dificil de alcanzar a mano: si el banco se
+quiere como demo de escaparate, un preset hermano con el SWEP1 en una esquina ortogonal (o
+morphZ animando la diagonal) es mas agradable de tocar y reutiliza todo lo de esta entrada.
+
+## 2026-09-25 (w): Fase 11.2 — el clustering por forma de envolvente (y las tres medidas que cambiaron el diseño del plan)
+
+Encargo: «implementa la fase 11.2: clustering por forma de envolvente en SpectralAnalyzer con test
+de trazas sinteticas». Hecho y verificado: el modulo puro (`Source/ModelMaker/Analysis/LayerClustering.h`),
+su cableado en `SpectralAnalyzer::analyzeTemporal` (segunda lectura del mismo espectro contra la
+rejilla comun + `buildLayeredModel`), la puerta de rejilla, y `Tests/LayerClusteringTest.cpp`
+(target `NEURONiK_LayerClusteringTest`, 10 casos / **29 checks en verde**). `ctest` **29/29** (los 28
+de siempre + el nuevo). Sin cambios en DSP, en el formato o en los assets: la paridad nativa/WASM y
+el v2 puro no se tocan.
+
+**Tres cosas que el test obligó a cambiar del diseño del plan** (todas medidas, no opinadas):
+
+1. **El coseno de §3.3 no separa** — y se midió: drone del RRISE (n1) contra n7 da **0.69 ≥ 0.55**,
+   los fusionaría, porque el coseno es ciego al soporte y una traza plana correlaciona con todas
+   (§10.4 ya lo anticipaba). Decide la afinidad `1 − distancia` en el plano (SOPORTE, ENTROPIA), con
+   el soporte pesado **x2** (con los dos ejes a peso 1 la afinidad media del grupo de voz {n7, n15}
+   contra el drone sale 0.56 —justo por encima del corte— y el drone se absorbía; con x2, 0.42). El
+   coseno queda expuesto como `envelopeCosine()` para que el test lo MIDA.
+2. **La guardia de §3.7 (energía sola) invertía la raíz**: con la voz 20× más fuerte que el drone,
+   el drone baja del 10 % de la energía y se reabsorbía *en la voz* — la capa 0 pasaba a ser el
+   barrido y un lector v2 viejo (que oye la raíz) oiría justo lo que no es el cuerpo del sonido.
+   Ahora "floja" exige además ser **episódica** (soporte medio < `kPersistentSupport` = 0.75: la capa
+   reabsorbible del test suena en 4 de 8 frames, el drone que debe sobrevivir en 8 de 8).
+3. **El orden de las capas no estaba en el plan**: la capa 0 (la RAIZ) es la más **persistente**
+   (soporte medio; a igual soporte, energía). Con el drone del RRISE de un solo parcial, la voz suma
+   MÁS energía (2051 vs 1857) — ordenar por energía pondría el barrido en la raíz.
+
+Además, el §3 del test necesita un drone de **dos** parciales (n1 y n3): con uno solo el reparto
+honesto es 1 capa, porque una capa de un único índice es degenerada por diseño (§3.7, y el caso 5
+del test lo pinnea). Es la misma regla que impide que un armónico suelto se convierta en "capa".
+
+**La puerta de rejilla** (nueva, `kLayerGridCents` = 100 cents sobre la f0 por ventana plegada en
+octava, como `measurePitchDeviation`): material cuyo pitch barre **no se parte**; su representación
+honesta es el camino de una capa con f0 por frame (10.6). El caso §9 del test lo pinnea (el mismo
+drone + voz, con un barrido 200 → 600 Hz encima, sale en 1 capa con `lastLayerGridRejected()`).
+
+**Medida sobre el banco real CZ101 (sonda RealWav, 5 WAV, RESULT: OK)**: **SWEP1 es el único WAV que
+toma el camino de capas** (f0 estable, timbre por capas) y sale con **2 capas** —cuerpo n1/n5 + banda
+alta n19..64 contra la banda n2..n23 que barre (pico 0.46; frameWeights 1.00/0.68/0.71/1.00)—;
+BASS1, HAMOG, PAD1 y **RRISE siguen en 1 capa** (el RRISE barre 102 → 601 Hz por ventana: la puerta
+lo rechaza). Los assets versionados **no** se regeneran en esta fase: el ejemplo de capas en assets es
+la 11.5 y el motor que SUMA las capas es la 11.3 (hoy el engine suena la capa 0, que es el contrato
+del v2.1 y lo que mantiene el bloque de ~33 KB del v1 WASM).
+
+## 2026-09-25 (x): el suelo de E1 — decidido con medidas: la vía es la f0 MANUAL (el suelo no se toca)
+
+Encargo: «decide y aplica la vía para el suelo de detección de E1: f0 manual en el ModelMaker o
+bajar el rango del estimador». **Decidido y aplicado: la f0 manual**, y con las tres alternativas
+medidas antes de elegir — no por criterio, por número.
+
+Qué dice la medida (material sintético de la firma de bajo: E1 = 41.62 Hz con fundamental 0.35 y
+el 2º armónico dominante, más los cinco WAV del banco y un control A1 = 55 Hz; la sonda estrena
+`PROBE_F0=<hz>` para fijar la rejilla a mano sin GUI):
+
+| vía | resultado medido | veredicto |
+|---|---|---|
+| bajar el ancla a 35 Hz | **16/16 modelos byte a byte idénticos** (banco + E1 + control) | **NO-OP**: el ancla no es lo que ata |
+| abrir la puerta de sub-octava (±60 cents + un bin) | E1 débil: 83,2 → **41,6 Hz** (mediana −1,8 cents)… y **CZ-SWEP1: 124,6 → 62,6 Hz** (una octava abajo, 97,9 cents de error) | **revertido**: rompe el caso para el que se afinó el HPS |
+| **f0 manual** (la elegida) | modelo correcto (mediana −1,8 cents frente a **501** del automático) | aplicada, con lo que le faltaba |
+
+Por qué el suelo no era la restricción: en la firma de bajo el ancla del HPS es **su 2º armónico**
+(el pico más fuerte de la ventana), así que bajarlo no cambia la lectura; y la evidencia que
+resolvería el caso —el producto de armónicos en el bin del sub-octava, hps 2,27e9 frente a 8,07e3
+del ancla, 12 dB— la tira la **puerta de "una octava abajo"**, que exige ±60 cents del ancla/2
+mientras un bin a 40 Hz mide ~130 cents: es irrealizable por debajo de ~150 Hz (por eso ese camino
+está *muerto* en todo el banco CZ, y abrirlo mueve SWEP1).
+
+Lo que **faltaba** para que la vía manual fuera real, y es lo que se aplicó:
+
+1. `SpectralAnalyzer::anchorFloorHz(sampleRate)` — fuente única del suelo (50 Hz cuantizados al
+   bin: 48,45 Hz a 44,1 kHz), que usan el ancla del HPS y la política nueva.
+2. `analyzeTemporal` **ya no re-estima la f0 por ventana por debajo del suelo**: la rejilla del
+   llamador manda en TODOS los frames. Medido antes: un modelo temporal de E1 salía con la rejilla
+   del usuario en el frame 0 y **una octava arriba en los demás** (41,6 / 83,2 / 83,2 / 83,2);
+   ahora 41,6 en los cuatro. Por encima del suelo el camino es el de siempre (los cinco modelos del
+   banco, byte a byte idénticos).
+3. `SpectralAnalyzer::refineGrid(audio, sr, seed)` — el mismo ajuste por mínimos cuadrados que
+   `detectPitch` pero con la semilla del **usuario**: el ModelMaker pule el f0 escrito a mano y
+   publica SU residuo (medido: 41,62 → 41,62, residuo 0,4 cents y 30 picos).
+4. ModelMaker: el chequeo de discrepancia **pisaba** el f0 a mano (41,62 → 83,24) cuando la nota y
+   la octava estaban seleccionadas — por debajo del suelo el detector no es evidencia, así que ya
+   no lo pisa; y el indicador de rejilla declara "fijada a mano (el estimador no llega hasta
+   aquí)" junto al residuo de ESA rejilla.
+5. Sonda: `PROBE_F0=<hz>` (la vía manual medida sin GUI) + `SpectralAnalyzerTest` §6 con las seis
+   comprobaciones (valor del suelo, la medición negativa del estimador —83,24 Hz, pinneada—, el
+   modelo con la rejilla a mano 41,62 = 0,369 / 83,24 = 1,000 / 124,86 = 0,588, los frames 41,62 en
+   los cuatro, la frontera —a 62 Hz vuelve la estimación por ventana: 83,17— y `refineGrid`).
+
+Verificación: `ctest` **29/29** y los cinco modelos del banco byte a byte idénticos a la referencia
+(`_probe_before_e1.md5`, 16/16) — el único modelo que cambia en todo el banco/probe es
+`_e1_full-temporal` (el arreglo pretendido) y ninguno del banco CZ.
+
+Para material **por debajo de E1** (B0 = 30,87 Hz) o multi-raíz: misma vía, f0 a mano.
+
+## 2026-09-25 (y): CZ-SWEP1 regenerado con el analizador refinado — las métricas (y el asset que se quedó atrás)
+
+Encargo: «registra en HANDOFF.md las métricas del modelo CZ-SWEP1 regenerado con el analizador
+refinado». Regenerado con la sonda (el único camino que analiza el WAV real hoy; escribe en
+`build-reference/probe-models/`, que está gitignorado — los assets versionados NO se tocan):
+
+```bash
+cd ABDNeural
+./build-reference/Release/NEURONiK_ModelMakerRealWavProbe.exe ../ABDCZ101/DOCS/patches/CZ-SWEP1.wav
+# -> RESULT: OK, ciclo completo WAV -> modelo -> recarga -> sampleFrame -> engine
+```
+
+### El análisis (estático)
+
+| magnitud | valor medido |
+|---|---|
+| f0 del ajuste por mínimos cuadrados | **124,598 Hz** — el campo `frameSpanHz` del modelo (lo que puso una referencia anterior: 124,798 Hz) |
+| indicador de rejilla de la UI | **residuo 25,2 cents** con **365 picos** (verde ≤15, amarillo ≤40: el SWEP1 es una rejilla pero con la familia de banda ancha estirada) |
+| escalera de octava | f0/2 61,9 Hz mag **117,89** \| **f0 124,1 Hz mag 301,83** \| 2f0 264,1 Hz mag **2,94** (hueco) \| 3f0 372,4 Hz mag 91,66 — la fundamental gana y la candidatura de sub-octava muere en el hueco de 2f0 |
+| validación acústica | 8 parciales (top-8): **mediana −4,5 cents**, max **212,9** (parcial 4: modelo 493,7 Hz vs medida 436,5 Hz — el artefacto de las DOS familias de la fuente, no del estimador); parcial 1 **−3,5 cents** |
+| modelo | `format: 2` (v2 puro, 1 capa), 1 frame, **62/64** amplitudes ≥ 1e-3, dominante 1,000, suma 3,099, **6463 bytes** |
+| engine | ranura A válida, parcial 1 (=dominante) a 1,000; `sampleFrame` a z=0/0,5/1 conserva el dominante; `frameSpanHz` sobrevive el ciclo del lector de producción |
+
+### El análisis temporal (4 frames) — y las CAPAS
+
+| magnitud | valor medido |
+|---|---|
+| modelo | `format: 2.1`, **layerCount 2**, 4 frames, **43 198 bytes**, pico mín 0,826, dominante máx 1,000 |
+| trayectoria f0 | **124,6 / 124,6 / 124,6 / 124,6 Hz** (rejilla común: la puerta de la 11.2 la aprueba) |
+| **capa 0** `"capa 1"` (raíz) | **48 parciales** — n1, n5, n8, n13, n19 y la banda n21…n64 — pico **1,000**, energía 7,2 (**55,0 %**), `frameWeights [0,835 0,971 1,000 0,963]` |
+| **capa 1** `"capa 2"` | **16 parciales** — n2, n3, n4, n6, n7, n9…n18, n20, n23 — pico **0,460**, energía 5,9 (**45,0 %**), `frameWeights [1,000 0,682 0,714 0,999]` |
+
+Las dos capas suman 64/64 índices: el clustering no deja parciales fuera y la raíz (la que oye un
+lector v2 viejo) es la del cuerpo —n1 con la banda ancha—, con la banda que barre (n2…n23) en la
+capa 1. **SWEP1 es el único WAV del banco que toma el camino de capas** (f0 estable con timbre por
+capas); BASS1, HAMOG, PAD1 y RRISE salen en 1 capa (el RRISE barre 102 → 601 Hz por ventana: la
+puerta de rejilla lo rechaza). Medido con el test de la 11.2, no a ojo: `LayerClusteringTest`.
+
+### El asset versionado se quedó atrás (por diseño, hasta la 11.5)
+
+`Assets/Models/` guarda **6 modelos**: cuatro estáticos (BASS1, HAMOG, PAD1 y SWEP1) y dos
+temporales (BASS1-temporal y RRISE-temporal) — **no hay `CZ-SWEP1-temporal`**, así que el modelo
+temporal de este registro vive solo en la salida de la sonda. El `CZ-SWEP1.neuronikmodel` versionado
+está en `format: 2`, `frameSpanHz` **124,798 Hz**, 61 amplitudes activas y suma 2,974 (6402 bytes).
+Contra el regenerado difiere en:
+
+- la rejilla: **124,798 → 124,598 Hz = −2,8 cents** (el refinado del HPS + el ajuste por mínimos
+  cuadrados del 2026-09-23/24);
+- **los 62 offsets sub-bin** (todos: el modelo viejo los midió sobre la rejilla desviada) y el
+  **parcial 16, que estaba a 0 y ahora mide 0,125** (la rejilla afinada lo trae de vuelta);
+- 6402 → **6463 bytes**.
+
+No se regeneran los assets en esta fase a propósito: el ejemplo de capas en assets es la **11.5** y
+el motor que SUMA las capas es la **11.3** (hoy el engine suena la capa 0, que es el contrato del
+v2.1 y lo que mantiene el bloque de ~33 KB del v1 WASM). Este registro deja las métricas del
+regenerado para que la 11.5 pueda comparar antes/después sin volver a analizar a ciegas.
+
+## 2026-09-25 (z): el modo REJILLA FIJA — declarado en la UI, en el analizador y en el fichero
+
+Encargo: «convierte la rejilla fijada a mano en un modo declarado del ModelMaker: un "rejilla fija"
+que desactive el seguimiento de pitch por ventana, lo anuncie en el indicador y quede escrito en el
+modelo». Hecho, y con la promesa medida: **una rejilla declarada no es una rejilla adivinada**, así
+que el modo es explícito en los tres sitios (decisión, análisis y fichero) en vez de una heurística
+que adivina intenciones.
+
+**Las tres promesas del modo y dónde vive cada una:**
+
+| promesa | dónde | medido |
+|---|---|---|
+| el seguimiento por ventana se apaga | `analyzeTemporal(..., frameCount, fixedGrid = true)`: los `frameF0` son la rejilla declarada en TODOS los frames | CZ-BASS1 (cuyas ventanas saltan de octava **de verdad**: 124,7 / **62,4** / 123,6 Hz en la lectura normal) sale con **124,3 / 124,3 / 124,3** en el modo |
+| el indicador lo anuncia | `gridLabel`: "REJILLA FIJA (sin seguimiento de pitch por ventana)"; y el detector **no pisa** la rejilla declarada (el chequeo de discrepancia se salta) | toggle en la UI + `updateGridIndicator()` |
+| queda escrito en el modelo | `SpectralModel::gridFixed` → `"gridFixed": true` en el `.neuronikmodel`, leído de vuelta por `PresetManager::loadModelFromFile` | `grep '"gridFixed": true'` en el modelo de la sonda; el roundtrip lo lee |
+
+**Formato:** la clave es **opcional y ortogonal a las capas** — no sube `"format"` (sigue siendo el
+entero 2 sin capas y 2.1 con ellas) y **solo se emite cuando es true**, así que los ficheros de
+siempre no cambian ni un byte: medido, los **16 modelos del banco + probe siguen byte a byte
+idénticos** (el único que cambia en todo el arnés sigue siendo `_e1_full-temporal`, de la decisión
+del suelo de E1) y el roundtrip comprueba que sin el modo la clave **no aparece ni en el texto** del
+fichero.
+
+**Verificación:** `SpectralAnalyzerTest` §7 (con material que barre: sin el modo la ventana sigue el
+barrido 220 → 412,5 Hz y el modelo no declara nada; con el modo, la rejilla declarada en los 4 frames
+y `gridFixed` a true; y el estático declara la procedencia solo cuando se pide) + `ModelMakerRoundTripTest`
+§11 (la clave, que no sube de versión, el ida y vuelta completo, y que sin el modo no aparece en el
+texto) + `ctest` **29/29**. La sonda gana `PROBE_FIXED=1` (combinable con `PROBE_F0`) para medir el
+modo sin GUI:
+
+```bash
+PROBE_F0=124.3 PROBE_FIXED=1 ./build-reference/Release/NEURONiK_ModelMakerRealWavProbe.exe \
+  ../ABDCZ101/DOCS/patches/CZ-BASS1.wav     # -> trayectoria f0=124.3..124.3 + "gridFixed": true
+```
+
+**Por qué importa más allá de E1:** hasta ahora el analizador decidía por su cuenta cuándo seguir el
+pitch (y esa decisión se apoyaba en evidencia del material, no en la intención del usuario). Con el
+modo, el usuario que conoce la fuente —un bajo cuyo f0 sabe, un patch con rejilla dudosa, material
+donde el estimador salta de octava como en BASS1— puede declarar la rejilla y obtener un modelo
+coherente **y auditable**: quien lea el fichero sabe que la rejilla no la confirmó el estimador.
+Es la pieza que faltaba para que "f0 manual" fuera un modo de trabajo y no un campo de texto.
+
+## 2026-09-25 (aa): el pad XY y el anillo morph-Z verificados EN VIVO con CZ-SWEP1 — y los cuatro fallos que la verificación destapó
+
+Pedido: «carga el modelo `CZ-SWEP1.neuronikmodel` en NEURONiK y verifica en vivo el pad XY y el anillo
+morph-Z con un modelo real». La verificación es la dirección **MORPH**, la octava del selftest del
+puente (`Source/WebUI/BridgeSelftest.h`), que corre en el WebView2 del piloto —motor de verdad, modelo
+de verdad, gestos de puntero de verdad—, así que no es una lectura de DOM: es la página viva.
+
+```bash
+cd build-reference/NEURONiK_WebPilotHost_artefacts/Release
+./"NEURONiK Web Pilot.exe" --selftest        # -> RESULT: OK, EXIT=0 (ocho direcciones)
+```
+
+**Lo que la dirección mide, y lo que salió**
+
+| paso | medición |
+|---|---|
+| carga | `CZ-SWEP1.neuronikmodel` -> ranura D (3), el MISMO fichero de `Documents/NEURONiK/Models` al que apunta el `modelPath3` del preset CZ101-BANK |
+| las dos vistas, de acuerdo | esquinas del pad `selftest-model-a\|selftest-model-b\|selftest-model-c\|CZ-SWEP1` y ficha MODELOS A-D lo mismo (esperado, idéntico) |
+| motor -> página | APVTS 0,2 / 0,8 / 0,6 -> pad X 0,200 / Y 0,800 (pulgar 0,200), aro 0,600 con arco 60,0 |
+| página -> motor | gesto real (pad al 75 % de su ancho y 75 % de su alto = valor 0,25; aro 1/4 de vuelta) -> APVTS 0,750 / 0,250 / 0,250, y la página pintada igual |
+| geometría | hit-testing en la página viva: centro del pad **en el pad**, trazo del aro **en el aro** (`padHit:1`, `ringHit:1`) |
+
+**Los fallos que destapó (los cuatro arreglados aquí).** Ninguno era visible en un test de manejadores:
+los tres primeros necesitan la página de verdad, y el cuarto la pila entera.
+
+1. **El aro se comía TODOS los gestos del pad.** `.xy-pad__zring` es un overlay con `inset` negativo, así
+   que su caja cubre el pad entero; sin `pointer-events: none` el hit-testing del navegador devuelve el
+   contenedor y **nada** de lo que hay debajo recibe un dedo — el pad quedó sin gestos en todo su interior.
+   Medido: `document.elementFromPoint(centro del pad)` devolvía el aro. Regla añadida a `main.css` (la caja
+   transparente al puntero; el trazo conserva `pointer-events: stroke`, 11 unidades de ancho) y un test que
+   lee la REGLA de la hoja de estilos: jsdom no tiene layout ni `elementFromPoint`, así que el hit-testing
+   de verdad se mide en la página viva, no en un test de manejadores (que pasaba igual con el pad tapado).
+2. **`morphX`/`morphY` no tenían dueño en el store.** Son dos parámetros del contrato que viven en una
+   VISTA (el pad de la ficha MODELOS, `SECTION_VISUALS`), no en una celda del lienzo, y `SCREEN_PARAMETER_IDS`
+   era «los 70 del lienzo». El store ignora los mensajes nativos de un id que no tiene, así que el motor
+   los movía (un preset, el RANDOM, el XYPad nativo, la automatización) y el pad seguía dibujando su
+   esquina: divergencia vista en vivo con el banco CZ101 cargado. Ahora salen del catálogo
+   (`VISUAL_PARAMETER_IDS`) y `screens.test.js` compara contra el contrato GENERADO en vez de contar 70 a
+   mano — si el APVTS gana un parámetro, el test falla hasta que la página lo posea.
+3. **Un cambio NATIVO de modelo no llegaba nunca a la página.** Los modelos no son del APVTS, así que el
+   sondeo de parámetros no los miraba, y la única otra publicación era la que responde a una carga pedida
+   por la PROPIA página: cargar un preset en el motor (o desde el panel nativo) dejaba la ficha MODELOS A-D
+   —y las esquinas del pad— con los nombres viejos indefinidamente. `publishPendingChanges` ahora compara
+   nombres y publica un `modelsState`; publica el CAMBIO, no el estado (no lo repite en el sondeo siguiente).
+   Test en `Tests/ParameterBridgeTest.cpp`.
+4. **El presupuesto de arranque de la bancada (20 s) se comía el selftest.** Cuenta desde el lanzamiento e
+   incluye la carga de la página, y con `dist` recién construido la carga se midió en **14 s**: el proceso
+   terminaba con `reason=timeout` **en mitad de la última dirección y SIN veredicto** — y sin veredicto
+   `finish` declara FAIL. Ahora ese presupuesto vigila la PÁGINA (`metrics.reactReadyMs < 0`) y, una vez
+   lista, quien decide es el del propio arnés; y el arnés empieza su presupuesto de 30 s cuando la página
+   puede contestar (una carga lenta no es un hop perdido, y la cota no se pierde: sigue habiendo 30 s).
+5. **`parseMorph` leía de un `var` temporal ya destruido.** `juce::JSON::parse (raw).getDynamicObject()`
+   engancha el puntero a un objeto que vive dentro del temporal: al final de la EXPRESIÓN muere, y en
+   Release la lectura no revienta, contesta «no existe» a TODAS las propiedades. Medido: con el JSON crudo
+   correcto delante (`"padHit":1,"ringHit":1`), el pad y el aro salían a −1 y las esquinas vacías, y la
+   dirección fallaba en su PRIMERA lectura. Los otros lectores del arnés ya guardaban el `var` en un local;
+   este era el único que encadenaba las dos llamadas.
+
+**Comprobado además en un navegador real** (`vite preview` sobre `WebUI/dist`, modo local: el puente es el
+canal del WebView2 —`window.__JUCE__`— y sin él la página no puede tener modelos, así que esto mide
+geometría y pintado, no motor): `pointer-events: none` en la caja del aro y `stroke` + `11px` en el trazo,
+`elementFromPoint(centro del pad)` -> `abd-xypad__pad`, `elementFromPoint(punto del trazo)` -> `zring-hit`.
+(La captura de pantalla del panel no se pudo tomar: el panel de navegador del cliente no estaba disponible
+en ese momento.)
+
+**Verificación:** `ctest` **29/29** (incluye el contrato del selftest con los anclajes nuevos del pad y el
+aro: `padVisual`, `padSurface`, `zRing`, `zRingFill`, y las ocho direcciones obligatorias), `npx vitest run`
+**242/242**, `node Tests/webuiSelftestContractTest.mjs` -> OK, y el piloto **EXIT=0 / `RESULT: OK`**.
+
+**Control negativo del aro (medido, no supuesto):** con la regla apagada
+(`python _toggle_ring_css.py off`) y `dist` reconstruido, la MISMA dirección mide `centro del pad
+TAPADO, trazo del aro en el aro -> FAIL` (`RESULT: FAIL`); repuesta la regla, `centro del pad en el
+pad, trazo del aro en el aro -> OK`. O sea: la dirección distingue el estado bueno del malo, y el
+trazo del aro sigue siendo agarrable aunque la caja se coma el pad — que es justo el reparto que
+declara la hoja de estilos.
+
+**Limitación honesta:** lo que se ha verificado es el pad y el aro contra el motor real (parámetros,
+gestos, hit-testing) con un modelo CZ-SWEP1 ESTÁTICO en la ranura D. El dibujo del pad en el modelo
+temporal de dos capas de la 11.2 no cambia porque la página solo pinta nombres, no amplitudes; el motor que
+suma las capas sigue siendo la 11.3.
+
+Todo sigue **sin commitear**, junto con la 11.1/11.2, la decisión de E1 y el modo rejilla fija.
+
+## 2026-09-25 (bb): Fase 11.3 — el motor SUMA las capas (y CZ-SWEP1 suena entero)
+
+Dos peticiones en el mismo turno:
+
+- **11.2** (clustering por forma de envolvente): **ya estaba implementada** en el turno anterior
+  (entrada `(w)`): modulo puro `LayerClustering.h`, cableado en `SpectralAnalyzer::analyzeTemporal`,
+  `NEURONiK_LayerClusteringTest` (10 casos / 29 checks) y `ctest` verde. La variante **coseno** es
+  justo la que se midio **contraproducente**: coseno(drone del RRISE, n7) = **0.69 ≥ 0.55**, los
+  fusionaria; el test lo expone (`envelopeCosine()`) para que quede medido, no opinado. No se toco
+  nada de 11.2 en este turno.
+- **11.3** (el motor suma las capas): implementada aqui, con los dos motores y el contrato.
+
+**Lo implementado**
+
+| pieza | donde |
+|---|---|
+| sampler por capa + suma de capas | `Source/DSP/FrameSampler.h`: `sampleLayerFrame` (z propio + pesos: estatico x temporal del frame), `sampleLayeredFrame` (frame EFECTIVO del slot = SUMA), `LayerMorphZ`, `restLayerMorphZ()` |
+| z por capa en los motores | `Resonator` (aditivo) y `ResonatorBank` (modal): `setLayerMorphZ(layer, z)`; el cache de frames se invalida con cualquiera de los tres z |
+| voces | `Params::morphZ2/morphZ3` con el glide de 20 ms de siempre + `modMorphZ2/3` antes de actualizar coeficientes |
+| contrato | `morphZ2`/`morphZ3` (0..1, default 0.0) y destinos de matriz **29/30** ("Morph Z 2"/"Morph Z 3") al final de la tabla |
+| WebUI | la pagina POSEER los dos ids y su control vive en el cajon de MODELOS, junto a MORPH-Z (tres perillas: una por capa) |
+
+**Las dos decisiones que hacen que esto sea barato y exacto**
+
+1. **Suma espectral, no un banco por capa.** El reparto de 11.2 da a cada indice UNA capa, asi que
+   sumar amplitudes por indice es EXACTO y los 128 biquads siguen siendo 128 (tres bancos habrian
+   sido 384). El offset y la f0 de cada parcial los aporta la capa que MAS suena en ese indice: con
+   el reparto del analizador es su dueno exacto; con capas solapadas a mano es determinista, porque
+   un parcial del motor tiene UNA frecuencia, no varias.
+2. **Con una capa, bit-exacto.** `sampleLayeredFrame` delega en el sampler de una capa cuando
+   `layerCount == 1` y los pesos por defecto son 1.0 (`x * 1.0f` es exacto en IEEE-754, tambien para
+   −0.0 y NaN): la paridad A–E y todo el legado no se mueven un bit.
+
+**Medido con material REAL — CZ-SWEP1 (la peticion era que el modelo suene entero)**
+
+```bash
+rm -rf build-reference/probe-models
+./build-reference/Release/NEURONiK_ModelMakerRealWavProbe.exe ../ABDCZ101/DOCS/patches/CZ-SWEP1.wav
+```
+
+```
+[probe]   capas en el motor: 2 capas (capa 0: 48 indices, capa 1: 16)
+[probe]     motor z2=0: capa 0 = 0.513, capa 1 = 0.487
+[probe]     motor z2=1: capa 1 = 0.515 (su propio eje mueve su peso)
+```
+
+Las dos capas **suenan** (antes la de 16 indices era muda: el motor leia solo la raiz), y la capa 1
+responde a SU eje. La sonda gana ese bloque: con una capa dice «UNA capa (el clustering no separo
+nada)», y si alguna capa con indices no suena, **falla**.
+
+**El fallo que la fase destapo (y que habria mordido en cuanto alguien usara el destino 28)**
+
+`IVoice::resetModulations` no limpiaba `modMorphZ`. La matriz SUMA (`case 28: modMorphZ += rawMod`)
+en cada tramo de control, asi que con una ruta a Morph Z el z de la voz **acumulaba sin freno**:
+corria hasta 1.0, ahi se quedaba y no volvia ni al quitar la ruta. Era el unico destino fuera de la
+lista de reset. Arreglado (los tres z se limpian) y pinneado en el test nuevo.
+
+**Hallazgo pinneado, NO arreglado (medido):** el remapeo de rejilla por frame de la 10.6 no se
+activa. Los dos motores calculan `gridRatio = frameF0 / frame.f0At(0)` sobre el frame MUESTREADO,
+pero el snapshot del sampler no copia `frameSpanHz`: `f0At(0)` sale 0 y el ratio queda en **1.0
+siempre** aunque el frame traiga `frameF0` (medido en el test: 565,7 Hz de `frameF0` con ratio 1).
+Activarlo mueve el sonido de material real ya existente, asi que se deja como decision explicita
+(el test lo pinnea como MEDIDA, no como fallo).
+
+**Verificacion**
+
+- `NEURONiK_LayerEngineTest` (**nuevo**, 16 checks) con un RRISE sintetico de dos capas (capa 0 =
+  drone de dos frames; capa 1 = parcial que barre): bit-exactitud con una capa, la suma, los pesos
+  (estatico x temporal = 0,5 x 0,25 → 0,125), el barrido por capas **medido con Goertzel sobre el
+  audio renderizado** (morphZ1 mueve el drone y NO toca al barrido; morphZ2 al reves), el banco
+  modal y el arreglo de `resetModulations`.
+- `ctest` **30/30**; `npx vitest run` **242/242**; `node Tests/webuiSelftestContractTest.mjs` OK; el
+  piloto `--selftest` **EXIT=0 / `RESULT: OK`**.
+- Contrato regenerado (74 parametros, 31 destinos, 69 implementados). Dos denominadores escritos a
+  mano en los tests de la WebUI (`10 / 27` y `23 / 28` destinos) pasan a derivarse del contrato
+  generado: fueron exactamente lo que rompio al crecer la tabla, y volverian a romperlo.
+
+**Limitaciones conocidas**
+
+- El puente WASM sigue clavando `layerCount = 1` (11.1): en modo local del navegador (worklet) suena
+  la capa RAIZ. El motor nativo es el que suma.
+- El eje por capa se controla con tres parametros (`morphZ`, `morphZ2`, `morphZ3`); la fila de capas
+  «bonita» del cajon (nombre, peso, envolvente) y el destino condicional de la matriz siguen siendo
+  11.4, y el ejemplo de capas en assets es 11.5.
+
+Todo sigue **sin commitear**, junto con la 11.1/11.2, la decision de E1, el modo rejilla fija, el
+banco CZ101 y el ultimo tramo de la verificacion en vivo del pad/aro.
+
+
+## 2026-09-25 (cc): la puerta de plegado de octava — mono-rejilla vs bi-rejilla, medido
+
+**Qué es.** La puerta del plan §10.3, que hasta ahora no existía con nombre propio: la dispersión de
+las f0 por ventana **después de plegar la octava** es el discriminador mono-rejilla / bi-rejilla del
+material. Plegar es la equivalencia de octava aplicada a la medida (la desviación en cents reducida
+modulo 1200 a (-600, +600], la misma convención —y el mismo código— que `measurePitchDeviation`), y
+su razón de ser está medida: un salto de octava del **estimador** (una ventana lee f0 y otra 2f0) es
+un artefacto de la lectura, no una rejilla distinta, y colapsa a 0 al plegar. Lo que no colapsa es
+una raíz genuinamente distinta: una quinta (701,96 cents) sobrevive como -498,04, y una cuarta da el
+**mismo** -498,04 (la puerta ve «raíz distinta», no «hacia dónde»).
+
+**Qué queda.** `SpectralAnalyzer::foldOctaveCents()` (el plegado) y `measureOctaveFold()` (la
+medida: `foldCents` post-plegado, `rawCents` cruda, `observations`, `octaveFlips` —ventanas que
+saltaron de octava— y el veredicto `biGrid` contra `kOctaveFoldCents` = 100). Es un módulo puro: el
+test lo prueba con vectores de f0 sintéticos, sin audio. **Sin datos** (sin ventanas, sin f0
+positiva o sin referencia) `foldCents` es -1 y no hay veredicto: no se exenta nada por falta de
+evidencia. La medida se toma en **toda** llamada a `analyzeTemporal` —también cuando el clustering no
+llega a dar capas y también si el material sale vacío— y se publica en `lastOctaveFold()`; la sonda
+la imprime por WAV.
+
+**El corte se llama ahora `kOctaveFoldCents`** (antes `kLayerGridCents`, que era el mismo 100 con
+otro nombre): `gridIsCommon` —el predicado que ya decidía si las capas se rechazaban— **es**
+exactamente el veredicto de la puerta contra la rejilla del llamador, así que las decisiones sobre el
+banco **no cambian**; lo que gana el analizador es que la comparación ahora tiene nombre, números y
+test en vez de estar enterrada en un bucle.
+
+**Medido con la sonda en los cinco WAV del banco CZ101** (post-plegado | crudo | saltos de octava |
+veredicto | capas):
+
+- **CZ-BASS1: 9,4 | 1194,4 | 1 | mono-rejilla | 1.** El caso que justifica el plegado: el estimador
+  salta de octava en 1 de 4 ventanas (trayectoria 62,4 / 124,7 Hz) y la dispersión **cruda** son
+  1194,4 cents —una octava— mientras la plegada son 9,4. Una sola rejilla.
+- **CZ-HAMOG: 0,0 | 0,0 | 0 | mono-rejilla | 1.**
+- **CZ-PAD1: 4,2 | 4,2 | 0 | mono-rejilla | 1.** El «PAD1 1200,5 cents» de §10.3 venía del barrido
+  de mínimos cuadrados de la investigación (otra medida): el estimador del analizador lee PAD1
+  estable. La inestabilidad de octava del estimador —el caso que la puerta debe perdonar— es la que
+  reproduce el test con un vector sintético de 62/124 Hz.
+- **CZ-SWEP1: 17,5 | 17,5 | 0 | mono-rejilla | 2 capas (48 + 16 índices).** La puerta no le toca
+  nada: conserva sus dos capas y su reparto (0,513 / 0,487 en el motor).
+- **CZ-RRISE: 502,5 | 1702,5 | 3 | BI-REJILLA | 1.** Sigue sin partirse, ahora con el motivo escrito:
+  sus ventanas (102,2 → 601,2 Hz) no comparten la rejilla ni después de plegar.
+
+**Test.** `Tests/LayerClusteringTest.cpp` gana la mitad C (**20 checks nuevos**, 58 en el fichero):
+la medida pura (ventanas alrededor de la rejilla; el salto de octava del estimador, 1200 crudos que
+plegados dan 0; quinta y cuarta con la MISMA dispersión plegada; la frontera de 100 cents; sin datos
+no hay veredicto; la referencia solo importa por su octava; la rejilla declarada da 0) y dos casos de
+punta a punta: el barrido del caso 9 (571,5 post-plegado ⇒ bi-rejilla y modelo de una capa) y un
+**sub una octava por debajo del drone** (crudo 1200,01 con **7 de 8 ventanas** saltadas ⇒ plegado
+0,01 ⇒ mono-rejilla y las capas se quedan: el artefacto del estimador no exenta al material).
+
+**Verificación.** `ctest` **30/30**; los cinco WAV del banco siguen dando `RESULT: OK` en la sonda.
+Todo sigue **sin commitear**, junto con la 11.1/11.2/11.3, la decisión de E1, el modo rejilla fija, el
+banco CZ101 y la verificación en vivo del pad/aro.
+
+
+## 2026-09-25 (dd): el formato ralo de parciales — DISEÑADO (fase 11.6), con las medidas delante
+
+**Qué es.** El diseño de la extensión rala de v2.1: la lista de índices activos se declara UNA vez
+por capa y cada frame lleva amplitudes + **ratios de inharmonicidad** `r = f/(n·f0)` en lugar de 64
+offsets en Hz. Todo aditivo y opcional (sin las claves, el v2.1 de hoy byte a byte) y la decisión de
+arquitectura que lo abarata: **el formato es ralo, el modelo en memoria sigue denso** (64+64 por
+frame), así que `SpectralModel`, el motor, `FrameSampler` y el puente WASM no cambian y la paridad
+bit-exacta no corre riesgo. Nada implementado: la sección §11 de
+`DOCS/ARCHITECTURE/LAYER_SEPARATION_PLAN.MD` es diseño medido.
+
+**La separación de conceptos que el diseño deja clara** (son dos cosas y solo una es tamaño):
+el **ratio** no ahorra bytes, es la forma invariante a la transposición y lo que hace activable el
+remapeo de 10.6 sin romper el timbre — medido en CZ-BASS1 (trayectoria 124,31 / 124,66 / 62,35 /
+123,63 Hz): el ratio del índice 5 se mueve 1,8 cents entre frames (n=1: 1,9; n=8: 1,1) mientras su
+offset en Hz pasa de +0,29 a +0,62 y el del índice 25 recorre 8,5 Hz; y el mismo frame leído contra
+su f0 (62,35) o contra el `frameSpanHz` (124,31) da ratios que difieren ×2, por eso la referencia se
+declara en el registro. El **ralo** sí es tamaño, pero solo en bandas finas.
+
+**Lo medido (y las dos sorpresas).** Con los modelos temporales reales de los cinco WAV (4 frames;
+arrays densos = 2240 B/frame): activos por frame con el suelo del analizador (1e-3) → HAMOG 63-64
+(el ralo **pierde** 2×), BASS1 57/34/55/31 (mixto), PAD1 16-17 (**gana 2,1×**), RRISE 5/13/2/3
+(**gana 7-17×**), SWEP1 capa 0 = 48 (pierde 1,4×) y capa 1 = 12/10/9/14 (**gana 2,5-3,8×**). El punto
+de cruce con el coste real de entrada (≈53,4 B) está en **~41 activos de 64 (65 %)**, así que la
+regla es **por frame** y no por formato. Totales de los arrays del banco: denso 53 760 B → **33 199
+(62 %)** con la regla y **30 797 (57 %)** con la lista hoisteada. Las sorpresas: en un fichero de
+capas `frames[]` y `layers[0].frames[]` son **el mismo contenido byte a byte** (8960 B de los 43 198
+de CZ-SWEP1, el 20,7 %, que el lector ya ignora porque la capa 0 es la raíz: se propone
+`"framesFrom": "root"`) y **el 23-29 % de todos los ficheros son cifras de 17 dígitos** que el
+escritor imprime por defecto — más margen que la densidad, y decisión aparte (no toca el formato,
+cambia TODOS los ficheros escritos).
+
+**Compatibilidad y qué hace declarativo el cambio.** `"format"` sigue siendo 2.1 (es una ortografía
+del mismo dato, no un dialecto): la **raíz nunca se escribe rala**, así que el plugin v1 y el v2
+siguen sonando lo mismo; el lector viejo de v2.1 (`readLayer` exige `amplitudes` de 64 y hace
+`break`) perdería la capa rala y sonaría la raíz — esa degradación queda **pinneada en el test**, no
+como accidente. Y el ralo solo sale de la herramienta si un humano lo pide: toggle **«Ralo»** en el
+ModelMaker (por defecto NO, como el modo rejilla fija) y `PROBE_SPARSE=1` en la sonda, de modo que
+las baselines byte a byte de los 16 modelos del banco siguen siendo red de seguridad.
+
+**Verificación prevista (la del test de la fase)**: round-trip denso→ralo→leído con cota de
+precisión (la vía rala **no** es bit-exacta: divide y multiplica; amplitudes bit-exactas y offsets
+`|Δ| <= 1e-4 Hz`, con `sampleFrame` < 1e-6 por parcial), la regla de densidad en sus dos ramas
+(`kSparseMaxActive` = 41), la lista hoisteada con ceros por frame, `framesFrom: "root"` sin perder el
+modelo, la degradación negativa y la sonda `PROBE_SPARSE=0/1` sobre los cinco WAV.
+
+**Estado.** DISEÑO, sin código: `ctest` sigue **30/30** (no se tocó nada de motor ni de analizador).
+Todo sigue **sin commitear**, como el resto de la jornada.
+
+### 2026-09-25 — Offsets transpuestos (Δn/n): la inharmonicidad sigue al teclado
+
+**Qué es.** El modo declarado que faltaba para que el transporte sea musical. El motor sumaba el
+offset en Hz (`f_n = n·base + δ`), así que la desviación en cents respecto del armónico
+(`1200·log2(1 + δ/(n·base))`) **cambiaba con la nota**: el modelo perdía su carácter al subir o bajar
+por el teclado. Con `offsetsTranspose` el offset se declara medido contra la rejilla de análisis y el
+motor lo escala por `base/f0`, con lo que los cents quedan invariantes
+(`1200·log2(1 + δ/(n·f0))`) — es el ratio `r_n = 1 + δ/(n·f0)` de §11.4 del plan de capas, ahora en
+vivo y **sin tocar la densidad** del fichero (el ralo de 11.6 es otra cosa: tamaño).
+
+**Cómo.** `SpectralModel::offsetsTranspose` + `offsetRootHz`; `offsetScaleAt(base)` devuelve el factor
+(**1.0 exacto** sin modo, así el legado es bit a bit). Los DOS motores —`Resonator` (aditivo) y
+`ResonatorBank` (modal)— multiplican el offset interpolado por ese factor antes de sumarlo: la misma
+regla en los dos puntos donde antes había la misma asimetría. La rejilla de referencia viaja al
+snapshot en `offsetRootHz` (el sampler la copia de `frameSpanHz`) porque el snapshot **no lleva
+`frameSpanHz`** — el hueco pinneado que mantiene inactivo el remapeo de 10.6: se usa el mismo dato en
+un campo aparte para no encender aquello. `offsetScaleAt` cae a `frameSpanHz` sobre el modelo fuente.
+En el fichero es `"offsetsTranspose": true`, opcional y ortogonal (`"format"` sigue siendo 2/2.1), así
+que los modelos actuales no cambian ni un byte; el ModelMaker lo declara con un toggle («Offsets
+transp.», junto a «Rejilla fija») que además lo aplica al preview sin re-analizar.
+
+**Lo medido.** `ctest` **31/31** (el test nuevo, `Tests/TransposableOffsetsTest.cpp`, fija: bit-exactitud
+en la nota de la rejilla, invariancia en cents una octava arriba medida con Goertzel sobre el motor
+real —64,4 → 65,2 cents con el modo, 33,0 sin él— y que el modo y su rejilla sobreviven al sampler por
+los dos caminos). `ModelMakerRoundTripTest` §12 cubre el lector de producción. La sonda, sobre los
+cinco WAV (`PROBE_TRANSPOSE=1`), pone las dos leyes al lado sobre el parcial más desviado con
+amplitud ≥ 0,05: **CZ-RRISE +113,1 cents en su rejilla ⇒ +57,5 una octava arriba sin el modo** (el
+modo los conserva), HAMOG −11,1 → −5,5, SWEP1 +9,5 → +4,8, BASS1 −1,0 → −0,5, PAD1 +0,9 → +0,5. Y el
+modo y su rejilla sobreviven el ciclo WAV→v2→lector de producción (la sonda falla si no).
+
+**Alcance.** La referencia es la rejilla canónica del fichero: con `frameF0` por frame (10.6) el ratio
+se define contra el f0 de ESE frame, y eso solo se puede hacer bien cuando 10.6 esté vivo. Se declara
+y se acota. La ley de cuerda rígida (`r_n = sqrt(1 + B·n²)`, un solo B por capa) sigue apuntada como
+la extensión natural de esto.
+
+**Estado.** IMPLEMENTADO y verificado; sin commitear, como el resto de la jornada.
+
+### 2026-09-25 — Los seis modelos del banco CZ101, assets del selftest E2E
+
+**Qué es.** El selftest del puente cubría el FORMATO de un modelo, no el material: la dirección MODELOS
+cargaba UN modelo real embebido (el temporal de CZ-BASS1) y llenaba las otras tres ranuras con JSON
+sintéticos de un parcial (`selftest-model-b/c/d`). Ahora viajan **embebidos los SEIS**
+`.neuronikmodel` del banco CZ101 —`Assets/Models`, los que genera la sonda del ModelMaker desde los WAV
+de `../ABDCZ101/DOCS/patches`— en `NEURONiK_SelftestAssets` (antes, uno), y el E2E es autocontenido.
+
+**Cómo.** `loadSelfModels()` de `BridgeSelftest.h` hace dos pasos 1) escribe los seis al directorio
+temporal del arnés y **relee cada uno con el lector de producción**, exigiendo `isValid` y los frames
+que el asset declara (1 en los cuatro estáticos, 4 en los dos temporales), con lo que los dos dialectos
+del v2 —denso y con f0 por frame— pasan por el lector de verdad; y 2) carga los **cuatro del banco**
+(CZ-BASS1, CZ-HAMOG, CZ-PAD1, CZ-SWEP1 —los mismos que el preset CZ101-BANK pone en las esquinas del
+pad) en las ranuras A-D. El nombre que la página enseña sale del **nombre de fichero**
+(`getFileNameWithoutExtension`, lo que publica el processor), no de la clave `name` del JSON: por eso
+los assets se escriben con su nombre real y `modelName()` los espera tal cual.
+
+**El agujero que cierra.** La validación del asset se registraba en el log como FAIL y **no contaba en
+el veredicto** (ni se guardaba en un miembro): un asset corrupto habría dado un selftest OK mudo. Ahora
+la suma de los seis entra en `finish()` como `modelsAssetsOk`, junto a la comprobación (que ya existía)
+de que la ficha MODELOS de la página enseña los cuatro nombres cargados en este proceso.
+
+**Medido.** El selftest del piloto (`--selftest`) en **EXIT=0 / RESULT: OK**, con las esquinas del pad
+y la ficha A-D enseñando `CZ-BASS1|CZ-HAMOG|CZ-PAD1|CZ-SWEP1` (nombres reales, donde antes había
+`selftest-model-a|b|c|d`) y los seis assets releídos uno por uno por el lector de producción. La
+dirección MORPH sigue cargando el `CZ-SWEP1.neuronikmodel` **instalado** en Documents: eso mide otra
+cosa (que `installFactoryModels()` corrió y que el fichero al que apunta `modelPath3` del preset de
+banco existe), así que no se toca. `ctest` **31/31**.
+
+**Estado.** IMPLEMENTADO y verificado; sin commitear, como el resto de la jornada.
+
+### 2026-09-25 — La f0 manual medida: RRISE sí (E1), SWEP1 no es gratis
+
+**Qué se hizo.** Generar los `.neuronikmodel` de CZ-RRISE y CZ-SWEP1 con **detección de f0 manual**
+(el campo de pitch del ModelMaker + «Rejilla fija», que la sonda reproduce con
+`PROBE_F0=<hz> PROBE_FIXED=1`) y **evaluar la mejora musical** con dos medidas independientes: el
+chequeo acústico de la sonda y un análisis propio en numpy de los picos del WAV (Hann 8192 en la
+ventana de RMS máxima y en 9 ventanas, picos con interpolación parabólica, encaje a la rejilla del
+candidato). Los ficheros generados están en `build-reference/probe-manual/` (incluida la corrida
+automática para comparar con el MISMO binario). No se tocaron los assets del banco.
+
+**RRISE (41,62 Hz = E1): mejora clara, y confirma §2 del plan de capas.** El material es una serie
+armónica sobre 41,62 Hz (41,9 / 83,1 / 124,6 / 166,6 / 208,3 / 249,4 / 291,1 / 333,0 / 374,5 Hz ≈ n =
+1,007 / 1,997 / 2,994 / 4,002 / 5,005 / 5,992 / 6,994 / 8,001 / 8,999) y lo que se mueve es la
+importancia relativa de los armónicos: el pico más fuerte sube de 291 Hz a 666 Hz (n=7 → n=16). No hay
+barrido de pitch. Con la f0 manual: f0 por frame 41,6 en las tres (antes 102,2 / 526,2 / 601,2),
+plegado **0,0 cents y 0 saltos** (antes 502,5 y 3 ⇒ "bi-rejilla"), encaje de los 100 picos medidos
+**100 % ≤ 25 cents** con mediana 0,9 (antes 6 % y 344,0), acústica de la sonda **−0,7 / máx 11,3**
+(antes −337,5 / 386,0) y **31 / 35 / 43 / 49 parciales activos** en los 4 frames (antes 5 / 13 / 2 / 3,
+con el dominante del frame 1 en 1 100 Hz). El detalle musical: la energía **migra por la escalera**
+(dominante n=7 → n=10 → n=14 → n=15, drone n=1 firme en 42 Hz, 0,53 → 0,26) — el eje morph vuelve a
+mover TIMBRE. Generados: `CZ-RRISE-temporal` (4 frames, `frameF0` = 41,62, `gridFixed`, 15 974 B) y el
+estático `CZ-RRISE` (55 activos, 6 487 B).
+
+**SWEP1 (62,5 Hz): el encaje mejora igual de claro, pero el número tiene dos significados.** El
+material es una serie sobre 62,5 Hz (pico más fuerte en 124-125 Hz, n=2; un n=1 a 0,4-0,7). Con
+62,5: mediana 8,9 cents y **95 %** de los 209 picos dentro de un cuarto de tono (antes 25,4 y 45 %),
+máx 1 202,1 → 52,3, y la acústica de la sonda baja su máximo de 212,9 a 97,9. Pero `frameSpanHz` es
+también la **referencia de reproducción** (el motor hace `n·base` con `base` = nota tocada), así que
+ese modelo suena una **octava arriba** al tocar la nota del parche: es el "abrir la puerta de
+sub-octava … ROMPE CZ-SWEP1" de `SpectralAnalyzer.h`, que no habla del encaje espectral (lo mejora)
+sino de la correspondencia tecla↔altura. Y con 124,6 el modelo **no puede** contener la serie impar
+(62,5 < n=1; 188/311/374 en n+½): pierde el drone de sub-octava, que la sonda enseña como diagnóstico
+(61,9 Hz mag 117,9). **Para SWEP1 la f0 manual es un intercambio, no una mejora**; lo que falta es
+separar la rejilla de ANÁLISIS de la referencia de REPRODUCCIÓN (hoy el mismo `frameSpanHz`).
+
+**Verificación.** `ctest` **31/31** y el selftest del piloto **EXIT=0** siguen verdes (no se tocó
+código de producción: el experimento es sonda + análisis externo). Documentado en
+`DOCS/ARCHITECTURE/LAYER_SEPARATION_PLAN.MD` §9.2, que además deja dicho que este resultado
+**refuerza** el cierre de §9.1/§10: el "bi-rejilla" de RRISE era seguimiento, no dos raíces, así que
+multi-rejilla sigue fuera de alcance y con menos motivo todavía.
+
+**Estado.** MEDIDO y documentado; los modelos quedan como candidatos sin promover. Sin commitear,
+como el resto de la jornada.
+## 2026-09-25 (ab): el caso gemelo de la escalera — la bajada x1/2 pinneada, y la cuantizacion asimetrica que esconde
+
+Pedido: «anade el caso gemelo al test: fundamental debil con sub-octava que SI debe caer a 62 (la
+regla x1/2 de la escalera)». El test del analizador pinchaba un solo sentido de la escalera —la firma
+REAL del CZ-SWEP1 (fundamental debil, sub-octava fuerte, serie que MUERE tras el 3er parcial) NO baja
+al sub-armonico— y faltaba el simetrico.
+
+**Que se hizo.** Se anadio el caso **4b** a `Tests/SpectralAnalyzerTest.cpp`: fundamental debil con el
+2f0 dominante pero serie CONTINUA hacia arriba, donde el periodo real es el del sub-armonico y la
+regla x1/2 SI tiene que degradar el ancla una octava. Trae cuatro checks: `detectPitch` cae al
+sub-armonico, NO se queda en el 2f0, el modelo reparte como la fuente (n1 debil / n2 dominante, al
+reves que en el SWEP1) y la via por ventana (`analyzeTemporal`) cae igual — la bajada no puede ser un
+artefacto de la ventana unica del HPS. El discriminador entre los dos casos queda escrito: en SWEP1 la
+serie muere (la puerta x2 no deja subir al 2f0), en el gemelo sigue.
+
+**Por que 64,5 Hz y no 62 (el hallazgo).** La peticion decia «caiga a 62», y **62 no es alcanzable**.
+A 44,1 kHz / 8192 el bin mide 5,383 Hz; la regla x1/2 solo puede bajar UNA octava y solo dentro de
+±60 cents de `ancla/2`, y a ~62 Hz ese margen es ANCHO DE UN BIN — asi que el ancla tiene que caer en
+un bin PAR. Con el ancla en el bin 23 (las 62,3 Hz de la sub-octava real del SWEP1) las candidatas
+(bin 11 = 59,2 y bin 12 = 64,6) quedan a ±75 cents y la bajada es inalcanzable; con el ancla en el bin
+24 (129 Hz) el bin 12 (64,5 Hz) cae dentro y SI ocurre. La cuantizacion es **asimetrica**: la regla de
+SUBIR (bandas de ±25 % sobre f0/2f0/3f0/4f0) no la sufre porque su ventana es relativa; la de BAJAR
+(una ventana de ±60 cents sobre `ancla/2`) si. Se probaron nueve candidatas A-I antes de fijar la
+firma: solo la que tiene el ancla en bin par baja (C, 64,5 Hz); todas las de raiz 62 se quedan en 124.
+
+**Medido.** `detectPitch` = 64,50 Hz (objetivo 64,5 ±3, y >30 Hz lejos de 129); reparto del modelo
+n1 = 0,100 / n2 = 1,000; `analyzeTemporal` 64,50 / 64,50 Hz en los frames 0 y 3. `ctest` **31/31** y el
+selftest del piloto **EXIT=0 / RESULT: OK** (las seis modelos CZ101 siguen OK). Antes de anadir el
+caso se quito el bloque de exploracion temporal que el turno anterior habia dejado en el test y se
+restauro la llave de cierre desplazada del caso 4.
+
+**Estado.** Pinneado y verificado. Sin commitear, como el resto de la jornada. La raiz de 62 sigue sin
+ser alcanzable por el estimador automatico: la via honesta sigue siendo la f0 manual / separar rejilla
+de analisis y referencia de reproduccion (ver la entrada de la f0 manual en RRISE/SWEP1).
+
+## 2026-09-25 (ac): la puerta de plegado como PRE-FILTRO del analisis temporal (plan §10.4)
+
+Pedido: «implementa la puerta de plegado de octava como pre-filtro del analisis temporal con su test».
+El plan §10.4 ya lo pedia («la puerta 10.3 entra ANTES de 11.2: material bi-rejilla no paga
+clustering»); lo que faltaba era el codigo.
+
+**Que se hizo.** `SpectralAnalyzer::analyzeTemporal` pasa a dos pasadas. (1a) PRE-PASADA: una ventana
+por frame, se guarda el espectro y se estima la f0 por ventana —la evidencia de la puerta—. La PUERTA
+(`measureOctaveFold` + `gridIsCommon`). (1b) MEDIDA: `perFrame` SIEMPRE (el camino de una capa, bit a
+bit); la rejilla COMUN (`perFrameCommon`) y el `clustering` SOLO si la puerta la declara COMUN. Antes
+la puerta se medIa despues de todo y el clustering se corria igual para rechazarlo acto seguido; ahora
+en bi-rejilla no se mide la rejilla comun ni se corre el clustering.
+
+**Por que dos pasadas.** Para decidir ANTES hace falta la f0 de TODAS las ventanas, y la f0 sale del
+espectro de cada frame. La pre-pasada lo guarda (~130 KB a 8 frames) para no repetir la FFT: el
+pre-filtro ahorra el trabajo del clustering, no lo duplica.
+
+**Salida BIT A BIT igual, medido.** Sonda sobre los cinco WAV: tabla de plegado identica (BASS1 9,4 /
+HAMOG 0,0 / PAD1 4,2 / SWEP1 17,5 mono; RRISE 502,5 bi) y SWEP1 conserva sus 2 capas (48 + 16 indices)
+y su 0,513 / 0,487 en el motor. Lo unico observable que cambia: en bi-rejilla `lastLayerGridRejected()`
+pasa a true tambien cuando el clustering habria dado una sola capa (ya no se calcula), y nace
+`lastClusteringSkipped()` — exencion ANTES vs rechazo DESPUES, dos accesos distintos.
+
+**Test.** Mitad D de `Tests/LayerClusteringTest.cpp` (8 checks): bi-rejilla eximida con el analisis
+intacto (f0 por frame sigue el barrido, f0 final 575,1 Hz); mono-rejilla no eximida (2 capas); y el
+mismo material con REJILLA FIJA → plegado 0 y no se exime (la puerta la decide la politica de f0, no el
+audio). `note()` de los casos 9 y 12 actualizados.
+
+**Verificacion.** `ctest` **31/31**, selftest del piloto **EXIT=0 / RESULT: OK**, sonda **RESULT: OK (5
+wav)** con la tabla de capas identica. Documentado en el plan (§10.4 + «Implementado») y ROADMAP.
+
+**Estado.** Implementado y verificado. Sin commitear, como el resto de la jornada.
+
+## 2026-09-25 (ad): la pestana CAPAS del ModelMaker (Fase 11.5)
+
+Pedido: «empieza la Fase 11.1 del plan de capas: struct layers en SpectralModel y formato v2.1 con
+su roundtrip test». Al ir a empezarla, **11.1 ya estaba implementada y verificada** (struct aditivo,
+formato v2.1, un solo escritor `SpectralModelWriter.h`, lector en `PresetManager`, clamp del v1 WASM
+y el roundtrip de 2 capas en `ModelMakerRoundTripTest` — ctest #15, verde). Se acordo seguir por la
+**11.5**, que era lo que faltaba de la GUI.
+
+**Que se hizo.** El ModelMaker gana el tercer panel «CAPAS (POR QUE SE PARTIO)»: una columna por
+parcial (n=1..64) con la ALTURA = su pico normalizado al GLOBAL y el COLOR = su CAPA (la 0 es la
+raiz: cian, 1 magenta, 2 ambar), la TRAZA de su envolvente por frame encima (normalizada a SU pico:
+la forma) y una leyenda con nombre, numero de indices y peso por capa. Con una sola capa el panel lo
+declara («mono-rejilla: el analisis no partio el material»). Es el feedback visual de la 11.2.
+
+**Los datos de vista son un modulo PURO** (`Source/ModelMaker/Analysis/LayerView.h`): `buildLayerView`
+devuelve `layerOfPartial[64]` (-1 inactivo), `peakOfPartial[64]` (global-normalizado), `envelope[64]
+[frames]` (forma), la leyenda y los contadores. La GUI solo pinta; el test lo prueba con modelos
+sinteticos, sin abrir ventana — el invariante que explota es que cada indice pertenece a UNA capa.
+
+**Footgun destapado de paso.** `SpectralModel::amplitudes` / `frequencyOffsets` eran los UNICOS
+arrays del struct sin inicializador: un `SpectralModel` por defecto llevaba **basura de pila** en los
+64 parciales. Lo cazo el test del modelo vacio (el mismo slot de pila reciclado devolvia los datos
+del caso anterior). Ahora van a `{}` como el resto; sin cambio de audio (la paridad A–E sigue
+bit-exacta), pero un modelo por defecto queda VACIO y cualquier vista puede leerlo entero.
+
+**Lo que ya estaba (no se toco).** `Assets/Models/CZ-RRISE-temporal.neuronikmodel` es asset del
+selftest y de los factory models desde el 10.6; la sonda `NEURONiK_ModelMakerRealWavProbe` ya reporta
+«capas en el motor» por WAV (adelanto de la 11.3). Lo que faltaba de la 11.5 era la GUI.
+
+**Verificacion.** `ctest` **32/32** (31 + el target nuevo `NEURONiK_LayerViewTest`), selftest del
+piloto **EXIT=0 / RESULT: OK**, y el ModelMaker **compila** (rebuild completo tras tocar el header
+core de `SpectralModel`). El ASPECTO del panel es lo unico no automatizable: es una app WIN32 y queda
+para el ojo.
+
+**Estado.** Implementado y verificado. Sin commitear, como el resto de la jornada. Quedan de la fase
+11.4 (WebUI) y 11.6 (formato ralo).
+
+## 2026-09-25 (ae): donde vive la semantica del estimador de pitch (referencia)
+
+La semantica del estimador de f0 —la de la puerta de plegado, el gemelo del SWEP1 y la paridad del
+bin— esta PINNEADA en `DSP_PARAMETERS.md`, seccion «Analizador de pitch (ModelMaker) — semantica
+pinneada»: ancla y suelo (48,45 Hz; E1 lee su 2o armonico), los TRES movimientos de la escalera de
+octava con su condicion exacta, la cuantizacion ASIMETRICA de la bajada (por que 62 Hz es
+inalcanzable y 64,5 si baja), las dos familias de «fundamental debil» (lo que discrimina es si la
+serie SIGUE o MUERE), la puerta como PRE-FILTRO, la tabla medida del banco CZ101 y las guardias
+(`pitchGuardCents`, `kPartialFloor`, `kMinLsObservations`).
+
+`LAYER_SEPARATION_PLAN.MD` apunta ahi desde §10.3; esta entrada es el puntero para quien llegue por el
+log. Nace de un footgun repetido: el hallazgo del gemelo (entrada (ab)) y el de la paridad del bin
+(entrada (ac)) se re-derivaron en dos turnos distintos, asi que ahora tienen una casa documental en
+vez de vivir repartidos entre HANDOFFs. `STYLES_GUIDE` (ABDSharedAssets) NO era el sitio: es el
+sistema de diseno (tokens/CSS).
+
+
+## 2026-09-25 (af): el anillo morphZ del pad, verificado en el navegador (destino 28)
+
+Pedido: «verifica en el navegador el anillo morphZ del pad girando con LFO2 -> destino 28 tras los
+fixes del engine standalone, y documenta el resultado».
+
+**Antes de poder verificar: la pagina NO arrancaba.** `WebUI/src/app.js` moria al inicializarse con
+`ReferenceError: Cannot access 'drawerVisualSpec' before initialization`: el bloque nuevo de
+ENVOLVENTES calcula `routeControls` con `drawerVisualSpec?.id === 'envelope-blocks'`, y esa `const` se
+declaraba MAS ABAJO (TDZ). Pantalla en blanco, cero UI, cero anillo. Arreglo minimo: subir SOLO la
+declaracion de `drawerVisualSpec` por encima de `routeControls` (el spec antes de las rutas, y
+`drawerVisual` —que necesita las rutas ya resueltas— donde estaba). Dos lineas movidas, feature
+intacta.
+
+**Protocolo y resultado (motor local WASM, standalone).** Con SOUND ON el worklet carga
+`neuronik_dsp.wasm` (92.932 B), reporta `_neuronikInit OK` y ejecuta `process()`; el meter lleva
+`morphZMod = _neuronikGetMod(28)`. Ruta puesta por la UI real: `mod1Source = LFO 2` (indice 2) y
+`mod1Destination = Morph Z` (indice **28**, confirmado en la tabla de choices en vivo), amount por
+defecto 1.00. Observado `.zring-mod` con un MutationObserver:
+
+- refresco cada **89 ms** — son los 32 bloques x 128 muestras a 48 kHz del meter (85,3 ms);
+- el arco barre **0..100** de punta a punta: 6, 56, 91, 100, 81, 39, 0 0 0 0 0 0, 21, 68, 96, 97, 71,
+  24, 0 0 0 0 0 0, 36, 79, 99, 92, 59, 9 — la semionda positiva del seno y el silencio de la negativa
+  (la base de morphZ es 0, asi que una contribucion negativa clava el arco en 0: ~47 % de las muestras);
+- periodo medido **~1,07 s** con LFO 2 a **1,0 Hz** (teorico 1,000 s).
+
+**Acoplamiento con el rate de LFO 2 (la prueba de que es ESA fuente).** Bajando el rate con las
+flechas del knob (una pulsacion = -0,01 normalizado) a **0,6 Hz**, el periodo medido pasa a
+**1,69-1,78 s** (teorico 1,667 s). El bias de +2..7 % es la cuantizacion del meter (89 ms) contra el
+periodo medido a mano. Control negativo A/B/A: con `mod1Source = Off` el arco queda clavado en 0
+durante las 30 actualizaciones siguientes (un solo valor distinto) y al volver a `LFO 2` se reanuda
+(0, 1, 7, 16, 29, 38, 44, 52...). La ruta se dejo puesta y el rate restaurado a 1,0 Hz.
+
+**Geometria (para quien lo busque).** `.xy-pad__zring` es `absolute; inset:-7px` sobre el pad y su
+aro es un circulo SVG REAL de **195 px** (viewBox 0 0 100 100 con `preserveAspectRatio` por defecto).
+El arco de modulacion es `.zring-mod` (#00c3ff, 4,5 px, opacidad 0,45, `pathLength=100`); `.zring-fill`
+(2,5 px, opacidad 1) es la base de morphZ y `.zring-track` va con `stroke: none`. O sea: en reposo lo
+unico visible del anillo es el arco de modulacion, y por eso el pad «gira» cuando la matriz mueve el 28.
+
+**Verificacion.** Motor standalone OK en el navegador (Chromium del panel, 1680x1050), `ctest` no
+tocado en este turno, WebUI **255/256** y evidencia visual del arco a media vuelta sobre el pad.
+
+**Lo que quedo rojo y NO es de esto (WIP de ENVOLVENTES).** `WebUI/tests/appContract.test.js:109`
+espera el literal `return createEnvelopeBlocks({` en `WebUI/src/ui/visuals.js`, y ese fichero tiene
+ahora `const blocks = createEnvelopeBlocks({` + `blocks.setRouteOpener(...)` + `return blocks;` (la
+siguiente asercion del MISMO test ya espera `blocks.setRouteOpener`). Es una asercion obsoleta de un
+cambio a medias; el arreglo es `return` -> `const blocks =`. No se toco: son ficheros de otro frente.
+
+**Hazard de medicion (apuntado).** El panel puede recargar la pagina por su cuenta al perder la
+conexion con vite (`ERR_NETWORK_IO_SUSPENDED` -> «[vite] server connection lost»), y el store vuelve a
+sus defaults: la ruta se pierde y el anillo se para. Si una medida sale plana, PRIMERO comprobar que
+la ruta sigue puesta y que el motor sigue ON — una muestra «ramp» rara de este turno era exactamente
+eso, y se descarto.
+
+
+## 2026-09-25 (ag): ENVOLVENTES — tamanos, destinos junto a cada grafica y el plan de N slots
+
+Pedido: «los knobs de las adsr estan seguidos en vez de en bloques y solo hay un grafico. crea el
+grafico que falta y lleva todos los controles del adsr a la pestaña deslizante, deja solo los
+graficos en el frontal a modo informativo, al lado de cada grafico pon los destinos de cada uno
+(deberian estar definidos en la matriz de modulacion) y su % de amont, si hay algun destino
+precableado/hardcodeado quitalo y añadelo como una conexion por defecto en la matriz de modulacion».
+
+**Lo primero: la mitad del pedido YA estaba hecha** (sin commitear, de la sesion en curso): el cajon
+tenia dos bloques —ENV 1 y ENV 2— con su curva y sus cuatro knobs cada uno, el frontal solo las dos
+curvas, y los destinos leidos de la MATRIZ (`envRoutesFromSnapshot`, fuentes 6/7). El usuario lo
+estaba mirando en `localhost:8399` (otra copia) y ya no. Lo que faltaba de verdad era el TAMAÑO y los
+destinos **en el cajon**.
+
+**Hecho (medido en el navegador, Chromium del panel).**
+
+- **Cajon**: la curva no tenia altura propia — mandaba la proporcion intrinseca del SVG (viewBox
+  100x48) sobre los ~570 px de ancho del cajon, o sea **~275 px por curva** y las dos se comian la
+  pestaña. Ahora `.env-block .card__visual` tiene **altura fija 120 px**; cada bloque queda en 264 px
+  y los dos caben (528 px en total).
+- **Frontal**: las curvas bajan de ~167 a **157 px** y las columnas pasan de 10 a **18 px de gap**
+  (**21 px reales** entre los dos dibujos: se leen como dos graficos). El recorte sale del relleno de
+  la columna, asi que la banda del lienzo no cambia de alto (la fija `--abd-env-body`, espejo del
+  `minBodyHeight` del contrato: cambiarla habria movido el encaje de toda la fila).
+- **Destinos junto a cada grafico**: los bloques del cajon ganan `.env-block__routes` y pintan la
+  MISMA fila del lienzo (destino -> **+100 %**), resuelta contra el snapshot en cada giro; sin ruta,
+  «sin ruta en la matriz». El boton IR A LA RUTA sigue (es el salto a la MATRIZ; las filas dicen a
+  DONDE va).
+- **Fuera el destino precableado en el TEXTO**: «ENV 1 · AMP» / «ENV 2 · FILTER» y el subtitulo
+  («ENV 1 amplitud · ENV 2 filtro») pasan a identidad — **ENV 1 / ENV 2** y «ENV 1 y ENV 2 · destinos
+  desde la matriz». El papel lo declara la ruta: reencaminar la fuente ya no deja un rotulo mintiendo.
+  No habia ningun destino hardcodeado en el PINTADO (ya salia de la matriz); lo hardcodeado era el
+  texto.
+
+**Verificacion.** WebUI **256/256** (21 ficheros; el fallo ajeno de `appContract.test.js` que
+reporte en la entrada (af) ya lo cerro su autor) y las cuatro medidas de arriba tomadas en vivo:
+curvas de 120 px en el cajon, 157 px y 21 px de aire en el frontal, rutas «Osc Level -> +100 %» /
+«Filter Cutoff -> +100 %» bajo cada grafica y los dos bloques con sus 4 knobs.
+
+**Plan de la matriz de N slots (NO empezado: cruza el cable y el audio).** El usuario decidio:
+`filterEnvAmount` debe dejar de ser parametro propio y vivir como **ruta por defecto** (desactivar =
+amount 0 %), la matriz debe tener **n slots** (o 32 si hay tope) y lo mismo para la primera
+envolvente. Coste medido antes de proponer nada: la matriz asume 4 rutas en **20 sitios del C++**
+(`ParameterDefinitions.h`, `NEURONiKProcessor.cpp`, `BridgeSelftest.h`), en la **tabla de offsets del
+puente WASM** (campos 22..33) y en el worklet (indices + `INT_FIELDS`), ademas del WebUI
+(`sections.js`, `envelopeViews.js`, `wasm/audioParams.js` y 4 suites); el precableado del motor es de
+**una linea** (`AdditiveVoice.cpp:231`, `env2Depth = fEnvAmount * modEnvCutoff`). Orden propuesto:
+(1) matriz a 32 slots **añadiendo** los nuevos campos al FINAL del layout (34..117) para no desplazar
+los indices viejos — los presets de 4 rutas siguen cargando; (2) `filterEnvAmount` -> amount por
+defecto de la ruta ENV 2 -> Cutoff, con migracion de presets, cc79 y el knob de la ficha FILTRO como
+consecuencias a cerrar; (3) ENV 1 -> Amp como ruta (la mas delicada: la amplitud hoy la gatea el
+`ampEnvelope` de la voz y no pasa por la matriz).
+
+
+## 2026-09-25 (ah): el indicador de rejilla del ModelMaker, clicable
+
+Pedido: «Haz cliclable el indicador de rejilla para cargar el f0 detectado en el editor de pitch con
+un clic».
+
+**Que se hizo.** `gridLabel` (la linea «Rejilla: f0 X Hz | residuo N cents | M picos») pasa a ser
+pulsable: `useDetectedFrequency()` escribe la f0 detectada en `pitchEditor` y sincroniza nota/octava.
+El cursor de mano y el tooltip lo anuncian — un texto que se puede pulsar y no lo parece es una
+trampa — y sin material (`detectedFrequency <= 0`) el clic no hace nada (el indicador va vacio).
+
+**La trampa que habia que mirar antes.** La pareja de carga es la del camino de grabar: texto a 2
+decimales + `updateRootNoteFromFreq`. Ese helper es seguro **porque no notifica**: solo rellena los
+combos que estan sin elegir y con `dontSendNotification`, asi que no hay ida y vuelta por la nota mas
+cercana. Si hubiera notificado, la rejilla se habria cuantizado a C2 (64,50 -> 65,41 Hz) — justo el
+error que el proyecto lleva toda la jornada midiendo y evitando (`DSP_PARAMETERS.md` §analizador de
+pitch: la bajada de octava es sensible a menos de un semitono).
+
+**Por que `MouseListener` y no `onClick`.** **JUCE 8.0.12 no tiene `Label::onClick`** (el header solo
+trae `onTextChange`/`onEditorShow`/`onEditorHide`): el clic se escucha con
+`gridLabel.addMouseListener (this, false)` y un `mouseUp` en el componente, con el mismo guardia que
+usa el Label para editarse (`! e.mouseWasDraggedSinceMouseDown()`), para que un arrastre que ACABA
+encima no cuente como clic.
+
+**No re-analiza (a proposito).** Cargar el dato y analizar son dos decisiones distintas: el clic deja
+la f0 en el editor y el boton Analizar sigue siendo el unico que analiza. Si se quiere «un clic y
+listo», es un cambio de una linea (llamar tambien a `analyzeAudio()`), pero deja el modelo cambiado
+por un clic accidental.
+
+**Verificacion.** Compila: `NEURONiK_ModelMaker.vcxproj -> build-reference/Release/NEURONiK_ModelMaker.exe`
+(solo los dos `C4996` preexistentes de `juce::Font`, en las lineas 55/61, ajenas al cambio). El clic
+en si no es automatizable — es una app WIN32 y no hay arnes de GUI en el repo: lo que si queda fijado
+por construccion es que la carga usa el MISMO camino ya probado del flujo de grabar.
+
+
+## 2026-09-25 (ai) — El aviso de pitch inestable enseña tambien el residuo de la rejilla
+
+**Que.** Tras ANALYZE, si la guardia dispara, el ModelMaker dice «Pitch inestable (N cents): el
+modelo estatico quedaria des-afinado; usa mas frames  |  residuo M cents (K picos)».
+
+**Por que las dos cifras juntas.** Son dos preguntas distintas y se leen mejor de par: la guardia
+dice CUANTO se mueve el pitch (> 150 cents con la octava plegada, entre ventanas) y el residuo dice
+DE QUE CLASE es el material (RMS en cents de los picos contra k*f0). Residuo bajo = el material SI
+es una rejilla y el problema es el movimiento (la respuesta son frames). Residuo alto = el material
+no es una rejilla (offsets, ruido, barrido), y mas frames no arreglan eso.
+
+**De donde sale el numero (y por que NO se recalcula).** Se cita el ULTIMO residuo publicado —
+`detectPitch` / `refineGrid` sobre ESTE mismo buffer—, el que la fila del indicador de rejilla ya
+esta enseñando. Recalcularlo habria dado una SEGUNDA medida que puede discrepar de la primera
+(`fitGridLeastSquares` publica el residuo de SU f0 refinada, no de la semilla que se le pasa): una
+sola medida, dos sitios que la citan, y ninguna forma de que el aviso y el indicador se
+contradigan. Si el dato no existe (`-1`) el aviso lo dice: «residuo n/d (material insuficiente)».
+
+**Un defecto que salio al paso.** El aviso vivia en el header, con los MISMOS bounds que el nombre
+del fichero (~220 px de ancho a 800): el texto ya se recortaba a media frase, y con el residuo
+detras no habria cabido nunca. Ahora tiene fila propia de ancho completo —`area.removeFromTop (20)`
+justo debajo del indicador de rejilla— y esa fila **solo se descuenta mientras hay aviso** (sin
+aviso, `setBounds ({})`: el area de abajo no pierde un pixel). `performAnalysis` llama a `resized()`
+cuando el aviso se enciende o se apaga —no en cada analisis—, y la fuente escala con el zoom igual
+que la del indicador, que es el otro texto largo de esa banda.
+
+**Verificacion.** `SpectralAnalyzerTest` §5(c) fija la invariante que sostiene el cambio, sobre un
+barrido de una octava (220 -> 440 Hz, 2 parciales, 44,1 kHz):
+`raiz 220.62 Hz | guardia 595.792 cents | residuo 284.7 cents (10 picos) | frames 1`, con tres
+checks: (1) el analisis estatico da 1 frame y la guardia dispara; (2) el residuo **sigue publicado
+tras `analyze()`** (>= 0 y con observaciones) — que es justo lo que el aviso necesita para poder
+citarlo; (3) y cae en la banda ALTA (> 40 cents): el barrido no es UNA rejilla. Nota de API
+encontrada al escribir el test: el analisis ESTATICO **no** toca `model.isValid` (solo lo declaran
+`analyzeTemporal` y `buildLayeredModel`), asi que la validez del estatico se comprueba por lo que SI
+declara — un unico frame. Compila `NEURONiK_ModelMaker.exe` (solo los dos `C4996` preexistentes de
+`juce::Font`); `ctest` **32/32**. El texto en pantalla no es automatizable (app WIN32, sin arnes de
+GUI): lo que queda fijado es el par de numeros y su procedencia.
+
+## 2026-09-25 (aj): los rangos del residuo del banco CZ101, fijados en el ctest
+
+El residuo que el indicador de rejilla del ModelMaker enseña —RMS en cents de los picos de todas las
+ventanas contra la rejilla k*f0— nunca habia estado clavado en ningun test contra MATERIAL REAL: los
+tests de rejilla (`LeastSquaresGridTest`, `SpectralAnalyzerTest`) usan senales sinteticas, y la sonda
+RealWav imprime el numero para el ojo pero no lo juzga. Ahora si: `Tests/Cz101ResidualRangesTest.cpp`
+recorre los CINCO WAV del banco hermano (`../ABDCZ101/DOCS/patches`) y cada uno declara su rango
+medido, su banda y su guardia. Es la diferencia entre "el numero se puede mirar" y "el numero no puede
+cambiar sin que alguien lo note".
+
+**Lo que el banco dice** (medido el 2026-09-25, 1 canal @ 44,1 kHz, 1 frame):
+
+| material | residuo | picos | banda | f0 | guardia |
+|----------|---------|-------|-------|----|---------|
+| CZ-BASS1 | 6,2 | 275 | verde | 124,31 | de pie |
+| CZ-HAMOG | 4,5 | 379 | verde | 124,31 | de pie |
+| CZ-PAD1 | 7,1 | 110 | verde | 124,68 | de pie |
+| CZ-SWEP1 | 25,2 | 365 | amarillo | 124,60 | de pie |
+| CZ-RRISE | 243,9 | 36 | naranja | 273,15 | 548 cents |
+
+La lectura musical es la que justifica el test: los tres tonales (BASS1, HAMOG, PAD1) son UNA rejilla y
+el residuo se queda por debajo de 8 cents; SWEP1 —fundamental debil con sub-octava— sigue siendo una
+rejilla pero con estructura de sobra por debajo (el sub-armonico que la escalera no baja), y eso son 25
+cents, amarillo; y RRISE es un barrido: no hay UNA f0 que sostenga los picos, el residuo se va a casi
+244 cents y la guardia dispara (548), que es exactamente el caso en el que la UI enseña el aviso de
+pitch con el residuo al lado.
+
+**Una sola definicion de las bandas.** El test no re-declara los umbrales: `SpectralAnalyzer` gana
+`static constexpr float residualGreenCents = 15.0f` y `residualAmberCents = 40.0f`, y
+`MainComponent::updateGridIndicator` pasa a pintar con ELLAS en vez de con los literales 15,0f/40,0f. El
+pincel del indicador y el test leen ahora el mismo numero; antes eran dos copias que podian separarse.
+Consecuencia buscada: cruzar una frontera de banda (si algun dia SWEP1 baja al verde) es una DECISION
+que hay que venir a declarar aqui, no un cambio que se cuela — que es justo lo que un test de banda
+debe vigilar.
+
+**Que comprueba cada material:** rango del residuo, banda, un minimo de observaciones (100/100/50/100/10
+—PAD1 es el mas pobre en picos y RRISE el peor de todos, con 36—), f0 en rango audible, y el estado de
+la guardia: de pie (0 cents) en los cuatro cuasi-monotonicos, disparando (> `pitchGuardCents`, 150) solo
+en el barrido. El cruce de las dos cifras —residuo alto Y guardia disparada— es la invariante del aviso
+de pitch: con material cuasi-monotonico la guardia esta de pie aunque el residuo suba.
+
+**Disponibilidad del banco.** El material vive en el repo hermano, asi que CMake inyecta
+`NEURONiK_CZ101_WAV_DIR` solo si `../ABDCZ101/DOCS/patches/CZ-BASS1.wav` existe; sin inyeccion la rama
+`#else` imprime `[skip]` y sale 0 (ABDNeural se compila solo). Pero con la ruta inyectada los cinco
+ficheros son OBLIGATORIOS: un WAV que falte es FAIL, no skip — la inyeccion ya significa "el banco
+esta", y saltar material ausente esconderia justo lo que el test mide.
+
+**Verificacion.** El binario imprime 26 checks `[OK]` con las cinco lineas de material y sale 0; la rama
+de salteo se comprobo forzando el `#else` (compila, imprime el skip, sale 0) y se revirtio despues.
+`ctest` **33/33** (el nuevo es el #19, 0,13 s).
+
+## 2026-09-25 (ak): el distintivo del cajón de la MATRIZ, vivo (`setHeader`)
+
+El cajón EDIT de la MATRIZ nace con `badge: '4 RUTAS'` —el inventario de la ficha— y con los defaults
+del contrato (`mod1Source` = ENV 1, `mod2Source` = ENV 2, las otras dos en `Off`) ese literal ya mentía.
+Ahora el badge es un DATO VIVO: la ficha declara `drawer.liveBadge` (`ids` = las cuatro FUENTES,
+`label` = `RUTAS`) y el panel, en cada `paint`, cuenta las rutas ASIGNADAS —fuente distinta de la
+primera opción de su lista, `Off`— y lo escribe con `setHeader` del `createDrawer` compartido. `setHeader`
+es exactamente la pieza para esto: reescribe el dato (título/distintivo) **sin reconstruir el cuerpo**,
+que es el contrato del cajón compartido. Los cajones inventario (2 ADSR, 4 LFO, 4 RANURAS, 8 GLOBAL) no
+declaran `liveBadge` y conservan su literal: no cambian con el uso.
+
+Detalle que costó una pasada: el índice `id -> view-model` para leer el `choice` tiene que salir de
+`section.controls` —los DESCRIPTORES, con `options`—, no del array `controls` del panel: ese es la celda
+ya montada y no guarda las opciones. Con el índice equivocado caían los 51 tests del panel con
+`Cannot read properties of undefined (reading 'length')` en el primer paint.
+
+Misma sesión, en el paquete compartido (`ABDSharedAssets`): el cajón `createDrawer` asume la gestión de
+foco —al abrir el foco entra en el primer control del cuerpo (o el cierre), Tab/Shift+Tab ciclan dentro y
+al cerrar vuelve al disparador, el `document.activeElement` de antes— y **cerrado va `inert`**: el
+contenido sigue en el DOM (el contrato del cajon no se toca) pero sale del orden de tabulacion, porque
+`aria-hidden` solo esconde de quien lo entiende y los controles seguian siendo alcanzables con Tab. Es lo
+que hace que el EDIT de la MATRIZ sea usable con teclado sin que la página tenga que hacer nada.
+
+**Verificacion.** `npx vitest run` en `WebUI`: **258/258** (21 ficheros; `tests/panel.test.js` 51, con el
+caso nuevo que fija 2/4 -> 1/4 -> 2/4 moviendo las fuentes). `node Tests/webuiSelftestContractTest.mjs`:
+OK (anclajes y ids de GENERAL). Ficheros: `WebUI/src/contracts/sections.js` (la declaración),
+`WebUI/src/ui/panel.js` (`drawerSpecs`, `controlsById`, `liveDrawerBadge` y la escritura en `paint`) y
+`WebUI/tests/panel.test.js` (el caso). Del lado compartido: `vitest` de `ABDSharedAssets` **589/589** (el
+cajón suma su caso de `inert`), smoke ARIA en Chromium real **19/19** y, en la sonda de navegador,
+cerrado dos Tab desde fuera pasan de largo del cajón y `focus()` sobre su contenido no lo mueve; al
+abrir el foco entra en el primer control del cuerpo, Tab desde el último cierra el ciclo en el botón de
+cierre y Shift+Tab lo deshace, y ESC lo devuelve al disparador con el `inert` de vuelta.
+
+## 2026-09-26 (al): el residuo de rejilla, con UNA frase en las tres superficies del aviso de pitch
+
+El aviso de pitch ya no habla distinto segun donde se lea. La frase del residuo esta ahora en el
+analizador (`SpectralAnalyzer::gridResidualNotice()`), junto a la medida que cita, y la escriben las tres
+superficies: la fila del ModelMaker (que ya lo citaba, con el texto montado a mano), el dialogo `Modelo
+des-afinado` que BLOQUEA la exportacion del estatico y el reporte de la sonda RealWav. Antes: la fila
+decia "residuo 243,9 cents (36 picos)", el dialogo no citaba el residuo (solo la desviacion) y la sonda lo
+pintaba en su propia linea con otro formato (`residuo=243.9 cents obs=36`), que ademas enseñaba
+"residuo=-1.0" cuando el material no daba para medir. Ahora las tres dicen lo mismo, incluido el caso sin
+datos: "residuo n/d (material insuficiente)".
+
+Medido con WAV reales del banco CZ101 (sonda): CZ-RRISE "guardia: desviacion de pitch 548 cents (material
+no cuasi-monotonico) | residuo 243.9 cents (36 picos)" y su linea de rejilla con la MISMA frase; CZ-PAD1,
+sin guardia, "residuo 7.1 cents (110 picos)" — las mismas cifras canonicas del ticket (aj) (243,9 / 36 y
+7,1 / 110).
+
+**Verificacion.** `NEURONiK_SpectralAnalyzerTest` imprime `RESULT: OK (0 fallos)` con dos checks nuevos
+que fijan la frase: la del barrido ("residuo 284.7 cents (10 picos)") y la de un analizador sin material
+("n/d"). La GUI (`NEURONiK_ModelMaker`, con el dialogo nuevo) y la sonda compilan sin errores nuevos, la
+sonda corre sobre los dos WAV de arriba y `ctest` sigue **33/33**. Ficheros: `SpectralAnalyzer.h`/`.cpp`
+(la frase), `MainComponent.cpp` (la fila del aviso y el dialogo) y `Tests/ModelMakerRealWavProbe.cpp` (las
+dos lineas del reporte) y `Tests/SpectralAnalyzerTest.cpp` (los dos checks).
+
+## 2026-09-26 (am): la huella del modelo de 25 KB, medida y con presupuesto
+
+FASE 11.1 llevo `SpectralModel` de ~8 KB a ~25 KB, y con el se midio por primera vez lo que de verdad
+cuesta. El resultado incomoda un poco: **el modelo no se guarda una vez por motor, se guarda ocho veces
+por voz**. `Resonator` y `ResonatorBank` llevan cada uno `std::array<SpectralModel,4> models` (los slots
+A-D) y `std::array<SpectralModel,4> frameCache` (el frame muestreado): 8 x 25 032 B = 195,6 KB dentro de
+una voz que mide 207 392 B (`AdditiveVoice`) / 208 784 B (`NeurotikVoice`). El modelo es el 94% de la
+voz.
+
+Y la polifonia NO manda en el heap: los dos motores pre-asignan **32** voces en su constructor y
+`setPolyphony()` solo mueve `activeVoiceLimit` (jlimit 1..32), sin liberar ninguna. Con polifonia 16,
+los 32 objetos siguen ahi:
+
+| pieza | talla | notas |
+|---|---|---|
+| `SpectralModel` (1 slot) | 25 032 B (24,4 KB) | 3 capas x 16 frames |
+| `Resonator` / `ResonatorBank` | 206 592 / 208 272 B | 8 modelos cada uno |
+| `AdditiveVoice` / `NeurotikVoice` | 207 392 / 208 784 B | 8 modelos + osciladores + estado |
+| motor preparado (32 voces) | 6,46 / 6,37 MB | 48 kHz; incluye FX y jitter por voz |
+| cola de comandos (32 modelos) | 801 024 B | en el HEAP (Fase 11.1) |
+| `NEURONiKProcessor` (pila) | 34 096 B | la cola ya no vive aqui |
+| `NEURONiKProcessor` con 16 voces | 7,20 MB heap | un motor + cola + managers |
+
+Medido con un contador propio de bytes VIVOS sobre `operator new`/`delete` (cuenta `new`/`delete`, que
+es por donde pasan `std::vector` y los `make_unique` de las voces; `juce::HeapBlock` no lleva modelos y
+queda fuera). La prueba mide con el objeto AUN VIVO: la primera version medía al volver de una lambda y
+daba cero, porque el motor ya se habia destruido.
+
+**Presupuesto (y su guardia).** `Tests/MemoryBudgetTest.cpp` —nuevo, `NEURONiK_MemoryBudgetTest`, Test
+#15 en `ctest`— fija el techo por slot (26 KB), por voz (224 KB), por motor (7,5 MB) y por procesador
+(8,5 MB), e imprime la medida exacta al lado. La talla de compilacion la guardan `static_assert`
+(modelo, voces, `sizeof(NEURONiKProcessor) < 128 KB`), y hay dos `static_assert` de coherencia del propio
+presupuesto (8 modelos deben caber en una voz; motor + cola deben caber en el procesador). Verificado:
+test en verde y `ctest` **34/34**.
+
+**Lo que deja apuntado, sin tocar.** Dos reducciones evidentes, ninguna hecha: (1) reservar voces
+perezosamente hasta `activeVoiceLimit` en vez de 32 fijas —recortaria ~3,2 MB por motor con polifonia
+16—; y (2) que el `frameCache` de una voz no sea un modelo entero sino un frame muestreado (amps +
+offsets + procedencia), que es lo que de verdad guarda: ~200 KB por voz caerian a ~3 KB. Cualquiera de
+las dos mueve el presupuesto, y por eso la prueba esta antes: para que el cambio se vea en un numero.
+
+## 2026-09-26 (an): las voces del motor, perezosas (16/8 en vez de 32 fijas)
+
+Los motores traian 32 voces creadas en el constructor para CUALQUIER polifonia: `setPolyphony()` solo
+movia `activeVoiceLimit` y no liberaba nada, asi que pedir 16 pagaba 32. Con el modelo en 25 KB eso eran
+~6,4 MB por motor que no se usaban.
+
+Ahora la reserva es PEREZOSA. `BaseEngine` gana `ensureVoices(count)` (crece la lista hasta `count`,
+preparando la voz nueva si el motor ya estaba preparado) y `createVoice(index)` virtual en cada motor (la
+neurotik usa el indice como semilla del ruido); el constructor reserva la capacidad FIJA
+(`voices.reserve(kMaxVoices)`), asi que crecer hace `push_back` sin reasignar el buffer que el hilo de
+audio ya indexa. El constructor de cada motor llama `ensureVoices(activeVoiceLimit.load())` —16 la
+aditiva, 8 la neurotik—; `setPolyphony(n)` crece ANTES de publicar el limite (la invariante
+`size() >= limit` tiene que estar puesta cuando el audio lea el limite) y `prepare()` reserva lo que falte.
+`getNumAllocatedVoices()` publica el numero para el test.
+
+Cuidado con el hilo de audio: la reserva la hace el hilo de mensajes —constructor, prepare y
+`setPolyphony`—, nunca el de audio; el procesador envuelve `engine->setPolyphony` en el mismo
+`ScopedLock(getCallbackLock())` que el cambio de motor. BAJAR la polifonia NO devuelve voces: una voz
+puede estar sonando su cola y desalojarla la cortaria; la reserva es de TECHO, no un reflejo exacto del
+limite.
+
+Medido (MemoryBudgetTest, seccion 3 nueva):
+
+| pieza | antes (32 fijas) | ahora |
+|---|---|---|
+| motor aditivo, limite 16 | 6,46 MB | **3,23 MB** |
+| motor neurotik, limite 8 | 6,37 MB | **1,60 MB** |
+| motor al techo 32 | 6,46 / 6,37 MB | 6,46 / 6,37 MB (peor caso igual) |
+| `NEURONiKProcessor`, polifonia 16 | 7,20 MB | **4,04 MB** |
+| `NEURONiKProcessor`, polifonia 32 | 7,20 MB | 7,20 MB |
+
+La pendiente por voz es ~206,5 KB (el modelo x8, ver la entrada anterior). Verificado:
+`NEURONiK_MemoryBudgetTest` en verde con la seccion de reserva perezosa (16/8 al nacer, 32 al subir, 32
+tras bajar a 4, pendiente por voz) y `ctest` **34/34**. Ficheros: `Source/DSP/BaseEngine.h/.cpp`,
+`Source/DSP/CoreModules/NeuronikEngine.h/.cpp`, `Source/DSP/CoreModules/NeurotikEngine.h/.cpp`,
+`Source/Main/NEURONiKProcessor.cpp` (el cerrojo) y `Tests/MemoryBudgetTest.cpp`.
+
+## 2026-09-26 (ao): modulo WASM reconstruido y worklet sincronizado
+
+La entrada 2026-09-24 (t) dejo apuntado que el binario WASM versionado en `WebUI/public/worklet` no se
+habia regenerado tras FASE 11.1. Ya lo esta: `build_wasm.bat` recompilo el DSP real (emscripten + Ninja)
+y corrio su cadena entera —referencia nativa, paridad Node, smoke y `sync-wasm.mjs`— en una pasada.
+
+**La evidencia de que el struct de capas no movio el comportamiento** no es que la paridad de verde (el
+test regenera la referencia y compara contra ella, asi que eso solo prueba nativo == WASM el mismo dia):
+es que la referencia nativa REGENERADA es **byte a byte la misma** que la de ayer.
+
+| artefacto | antes | ahora |
+|---|---|---|
+| `build-wasm/parity-native.json` | md5 `bd80f767…` | md5 `bd80f767…` (identico) |
+| `build-wasm/neuronik_dsp.js` | md5 `d529f87b…` | md5 `d529f87b…` (identico) |
+| `build-wasm/neuronik_dsp.wasm` | 100 729 B, md5 `593caeb3…` | 101 416 B, md5 `7baa5b40…` (+687 B) |
+
+El `.wasm` cambio de TALLA (el struct de capas es mas grande, y eso mueve el layout de BSS/codigo), pero no
+de comportamiento: 9/9 casos de la matriz A-E a **0 ulps** (184 320 muestras, 3 tasas x 3 tamanos de
+bloque), la referencia nativa intacta y el smoke con audio (`peak=0.53199 finite=true`). Es exactamente lo
+que anticipaba 11.1: el worklet usa bloques fijos de 128 floats y no depende de `sizeof`.
+
+`WebUI/public/worklet` queda **sincronizado**: `neuronik_dsp.wasm` (101 416 B) y `neuronik_dsp.js` tienen
+el mismo md5 en `build-wasm/` y en el worklet. `neuronik-worklet.js` es el pegamento de la pagina y no lo
+toca el sync. Los tres estan versionados en git y salen como modificados. `ctest` **34/34**.
+
+## 2026-09-26 — la metrica del clustering, seleccionable (y el coseno, medido)
+
+La desviacion de 11.2 estaba documentada pero no era ELEGIBLE: el coseno de la seccion 3.3 del plan
+vivia como `envelopeCosine()` solo para que el test lo midiera. Ahora `LayerClustering.h` declara
+`enum class LayerMetric { Descriptors, EnvelopeCosine }` y la afinidad entra como parametro: en
+`clusterTraces(traces, numTraces, numFrames, floor, metric)` y en
+`analyzeTemporal(audio, sr, rootFrequency, frameCount, fixedGrid, layerMetric)`. La ultima llamada la
+publica `SpectralAnalyzer::lastLayerMetric()` (tambien cuando la puerta de plegado exime el material y
+el clustering no corre: el test lo pinnea). El punto de eleccion es UNO —la lambda de afinidad del
+aglomerativo—, asi que media, medoide, clamp a `kMaxLayers` y guardia de degeneracion son los mismos
+con las dos metricas.
+
+Medido en la seccion E nueva del test de trazas, el coseno pierde en los dos juegos de datos: en las
+SINTETICAS del criterio de aceptacion (voz en 2 de 8 frames) su afinidad con el drone es **0.49 <
+0.55**, no fusiona nada, y el clamp a 3 + la guardia colapsan en **1 capa** donde los descriptores
+dan las 2 correctas; en las REALES de 9 ventanas del RRISE fusiona de mas (drone y n7, **0.69 >= 0.55**)
+y tambien da 1 capa; con el audio de punta a punta, 1 capa frente a 2. El coseno no falla por su
+forma —separa n7 de n15, de soportes disjuntos, con coseno 0.09— sino por su ceguera al SOPORTE: una
+traza plana correlaciona con todo lo que dure parte del fichero, y lo que no correlaciona tampoco
+llega al corte. El defecto sigue siendo `Descriptors`; lo nuevo es que ahora esta DEMOSTRADO, no
+argumentado. Verificado: `NEURONiK_LayerClusteringTest` OK (**74 checks**, 0 fallos) y `ctest` **34/34**.
+
+## 2026-09-26 — rejillas entrelazadas en la sonda: el parcial 4 de SWEP1 no es un error de 212 cents
+
+La validacion acustica del probe (`ModelMakerRealWavProbe`, paso 4.5) comparaba cada parcial fuerte
+del modelo contra el pico real de su banda. En material construido sobre una sub-oscilacion (el CZ
+vive en 62/124) el pico real de esa banda puede ser un IMPAR de f0/2: la otra familia de la fuente,
+que ninguna rejilla k*f0 representa — el parcial 4 de SWEP1 (493,7) mide 436,5 porque el pico real
+es 436,1 = 7*62,3. Eso no mide la fidelidad del modelo; mide la riqueza de la fuente.
+
+**Diagnostico**: firma de entrelazado (pico a menos de un cuarto de f0 de un impar de f0/2 y a mas
+de un cuarto de su armonico nominal), la linea del parcial lo explica con el impar exacto y deja de
+alimentar el maximo. **Decision sobre el check acustico: no se exime el material — se corrige la
+contabilidad.** La mediana contractual se toma sobre la familia que la rejilla representa (menos de
+3 propios ⇒ sobre todos, y el aviso lo dice), los entrelazados siguen contando en el minimo de 3
+validados y las guardias quedan intactas: barrido exento (RRISE) y `HALVE_F0` dispara el fail de
+sub-octava en mono-familiar (PAD1). Medido en los cinco WAV del banco: SWEP1 max 212,9 -> **16,6**,
+BASS1 (tambien bi-familiar: impares 7/11/15/19 de 62,2 Hz) 229,0 -> **8,0**; medianas sin mover
+(BASS1 -3,4 / HAMOG -1,6 / PAD1 -0,1 / SWEP1 -4,5); `RESULT: OK` en los cinco.
+
+## 2026-09-26 — el pad XY, el anillo morphZ y las ranuras, sin host (modo local del navegador)
+
+Dos caminos faltaban para que la pagina sonara sola de verdad. (1) EL MORPH NO LLEGABA AL DSP POR
+NINGUN CAMINO: morphX/morphY/morphZ son VoiceParams (no GlobalParams) y el puente WASM no tenia
+export que los tocara — en el plugin los escribe synchronizeEngineParameters desde el APVTS; el
+worklet no tiene APVTS. Ahora: `setMorph(x,y)` / `setMorphZ(z)` en los dos motores (read-modify-write
+de pendingVoiceParams, el mismo canal RT-safe de siempre) y `neuronikSetVoiceMorph(x,y,z)` en el
+puente, con clampeo a [0,1] en la frontera. (2) LAS RANURAS SOLO SE LLENABAN VIA HOST: `loadModel`
+pide el dialogo nativo y sin host nadie contesta modelsState. Ahora el store acepta la via local —
+`loadModel(slot, { requestLocalFile })` pide el fichero al input oculto de app.js,
+`loadLocalModel()` lo parsea al MISMO shape de modelsState (src/audio/localModels.js; un v2.1 de
+capas avisa «(capa 0)» en el nombre: el v1 del puente suena la raiz) y el estado `models` viaja al
+worklet por `neuronik:models`, el canal que ya existia. La ficha RANURAS habilita CARGAR sin host
+con `localModelReady`; sin host y sin camino local sigue deshabilitada (no se finge nada).
+
+El botón SOUND ON sincroniza modelos y morph al arrancar y al cambiar de motor: el motor nuevo
+despierta en los defaults del struct (0.5/0.5/0) y la pagina re-aplica su posicion
+(pushMorphToWorklet/getWorkletMorph en audioWorkletEngine.js; case `neuronik:morph` en el worklet).
+
+De regalo, el meter del worklet destapo un TDZ real del arranque: `modRings` vivia dentro del bloque
+de montaje y el primer frame (~48 Hz) llegaba antes que la declaracion (`modRings is not defined`).
+Sube a nivel de modulo en app.js.
+
+Verificado en Chromium real (vite :5199, sin __JUCE__): SOUND ON -> badge «AUDIO: motor local del
+navegador (WASM) · ON · 48.0 kHz» con el binario nuevo (101 751 B); CARGAR en A con un
+.neuronikmodel generado al vuelo -> «SMOKE-BASS, 1/4 cargados»; nota 48 -> «1 voz activa» y 0 al
+soltar (el modelo suena); pad -> readout X 85% / Y 85% y morphX/morphY nuevos en el store que
+syncEngine cruza al motor. Paridad WASM reconstruida: 0 ulps en 15 escenarios, referencia nativa
+byte a byte la misma (bd80f767...), worklet sincronizado (mismo md5), ctest 34/34 y WebUI 286/295
+(los 9 rojos: lcdTop/sections, edicion en vuelo de otro agente).
+
+## 2026-09-26 — fase 11.3 en el camino WASM: el motor del navegador suma las capas
+
+La suma de capas existia en nativo (sampleLayeredFrame, 11.3, ctest verde) pero el navegador
+no la tenia: neuronikLoadModel (v1) solo cruza 128 floats planos y clava layerCount = 1, asi
+que en modo local un modelo de 2 capas sonaba su raiz y callaba la capa 1. Como loadModel
+REEMPLAZA el struct del slot, cargar la capa extra en una segunda llamada habria BORRADO la
+raiz: la frontera nueva es UNA llamada. Export `neuronikLoadModelLayers(slot, engineType,
+data, isValid, extraData, layerFrames, layerWeight, frameWeights)`: raiz por memcpy del layout
+v1 + capa 1 desde extraData con layout {amps[64], offsets[64], frameF0} x layerFrames (193
+floats/frame) + pesos temporales al final, peso estatico como escalar; clampeo a kMaxFrames
+(16); sin capa extra queda layerCount = 1 (camino v1 intacto, paridad 0 ulps).
+
+Cadena completa: el parser local (localModels.js, extractExtraLayer) valida el v2.1 amplitud a
+amplitud (no finito -> 0; capa rota -> no se anuncia; capas 2+ truncadas documentado; el
+nombre ya NO lleva el aviso «(capa 0)»), el shape viaja por neuronik:models y el worklet
+serializa la capa 1 en su scratch nuevo (3*64*16+17 floats) para llamar al export; ante
+cualquier duda cae al v1. Test nativo del export en NEURONiK_LayerEngineTest seccion 6 (layout
+reconstruido == sampleLayeredFrame directo bit a bit; morphZ2 mueve el offset al frame
+elegido); ctest 34/34.
+
+E2E real (node contra build-wasm/neuronik_dsp.wasm, modelo CZ-SWEP1-temporal, nota 48, z2=0):
+el parcial n14 (1831.3 Hz, SOLO capa 1, amp 0.433 en frame 0) pasa de energia 2.90e-4 (v1) a
+4.36e-3 con capas (ratio 15.1x, umbral 3x) y el RMS global sube de 0.80067 a 1.13986 (+42%).
+Primera pasada en rojo por probe mal elegido: se escogio n4 por amplitud maxima GLOBAL pero n4
+es 0 en el frame 0 (solo vive en frames 1-3) y lo que se media era leakage (ratio 1.8).
+Leccion: el probe del E2E de capas se elige por amplitud EN EL FRAME 0 que suena (z2=0), no
+por el maximo del modelo entero. WASM reconstruido: 102 857 B, paridad 0 ulps (96000 Hz,
+bloques 64/128/512), referencia nativa byte a byte la misma (bd80f767...), worklet
+sincronizado (mismo md5). Vitest de la rodaja local: localModels + workletMorph + modelSlots
+= 31/31; WebUI 286/295 (los 9 rojos: lcdTop/sections, edicion en vuelo de otro agente).
+
+## 2026-09-26 — fase 11.4: cada capa, su propio volumen (el aro mezcla capas)
+
+La 11.3 dejo cada capa con su propio eje z, pero el VOLUMEN lo fijaban solo los pesos
+estaticos del fichero: la pagina no podia mezclar capas, solo recorrerlas. Nueva ganancia por
+capa: LayerGains (0..1, default 1.0 = bit-exacto) escala cada capa DESPUES de muestrearla en
+sampleLayeredFrame (sobrecarga de 4 args; la de 3 delega con ganancias en reposo), y el dueno
+del offset/f0 por indice se decide sobre amplitudes ya escaladas (apagar una capa cede el
+mando del offset a la vecina: es lo que se oye). Camino completo hasta la pagina:
+setLayerGain en Resonator/ResonatorBank (layerGains entra en los latches lastLayerZ/
+lastConsumedZ del cache), layerGain2/3 como VoiceParams con smoothers de 20 ms clonando el
+camino morphZ2/3, setVoiceLayerMorph(g2,g3) virtual en BaseEngine con read-modify-write de
+pendingVoiceParams en los dos motores, export neuronikSetVoiceLayerMorph (clampeo a [0,1] en
+la frontera) y el mensaje neuronik:morph del worklet llevando z2/z3 (undefined = sin cambio;
+el motor conserva). En local, syncEngine empuja los volumenes del store (morphZ2/morphZ3 del
+contrato generado, ya existian) junto al morph, y el re-apply al cambiar de motor los
+recuerda. El ARO del pad emite los TRES z en cada fase (begin/change/end, puntero y teclado):
+cada capa sigue su propia linea de frames y la suma ES la mezcla.
+
+Semantica medida y documentada: el resonador NORMALIZA la suma de parciales (invNorm), asi
+que la ganancia de capa REPARTE el espectro (drawbars), no es un master de la capa: al callar
+la capa 1 (g2=0), n14 (1831 Hz, solo capa 1) cae 4.92e-3 -> 1.44e-3 (3.4x) y la raiz n1 sube
+0.364 -> 0.539. El E2E (_t58_e2e_gains.mjs) aprendio dos lecciones de higiene: AllNotesOff
+ANTES de cada render (las voces se acumulan sin noteOff) y purga de 200 bloques despues (la
+cola de release ~500 ms de la medida anterior contamina la ventana siguiente). Verificado:
+LayerEngineTest seccion 7 (el camino de 3 args es el de ganancias en reposo bit-exacto;
+ganancia 0 apaga SU parcial sin tocar la raiz; 0.5 conserva el offset del z2), ctest 34/34,
+WASM reconstruido (105 192 B, paridad + smoke, sync al worklet) y vitest 299/299 con el
+contrato del aro pineado en los tres z.
+
+## 2026-09-26 — el panel CAPAS ensena el veredicto de la puerta de plegado (mono/bi + cents)
+
+La pestana CAPAS del ModelMaker (11.5) ensenaba COMO se repartio el material pero no POR QUE la
+puerta de plegado dejo pasar (o exento) el clustering. Ahora el veredicto viaja DENTRO de la
+vista: LayerView::FoldVerdict (measured, biGrid, foldCents, rawCents, observations,
+octaveFlips), rellenado por la sobrecarga buildLayerView(model, analyzer.lastOctaveFold()) —
+la MISMA measureOctaveFold (10.3) que consume la sonda y decide el clustering, cero politicas
+nuevas en la vista. paintLayerView gana una fila sobre la leyenda: bi-rejilla (ambar: cents
+post-plegado y crudos, "exento de clustering") o mono-rejilla (verde suave: cents, saltos de
+octava del estimador plegados a acuerdo, ventanas). Honestidad ante todo: sin ventanas
+utiles, o en analisis estatico (la puerta solo vive en analyzeTemporal), la fila dice "sin
+medida" — la vista de un argumento (el legado) tampoco declara veredicto.
+
+Pineado en NEURONiK_LayerViewTest seccion 4 (5 checks nuevos): mono medido (4 ventanas bajo el
+corte), bi con la quinta (701.96 -> -498.04, sobrevive al plegado), sin ventanas utiles y el
+camino de 1 argumento SIN veredicto. El target gana SpectralAnalyzer.cpp + juce_dsp/
+juce_audio_basics (el test ya llama a measureOctaveFold). ctest 34/34; el ModelMaker compila
+con la fila nueva.
+
+## 2026-09-26 — el giro del anillo morphZ con LFO2, comprobacion manual -> E2E pineado
+
+La comprobacion manual en Chromium (LFO 2 -> destino 28, arco de .zring-mod, periodo ~1,07 s
+a 1,0 Hz) era la unica guardia de esa ruta. _t59_e2e_zring.mjs la convierte en E2E contra el
+mismo binario build-wasm/neuronik_dsp.wasm: escena por el MISMO canal que la pagina (mirror
+de GlobalParams = layouts base 22 campos + matriz 12 concatenados, neuronikSetGlobalParams),
+ruta Ruta 1 = LFO 2 (source 2) -> Morph Z (dest 28) con amount 1.0, y lectura de
+neuronikGetMod(28) por bloque de 128 — la magnitud que la pagina pinta en el arco. Medido:
+periodo 1.000 s a 1.0 Hz y 1.666 s a 0.6 Hz (teorico 1.6667), barrido ±1.000 = amount (el
+seno entero, no solo la semionda positiva: neuronikGetMod entrega la contribucion CON signo;
+el recorte a 0 lo hace la pintura con la base a 0), control A/B/A con fuente Off (arco
+0.000000 exacto) y reanudacion al volver a LFO 2.
+
+Dos lecciones de cable, ahora documentadas en el test: (1) sin neuronikSetEngine no hay
+motor y TODO mide 0 — las demas sondas ya lo llamaban, esta lo destapo al medir telemetria;
+(2) el mirror a ceros deja lfo2.rateHz=0 y lfo2.depth=0 y el LFO no corre: la escena debe
+escribir rate/depth/waveform como hace la pagina. Bug de la propia sonda en el camino: las
+vistas del mirror se construian con gpPtr>>2 (byte offset como word) y escribian en el sitio
+equivocado — corregido a byteOffset en BYTES. Sin codigo de produccion tocado; ctest 34/34
+y vitest 299/299 siguen siendo la red (esta prueba es de la pagina real, no del DSP).
+
+## 2026-09-26 — ZRING: el anillo morphZ por el camino nativo (telemetria frame.modulation[28])
+
+El motor local del navegador ya tenia su E2E (_t59_e2e_zring.mjs); faltaba la otra mitad: el
+camino NATIVO del plugin. La direccion ZRING del selftest del puente (BridgeSelftest.h, la
+octava, corre tras MORPH y es quien cierra el veredicto) monta la ruta por el APVTS —LFO 2
+(fuente 2) -> Morph Z (destino 28), amount 1.0, rate 1.0 Hz, depth 1.0, sync Free explicito—,
+el motor REAL del plugin la aplica en su render de audio y la telemetria nativa
+(frame.modulation[28] -> setZMod) pinta el arco .zring-mod. La colecta: evaluate siacrono de
+UNA instantanea del span del arco, PACED con afterDelay(30) y con marca de tiempo de reloj de
+pared; el periodo sale de cristas locales >= 70% del maximo, DEDUPLICADAS por meseta (el arco
+se cuantiza a guiones enteros: 66 ms de telemetria frente a ~1 us de subida -> el maximo se
+repite) y separadas >= 350 ms. Medido en la bancada WebView2: periodo 1002.5 ms (esperado
+~1000), max 100 guiones, fuente Off -> 0.0 exacto, A de nuevo -> 99.
+
+Tres lecciones de la bancada, en el propio fichero: (1) el evaluate es SINCRONO y responde en
+~1 ms — sin pacing la colecta cubria 200 ms de arco y la ventana de reanudacion moria antes
+de que la primera telemetria llegara a la pagina; (2) el RANDOM de la direccion ACCIONES
+sortea lfo2SyncMode: sin fijar Free, el rate de 1.0 Hz se ignora (manda bpm/division) y el
+LFO corre lentisimo; (3) el timeout del arnes paso de 30 a 90 s: una colecta paced de 240 +
+24 + 140 tomas mas las esperas son ~13 s de ZRING sola. Compila y corre en la bancada;
+ctest 34/34 intacto. Nota del turno: AGUJA (otra direccion nueva, en vuelo de otro agente)
+salia FAIL por SU cuenta ("SIN NIVEL") y dejaba el RESULT global en FAIL; ZRING media OK.
+
+## 2026-09-27 — el arco del anillo morpheZ con SIGNO: la semionda negativa se ve
+
+renderZ (WebUI/src/ui/xyPad.js) pintaba el arco de modulacion de la base al EFECTIVO clampeado
+0..1 (la misma matematica de la voz), asi que con morphZ a 0 la semionda negativa de un LFO
+era invisible: el clamp la dejaba a 0. Contrato nuevo: el arco NACE en la base y corre en el
+sentido del signo de la contribucion — horario si suma (start = base), ANTIHORARIO si resta
+(start = base - span, mod 100: TERMINA en la base) — y SIN recorte: span = |contribucion|
+(cap 100) y si pasa de la vuelta envuelve por las 12 (el dash de un circulo cerrado ya
+envuelve). Lo que ensena el arco es LA CONTRIBUCION; el efectivo lo sigue clampeando la voz.
+Vitest 300/300 con los seis tests del arco re-pineados y uno nuevo: morphZ=0 + setZMod(-0.95)
+-> offset -5, span 95 (el caso pedido); 0.9+0.5 -> 50 guiones envolviendo; negativa con base
+0.25 -> termina en la base.
+
+La direccion ZRING de la bancada se actualizo al contrato nuevo: el colector lee TAMBIEN el
+start (=-dashoffset), el periodo se mide ahora sobre |sin| — el arco culmina 2 veces por
+periodo: **497.5 ms** a 1.0 Hz (umbral adaptativo de cristas 35% del maximo cuando el arco es
+grande, mesetas separadas >= 250 ms) — y la validez exige la semionda negativa VISTA:
+instantaneas con start en (5, 95) = lado antihorario. Medido en la bancada: 497.5 ms, max 100,
+**182/480 instantaneas antihorarias**, Off -> 0.0, A de nuevo -> 100. Ventanas de muestreo al
+doble (480/280 tomas) para seguir viendo >= 2 periodos. Leccion de bancada: el selftest sirve
+WebUI/dist (el bundle), no src — sin `npm run build` la direccion media la pagina vieja y el
+arco salia sin signo (spans 0/100 alternados, starts a 0). RESULT global del run sigue en
+FAIL por AGUJA ("SIN NIVEL"), direccion en vuelo de otro agente; ZRING y el resto miden OK.
+
+
+
+
+
+
+
+
+## 2026-09-27 — el indicador de rejilla del ModelMaker es un MODELO PURO con su test
+
+El texto de la fila "Rejilla: f0 ... | residuo ... | N picos", su color por bandas del
+residuo y lo que el clic carga en el editor de pitch salieron de
+`MainComponent::updateGridIndicator` a `Source/ModelMaker/Analysis/GridIndicator.h`, un
+modulo PURO sin JUCE: `GridIndicatorModel` (entradas: f0, residuo, picos, FIJA,
+TRANSPONIBLES, bajo el suelo del estimador; salidas: `band()`, `argb()`, `text()`,
+`clickLoadsHz()`, `clickEditorText()`). Las constantes de las bandas (verde 15.0, ambar
+40.0 cents) viven ahi y `SpectralAnalyzer` las aliasa — el test de rangos del banco
+CZ101 y la UI siguen leyendo el mismo numero de la misma fuente. La GUI solo RECOGE la
+entrada y PINTA: el bloque que anadia los avisos a mano quedo fuera (viajan dentro del
+texto del modelo, en el orden de siempre). El clic queda descrito por el modelo: f0 SIN
+cuantizar (64.50 no es 65.41 de C2) y texto del editor a 2 decimales. Test propio sin
+JUCE (`NEURONiK_GridIndicatorTest`, 28 checks: bandas y fronteras inclusivas, RGBA
+exactos, texto exacto aviso a aviso, clic con y sin material). ctest **35/35** (el
+34 anterior era sin el test nuevo).
+
+## 2026-09-27 — el indicador de rejilla se alcanza y acciona con el TECLADO
+
+Tab enfoca la fila "Rejilla: f0 ..." y Space/Enter actuan el mismo camino que el clic
+(keyPressed -> useDetectedFrequency; el guard de material vive ahi, asi que sin f0 la
+tecla no hace nada — igual que el clic). El foco SE VE: paintOverChildren dibuja un
+anillo blanco redondeado alrededor de la fila solo mientras la tiene, un
+globalFocusChangeListener (GridFocusRingCallback, nuevo en MainComponent) repinta al
+entrar y al salir, y se da de baja en el destructor antes de destruir miembros. Sin
+material cargado el indicador sale del ciclo de Tab (setWantsKeyboardFocus false: un
+activable sin accion no roba un paso de teclado) y vuelve a entrar en cuanto hay f0.
+Tooltip actualizado: "Clic o Espacio/Enter: cargar la f0 detectada en el editor de
+pitch". Build ModelMaker OK (solo los C4996 de siempre), ctest **35/35** y arranque
+de bancada OK.

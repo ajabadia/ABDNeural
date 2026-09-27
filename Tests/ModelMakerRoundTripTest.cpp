@@ -29,6 +29,7 @@
 #include "../Source/Common/SpectralModel.h"
 #include "../Source/DSP/FrameSampler.h"
 #include "../Source/Serialization/PresetManager.h"
+#include "../Source/Common/SpectralModelWriter.h"
 #include "../Source/Main/NEURONiKProcessor.h"
 #include "../Source/State/ParameterDefinitions.h"
 #include "../Source/WebUI/BridgeAdapters.h"
@@ -150,68 +151,19 @@ namespace
     }
 
     /**
-     * @brief El dialecto JSON EXACTO que la GUI del ModelMaker escribe en
-     *        exportModel() desde la FASE 10.1: formato v2 SIEMPRE — la raiz
-     *        v1 (amplitudes/frequencyOffsets) + "frames" (UN elemento cuando
-     *        el modelo es estatico) + "frameSpanHz" si el analisis lo trajo,
-     *        con los offsets acotados a media banda como el escritor real.
-     *        Si la herramienta cambia de dialecto, aqui se nota.
+     * @brief El dialecto .neuronikmodel de PRODUCCION. Desde la FASE 11.1 el
+     *        escritor es uno solo (Common::writeModelToFile, en
+     *        Source/Common/SpectralModelWriter.h) y lo usan la GUI, este test y
+     *        la sonda RealWav. Antes este helper replicaba a mano lo que
+     *        exportModel() escribia: con las capas (v2.1) eso ya era la tercera
+     *        copia de un formato que crece, y probar una copia no prueba el
+     *        fichero que sale de la herramienta.
      */
     bool writeModelJson (const juce::File& file, const NEURONiK::Common::SpectralModel& model,
                          const juce::String& name)
     {
-        juce::DynamicObject::Ptr modelObj = new juce::DynamicObject();
-        const float span = model.frameSpanHz;
-
-        juce::Array<juce::var> amps;
-        juce::Array<juce::var> offsets;
-
-        for (int i = 0; i < 64; ++i)
-        {
-            const float gap = span > 0.0f ? span : (float) (i + 1);
-            amps.add (model.amplitudes[(size_t) i]);
-            offsets.add (juce::jlimit (-0.5f * gap, 0.5f * gap, model.frequencyOffsets[(size_t) i]));
-        }
-
-        modelObj->setProperty ("amplitudes", amps);
-        modelObj->setProperty ("frequencyOffsets", offsets);
-
-        juce::Array<juce::var> frames;
-        juce::DynamicObject::Ptr frame0 = new juce::DynamicObject();
-        frame0->setProperty ("amplitudes", amps);
-        frame0->setProperty ("frequencyOffsets", offsets);
-        frames.add (frame0.get());
-
-        for (int f = 1; f < model.frameCount; ++f)
-        {
-            juce::Array<juce::var> fAmps, fOffs;
-
-            for (int i = 0; i < 64; ++i)
-            {
-                const float gap = span > 0.0f ? span : (float) (i + 1);
-                fAmps.add (model.ampAt (f, i));
-                fOffs.add (juce::jlimit (-0.5f * gap, 0.5f * gap, model.offsetAt (f, i)));
-            }
-
-            juce::DynamicObject::Ptr frameObj = new juce::DynamicObject();
-            frameObj->setProperty ("amplitudes", fAmps);
-            frameObj->setProperty ("frequencyOffsets", fOffs);
-            // FASE 10.6: la raiz del frame viaja en el v2 (como la GUI).
-            if (const float f0k = model.f0At (f); f0k > 0.0f)
-                frameObj->setProperty ("frameF0", f0k);
-            frames.add (frameObj.get());
-        }
-
-        modelObj->setProperty ("format", 2);
-        modelObj->setProperty ("frames", frames);
-
-        if (span > 0.0f)
-            modelObj->setProperty ("frameSpanHz", span);
-
-        modelObj->setProperty ("name", name);
-        modelObj->setProperty ("description", "Created with NEURONiK Model Maker");
-
-        return file.replaceWithText (juce::JSON::toString (juce::var (modelObj.get())));
+        return Common::writeModelToFile (file, model, name,
+                                        "Created with NEURONiK Model Maker");
     }
 
     /** @brief Igualdad de modelos para el chequeo ranura-vs-analisis. */
@@ -638,6 +590,269 @@ int main()
                "sampleFrame(z=0.5) entrega el frame 1 del modelo recargado");
     }
 
+
+    // --- 9. FASE 11.1: CAPAS (formato v2.1) ---------------------------------
+    //       El escritor y el lector de PRODUCCION (Common::writeModelToFile +
+    //       PresetManager::loadModelFromFile) con un modelo de DOS capas: la
+    //       capa 0 es el analisis real (que sigue viajando en la raiz para que
+    //       un lector v2 antiguo suene esa capa) y la capa 1 es una voz
+    //       sintetica con sus frames, su peso temporal y su f0 propios.
+    std::cout << "\nCapas (v2.1)\n";
+    {
+        Common::SpectralModel layered = model;              // capa 0 = analisis real
+        layered.setLayerCount (2);
+        layered.setLayerNameAt (0, "drone");
+        layered.setLayerWeightAt (0, 1.0f);
+        layered.setLayerNameAt (1, "lead");
+        layered.setLayerWeightAt (1, 0.6f);
+        layered.setNumFramesOf (1, 3);
+
+        for (int f = 0; f < 3; ++f)
+        {
+            float* amps = layered.ampsOf (1, f);
+            float* offsets = layered.offsetsOf (1, f);
+
+            for (int i = 0; i < 64; ++i)
+            {
+                // Un armonico que MIGRA (6 -> 8): la firma del material RRISE,
+                // aqui como dato para que la capa no sea una copia de la 0.
+                amps[(size_t) i] = (i == 6 + f) ? 0.9f : 0.01f * (float) (i + 1);
+                offsets[(size_t) i] = 0.1f * (float) f;
+            }
+
+            layered.setF0At (1, f, f0 * (1.0f + 0.05f * (float) f));
+            layered.setFrameWeightAt (1, f, 1.0f - 0.2f * (float) f);
+        }
+
+        const auto layeredFile = dir.getChildFile ("Two Layers.neuronikmodel");
+        check (Common::writeModelToFile (layeredFile, layered, "Two Layers",
+                                         "Created with NEURONiK Model Maker"),
+               "export v2.1 del modelo de 2 capas");
+
+        // El dialecto: v2.1 sube a format=2.1 y lleva el bloque de capas.
+        {
+            const auto parsed = juce::JSON::parse (layeredFile);
+            const auto* obj = parsed.getDynamicObject();
+            const auto* layers = obj != nullptr ? obj->getProperty ("layers").getDynamicObject() : nullptr;
+            const auto* layerArray = layers != nullptr ? layers->getProperty ("layers").getArray() : nullptr;
+
+            check (obj != nullptr && std::abs ((double) obj->getProperty ("format") - 2.1) < 1.0e-9,
+                   "el JSON v2.1 lleva format=2.1");
+            check (layers != nullptr && (int) layers->getProperty ("layerCount") == 2
+                       && layerArray != nullptr && layerArray->size() == 2,
+                   "el JSON v2.1 lleva layerCount=2 y las dos capas");
+            check (layerArray != nullptr && layerArray->size() == 2
+                       && std::abs ((double) (*layerArray)[1].getDynamicObject()
+                                        ->getProperty ("weight") - 0.6) < 1.0e-6,
+                   "cada capa del JSON lleva su name/weight/frames");
+        }
+
+        const auto back = Serialization::PresetManager::loadModelFromFile (layeredFile);
+        check (back.isValid && back.layerCount == 2 && back.isLayered(),
+               "el lector recupera las 2 capas (layerCount=2)");
+        check (back.layerNameAt (0) == "drone" && back.layerNameAt (1) == "lead",
+               "los nombres de capa viajan en el fichero");
+        check (std::abs (back.layerWeightAt (1) - 0.6f) < 1.0e-6f
+                   && std::abs (back.layerWeightAt (0) - 1.0f) < 1.0e-6f,
+               "las mezclas estaticas de capa viajan");
+        check (back.numFramesOf (1) == 3 && back.numFramesOf (0) == layered.numFramesOf (0)
+                   && back.frameCount == layered.frameCount,
+               "los frames por capa viajan (y la raiz conserva los suyos)");
+
+        bool layerOk = true;
+
+        for (int f = 0; f < 3; ++f)
+            for (int i = 0; i < 64; ++i)
+                layerOk = layerOk
+                          && std::abs (back.ampAt (1, f, i) - layered.ampAt (1, f, i)) < 1.0e-6f
+                          && std::abs (back.offsetAt (1, f, i) - layered.offsetAt (1, f, i)) < 1.0e-6f;
+
+        check (layerOk, "los frames de la capa 1 vuelven bit a bit (mismo clamp de banda)");
+
+        check (std::abs (back.frameWeightAt (1, 0) - 1.0f) < 1.0e-6f
+                   && std::abs (back.frameWeightAt (1, 2) - 0.6f) < 1.0e-6f,
+               "los pesos temporales por frame de la capa viajan");
+        check (std::abs (back.f0At (1, 1) - layered.f0At (1, 1)) < 1.0e-4f
+                   && back.f0At (1, 1) > 0.0f,
+               "la raiz por frame de la capa viaja (frameF0 del v2)");
+
+        // La capa 0 sale en la RAIZ: un lector v2 antiguo (y el puente WASM de
+        // 128 floats) suena esa capa en vez de no entender el fichero.
+        check (std::abs (back.amplitudes[0] - layered.amplitudes[0]) < 1.0e-4f
+                   && back.frameCount == layered.frameCount,
+               "la capa 0 sigue siendo la raiz del fichero (compat v2/v1)");
+
+        // El ENGINE real: un modelo de capas no rompe la ranura. El motor
+        // sumara las capas en la Fase 11.3; hoy suena la capa 0, igual que el
+        // v1 WASM, y por eso el fichero es compatible sin tocar nada.
+        {
+            NEURONiKProcessor audio;
+            audio.setRateAndBufferSizeDetails (sampleRate, blockSize);
+            audio.prepareToPlay (sampleRate, blockSize);
+
+            check (audio.loadModel (layeredFile, 0),
+                   "el engine acepta el modelo de 2 capas");
+
+            std::array<float, 64> slotAmps {}, slotOffs {};
+            bool slotValid = false;
+            audio.getCurrentModel (0, slotAmps, slotOffs, slotValid);
+            check (slotValid && std::abs (slotAmps[0] - layered.amplitudes[0]) < 1.0e-3f,
+                   "la ranura expone la capa 0 (lo que suena sin motor de capas)");
+        }
+
+        // Un fichero con MAS capas de las que caben se TRUNCA a kMaxLayers, no
+        // se rechaza: misma politica que con mas frames de los que caben.
+        {
+            auto parsed = juce::JSON::parse (layeredFile);
+            auto* obj = parsed.getDynamicObject();
+            auto layersVar = obj != nullptr ? obj->getProperty ("layers") : juce::var();
+            auto* layers = layersVar.getDynamicObject();
+            auto* layerArray = layers != nullptr ? layers->getProperty ("layers").getArray() : nullptr;
+
+            if (layerArray != nullptr && layerArray->size() == 2)
+            {
+                layerArray->add ((*layerArray)[1]);
+                layerArray->add ((*layerArray)[1]);
+                layerArray->add ((*layerArray)[1]);
+                layers->setProperty ("layerCount", 5);
+
+                const auto bigFile = dir.getChildFile ("Five Layers.neuronikmodel");
+                bigFile.replaceWithText (juce::JSON::toString (parsed));
+
+                const auto big = Serialization::PresetManager::loadModelFromFile (bigFile);
+                check (big.isValid && big.layerCount == Common::SpectralModel::kMaxLayers,
+                       "un fichero con 5 capas se trunca a kMaxLayers ("
+                           + juce::String (Common::SpectralModel::kMaxLayers) + ")");
+            }
+            else
+            {
+                check (false, "no se pudo reescribir el JSON de capas para el caso de truncado");
+            }
+        }
+    }
+
+    // --- 10. FASE 11.1: el v2 PURO no cambia ---------------------------------
+    //       Sin capas el fichero no lleva "layers" y todo el camino (lector,
+    //       motor y puente WASM de 128 floats) es exactamente el de siempre:
+    //       es la condicion de la paridad A-E en el mismo commit que el v2.1.
+    std::cout << "\nSin capas (v2 puro)\n";
+    {
+        const auto plainFile = dir.getChildFile ("Plain v2.neuronikmodel");
+        check (writeModelJson (plainFile, model, "Plain v2"), "export v2 del analisis real");
+
+        const auto parsed = juce::JSON::parse (plainFile);
+        const auto* obj = parsed.getDynamicObject();
+        check (obj != nullptr && obj->getProperty ("layers").isVoid(),
+               "el v2 puro NO trae bloque de capas");
+        check (obj != nullptr && obj->getProperty ("gridFixed").isVoid(),
+               "el v2 puro NO declara rejilla fija (el modo es opcional)");
+        check (obj != nullptr && (int) obj->getProperty ("format") == 2
+                   && ! obj->getProperty ("frameSpanHz").isVoid(),
+               "el v2 puro conserva format=2 y frameSpanHz");
+
+        const auto back = Serialization::PresetManager::loadModelFromFile (plainFile);
+        check (back.isValid && back.layerCount == 1 && ! back.isLayered(),
+               "el v2 puro carga con layerCount = 1 (el camino de siempre)");
+        check (back.frameCount == model.frameCount
+                   && modelsEqual (back, model.amplitudes, model.frequencyOffsets, 1.0e-4f),
+               "el v2 puro recupera el modelo del analisis (frame a frame)");
+
+        // El puente WASM construye un SpectralModel NUEVO y le copia 128
+        // floats: con layerCount = 1 por defecto suena la capa 0 — el clamp del
+        // v1, que es lo que mantiene la paridad nativa/WASM y el bloque por
+        // slot en ~33 KB.
+        const Common::SpectralModel fresh {};
+        check (fresh.layerCount == 1 && ! fresh.isLayered() && fresh.numFramesOf (0) == 1
+                   && fresh.frameWeightAt (0, 0) == 1.0f,
+               "un modelo por defecto tiene 1 capa, 1 frame y peso 1 (el clamp del puente WASM)");
+    }
+
+
+    // --- 11. REJILLA FIJA (modo declarado, 2026-09-25) ----------------------
+    //       El modo del ModelMaker: la f0 la fijo el usuario y el analisis no
+    //       siguio el pitch. El fichero lo declara con "gridFixed": true — sin
+    //       subir "format" (es ortogonal a las capas) y sin tocar el JSON de los
+    //       modelos que no lo declaran.
+    std::cout << "\nRejilla fija\n";
+    {
+        auto fixed = model;
+        fixed.gridFixed = true;
+
+        const auto fixedFile = dir.getChildFile ("Fixed grid.neuronikmodel");
+        check (writeModelJson (fixedFile, fixed, "Fixed grid"),
+               "export del modelo con rejilla fija");
+
+        const auto parsed = juce::JSON::parse (fixedFile);
+        const auto* obj = parsed.getDynamicObject();
+        check (obj != nullptr && (bool) obj->getProperty ("gridFixed"),
+               "el fichero DECLARA gridFixed");
+        check (obj != nullptr && (int) obj->getProperty ("format") == 2
+                   && obj->getProperty ("layers").isVoid(),
+               "gridFixed NO sube la version del formato (sigue siendo v2)");
+
+        const auto back = Serialization::PresetManager::loadModelFromFile (fixedFile);
+        check (back.isValid && back.gridFixed,
+               "el lector de produccion recupera la rejilla fija");
+        check (back.frameCount == fixed.frameCount
+                   && modelsEqual (back, fixed.amplitudes, fixed.frequencyOffsets, 1.0e-4f),
+               "y el modelo entero (frames y amplitudes) sigue intacto");
+
+        // Y al reves: sin el modo, el fichero de siempre no cambia NI EN EL
+        // TEXTO (es la condicion para que los assets versionados sigan siendo
+        // byte a byte los mismos).
+        const auto plainFile = dir.getChildFile ("No fixed grid.neuronikmodel");
+        check (writeModelJson (plainFile, model, "No fixed grid"), "export sin el modo");
+        check (! plainFile.loadFileAsString().contains ("gridFixed"),
+               "sin el modo la clave no aparece ni en el texto del fichero");
+        check (! Serialization::PresetManager::loadModelFromFile (plainFile).gridFixed,
+               "y el lector lo deja en false (el modelo de siempre)");
+    }
+
+    // --- 12. OFFSETS TRANSPONIBLES (modo declarado, 2026-09-25) -------------
+    //       Los offsets se declaran RATIOS medidos contra la rejilla de analisis
+    //       y el motor los escala por base/f0: la inharmonicidad se transpone
+    //       con el teclado. El fichero lo declara con "offsetsTranspose": true —
+    //       sin subir "format" (es ortogonal a las capas) y sin tocar el JSON de
+    //       los modelos que no lo declaran.
+    std::cout << "\nOffsets transpuestos\n";
+    {
+        auto transposed = model;
+        transposed.offsetsTranspose = true;
+
+        const auto transFile = dir.getChildFile ("Transposed offsets.neuronikmodel");
+        check (writeModelJson (transFile, transposed, "Transposed offsets"),
+               "export del modelo con offsets transpuestos");
+
+        const auto parsed = juce::JSON::parse (transFile);
+        const auto* obj = parsed.getDynamicObject();
+        check (obj != nullptr && (bool) obj->getProperty ("offsetsTranspose"),
+               "el fichero DECLARA offsetsTranspose");
+        check (obj != nullptr && (int) obj->getProperty ("format") == 2
+                   && obj->getProperty ("layers").isVoid()
+                   && obj->getProperty ("gridFixed").isVoid(),
+               "offsetsTranspose NO sube la version ni arrastra otras claves");
+
+        const auto back = Serialization::PresetManager::loadModelFromFile (transFile);
+        check (back.isValid && back.offsetsTranspose,
+               "el lector de produccion recupera el modo");
+        check (back.frameCount == transposed.frameCount
+                   && modelsEqual (back, transposed.amplitudes, transposed.frequencyOffsets, 1.0e-4f),
+               "y el modelo entero sigue intacto");
+
+        // El motor lee el SNAPSHOT, no el modelo fuente: si el modo y su rejilla
+        // de referencia no sobreviven al sampler, el escalado no ocurre.
+        Common::SpectralModel snap;
+        Common::sampleFrame (back, 0.0f, snap);
+        check (snap.offsetsTranspose && snap.offsetRootHz == back.frameSpanHz,
+               "el modo y su rejilla viajan al snapshot que lee el motor");
+
+        const auto plainFile = dir.getChildFile ("No transposed offsets.neuronikmodel");
+        check (writeModelJson (plainFile, model, "No transposed offsets"), "export sin el modo");
+        check (! plainFile.loadFileAsString().contains ("offsetsTranspose"),
+               "sin el modo la clave no aparece ni en el texto del fichero");
+        check (! Serialization::PresetManager::loadModelFromFile (plainFile).offsetsTranspose,
+               "y el lector lo deja en false (el modelo de siempre)");
+    }
 
     std::cout << '\n' << (failures == 0 ? "All checks passed." : "Checks failed.") << '\n';
     return failures == 0 ? 0 : 1;

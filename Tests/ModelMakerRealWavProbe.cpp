@@ -18,6 +18,7 @@
 #include "../Source/Common/SpectralModel.h"
 #include "../Source/DSP/FrameSampler.h"
 #include "../Source/Serialization/PresetManager.h"
+#include "../Source/Common/SpectralModelWriter.h"
 #include "../Source/Main/NEURONiKProcessor.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -38,57 +39,17 @@ void fail (const juce::String& what)
     std::exit (1);
 }
 
-/** Serialización v2 EXACTA de exportModel() (MainComponent.cpp) — mismo
-    dialecto, clamps incluidos: el ciclo WAV->v2->load es el de producción. */
+/**
+ * FASE 11.1: el dialecto .neuronikmodel vive en UN solo sitio
+ * (Common::modelToJson / writeModelToFile, el mismo escritor que usa la GUI y
+ * que lee el plugin). Antes esta sonda llevaba su propia copia del v2 y las
+ * tres habia que cambiarlas a la vez; el ciclo WAV->v2->load de produccion es
+ * ahora literalmente el mismo codigo.
+ */
 juce::String serializeV2 (const SpectralModel& m, const juce::String& name)
 {
-    const float span = m.frameSpanHz;
-
-    juce::DynamicObject::Ptr modelObj = new juce::DynamicObject();
-
-    juce::Array<juce::var> amps, offs;
-    for (int i = 0; i < 64; ++i)
-    {
-        const float gap = span > 0.0f ? span : (float) (i + 1);
-        amps.add (m.amplitudes[i]);
-        offs.add (juce::jlimit (-0.5f * gap, 0.5f * gap, m.frequencyOffsets[i]));
-    }
-    modelObj->setProperty ("amplitudes", amps);
-    modelObj->setProperty ("frequencyOffsets", offs);
-    modelObj->setProperty ("name", name);
-    modelObj->setProperty ("description", "Created with NEURONiK Model Maker");
-
-    juce::Array<juce::var> frames;
-    juce::DynamicObject::Ptr frame0 = new juce::DynamicObject();
-    frame0->setProperty ("amplitudes", amps);
-    frame0->setProperty ("frequencyOffsets", offs);
-    frames.add (frame0.get());
-
-    // FASE 10.4: los frames extra acompanan cuando el modelo es temporal.
-    for (int fr = 1; fr < m.frameCount; ++fr)
-    {
-        juce::Array<juce::var> fa, fo;
-        for (int i = 0; i < 64; ++i)
-        {
-            const float gap = span > 0.0f ? span : (float) (i + 1);
-            fa.add (m.ampAt (fr, i));
-            fo.add (juce::jlimit (-0.5f * gap, 0.5f * gap, m.offsetAt (fr, i)));
-        }
-        juce::DynamicObject::Ptr fo_ = new juce::DynamicObject();
-        fo_->setProperty ("amplitudes", fa);
-        fo_->setProperty ("frequencyOffsets", fo);
-        // FASE 10.6: la raiz del frame viaja en el v2 (dialecto GUI).
-        if (const float f0k = m.f0At (fr); f0k > 0.0f)
-            fo_->setProperty ("frameF0", f0k);
-        frames.add (fo_.get());
-    }
-
-    modelObj->setProperty ("format", 2);
-    modelObj->setProperty ("frames", frames);
-    if (span > 0.0f)
-        modelObj->setProperty ("frameSpanHz", span);
-
-    return juce::JSON::toString (juce::var (modelObj));
+    return juce::JSON::toString (NEURONiK::Common::modelToJson (
+        m, name, "Created with NEURONiK Model Maker"));
 }
 
 int argmax (const SpectralModel& m)
@@ -97,6 +58,58 @@ int argmax (const SpectralModel& m)
     for (int i = 1; i < 64; ++i)
         if (m.amplitudes[i] > m.amplitudes[k]) k = i;
     return k;
+}
+
+
+/**
+ * 2026-09-25: OFFSETS TRANSPONIBLES — la evidencia del modo, sobre material real.
+ *
+ * Elige el parcial CON MATERIAL mas desviado de su armonico y saca las tres
+ * cifras que definen el problema y el arreglo. Con la ley de siempre el offset se
+ * SUMA en Hz: al subir una octava la rejilla se dobla y la desviacion en cents SE
+ * PARTE (la inharmonicidad que suena cambia con la nota tocada). Con el modo
+ * declarado el offset es un RATIO contra la rejilla (delta-n/n) y el motor lo
+ * escala por base/f0: la desviacion en cents es la MISMA en toda la extension —
+ * que es lo que hace el transporte musicalmente coherente.
+ *
+ * La rejilla de referencia es la del MOTOR (frameSpanHz): la que usa
+ * offsetScaleAt al escalar, y la que el sampler transporta al snapshot.
+ */
+void transposeReport (const SpectralModel& m, float f0)
+{
+    if (f0 <= 0.0f) return;
+
+    // El parcial mas desviado CON amplitud real: es el que hace visible el
+    // efecto. El dominante suele ser el fundamental (casi afinado: no distingue
+    // nada) y los indices de cola son ruido del analisis (amplitud ~0).
+    constexpr float kMinAmp = 0.05f;
+
+    int k = -1;
+    float worst = 0.0f;
+
+    for (int i = 0; i < 64; ++i)
+    {
+        if (m.ampAt (0, i) < kMinAmp) continue;
+
+        const float dev = std::abs (m.offsetAt (0, i));
+
+        if (k < 0 || dev > worst) { k = i; worst = dev; }
+    }
+
+    if (k < 0) return;
+
+    const double n = (double) (k + 1);
+    const double off = (double) m.offsetAt (0, k);
+    const double up = 2.0;                       // una octava arriba
+
+    std::printf ("[probe]   offsets transp.: parcial %d (n=%g, amp %.3f), offset %+.1f Hz sobre %.1f Hz\n",
+                 k + 1, n, (double) m.ampAt (0, k), off, (double) f0);
+    std::printf ("[probe]     en la rejilla: %+.1f cents (lo que midio el analisis)\n",
+                 1200.0 * std::log2 ((n * f0 + off) / (n * f0)));
+    std::printf ("[probe]     una octava arriba, offset en Hz: %+.1f cents (se PARTE: el modelo cambia con la nota)\n",
+                 1200.0 * std::log2 ((n * f0 * up + off) / (n * f0 * up)));
+    std::printf ("[probe]     una octava arriba, modo ratio:    %+.1f cents (se conserva: el motor escala por base/f0)\n",
+                 1200.0 * std::log2 (1.0 + off / (n * f0)));
 }
 
 float centroid (const SpectralModel& m)
@@ -126,6 +139,16 @@ struct AcousticCheck
     int validated = 0;
     float medianCents = 0.0f;
     float maxCents = 0.0f;
+
+    // 2026-09-26: REJILLAS ENTRELAZADAS. Un material construido sobre una
+    // sub-oscilacion (f0/2 con familias propias) tiene DOS familias de
+    // picos reales: la de la rejilla del modelo (k*f0) y la de la
+    // sub-rejilla (impares de f0/2, que ninguna rejilla k*f0 representa).
+    // Un parcial del modelo cuyo pico medido cae sobre un impar de f0/2 NO
+    // es un error del modelo: es energia de la OTRA familia que vive en
+    // su banda. El diagnostico lo explica y lo saca del maximo.
+    int interlacedCount = 0;
+    float interlacedCents = 0.0f;   // el mas grande explicado
 };
 
 float windowedBinMag (const float* seg, int n, double bin)
@@ -179,6 +202,7 @@ AcousticCheck acousticCheck (const SpectralModel& model, const juce::AudioBuffer
                { return model.amplitudes[(size_t) a] > model.amplitudes[(size_t) b]; });
 
     std::vector<float> centsAll;
+    std::vector<float> centsOwn;   // solo la familia que la rejilla representa
     AcousticCheck out;
     for (int idx = 0; idx < 64 && (int) centsAll.size() < 8; ++idx)
     {
@@ -214,12 +238,38 @@ AcousticCheck acousticCheck (const SpectralModel& model, const juce::AudioBuffer
         const double measured = ((double) peakBin + (double) delta) * binHz;
 
         const double cents = 1200.0 * std::log2 (measured / center);
-        centsAll.push_back ((float) cents);
-        out.maxCents = juce::jmax (out.maxCents, (float) std::abs (cents));
-        ++out.validated;
 
-        std::printf ("[probe]     parcial %2d: modelo %.1f Hz vs medida %.1f Hz -> %+.1f cents (amp %.2f)\n",
-                     k, center, measured, cents, (double) amp);
+        // REJILLAS ENTRELAZADAS (2026-09-26): el pico real de la banda puede
+        // ser un impar de f0/2 — la sub-rejilla de la fuente, que NINGUNA
+        // rejilla k*f0 representa. Firma: el pico esta a MENOS de un
+        // cuarto de f0 de un impar de f0/2 Y a mas de un cuarto de f0 de
+        // k*f0 (si estuviera sobre su armónico, la desviacion seria fina).
+        const double halfGrid = 0.5 * (double) f0Ladder;
+        const double odd = std::round (measured / halfGrid);
+        const double oddHz = odd * halfGrid;
+        const bool oddUsable = odd >= 1.0 && std::abs (measured - oddHz) < 0.25 * (double) f0Ladder;
+        const bool onOwnGrid = std::abs (measured - center) < 0.25 * (double) f0Ladder;
+        const bool interlaced = oddUsable && ! onOwnGrid && (odd * 2.0 > (double) k + 0.5);
+
+        if (interlaced)
+        {
+            ++out.interlacedCount;
+            out.interlacedCents = juce::jmax (out.interlacedCents, (float) std::abs (cents));
+            std::printf ("[probe]     parcial %2d: modelo %.1f Hz vs medida %.1f Hz -> %+.1f cents (amp %.2f)"
+                         "  [ENTRELAZADO: pico real = impar %.0f de %.1f Hz = %.1f Hz,"
+                         " la sub-rejilla de la fuente; el modelo no la representa]\n",
+                         k, center, measured, cents, (double) amp, odd, halfGrid, oddHz);
+        }
+        else
+        {
+            out.maxCents = juce::jmax (out.maxCents, (float) std::abs (cents));
+            std::printf ("[probe]     parcial %2d: modelo %.1f Hz vs medida %.1f Hz -> %+.1f cents (amp %.2f)\n",
+                         k, center, measured, cents, (double) amp);
+        }
+        centsAll.push_back ((float) cents);
+        if (! interlaced)
+            centsOwn.push_back ((float) cents);
+        ++out.validated;
     }
 
     if (out.validated < 3) fail ("menos de 3 parciales validables acusticamente");
@@ -227,10 +277,18 @@ AcousticCheck acousticCheck (const SpectralModel& model, const juce::AudioBuffer
     // MEDIANA del error = contrato: si el modelo esta des-afinado (octava
     // erronea ~1200 cents, barrido de pitch cientos), la mediana lo refleja;
     // los picos vecinos sueltos (outliers de la fuente) no.
-    std::sort (centsAll.begin(), centsAll.end());
-    const int n = (int) centsAll.size();
-    out.medianCents = (n % 2 == 1) ? centsAll[(size_t) (n / 2)]
-                                   : 0.5f * (centsAll[(size_t) (n / 2 - 1)] + centsAll[(size_t) (n / 2)]);
+    // 2026-09-26: y los REJILLAS ENTRELAZADAS tampoco — el pico real de esa
+    // banda es la OTRA familia de la fuente (impares de f0/2), que ninguna
+    // rejilla k*f0 representa; no mide la fidelidad del modelo sino la
+    // riqueza de la fuente. La mediana se toma sobre la familia que la
+    // rejilla SI representa (reserva: con menos de 3, sobre todas).
+    const std::vector<float>& medianaFuente =
+        (centsOwn.size() >= 3) ? centsOwn : centsAll;
+    std::vector<float> ordenada (medianaFuente);
+    std::sort (ordenada.begin(), ordenada.end());
+    const int n = (int) ordenada.size();
+    out.medianCents = (n % 2 == 1) ? ordenada[(size_t) (n / 2)]
+                                   : 0.5f * (ordenada[(size_t) (n / 2 - 1)] + ordenada[(size_t) (n / 2)]);
     if (std::abs (out.medianCents) > 35.0f)
     {
         // FASE 10.6: para material con barrido de pitch (CZ-RRISE) el modelo
@@ -336,17 +394,60 @@ void probeWav (const juce::File& wav, const juce::File& outDir,
 
     // 2. El flujo exacto de la GUI: detectPitch -> analyze
     NEURONiK::ModelMaker::Analysis::SpectralAnalyzer analyzer;
-    const float f0 = analyzer.detectPitch (audio, sr);
-    std::printf ("[probe]   rejilla: residuo=%.1f cents  obs=%d  (indicador UI)\n",
-                 (double) analyzer.lastGridResidualCents (), analyzer.lastGridObservations ());
-    const SpectralModel model = analyzer.analyze (audio, sr, f0);
+    float f0 = analyzer.detectPitch (audio, sr);
+
+    // PROBE_F0=<hz>: la rejilla la fija el USUARIO — la via manual del
+    // ModelMaker (el campo de pitch y su DETECT). Sirve para medir si un f0 a
+    // mano (material por debajo del suelo del estimador, p. ej. E1 = 41.62 Hz)
+    // produce el modelo correcto y, sobre todo, que hacen los frames del
+    // analisis temporal cuando la rejilla no la ha puesto el estimador.
+    // Sin la variable el flujo es el de siempre.
+    bool manualF0 = false;
+    if (const char* env = std::getenv ("PROBE_F0"))
+    {
+        const float typed = juce::String (env).getFloatValue();
+        if (typed > 0.0f)
+        {
+            f0 = typed;
+            manualF0 = true;
+        }
+    }
+
+    // PROBE_FIXED=1: modo REJILLA FIJA (el declarado del ModelMaker) — el
+    // analisis no sigue el pitch por ventana y el modelo lo escribe. Se combina
+    // con PROBE_F0 (la rejilla declarada); sin PROBE_F0 la declarada es la que
+    // detecta el estimador, que tambien sirve para medir el modo.
+    const bool fixedGrid = std::getenv ("PROBE_FIXED") != nullptr
+                           && juce::String (std::getenv ("PROBE_FIXED")).trim() == "1";
+
+    // PROBE_TRANSPOSE=1: OFFSETS TRANSPONIBLES (2026-09-25) — el modelo
+    // exportado declara "offsetsTranspose": los offsets son RATIOS contra
+    // la rejilla de analisis y el motor los escala por base/f0, asi que la
+    // inharmonicidad se transpone con el teclado. Ademas se mide, sobre el
+    // modelo temporal, el recorrido del offset en Hz frente al del ratio.
+    const bool transpose = std::getenv ("PROBE_TRANSPOSE") != nullptr
+                           && juce::String (std::getenv ("PROBE_TRANSPOSE")).trim() == "1";
+    // 2026-09-26: el residuo se cita con la MISMA frase que la fila del aviso
+    // del ModelMaker y que el dialogo que bloquea la exportacion
+    // (SpectralAnalyzer::gridResidualNotice): las tres superficies dicen lo mismo
+    // del mismo material, y "n/d" significa lo mismo en las tres.
+    std::printf ("[probe]   rejilla: %s  (indicador UI)\n",
+                 analyzer.gridResidualNotice ().toRawUTF8 ());
+    SpectralModel model = analyzer.analyze (audio, sr, f0, fixedGrid);
+
+    if (transpose)
+        model.offsetsTranspose = true;
 
     // GUARDIA (2026-09-23): el analizador reporta la desviacion de pitch del
     // material. Para barridos el estatico no es representable: la via
     // correcta es el modelo temporal con f0 por frame (FASE 10.6).
+    // RESIDUO (2026-09-26): la guardia cita el residuo con la MISMA frase que la
+    // fila del aviso del ModelMaker y que el dialogo de exportacion, para que el
+    // reporte diga de que CLASE es el material junto a cuanto se ha movido, en vez
+    // de repartirlo por dos lineas con dos formatos.
     if (const float guardCents = analyzer.lastPitchGuardCents(); guardCents > 0.0f)
-        std::printf ("[probe]   guardia: desviacion de pitch %.0f cents (material no cuasi-monotonico)\n",
-                     (double) guardCents);
+        std::printf ("[probe]   guardia: desviacion de pitch %.0f cents (material no cuasi-monotonico) | %s\n",
+                     (double) guardCents, analyzer.gridResidualNotice ().toRawUTF8 ());
 
     if (f0 <= 20.0f || f0 > 5000.0f) fail ("detectPitch fuera de rango audible");
     if (model.frameCount != 1)       fail ("el analizador monoframe debe dar frameCount=1");
@@ -366,6 +467,15 @@ void probeWav (const juce::File& wav, const juce::File& outDir,
 
     std::printf ("[probe]   f0=%.1f Hz  centroid=parcial %.1f  parciales activos=%d/64  top=%.3f\n",
                  (double) f0, (double) centroid (model), nonzero, (double) top);
+
+    if (manualF0)
+        std::printf ("[probe]   rejilla MANUAL (PROBE_F0): el usuario fija la f0 y el modelo sale de ella\n");
+
+    if (fixedGrid)
+        std::printf ("[probe]   modo REJILLA FIJA (PROBE_FIXED): sin seguimiento de pitch por ventana\n");
+
+    if (transpose)
+        std::printf ("[probe]   modo OFFSETS TRANSPONIBLES (PROBE_TRANSPOSE): el offset es ratio contra la rejilla\n");
 
     // 3. Export v2 de producción + recarga con el lector REAL
     const auto json = serializeV2 (model, wav.getFileNameWithoutExtension());
@@ -394,6 +504,22 @@ void probeWav (const juce::File& wav, const juce::File& outDir,
         const AcousticCheck ac = acousticCheck (model, audio, sr, f0);
         std::printf ("[probe]   acustica: %d parciales (top-8), mediana %+.1f cents, max %.1f cents\n",
                      ac.validated, (double) ac.medianCents, (double) ac.maxCents);
+        if (ac.interlacedCount > 0)
+        {
+            const int propios = ac.validated - ac.interlacedCount;
+            if (propios >= 3)
+                std::printf ("[probe]   (mediana sobre %d parciales de la rejilla; los demas son la otra familia)\n",
+                             propios);
+            else
+                std::printf ("[probe]   (mediana sobre TODOS: la rejilla propia no llega a 3 parciales; "
+                             "%d de %d son la otra familia)\n",
+                             ac.interlacedCount, ac.validated);
+        }
+        if (ac.interlacedCount > 0)
+            std::printf ("[probe]   rejillas entrelazadas: %d pico(s) explicado(s) como la OTRA familia"
+                         " de la fuente (impares de f0/2); el max %.1f cents es de la sub-rejilla," 
+                         " no del modelo\n",
+                         ac.interlacedCount, (double) ac.interlacedCents);
     }
 
     // 5. E2E con el ENGINE real: el modelo generado entra por la via de
@@ -422,8 +548,25 @@ void probeWav (const juce::File& wav, const juce::File& outDir,
     //    los 4 frames y recarga. Con material real los frames deben diferir
     //    (evolucion temporal) y todos con pico valido.
     {
-        const SpectralModel temp = analyzer.analyzeTemporal (audio, sr, f0, 4);
+        SpectralModel temp = analyzer.analyzeTemporal (audio, sr, f0, 4, fixedGrid);
+
+        if (transpose)
+            temp.offsetsTranspose = true;
         if (temp.frameCount != 4) fail ("analyzeTemporal no produjo 4 frames");
+
+        // PUERTA DE PLEGADO DE OCTAVA (plan 10.3): la dispersion de las f0 por
+        // ventana CON LA OCTAVA PLEGADA es el discriminador mono-rejilla /
+        // bi-rejilla del material (y la condicion que paga el clustering). Se
+        // imprime la dispersion CRUDA al lado porque es la que delata la
+        // inestabilidad de octava del estimador (PAD1: 1200.5 cents crudos que
+        // plegados caen a ~0: una sola rejilla, dos lecturas del estimador).
+        {
+            const auto& fold = analyzer.lastOctaveFold();
+            std::printf ("[probe]   plegado: %.1f cents post-plegado (crudo %.1f, %d ventanas, %d saltos de octava) => %s\n",
+                         (double) fold.foldCents, (double) fold.rawCents, fold.observations, fold.octaveFlips,
+                         fold.biGrid ? "BI-REJILLA (raices distintas: no paga clustering)"
+                                     : "mono-rejilla (una sola rejilla)");
+        }
 
         float minTop = 1.0f, maxAmp0 = 0.0f;
         for (int fr = 0; fr < 4; ++fr)
@@ -440,6 +583,12 @@ void probeWav (const juce::File& wav, const juce::File& outDir,
         if (! tout.replaceWithText (tjson)) fail ("no se pudo escribir el modelo temporal");
         const SpectralModel tback = NEURONiK::Serialization::PresetManager::loadModelFromFile (tout);
         if (! tback.isValid || tback.frameCount != 4) fail ("frames perdidos en el ciclo temporal");
+
+        if (transpose)
+        {
+            if (! tback.offsetsTranspose) fail ("el modo offsetsTranspose no sobrevivio el ciclo");
+            transposeReport (tback, tback.frameSpanHz);
+        }
 
         // FASE 10.6: las raices por frame sobreviven el ciclo y forman la
         // TRAYECTORIA de pitch que el motor reproduce al mover morphZ
@@ -465,6 +614,92 @@ void probeWav (const juce::File& wav, const juce::File& outDir,
                      "trayectoria f0=%.1f..%.1f Hz\n",
                      (int) tjson.length(), (double) minTop, (double) maxAmp0,
                      (double) f0Min, (double) f0Max);
+
+        // FASE 11.3: las CAPAS en el MOTOR. El modelo temporal de arriba puede
+        // venir con mas de una capa (el clustering de la 11.2): aqui se mide que
+        // el motor las SUMA (cada capa aporta a la tabla de parciales que pinta
+        // la UI, que es la que el motor tiene viva) y que la capa 1 responde a SU
+        // eje z (morphZ2). Con una sola capa no hay nada que sumar y se dice.
+        if (! tback.isLayered())
+        {
+            std::printf ("[probe]   capas en el motor: UNA capa (el clustering no separo nada)\n");
+        }
+        else
+        {
+            const auto layerMask = [] (const SpectralModel& m, int layer, std::array<bool, 64>& mask)
+            {
+                int count = 0;
+
+                for (int i = 0; i < 64; ++i)
+                {
+                    bool active = false;
+
+                    for (int f = 0; f < m.numFramesOf (layer); ++f)
+                        active = active || m.ampAt (layer, f, i) > 0.0f;
+
+                    mask[(size_t) i] = active;
+                    if (active) ++count;
+                }
+
+                return count;
+            };
+
+            std::array<bool, 64> mask0 {}, mask1 {};
+            const int count0 = layerMask (tback, 0, mask0);
+            const int count1 = layerMask (tback, 1, mask1);
+
+            NEURONiKProcessor layered;
+            layered.setRateAndBufferSizeDetails (sr, 512);
+            layered.prepareToPlay (sr, 512);
+            if (! layered.loadModel (tout, 0)) fail ("el engine rechazo el modelo de capas");
+
+            const auto energyOf = [&layered] (const std::array<bool, 64>& mask)
+            {
+                float sum = 0.0f;
+
+                for (int i = 0; i < 64; ++i)
+                    if (mask[(size_t) i])
+                        sum += layered.spectralDataForUI[(size_t) i].load();
+
+                return sum;
+            };
+
+            const auto renderAt = [&layered] (float z2)
+            {
+                if (auto* parameter = layered.getAPVTS().getParameter ("morphZ2"))
+                    parameter->setValueNotifyingHost (z2);
+
+                juce::AudioBuffer<float> block (2, 512);
+
+                for (int b = 0; b < 12; ++b)
+                {
+                    juce::MidiBuffer midi;
+
+                    if (b == 0)
+                        midi.addEvent (juce::MidiMessage::noteOn (1, 60, 0.9f), 0);
+
+                    block.clear();
+                    layered.processBlock (block, midi);
+                }
+            };
+
+            renderAt (0.0f);
+            const float energy0 = energyOf (mask0);
+            const float energy1 = energyOf (mask1);
+
+            renderAt (1.0f);
+            const float energy1End = energyOf (mask1);
+
+            std::printf ("[probe]   capas en el motor: %d capas (capa 0: %d indices, capa 1: %d)\n",
+                         tback.layerCount, count0, count1);
+            std::printf ("[probe]     motor z2=0: capa 0 = %.3f, capa 1 = %.3f\n",
+                         (double) energy0, (double) energy1);
+            std::printf ("[probe]     motor z2=1: capa 1 = %.3f (su propio eje mueve su peso)\n",
+                         (double) energy1End);
+
+            if (energy0 <= 0.001f) fail ("la capa 0 no suena en el motor");
+            if (energy1 <= 0.001f) fail ("la capa 1 no suena: el motor NO suma las capas");
+        }
     }
 
     std::printf ("[probe]   OK: ciclo completo WAV->modelo->recarga->sampleFrame->engine\n");

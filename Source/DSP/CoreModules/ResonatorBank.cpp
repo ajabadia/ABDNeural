@@ -107,11 +107,14 @@ void ResonatorBank::updateFilterCoefficients(int i, float partialFreq, float q, 
 
 const NEURONiK::Common::SpectralModel& ResonatorBank::frameForSlot (int slot) noexcept
 {
-    if (!frameCacheValid || morphZ != lastMorphZ)
+    if (!frameCacheValid || layerZ != lastLayerZ || layerGains != lastLayerGains)
     {
+        // FASE 11.3: el frame del slot es la SUMA de sus capas, cada una con su z.
+        // FASE 11.4: ...y cada una con SU ganancia (0 = capa callada).
         for (int s = 0; s < 4; ++s)
-            NEURONiK::Common::sampleFrame (models[(size_t) s], morphZ, frameCache[(size_t) s]);
-        lastMorphZ = morphZ;
+            NEURONiK::Common::sampleLayeredFrame (models[(size_t) s], layerZ, layerGains, frameCache[(size_t) s]);
+        lastLayerZ = layerZ;
+        lastLayerGains = layerGains;
         frameCacheValid = true;
     }
     return frameCache[(size_t) slot];
@@ -124,7 +127,7 @@ void ResonatorBank::updateParameters(float morphX, float morphY, float resonance
     float res = dsp::jlimit(0.0f, 1.0f, resonance);
     float det = dsp::jlimit(-1.0f, 1.0f, detune);
 
-    bool anythingChanged = modelChanged || (morphZ != lastConsumedZ) ||
+    bool anythingChanged = modelChanged || (layerZ != lastConsumedZ) || (layerGains != lastLayerGains) ||
                           (mx != lastMorphX) || (my != lastMorphY) ||
                           (res != lastRes) || (det != lastDetune) ||
                           (baseFrequency != lastBaseFreq);
@@ -132,7 +135,8 @@ void ResonatorBank::updateParameters(float morphX, float morphY, float resonance
     if (!anythingChanged) return;
 
     lastMorphX = mx; lastMorphY = my; lastRes = res; lastDetune = det;
-    lastConsumedZ = morphZ;
+    lastConsumedZ = layerZ;
+    lastLayerGains = layerGains;
     lastBaseFreq = baseFrequency;
     modelChanged = false;
 
@@ -159,7 +163,10 @@ void ResonatorBank::updateParameters(float morphX, float morphY, float resonance
         const float gridRatio = (mA.frameF0 > 0.0f && mA.f0At(0) > 0.0f)
                                     ? mA.frameF0 / mA.f0At(0)
                                     : 1.0f;
-        float partialFreq = ((baseFrequency * harmonicNumber) + freqOffset) * gridRatio;
+        // 2026-09-25: OFFSETS TRANSPONIBLES — misma regla que el motor
+        // aditivo: el offset sigue a la nota (factor 1.0 exacto sin modo).
+        const float offsetScale = mA.offsetScaleAt (baseFrequency);
+        float partialFreq = ((baseFrequency * harmonicNumber) + freqOffset * offsetScale) * gridRatio;
 
         updateFilterCoefficients(i, partialFreq, q, tempAmps[i], det);
     }

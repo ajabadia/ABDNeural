@@ -464,9 +464,18 @@ public:
     void sendFullSnapshot();
 
     /**
-     * @brief Send every parameter whose value changed since it was last reported.
+     * @brief Send every parameter whose value changed since it was last reported,
+     *        and the models too when their NAMES changed.
+     * @details Los modelos no son parametros del APVTS, asi que su cambio no cabe
+     *          en el sondeo de parametros — pero el sondeo es justo "lo que ha
+     *          cambiado en nativo", y una carga NATIVA (un preset, o el panel
+     *          nativo) no tiene otra via para llegar a la pagina: la unica otra
+     *          publicacion es la que responde a una carga pedida por la PROPIA
+     *          pagina. Sin esto, la ficha MODELOS A-D se quedaba con los nombres
+     *          viejos indefinidamente (y el pad con las esquinas viejas).
      * @returns how many parameterChanged messages were sent (one per parameter,
      *          never one per change: a fast drag produces one message per poll).
+     *          Un modelsState del sondeo no cuenta aqui: no es un parametro.
      */
     int publishPendingChanges();
 
@@ -546,6 +555,15 @@ private:
     /** @brief Deliver a message if a transport is installed, counting the kind. */
     void send (const juce::var& message, bool isSnapshot);
 
+    /**
+     * @brief True when the model names differ from the last published ones.
+     * @details Compares NAMES (cheap, no 64+64-float copies): es lo que la pagina
+     *          ensena y lo que cambia al cargar un preset. Una actualizacion de
+     *          `lastModelNames` la hace esta misma funcion, que es la que declara
+     *          "ya esta publicado".
+     */
+    bool modelNamesChanged();
+
     juce::AudioProcessorValueTreeState& apvts;
     std::vector<Entry> entries;
     Sender sender;
@@ -555,6 +573,7 @@ private:
     RandomizeController* randomizer = nullptr; //!< not owned; the host outlives it
     int snapshotVersion = 0;
     Stats stats;
+    juce::StringArray lastModelNames;   //!< los nombres ya publicados, por ranura
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ParameterBridge)
 };

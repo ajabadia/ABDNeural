@@ -15,6 +15,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { describeControl } from '../src/contracts/parameters.js';
+import { MOD_DESTINATIONS } from '../generated/parameters.generated.js';
 import { PARAMETERS } from '../src/contracts/parameters.js';
 import { KINDS, createParameterControl, kindForControl } from '../src/ui/controls.js';
 
@@ -28,10 +29,11 @@ describe('controls / tipo por descriptor', () => {
   it('reparte el contrato en monos de la familia compartida', () => {
     const kinds = PARAMETERS.map((descriptor) => kindForControl(descriptor));
 
-    // 72 del contrato = 48 knobs + 5 toggles + 19 choices. Entre los knobs
-    // hay 46 celdas del reparto + masterLevel (baseline: el host lo monta como
-    // range nativo, pero SU TIPO es float/knob) + MORPH-Z (FASE 10).
-    expect(kinds.filter((kind) => kind === KINDS.knob)).toHaveLength(48);
+    // 73 del contrato (2026-09-26: - filterEnvAmount) = 49 knobs + 5 toggles
+    // + 19 choices. Entre los knobs hay 47 celdas del reparto + masterLevel
+    // (baseline: el host lo monta como range nativo, pero SU TIPO es
+    // float/knob) + los tres MORPH-Z (FASE 10 y los dos de las capas, 11.3).
+    expect(kinds.filter((kind) => kind === KINDS.knob)).toHaveLength(49);
     expect(kinds.filter((kind) => kind === KINDS.toggle)).toHaveLength(5);
     expect(kinds.filter((kind) => kind === KINDS.choice)).toHaveLength(19);
   });
@@ -164,22 +166,35 @@ describe('controls / gating por motor', () => {
     expect(optionFor(control, 'Odd/Even Bal').disabled).toBe(false);  // Neuronik-only
     expect(optionFor(control, 'Osc Level').disabled).toBe(false);     // de los dos
 
-    // La nota explica el porqué, y el nombre del motor sale del CONTRATO.
-    expect(optionFor(control, 'Excite Noise').title).toContain('Neurotik');
+    // La nota explica el porqué, y el nombre del motor sale del CONTRATO. La vía
+    // es la del Select compartido: aria-describedby sobre la opción, el texto en
+    // el span de notas — NUNCA un title (mouse-only, decisión del componente).
+    const noiseOption = optionFor(control, 'Excite Noise');
+    const noteId = noiseOption.getAttribute('aria-describedby');
+
+    expect(noteId).toBeTruthy();
+    expect(document.getElementById(noteId).textContent).toContain('Neurotik');
 
     control.setEngine(NEUROTIK);
 
     expect(optionFor(control, 'Excite Noise').disabled).toBe(false);
     expect(optionFor(control, 'Odd/Even Bal').disabled).toBe(true);
     expect(optionFor(control, 'Filter Cutoff').disabled).toBe(true);
-    expect(optionFor(control, 'Odd/Even Bal').title).toContain('NEURONiK');
+
+    const oddOption = optionFor(control, 'Odd/Even Bal');
+    const oddNoteId = oddOption.getAttribute('aria-describedby');
+
+    expect(oddNoteId).toBeTruthy();
+    expect(document.getElementById(oddNoteId).textContent).toContain('NEURONiK');
   });
 
   it('el valor NO se reescribe: se marca como divergente', () => {
     const onChange = vi.fn();
     const control = mount('mod1Destination', { onChange });
 
-    control.setNormalized(23 / 28);   // "Excite Noise", del otro motor (28 = Morph Z, anadido al final)
+    // El ultimo indice sale del CONTRATO: la tabla crecio con Morph Z 2/3 (FASE
+    // 11.3) y el 23/28 escrito a mano dejaba de apuntar a "Excite Noise".
+    control.setNormalized(23 / (MOD_DESTINATIONS.length - 1));   // "Excite Noise", del otro motor
     control.setEngine(NEURONIK);
 
     const field = control.element.querySelector('select');

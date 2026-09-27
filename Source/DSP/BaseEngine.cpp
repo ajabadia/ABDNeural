@@ -16,6 +16,11 @@ namespace NEURONiK::DSP {
 
 BaseEngine::BaseEngine()
 {
+    // Capacidad FIJA (32 = kMaxVoices): la reserva perezosa hace push_back, y el
+    // hilo de audio ya indexa `voices`. Con la capacidad reservada de una vez, crecer
+    // NUNCA reasigna el buffer: como mucho el audio ve una voz de mas, nunca un
+    // puntero que se movio debajo.
+    voices.reserve ((size_t) kMaxVoices);
 }
 
 void BaseEngine::prepare(double sampleRate, int samplesPerBlock)
@@ -38,6 +43,10 @@ void BaseEngine::prepare(double sampleRate, int samplesPerBlock)
     {
         if (voice) voice->prepare(sampleRate, samplesPerBlock);
     }
+
+    // A partir de aqui las voces nuevas se preparan al crearse (ensureVoices).
+    voicesPrepared = true;
+    ensureVoices (activeVoiceLimit.load());
 }
 
 void BaseEngine::updateParameters()
@@ -125,7 +134,33 @@ int BaseEngine::getNumActiveVoices() const
 
 void BaseEngine::setPolyphony(int numVoices)
 {
-    activeVoiceLimit.store(dsp::jlimit(1, 32, numVoices));
+    const int limit = dsp::jlimit(1, kMaxVoices, numVoices);
+
+    // Crecer ANTES de publicar el limite: el hilo de audio indexa `voices[i]` para
+    // i < activeVoiceLimit, asi que la invariante `size() >= limit` tiene que estar
+    // puesta cuando el limite nuevo se vea. La reserva la hace el hilo de mensajes
+    // (o el que prepara el motor), nunca el de audio.
+    //
+    // BAJAR el limite NO devuelve las voces: una voz puede estar sonando su cola y
+    // desalojarla la cortaria; la reserva es de TECHO. Quien quiera reclamar memoria
+    // tiene que recrear el motor.
+    ensureVoices (limit);
+    activeVoiceLimit.store(limit);
+}
+
+void BaseEngine::ensureVoices(int count)
+{
+    const int target = dsp::jlimit(1, kMaxVoices, count);
+
+    while ((int) voices.size() < target)
+    {
+        const int index = (int) voices.size();
+
+        voices.push_back (createVoice (index));
+
+        if (voicesPrepared && voices.back() != nullptr)
+            voices.back()->prepare (currentSampleRate, currentSamplesPerBlock);
+    }
 }
 
 void BaseEngine::allNotesOff()

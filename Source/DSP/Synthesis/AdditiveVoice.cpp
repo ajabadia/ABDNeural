@@ -39,6 +39,10 @@ void AdditiveVoice::prepare(double sampleRate, int samplesPerBlock)
     morphXSmoother.reset(sampleRate, 0.02);
     morphYSmoother.reset(sampleRate, 0.02);
     morphZSmoother.reset(sampleRate, 0.02);
+    morphZ2Smoother.reset(sampleRate, 0.02);
+    morphZ3Smoother.reset(sampleRate, 0.02);
+    layerGain2Smoother.reset(sampleRate, 0.02);
+    layerGain3Smoother.reset(sampleRate, 0.02);
     inharmonicitySmoother.reset(sampleRate, 0.02);
     roughnessSmoother.reset(sampleRate, 0.02);
     paritySmoother.reset(sampleRate, 0.02);
@@ -53,6 +57,10 @@ void AdditiveVoice::prepare(double sampleRate, int samplesPerBlock)
     morphXSmoother.setCurrentAndTargetValue(pendingParams.morphX);
     morphYSmoother.setCurrentAndTargetValue(pendingParams.morphY);
     morphZSmoother.setCurrentAndTargetValue(pendingParams.morphZ);
+    morphZ2Smoother.setCurrentAndTargetValue(pendingParams.morphZ2);
+    morphZ3Smoother.setCurrentAndTargetValue(pendingParams.morphZ3);
+    layerGain2Smoother.setCurrentAndTargetValue(pendingParams.layerGain2);
+    layerGain3Smoother.setCurrentAndTargetValue(pendingParams.layerGain3);
     inharmonicitySmoother.setCurrentAndTargetValue(pendingParams.inharmonicity);
     roughnessSmoother.setCurrentAndTargetValue(pendingParams.roughness);
     paritySmoother.setCurrentAndTargetValue(pendingParams.resonatorParity);
@@ -87,6 +95,10 @@ void AdditiveVoice::noteOn(int midiNoteNumber, float velocity)
     morphXSmoother.setCurrentAndTargetValue(pendingParams.morphX);
     morphYSmoother.setCurrentAndTargetValue(pendingParams.morphY);
     morphZSmoother.setCurrentAndTargetValue(pendingParams.morphZ);
+    morphZ2Smoother.setCurrentAndTargetValue(pendingParams.morphZ2);
+    morphZ3Smoother.setCurrentAndTargetValue(pendingParams.morphZ3);
+    layerGain2Smoother.setCurrentAndTargetValue(pendingParams.layerGain2);
+    layerGain3Smoother.setCurrentAndTargetValue(pendingParams.layerGain3);
     inharmonicitySmoother.setCurrentAndTargetValue(pendingParams.inharmonicity);
     roughnessSmoother.setCurrentAndTargetValue(pendingParams.roughness);
     paritySmoother.setCurrentAndTargetValue(pendingParams.resonatorParity);
@@ -121,19 +133,24 @@ void AdditiveVoice::updateParameters()
                               currentParams.sustain, 
                               currentParams.release);
                               
-    // Destinos 12/13 (Flt Attack/Decay por matriz): solo ENV 2 llega aqui
-    // (la engine solo escribe modEnvFltAttack/Decay con source==7), en la
-    // misma mecanica que la ADSR amp.
+    // Destinos 12-16 de la ADSR del filtro: solo ENV 2 llega aqui (la engine
+    // solo escribe los modEnvFlt* con source==7), en la misma mecanica que la
+    // ADSR amp. El 12 es "Filter Env Amt": suma al FACTOR de routing de la
+    // ruta ENV 2 -> Filter Cutoff (ver modEnvFltDepth en IVoice.h).
     filterEnvelope.setParameters(currentParams.fAttack + modEnvFltAttack,
                                  currentParams.fDecay + modEnvFltDecay,
-                                 currentParams.fSustain,
-                                 currentParams.fRelease);
+                                 dsp::jlimit(0.0f, 1.0f, currentParams.fSustain + modEnvFltSustain),
+                                 currentParams.fRelease + modEnvFltRelease);
 
     cutoffSmoother.setTargetValue(currentParams.filterCutoff);
     resSmoother.setTargetValue(currentParams.filterRes);
     morphXSmoother.setTargetValue(currentParams.morphX);
     morphYSmoother.setTargetValue(currentParams.morphY);
     morphZSmoother.setTargetValue(currentParams.morphZ);
+    morphZ2Smoother.setTargetValue(currentParams.morphZ2);
+    morphZ3Smoother.setTargetValue(currentParams.morphZ3);
+    layerGain2Smoother.setTargetValue(currentParams.layerGain2);
+    layerGain3Smoother.setTargetValue(currentParams.layerGain3);
     inharmonicitySmoother.setTargetValue(currentParams.inharmonicity);
     roughnessSmoother.setTargetValue(currentParams.roughness);
     paritySmoother.setTargetValue(currentParams.resonatorParity);
@@ -155,6 +172,13 @@ bool AdditiveVoice::renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int s
     float startMorphX = dsp::jlimit(0.0f, 1.0f, morphXSmoother.getNextValue() + modMorphX);
     float startMorphY = dsp::jlimit(0.0f, 1.0f, morphYSmoother.getNextValue() + modMorphY);
     float startMorphZ = dsp::jlimit(0.0f, 1.0f, morphZSmoother.getNextValue() + modMorphZ);
+    // FASE 11.3: los z de las capas 1 y 2. Solo llegan al sonido si el modelo
+    // cargado tiene esa capa; el resto del camino es el de siempre.
+    float startMorphZ2 = dsp::jlimit(0.0f, 1.0f, morphZ2Smoother.getNextValue() + modMorphZ2);
+    float startMorphZ3 = dsp::jlimit(0.0f, 1.0f, morphZ3Smoother.getNextValue() + modMorphZ3);
+    // FASE 11.4: el volumen de las capas 1 y 2 (sin modulacion propia).
+    float startLayerGain2 = dsp::jlimit(0.0f, 1.0f, layerGain2Smoother.getNextValue());
+    float startLayerGain3 = dsp::jlimit(0.0f, 1.0f, layerGain3Smoother.getNextValue());
     float startInharmonicity = dsp::jlimit(0.0f, 1.0f, inharmonicitySmoother.getNextValue() + modInharmonicity);
     float startRoughness = dsp::jlimit(0.0f, 1.0f, roughnessSmoother.getNextValue() + modRoughness);
     float startParity = dsp::jlimit(0.0f, 1.0f, paritySmoother.getNextValue() + modParity);
@@ -170,6 +194,10 @@ bool AdditiveVoice::renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int s
     resonator.setRollOff(startRollOff);
     resonator.setUnison(startDetune, startSpread);
     resonator.setMorphZ(startMorphZ);
+    resonator.setLayerMorphZ(1, startMorphZ2);
+    resonator.setLayerMorphZ(2, startMorphZ3);
+    resonator.setLayerGain(1, startLayerGain2);
+    resonator.setLayerGain(2, startLayerGain3);
     resonator.updateHarmonicsFromModels(startMorphX, startMorphY);
     resonator.prepareEntropy(numSamples);
 
@@ -192,6 +220,10 @@ bool AdditiveVoice::renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int s
         morphXSmoother.skip(thisBlockSamples - 1);
         morphYSmoother.skip(thisBlockSamples - 1);
         morphZSmoother.skip(thisBlockSamples - 1);
+        morphZ2Smoother.skip(thisBlockSamples - 1);
+        morphZ3Smoother.skip(thisBlockSamples - 1);
+        layerGain2Smoother.skip(thisBlockSamples - 1);
+        layerGain3Smoother.skip(thisBlockSamples - 1);
         inharmonicitySmoother.skip(thisBlockSamples - 1);
         roughnessSmoother.skip(thisBlockSamples - 1);
         paritySmoother.skip(thisBlockSamples - 1);
@@ -210,9 +242,10 @@ bool AdditiveVoice::renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int s
             
             // ENV 2 -> Filter Cutoff por matriz (ver IVoice.h): modEnvCutoff es
             // el FACTOR de routing (reset 1.0; la matriz lo sobrescribe con el
-            // amount). El knob Filter Env Amount sigue siendo la profundidad; la
-            // ruta modula cuanta env entra.
-            const float env2Depth = currentParams.fEnvAmount * modEnvCutoff;
+            // amount) y modEnvFltDepth (destino "Filter Env Amt", 12) le SUMA.
+            // El amount de la ruta es LA profundidad (bipolar: negativo invierte
+            // la env); filterEnvAmount se retiro por redundante (2026-09-26).
+            const float env2Depth = modEnvCutoff + modEnvFltDepth;
             float targetCutoff = currentCutoff + modCutoff + (fEnv * env2Depth * 18000.0f);
             filter.setCutoff(dsp::jlimit(20.0f, 20000.0f, targetCutoff));
             filter.setResonance(currentRes);
@@ -276,6 +309,10 @@ void AdditiveVoice::reset()
     morphXSmoother.setCurrentAndTargetValue(pendingParams.morphX);
     morphYSmoother.setCurrentAndTargetValue(pendingParams.morphY);
     morphZSmoother.setCurrentAndTargetValue(pendingParams.morphZ);
+    morphZ2Smoother.setCurrentAndTargetValue(pendingParams.morphZ2);
+    morphZ3Smoother.setCurrentAndTargetValue(pendingParams.morphZ3);
+    layerGain2Smoother.setCurrentAndTargetValue(pendingParams.layerGain2);
+    layerGain3Smoother.setCurrentAndTargetValue(pendingParams.layerGain3);
     inharmonicitySmoother.setCurrentAndTargetValue(pendingParams.inharmonicity);
     roughnessSmoother.setCurrentAndTargetValue(pendingParams.roughness);
     paritySmoother.setCurrentAndTargetValue(pendingParams.resonatorParity);

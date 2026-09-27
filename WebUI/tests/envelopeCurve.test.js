@@ -17,7 +17,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { describeControl } from '../src/contracts/parameters.js';
-import { ENVELOPE_VIEWBOX, createEnvelopeCurve, envelopePoints } from '../src/ui/envelopeCurve.js';
+import {
+  ENVELOPE_VIEWBOX,
+  NEEDLE_FLOOR,
+  createEnvelopeCurve,
+  envelopeNeedlePath,
+  envelopePoints,
+} from '../src/ui/envelopeCurve.js';
 
 const ENV_IDS = ['envAttack', 'envDecay', 'envSustain', 'envRelease'];
 const ENV_CONTROLS = ENV_IDS.map(describeControl);
@@ -155,5 +161,42 @@ describe('curva ADSR / pintor', () => {
     curve.paint({});
 
     expect(curve.element.querySelector('.envelope-curve__line').getAttribute('d')).toMatch(/^M0\.00,/);
+  });
+
+  it('la AGUJA de nivel: oculta en silencio, visible y a la altura del nivel con frame', () => {
+    const curve = createEnvelopeCurve({ controls: ENV_CONTROLS });
+    const needle = () => curve.element.querySelector('.envelope-curve__level');
+
+    // Antes de cualquier frame (y con 0/silencio): OCULTA.
+    expect(needle().dataset.visible).toBe('false');
+    curve.setLevel(0);
+    expect(needle().dataset.visible).toBe('false');
+    curve.setLevel(NEEDLE_FLOOR);
+    expect(needle().dataset.visible).toBe('false');
+
+    // Nivel medio: visible y la linea a MITAD de altura del viewBox.
+    curve.setLevel(0.5);
+    expect(needle().dataset.visible).toBe('true');
+    const d = needle().getAttribute('d');
+    expect(d).toBe(envelopeNeedlePath(0.5));
+    const y = Number(/M0,([\d.]+) L/.exec(d)[1]);
+    expect(y).toBeCloseTo(ENVELOPE_VIEWBOX.height / 2, 1);
+
+    // Vuelve a silencio y se esconde (no se queda la ultima aguja congelada).
+    curve.setLevel(0.001);
+    expect(needle().dataset.visible).toBe('false');
+
+    // Basura del cable (undefined/NaN): tratada como silencio.
+    curve.setLevel(undefined);
+    curve.setLevel(Number.NaN);
+    expect(needle().dataset.visible).toBe('false');
+  });
+
+  it('la matemática de la aguja es una horizontal al nivel pedido', () => {
+    const { width, height } = ENVELOPE_VIEWBOX;
+    const d = envelopeNeedlePath(1);
+
+    expect(d).toBe(`M0,${(2).toFixed(2)} L${width},${(2).toFixed(2)}`);   // pico = margen superior
+    expect(envelopeNeedlePath(0).endsWith(`L${width},${(height - 2).toFixed(2)}`)).toBe(true);
   });
 });

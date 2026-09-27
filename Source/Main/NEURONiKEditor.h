@@ -98,7 +98,11 @@ private:
      *          comprueban entre si en `WebUI/tests/sections.test.js`.
      */
     static constexpr int canvasWidth = 1440;
-    static constexpr int canvasHeight = 900;
+    // 946 = 892 del lienzo de fichas + 54 de la fila del LCD superior + 8 de
+    // aire (la migracion del LcdDisplay/LcdMenuManager del interface C++; los
+    // numeros viven como GEOMETRY.lcd/CANVAS en WebUI/src/contracts/sections.js
+    // — el espejo del comentario de arriba).
+    static constexpr int canvasHeight = 946;
     static constexpr int menuBarHeight = 25;
     static constexpr int baseWidth = canvasWidth;
     static constexpr int baseHeight = canvasHeight + menuBarHeight;

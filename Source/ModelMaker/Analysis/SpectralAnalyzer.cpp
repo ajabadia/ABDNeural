@@ -27,6 +27,16 @@
 
 namespace NEURONiK::ModelMaker::Analysis {
 
+// SUELO DEL ESTIMADOR (2026-09-25): 50 Hz cuantizados al bin. Fuente unica:
+// el ancla de detectPitchImpl y la politica de f0 por frame de analyzeTemporal
+// preguntan aqui, para que no puedan separarse.
+float SpectralAnalyzer::anchorFloorHz (double sampleRate) noexcept
+{
+    const float binWidth = static_cast<float> (sampleRate) / static_cast<float> (fftSize);
+    const int minBin = juce::jlimit (2, fftSize / 2, static_cast<int> (50.0f / binWidth));
+    return static_cast<float> (minBin) * binWidth;
+}
+
 SpectralAnalyzer::SpectralAnalyzer()
 {
     fftData.resize(static_cast<size_t>(fftSize * 2), 0.0f);
@@ -63,7 +73,8 @@ float SpectralAnalyzer::detectPitchImpl (double sampleRate) const
 {
     const int numBins = fftSize / 2 + 1;
     const float binWidth = static_cast<float> (sampleRate) / static_cast<float> (fftSize);
-    const int minBin = juce::jlimit (2, numBins - 1, static_cast<int> (50.0f / binWidth));
+    const int minBin = juce::jlimit (2, numBins - 1,
+                                     static_cast<int> (anchorFloorHz (sampleRate) / binWidth));
     const int maxBin = juce::jlimit (2, numBins - 1, static_cast<int> (2000.0f / binWidth));
 
     // 1. ANCLA: pico crudo en rango musical + esbozo +-1 bin
@@ -198,7 +209,8 @@ float SpectralAnalyzer::detectPitchImpl (double sampleRate) const
 }
 
 
-NEURONiK::Common::SpectralModel SpectralAnalyzer::analyze(const juce::AudioBuffer<float>& audio, double sampleRate, float rootFrequency)
+NEURONiK::Common::SpectralModel SpectralAnalyzer::analyze(const juce::AudioBuffer<float>& audio, double sampleRate, float rootFrequency,
+                                                         bool fixedGrid)
 {
     NEURONiK::Common::SpectralModel model;
 
@@ -313,6 +325,10 @@ NEURONiK::Common::SpectralModel SpectralAnalyzer::analyze(const juce::AudioBuffe
     // modelo particione en frames temporales. Sin el, el fallback unitario
     // (n*f0 con f0=1) envuelve por la dimension equivocada.
     model.frameSpanHz = rootFrequency;
+    // REJILLA FIJA (2026-09-25): procedencia del modo declarado. El analisis no
+    // cambia (ya usa la rejilla del llamador); el fichero dice que esa rejilla la
+    // fijo el usuario.
+    model.gridFixed = fixedGrid;
 
     return model;
 }
@@ -428,6 +444,14 @@ float SpectralAnalyzer::detectPitch(const juce::AudioBuffer<float>& audio, doubl
     // cabecera — la semilla del HPS ancla las bandas y el ajuste por minimos
     // cuadrados de TODAS las ventanas activas afina la raiz con sus picos.
     return fitGridLeastSquares(audio, sampleRate, seed);
+}
+
+// REJILLA FIJADA A MANO (2026-09-25): el llamador (ModelMaker) ya tiene su f0
+// (escrita por el usuario); aqui solo se pule y se reporta, sin HPS de por
+// medio. Es la via que cubre el material por debajo del suelo del estimador.
+float SpectralAnalyzer::refineGrid (const juce::AudioBuffer<float>& audio, double sampleRate, float seedHz)
+{
+    return fitGridLeastSquares (audio, sampleRate, seedHz);
 }
 
 // 2026-09-24: AJUSTE DE REJILLA POR MINIMOS CUADRADOS. Observaciones de
@@ -674,6 +698,18 @@ float SpectralAnalyzer::fitGridFromSpectrum (double sampleRate, float seedHz)
 
 
 
+// 2026-09-26: LA FRASE del residuo de rejilla (ver la cabecera de la
+// declaracion): una sola para las tres superficies del aviso de pitch, junto a la
+// medida que cita. Si el texto cambia, cambia en las tres a la vez.
+juce::String SpectralAnalyzer::gridResidualNotice() const
+{
+    if (gridResidCents < 0.0f)
+        return "residuo n/d (material insuficiente)";
+
+    return "residuo " + juce::String (gridResidCents, 1) + " cents ("
+           + juce::String (gridObsCount) + " picos)";
+}
+
 // 2026-09-23: GUARDIA de desviacion de pitch (analisis estatico). Mismas
 // ventanas que analyze(), pitch por ventana con el HPS refinado sobre el
 // espectro de cada una. Con la octava plegada (x2^k a [1, 2) contra la
@@ -763,9 +799,17 @@ float SpectralAnalyzer::detectPitchFromSpectrum (double sampleRate)
 // es el modelo canonico; frames 1..N-1 viven en extraAmps/extraOffsets.
 // Normalizacion por el maximo GLOBAL de frames: la evolucion de nivel entre
 // frames es informacion temporal (el decaimiento) y no se aplana.
+//
+// FASE 11.2 (2026-09-25): el MISMO espectro se lee ademas contra la rejilla
+// COMUN del llamador (rootFrequency). Esa segunda lectura alimenta el
+// clustering por forma de envolvente (LayerClustering.h) y, si el material
+// tiene >= 2 capas, es la que produce el modelo: las capas son sub-indices de
+// UNA rejilla, no de la rejilla de cada ventana. Sin capas (o sin rejilla
+// comun: el material barre el pitch) el volcado es exactamente el de antes.
 // ==============================================================================
 NEURONiK::Common::SpectralModel SpectralAnalyzer::analyzeTemporal(
-    const juce::AudioBuffer<float>& audio, double sampleRate, float rootFrequency, int frameCount)
+    const juce::AudioBuffer<float>& audio, double sampleRate, float rootFrequency, int frameCount,
+    bool fixedGrid, LayerMetric layerMetric)
 {
     NEURONiK::Common::SpectralModel model;
 
@@ -783,12 +827,31 @@ NEURONiK::Common::SpectralModel SpectralAnalyzer::analyzeTemporal(
     const float* right = (audio.getNumChannels() > 1) ? audio.getReadPointer(1) : nullptr;
 
     std::vector<std::array<PartialMeasurement, 64>> perFrame(static_cast<size_t>(nFrames));
+    /** FASE 11.2: la misma ventana medida contra la rejilla COMUN (ver arriba).
+        Solo se llena si la PUERTA DE PLEGADO (10.3) declara la rejilla COMUN:
+        es el PRE-FILTRO del plan 10.4 (material bi-rejilla no paga clustering). */
+    std::vector<std::array<PartialMeasurement, 64>> perFrameCommon(static_cast<size_t>(nFrames));
     // FASE 10.6: raiz detectada POR VENTANA (frame 0 usa la f0 global del
     // llamador: el canonico/legado no cambia).
     std::vector<float> frameF0s(static_cast<size_t>(nFrames), rootFrequency);
     float globalMax = 0.0f;
 
-    // 1. Una ventana por frame, repartidas por TODO el fichero ------------
+    // 2026-09-25 (plan 10.4): LA PUERTA DE PLEGADO DE OCTAVA ES UN PRE-FILTRO
+    // DEL ANALISIS TEMPORAL. El material BI-rejilla —la f0 de sus ventanas no
+    // cabe en la rejilla del llamador ni con la octava plegada— no comparte una
+    // rejilla, asi que el modelo de capas no es honesto y NO paga su coste. La
+    // puerta decide ANTES de medir la rejilla comun y de correr el clustering,
+    // no despues (tirando unas capas ya calculadas). Para decidir antes hace
+    // falta la f0 de TODAS las ventanas, asi que el analisis va en dos pasadas:
+    // (1a) la f0 por ventana —la evidencia de la puerta— guardando el espectro
+    // de cada frame; la PUERTA; (1b) la medida, que solo toca la rejilla comun
+    // si la puerta la declaro COMUN. El espectro se guarda para no repetir la
+    // FFT: el pre-filtro ahorra el trabajo del clustering, no lo duplica.
+    std::vector<float> frameSpectra(static_cast<size_t>(numBins) * static_cast<size_t>(nFrames), 0.0f);
+
+    // 1a. PRE-PASADA (la evidencia de la puerta): una ventana por frame,
+    //     repartidas por TODO el fichero; el espectro se guarda y la f0 POR
+    //     VENTANA se estima sobre el.
     for (int f = 0; f < nFrames; ++f)
     {
         const int start = (nFrames == 1 || numSamples <= fftSize)
@@ -802,9 +865,14 @@ NEURONiK::Common::SpectralModel SpectralAnalyzer::analyzeTemporal(
         averageWindow(left, right, start, count, frameSpectrum);
 
         // measurePartial lee magnitudeSpectrum: publica el espectro del frame
-        // (sin esta copia, todos los frames medirian un espectro rancio).
+        // (sin esta copia, todos los frames medirian un espectro rancio) y lo
+        // GUARDA para la pasada de medida (1b).
         for (int b = 0; b < numBins; ++b)
+        {
             magnitudeSpectrum[static_cast<size_t>(b)] = frameSpectrum[static_cast<size_t>(b)];
+            frameSpectra[static_cast<size_t>(f) * static_cast<size_t>(numBins) + static_cast<size_t>(b)] =
+                frameSpectrum[static_cast<size_t>(b)];
+        }
 
         // FASE 10.6: f0 POR VENTANA (HPS sobre el espectro ya llenado). El
         // frame se mide contra SU rejilla: un barrido de pitch (CZ-RRISE)
@@ -813,12 +881,52 @@ NEURONiK::Common::SpectralModel SpectralAnalyzer::analyzeTemporal(
         // 2026-09-24: los frames 1+ salen del MISMO estimador que
         // detectPitch: el HPS de la ventana es la SEMILLA y el minimos
         // cuadrados sobre los picos del frame afina SU raiz.
-        if (f > 0)
+        // LA f0 POR VENTANA SOLO SE BUSCA SI HAY REJILLA QUE SEGUIR (2026-09-25):
+        // ni con el modo REJILLA FIJA declarado (el usuario fija el pitch y pide
+        // que el analisis no lo siga) ni por debajo del suelo del ancla, donde el
+        // HPS de la ventana no puede leer la raiz del material (medido en
+        // E1 = 41.62 Hz: devuelve su 2o armonico) y una trayectoria una octava
+        // arriba es peor que no seguir nada. En los dos casos el modelo sale con
+        // gridFixed a true. Por encima del suelo, sin modo declarado, el camino
+        // es el de siempre, bit a bit. (frameF0s ya viene inicializado con la
+        // rejilla del llamador, asi que el frame se queda con ella.)
+        if (f > 0 && ! fixedGrid && rootFrequency >= anchorFloorHz (sampleRate))
         {
             const float seed = detectPitchFromSpectrum(sampleRate);
             frameF0s[static_cast<size_t>(f)] = fitGridFromSpectrum(sampleRate, seed);
         }
+    }
+
+    // LA PUERTA (10.3) COMO PRE-FILTRO (10.4). Se mide SIEMPRE —tambien cuando
+    // el clustering no llegue a dar capas, y tambien si el material sale vacio—
+    // para que la sonda y la UI declaren mono-rejilla / bi-rejilla sin depender
+    // de que existan capas que rechazar. La referencia es la rejilla del
+    // llamador, que es la que usaria el modelo de capas si saliera (plegar
+    // contra el material no diria nada de ESA rejilla, que es la unica que el
+    // modelo puede escribir). Su veredicto decide las DOS cosas que vienen
+    // despues: si se mide la rejilla comun y si corre el clustering.
+    lastFold = measureOctaveFold (frameF0s, rootFrequency);
+    const bool gridCommon = gridIsCommon (frameF0s, rootFrequency);
+    clusteringSkipped = ! gridCommon;
+
+    // 1b. Medida: perFrame SIEMPRE (el camino de una capa, bit a bit, con SU
+    //     rejilla por frame); la rejilla COMUN solo si la puerta la declaro
+    //     COMUN. El espectro se restaura del guardado: una sola FFT por frame.
+    for (int f = 0; f < nFrames; ++f)
+    {
+        for (int b = 0; b < numBins; ++b)
+            magnitudeSpectrum[static_cast<size_t>(b)] =
+                frameSpectra[static_cast<size_t>(f) * static_cast<size_t>(numBins) + static_cast<size_t>(b)];
+
         const float f0Frame = frameF0s[static_cast<size_t>(f)];
+
+        // FASE 11.2: la rejilla COMUN sobre el espectro del frame, ahora que la
+        // puerta la declaro comun (las dos lecturas son dos barridos de
+        // peak-picking sobre el mismo espectro guardado).
+        if (gridCommon && rootFrequency > 0.0f)
+            for (int k = 0; k < 64; ++k)
+                perFrameCommon[static_cast<size_t>(f)][static_cast<size_t>(k)] =
+                    measurePartial(rootFrequency * static_cast<float>(k + 1), rootFrequency, sampleRate);
 
         float frameMax = 0.0f;
         for (int k = 0; k < 64; ++k)
@@ -836,19 +944,55 @@ NEURONiK::Common::SpectralModel SpectralAnalyzer::analyzeTemporal(
 
     const float invGlobal = 1.0f / globalMax;
 
-    // 2. Normalizacion global + suelo de ruido por frame ------------------
-    for (int f = 0; f < nFrames; ++f)
+    // 2. Normalizacion global + suelo de ruido por frame (las DOS lecturas) --
+    const auto normalise = [invGlobal] (std::vector<std::array<PartialMeasurement, 64>>& table)
     {
-        auto& m = perFrame[static_cast<size_t>(f)];
-        for (int k = 0; k < 64; ++k)
+        for (auto& m : table)
+            for (int k = 0; k < 64; ++k)
+            {
+                m[static_cast<size_t>(k)].amplitude *= invGlobal;
+                if (m[static_cast<size_t>(k)].amplitude < kPartialFloor)
+                    m[static_cast<size_t>(k)].offsetHz = 0.0f;
+            }
+    };
+    normalise (perFrame);
+    if (gridCommon)
+        normalise (perFrameCommon);
+
+    // 3. FASE 11.2: capas por forma de envolvente sobre la rejilla COMUN ----
+    //    El PRE-FILTRO (10.3/10.4) ya decidio: si la puerta declaro bi-rejilla,
+    //    la rejilla comun no se midio y el clustering NO corre —no se paga—. Se
+    //    declara el modelo honesto de una capa con f0 por frame (10.6) sin
+    //    calcular unas capas que se iban a tirar (antes se corrian y se
+    //    rechazaban despues de calcularlas).
+    lastMetric = layerMetric;   // se publica aunque el clustering no corra
+
+    if (! gridCommon)
+    {
+        lastClustering = LayerClustering{};
+        lastLayerRejected = true;
+    }
+    else
+    {
+        std::vector<float> traces(static_cast<size_t>(64 * nFrames), 0.0f);
+        for (int t = 0; t < 64; ++t)
+            for (int f = 0; f < nFrames; ++f)
+                traces[static_cast<size_t>(t) * static_cast<size_t>(nFrames) + static_cast<size_t>(f)] =
+                    perFrameCommon[static_cast<size_t>(f)][static_cast<size_t>(t)].amplitude;
+
+        lastClustering = clusterTraces(traces, 64, nFrames,
+                                       LayerClustering::kActivityFloor, layerMetric);
+        lastLayerRejected = false;
+
+        if (lastClustering.layerCount > 1)
         {
-            m[static_cast<size_t>(k)].amplitude *= invGlobal;
-            if (m[static_cast<size_t>(k)].amplitude < kPartialFloor)
-                m[static_cast<size_t>(k)].offsetHz = 0.0f;
+            auto layered = buildLayeredModel (perFrameCommon, lastClustering, nFrames, rootFrequency);
+            layered.gridFixed = fixedGrid;   // REJILLA FIJA: procedencia declarada
+            return layered;
         }
     }
 
-    // 3. Volcado al modelo: frame 0 canonico + extras ----------------------
+    // 4. Volcado al modelo: frame 0 canonico + extras ----------------------
     for (int k = 0; k < 64; ++k)
     {
         model.amplitudes[static_cast<size_t>(k)] = perFrame[0][static_cast<size_t>(k)].amplitude;
@@ -867,6 +1011,136 @@ NEURONiK::Common::SpectralModel SpectralAnalyzer::analyzeTemporal(
     // canonica: en z=0 el snapshot ES el frame canonico y el ratio es 1.0).
     for (int f = 1; f < nFrames; ++f)
         model.setF0At (f, frameF0s[static_cast<size_t>(f)]);
+    model.gridFixed = fixedGrid;   // REJILLA FIJA: procedencia declarada
+    model.isValid = true;
+    return model;
+}
+
+// PUERTA DE PLEGADO DE OCTAVA (2026-09-25, plan seccion 10.3). El plegado es
+// la equivalencia de octava escrita en cents: la desviacion se reduce modulo
+// 1200 al intervalo (-600, +600] — la misma convencion (y el mismo codigo) que
+// measurePitchDeviation. Plegada, la evidencia de varias ventanas se puede
+// COMPARAR: un salto de octava del estimador (una ventana lee f0, otra 2f0)
+// colapsa a ~0 —el material sigue teniendo UNA rejilla— mientras que una raiz
+// genuinamente distinta (una quinta: 701.96 -> -498.04) sobrevive. Ese es el
+// discriminador mono-rejilla / bi-rejilla.
+float SpectralAnalyzer::foldOctaveCents (float hz, float refHz) noexcept
+{
+    if (hz <= 0.0f || refHz <= 0.0f)
+        return 0.0f;
+
+    float dev = 1200.0f * std::log2 (hz / refHz);
+    while (dev > 600.0f)   dev -= 1200.0f;
+    while (dev <= -600.0f) dev += 1200.0f;
+    return dev;
+}
+
+SpectralAnalyzer::OctaveFold SpectralAnalyzer::measureOctaveFold (const std::vector<float>& frameF0s, float refHz)
+{
+    OctaveFold out;
+
+    if (refHz <= 0.0f)
+        return out;   // sin referencia no hay plegado: sin veredicto
+
+    float maxFolded = 0.0f;
+    float maxRaw = 0.0f;
+
+    for (const float f0k : frameF0s)
+    {
+        if (f0k <= 0.0f)
+            continue;   // silencio: esta ventana no aporta evidencia
+
+        const float raw = std::abs (1200.0f * std::log2 (f0k / refHz));
+        const float folded = std::abs (foldOctaveCents (f0k, refHz));
+
+        maxRaw = std::max (maxRaw, raw);
+        maxFolded = std::max (maxFolded, folded);
+        ++out.observations;
+
+        // Media octava de desviacion CRUDA = el estimador salto de octava
+        // respecto de esta referencia (el plegado lo cuenta como acuerdo).
+        if (raw > 600.0f)
+            ++out.octaveFlips;
+    }
+
+    if (out.observations == 0)
+        return out;   // sin datos: foldCents se queda en -1 y no se exenta nada
+
+    out.foldCents = maxFolded;
+    out.rawCents = maxRaw;
+    out.biGrid = maxFolded > kOctaveFoldCents;
+    return out;
+}
+
+// FASE 11.2 + PUERTA DE PLEGADO: "la rejilla del llamador es COMUN a todas las
+// ventanas" es exactamente el veredicto de la puerta de plegado aplicada a esa
+// rejilla (basta que una ventana se salga de kOctaveFoldCents). Se mantiene como
+// predicado booleano del rechazo del clustering; la medida completa
+// (dispersion cruda, saltos de octava, veredicto) la publica lastOctaveFold().
+bool SpectralAnalyzer::gridIsCommon (const std::vector<float>& frameF0s, float rootFrequency) const
+{
+    if (rootFrequency <= 0.0f)
+        return false;
+
+    return ! measureOctaveFold (frameF0s, rootFrequency).biGrid;
+}
+
+// FASE 11.2: montaje del modelo con capas. La capa 0 (la dominante) ocupa la
+// raiz; los indices SIN forma temporal (activos en un solo frame) o sin
+// actividad se quedan en la capa 0 con su amplitud medida, que es donde el
+// camino de una capa los habria puesto.
+NEURONiK::Common::SpectralModel SpectralAnalyzer::buildLayeredModel (
+    const std::vector<std::array<PartialMeasurement, 64>>& frames,
+    const LayerClustering& clusters, int nFrames, float rootFrequency) const
+{
+    NEURONiK::Common::SpectralModel model;
+
+    model.setLayerCount (clusters.layerCount);
+
+    for (int l = 0; l < clusters.layerCount; ++l)
+    {
+        model.setNumFramesOf (l, nFrames);
+        model.setLayerWeightAt (l, 1.0f);   // mezcla fiel: la suma de las capas ES el modelo
+        model.setLayerNameAt (l, "capa " + juce::String (l + 1));
+
+        std::vector<float> level(static_cast<size_t>(nFrames), 0.0f);
+        float peak = 0.0f;
+
+        for (int f = 0; f < nFrames; ++f)
+        {
+            float* amps = model.ampsOf (l, f);
+            float* offs = model.offsetsOf (l, f);
+            std::fill (amps, amps + 64, 0.0f);
+            std::fill (offs, offs + 64, 0.0f);
+
+            double energy = 0.0;
+
+            for (int k = 0; k < 64; ++k)
+                if (clusters.layerOfTrace[static_cast<size_t>(k)] == l)
+                {
+                    amps[k] = frames[static_cast<size_t>(f)][static_cast<size_t>(k)].amplitude;
+                    offs[k] = frames[static_cast<size_t>(f)][static_cast<size_t>(k)].offsetHz;
+                    energy += (double) amps[k] * (double) amps[k];
+                }
+
+            level[static_cast<size_t>(f)] = (float) std::sqrt (energy);
+            peak = std::max (peak, level[static_cast<size_t>(f)]);
+
+            // Las capas son sub-indices de UNA rejilla: su f0 es la COMUN (el
+            // remapeo de pitch por frame es del camino de una sola capa).
+            model.setF0At (l, f, rootFrequency);
+        }
+
+        // Peso temporal w_l[f] = energia de la capa en el frame normalizada al
+        // maximo de ESA capa (plan 3.6): la envolvente de la capa, 0..1 con el
+        // pico en 1. El NIVEL absoluto vive en las amplitudes (la suma de las
+        // capas es el modelo de una capa), asi que el motor 11.3 reconstruye
+        // sumando amplitudes y usa w/layerWeight como mando, no como re-nivel.
+        for (int f = 0; f < nFrames; ++f)
+            model.setFrameWeightAt (l, f, peak > 0.0f ? level[static_cast<size_t>(f)] / peak : 1.0f);
+    }
+
+    model.frameSpanHz = rootFrequency;
     model.isValid = true;
     return model;
 }

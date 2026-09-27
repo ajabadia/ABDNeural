@@ -37,6 +37,10 @@ void NeurotikVoice::prepare(double sampleRate, int /*samplesPerBlock*/)
     morphXSmoother.reset(sampleRate, 0.02);
     morphYSmoother.reset(sampleRate, 0.02);
     morphZSmoother.reset(sampleRate, 0.02);
+    morphZ2Smoother.reset(sampleRate, 0.02);
+    morphZ3Smoother.reset(sampleRate, 0.02);
+    layerGain2Smoother.reset(sampleRate, 0.02);
+    layerGain3Smoother.reset(sampleRate, 0.02);
     resonanceSmoother.reset(sampleRate, 0.02);
     unisonDetuneSmoother.reset(sampleRate, 0.02);
 }
@@ -59,6 +63,10 @@ void NeurotikVoice::noteOn(int midiNoteNumber, float velocity)
     morphXSmoother.setCurrentAndTargetValue(currentParams.morphX);
     morphYSmoother.setCurrentAndTargetValue(currentParams.morphY);
     morphZSmoother.setCurrentAndTargetValue(currentParams.morphZ);
+    morphZ2Smoother.setCurrentAndTargetValue(currentParams.morphZ2);
+    morphZ3Smoother.setCurrentAndTargetValue(currentParams.morphZ3);
+    layerGain2Smoother.setCurrentAndTargetValue(currentParams.layerGain2);
+    layerGain3Smoother.setCurrentAndTargetValue(currentParams.layerGain3);
     resonanceSmoother.setCurrentAndTargetValue(currentParams.resonatorResonance);
     unisonDetuneSmoother.setCurrentAndTargetValue(currentParams.unisonDetune);
 
@@ -90,6 +98,11 @@ bool NeurotikVoice::renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int s
         float mX = morphXSmoother.getNextValue();
         float mY = morphYSmoother.getNextValue();
         float mZ = morphZSmoother.getNextValue();
+        float mZ2 = morphZ2Smoother.getNextValue();
+        float mZ3 = morphZ3Smoother.getNextValue();
+        // FASE 11.4: volumen de las capas 1 y 2.
+        float g2 = layerGain2Smoother.getNextValue();
+        float g3 = layerGain3Smoother.getNextValue();
         float res = resonanceSmoother.getNextValue();
         float detune = unisonDetuneSmoother.getNextValue();
 
@@ -97,6 +110,9 @@ bool NeurotikVoice::renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int s
         mX = dsp::jlimit(0.0f, 1.0f, mX + modMorphX);
         mY = dsp::jlimit(0.0f, 1.0f, mY + modMorphY);
         mZ = dsp::jlimit(0.0f, 1.0f, mZ + modMorphZ);
+        // FASE 11.3: los z de las capas 1 y 2 (misma modulacion y mismo glide).
+        mZ2 = dsp::jlimit(0.0f, 1.0f, mZ2 + modMorphZ2);
+        mZ3 = dsp::jlimit(0.0f, 1.0f, mZ3 + modMorphZ3);
         res = dsp::jlimit(0.0f, 1.0f, res + modResonance);
         detune = dsp::jlimit(0.0f, 0.1f, detune + modUnison);
 
@@ -106,10 +122,18 @@ bool NeurotikVoice::renderNextBlock(dsp::AudioBuffer<float>& outputBuffer, int s
         morphXSmoother.skip(thisBlockSamples - 1);
         morphYSmoother.skip(thisBlockSamples - 1);
         morphZSmoother.skip(thisBlockSamples - 1);
+        morphZ2Smoother.skip(thisBlockSamples - 1);
+        morphZ3Smoother.skip(thisBlockSamples - 1);
+        layerGain2Smoother.skip(thisBlockSamples - 1);
+        layerGain3Smoother.skip(thisBlockSamples - 1);
         resonanceSmoother.skip(thisBlockSamples - 1);
         unisonDetuneSmoother.skip(thisBlockSamples - 1);
 
         resonatorBank.setMorphZ(mZ);
+        resonatorBank.setLayerMorphZ(1, mZ2);
+        resonatorBank.setLayerMorphZ(2, mZ3);
+        resonatorBank.setLayerGain(1, dsp::jlimit(0.0f, 1.0f, g2));
+        resonatorBank.setLayerGain(2, dsp::jlimit(0.0f, 1.0f, g3));
         resonatorBank.updateParameters(mX, mY, res, detune);
 
         // 2. Render Audio Logic (Inner Loop)
@@ -223,6 +247,10 @@ void NeurotikVoice::updateParameters()
     morphXSmoother.setTargetValue(currentParams.morphX);
     morphYSmoother.setTargetValue(currentParams.morphY);
     morphZSmoother.setTargetValue(currentParams.morphZ);
+    morphZ2Smoother.setTargetValue(currentParams.morphZ2);
+    morphZ3Smoother.setTargetValue(currentParams.morphZ3);
+    layerGain2Smoother.setTargetValue(currentParams.layerGain2);
+    layerGain3Smoother.setTargetValue(currentParams.layerGain3);
     resonanceSmoother.setTargetValue(currentParams.resonatorResonance);
     unisonDetuneSmoother.setTargetValue(currentParams.unisonDetune);
 }

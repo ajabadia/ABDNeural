@@ -17,9 +17,14 @@ namespace NEURONiK::DSP {
 
 NeuronikEngine::NeuronikEngine()
 {
-    // Pre-allocate 32 voices
-    for (int i = 0; i < 32; ++i)
-        voices.push_back(std::make_unique<Synthesis::AdditiveVoice>());
+    // Reserva PEREZOSA: nace con las voces de su limite (16 por defecto), no 32.
+    // `ensureVoices` crece cuando `setPolyphony` sube el techo.
+    ensureVoices (activeVoiceLimit.load());
+}
+
+std::unique_ptr<IVoice> NeuronikEngine::createVoice(int)
+{
+    return std::make_unique<Synthesis::AdditiveVoice>();
 }
 
 void NeuronikEngine::prepare(double sampleRate, int samplesPerBlock)
@@ -102,16 +107,32 @@ void NeuronikEngine::applyModulation()
                     for (auto& v : voices) v->modCutoff += rawMod * 18000.0f; 
                 break;
             case 11: for (auto& v : voices) v->modFilterRes += rawMod; break; 
-            // Destinos de la ADSR del filtro (12/13): solo responden a ENV 2
-            // (un LFO no retrigunea envolventes). REEMPLAZAN el attack/decay
-            // programado: 1+valor repichea cada vez que el modulador recicla.
+            // Destinos de la ADSR del filtro (13-16) y de su profundidad (12):
+            // solo responden a ENV 2 (un LFO no retrigunea envolventes).
+            // 12 = "Filter Env Amt": SUMA al factor de routing de la ruta
+            // ENV 2 -> Filter Cutoff (base 1.0) — es la profundidad del knob
+            // filterEnvAmount retirado (2026-09-26), viviendo en la matriz.
+            // 13-16 REEMPLAZAN el attack/decay programado: 1+valor repichea
+            // cada vez que el modulador recicla.
             case 12:
                 if (route.source == 7)
-                    for (auto& v : voices) v->modEnvFltAttack += route.amount;
+                    for (auto& v : voices) v->modEnvFltDepth += route.amount;
                 break;
             case 13:
                 if (route.source == 7)
+                    for (auto& v : voices) v->modEnvFltAttack += route.amount;
+                break;
+            case 14:
+                if (route.source == 7)
                     for (auto& v : voices) v->modEnvFltDecay += route.amount;
+                break;
+            case 15:
+                if (route.source == 7)
+                    for (auto& v : voices) v->modEnvFltSustain += route.amount;
+                break;
+            case 16:
+                if (route.source == 7)
+                    for (auto& v : voices) v->modEnvFltRelease += route.amount;
                 break;
             case 17: currentGlobalParams.saturationAmt += rawMod; break;
             case 18: currentGlobalParams.delayTime += rawMod; break; 
@@ -125,6 +146,10 @@ void NeuronikEngine::applyModulation()
             case 26: for (auto& v : voices) v->modResonance += rawMod; break;
             case 27: for (auto& v : voices) v->modUnison += rawMod; break;
             case 28: for (auto& v : voices) v->modMorphZ += rawMod; break;
+            // FASE 11.3: los z de las capas 1 y 2 (destinos 29/30, al final de la
+            // tabla: los choice de la matriz se guardan por INDICE).
+            case 29: for (auto& v : voices) v->modMorphZ2 += rawMod; break;
+            case 30: for (auto& v : voices) v->modMorphZ3 += rawMod; break;
             default: break;
         }
     }
@@ -208,6 +233,31 @@ void NeuronikEngine::loadModel(const Common::SpectralModel& model, int slot)
 void NeuronikEngine::setVoiceParams(const NEURONiK::DSP::Synthesis::AdditiveVoice::Params& p)
 {
     pendingVoiceParams = p;
+}
+
+// MORPH del pad XY: read-modify-write de pendingVoiceParams. No toca morphZ
+// (el eje temporal es parametro propio, morphZ/morphZ2/morphZ3) ni el resto
+// de la ficha: solo los dos ejes del pad. Viaja por el mismo canal que
+// setVoiceParams, asi que el handoff a las voces es el de siempre.
+void NeuronikEngine::setMorph (float morphX, float morphY)
+{
+    pendingVoiceParams.morphX = morphX;
+    pendingVoiceParams.morphY = morphY;
+}
+
+// Eje temporal del morph (FASE 10): frame canonico de la capa 0.
+void NeuronikEngine::setMorphZ (float morphZ)
+{
+    pendingVoiceParams.morphZ = morphZ;
+}
+
+// FASE 11.4: el VOLUMEN de las capas 1 y 2 (la capa 0 es el fondo, siempre
+// al maximo). Mismo canal RT-safe que setMorphZ; el clampeo lo hace el
+// resonador al consumirlo.
+void NeuronikEngine::setVoiceLayerMorph (float layerGain2, float layerGain3)
+{
+    pendingVoiceParams.layerGain2 = layerGain2;
+    pendingVoiceParams.layerGain3 = layerGain3;
 }
 
 void NeuronikEngine::handleMidiEvent(const dsp::MidiMessage& m)

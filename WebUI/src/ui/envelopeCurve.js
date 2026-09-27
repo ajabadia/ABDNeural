@@ -1,16 +1,19 @@
 /**
- * La curva ADSR de la ficha FILTRO & ENVOLVENTE.
+ * La curva ADSR de las envolventes (ENV 1 y ENV 2). El destino de cada una
+ * NO vive aqui: lo declara su ruta en la MATRIZ.
  *
  * Es una VISTA, no un control: no tiene parámetro propio, solo dibuja la
- * envolvente de amplitud a partir de los cuatro que ya están en el lienzo
- * (`envAttack`/`envDecay`/`envSustain`/`envRelease`). Por eso vive fuera de
- * `controls.js`: la familia compartida no la puede dar porque no sabe de qué
- * parámetros se trata, y el panel no la conoce porque su contrato es genérico
- * (recibe `visual.element` y lo pinta, igual que recibe celdas).
+ * envolvente a partir de sus cuatro controles (`envAttack`/... o
+ * `filterAttack`/...). Por eso vive fuera de `controls.js`: la familia
+ * compartida no la puede dar porque no sabe de qué parámetros se trata, y el
+ * panel no la conoce porque su contrato es genérico (recibe `visual.element` y
+ * lo pinta, igual que recibe celdas).
  *
- * Ocupa la celda libre de su ficha (11 controles en una rejilla de 6x2), así que
- * añadirla NO cambia la geometría: el encaje de `tests/sections.test.js` sigue
- * contando la misma rejilla.
+ * 8.3 separó FILTRO/ENVOLVENTES y con ello nació la de AMP; la ficha
+ * ENVOLVENTES de hoy pinta DOS (una por ADSR, sobre su bloque de controles del
+ * cajón). La fábrica se PARAMETRIZA por prefijo de id y por identidad (dataset,
+ * etiqueta), de modo que las dos son el mismo dibujo y el mismo comportamiento
+ * — dos copias no: una sola vista, dos instancias.
  *
  * Dos decisiones que no son obvias:
  *
@@ -24,7 +27,7 @@
 
 import { realFromNormalized } from '../contracts/paramValue.js';
 
-/** Orden de los tramos y sufijo de id de cada uno dentro de `env*`. */
+/** Orden de los tramos y sufijo de id de cada uno dentro del prefijo. */
 export const ENVELOPE_SEGMENTS = ['attack', 'decay', 'sustain', 'release'];
 
 /** Geometría del viewBox. El CSS estira el SVG a la celda. */
@@ -90,21 +93,79 @@ export function envelopeAreaPath(points, viewbox = ENVELOPE_VIEWBOX) {
   return `${envelopeLinePath(points)} L${points[points.length - 1].x.toFixed(2)},${base} L0.00,${base} Z`;
 }
 
+/**
+ * `d` de la AGUJA de nivel: una linea horizontal a la altura del valor que la
+ * envolvente esta sacando AHORA (frame.envelopes[amp|filter], 0..1). El frame
+ * trae el NIVEL, no la fase dentro de la curva, asi que una linea a lo ancho es
+ * la representacion honesta: donde esta la señal, no donde "iria" el trazo.
+ * Por debajo de `NEEDLE_FLOOR` se considera silencio y la aguja se esconde.
+ */
+export const NEEDLE_FLOOR = 0.004;
+
+export function envelopeNeedlePath(level, viewbox = ENVELOPE_VIEWBOX) {
+  const top = PAD;
+  const bottom = viewbox.height - PAD;
+  const clamped = Math.min(1, Math.max(0, Number(level) || 0));
+  const y = bottom - clamped * (bottom - top);
+
+  return `M0,${y.toFixed(2)} L${viewbox.width},${y.toFixed(2)}`;
+}
+
+/**
+ * Identidades de las dos ADSR: prefijo de id en el contrato y dataset visual.
+ * SSOT de qué es cada envolvente — la ficha y las vistas leen de aquí, nadie
+ * repite los ids a mano.
+ */
+export const ENVELOPE_IDENTITIES = [
+  {
+    id: 'amp',
+    prefix: 'env',
+    dataset: 'amp-envelope',
+    title: 'ENV 1 · amplitud',
+    aria: 'Curva ADSR de la envolvente de amplitud',
+  },
+  {
+    id: 'filter',
+    prefix: 'filter',
+    dataset: 'filter-envelope',
+    title: 'Curva de la envolvente',
+    aria: 'Curva ADSR de la envolvente del filtro',
+  },
+];
+
+/** La identidad de un prefijo de id (`envAttack` -> `env`). */
+export function envelopeIdentityForPrefix(prefix) {
+  return ENVELOPE_IDENTITIES.find((identity) => identity.prefix === prefix) ?? null;
+}
+
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /**
- * Construye la vista de la curva.
+ * Construye la vista de UNA curva.
  *
  * @param {object} options
- * @param {object[]} options.controls  view-models del contrato: los cuatro `env*`
+ * @param {object[]} options.controls  view-models del contrato: los cuatro del prefijo
+ * @param {string} options.prefix      prefijo de id (`env` | `filter`)
+ * @param {string} [options.dataset]   valor de `data-visual` (amp-envelope | filter-envelope)
+ * @param {string} [options.label]     etiqueta bajo el dibujo
+ * @param {string} [options.title]     tooltip de la vista
+ * @param {string} [options.aria]      etiqueta accesible del SVG
  * @param {{width?: number, height?: number}} [options.viewbox]
  * @returns {{ element: HTMLElement, paint: Function, parameterIds: string[], destroy: Function }}
  */
-export function createEnvelopeCurve({ controls, viewbox = ENVELOPE_VIEWBOX }) {
+export function createEnvelopeCurve({
+  controls,
+  prefix = 'env',
+  dataset = 'amp-envelope',
+  label = 'AMP ENV',
+  title = 'Curva de la envolvente (los cuatro controles de su bloque)',
+  aria = 'Curva ADSR de la envolvente de amplitud',
+  viewbox = ENVELOPE_VIEWBOX,
+}) {
   /** Los cuatro tramos por nombre (`attack` -> control de `envAttack`). */
   const bySegment = ENVELOPE_SEGMENTS.map((segment) => ({
     segment,
-    control: controls.find((control) => control.id === `env${segment[0].toUpperCase()}${segment.slice(1)}`),
+    control: controls.find((control) => control.id === `${prefix}${segment[0].toUpperCase()}${segment.slice(1)}`),
   }));
 
   // OJO con la clase: NO lleva `.cell`. Una celda de `.cell` es un PARÁMETRO, y
@@ -112,14 +173,14 @@ export function createEnvelopeCurve({ controls, viewbox = ENVELOPE_VIEWBOX }) {
   // la rejilla por CSS, pero no se disfraza de control.
   const element = document.createElement('div');
   element.className = 'card__visual';
-  element.dataset.visual = 'amp-envelope';
-  element.title = 'Curva de la envolvente de amplitud (los cuatro controles de la ficha)';
+  element.dataset.visual = dataset;
+  element.title = title;
 
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('viewBox', `0 0 ${viewbox.width} ${viewbox.height}`);
   svg.setAttribute('preserveAspectRatio', 'none');
   svg.setAttribute('role', 'img');
-  svg.setAttribute('aria-label', 'Curva ADSR de la envolvente de amplitud');
+  svg.setAttribute('aria-label', aria);
 
   const area = document.createElementNS(SVG_NS, 'path');
   area.setAttribute('class', 'envelope-curve__area');
@@ -127,13 +188,32 @@ export function createEnvelopeCurve({ controls, viewbox = ENVELOPE_VIEWBOX }) {
   const line = document.createElementNS(SVG_NS, 'path');
   line.setAttribute('class', 'envelope-curve__line');
 
-  svg.append(area, line);
+  // Aguja de nivel (telemetria en vivo): oculta hasta que llega el primer
+  // frame con nivel por encima del suelo.
+  const needle = document.createElementNS(SVG_NS, 'path');
+  needle.setAttribute('class', 'envelope-curve__level');
+  needle.dataset.visible = 'false';
 
-  const label = document.createElement('span');
-  label.className = 'cell__label';
-  label.textContent = 'AMP ENV';
+  svg.append(area, line, needle);
 
-  element.append(svg, label);
+  const caption = document.createElement('span');
+  caption.className = 'cell__label';
+  caption.textContent = label;
+
+  element.append(svg, caption);
+
+  /** Nivel actual de la envolvente (0..1, del frame de telemetria). */
+  function setLevel(level) {
+    const value = typeof level === 'number' && Number.isFinite(level) ? level : 0;
+
+    if (value <= NEEDLE_FLOOR) {
+      needle.dataset.visible = 'false';
+      return;
+    }
+
+    needle.dataset.visible = 'true';
+    needle.setAttribute('d', envelopeNeedlePath(value, viewbox));
+  }
 
   /** Repinta desde los valores NORMALIZADOS del snapshot del store. */
   function paint(parameters = {}) {
@@ -155,6 +235,7 @@ export function createEnvelopeCurve({ controls, viewbox = ENVELOPE_VIEWBOX }) {
   return {
     element,
     paint,
+    setLevel,
     parameterIds: bySegment.filter(({ control }) => control).map(({ control }) => control.id),
     destroy() {
       element.textContent = '';

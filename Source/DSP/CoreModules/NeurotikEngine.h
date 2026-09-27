@@ -34,6 +34,12 @@ public:
 
     // --- Specific API ---
     void setVoiceParams(const ::NEURONiK::DSP::Synthesis::NeurotikVoice::Params& p);
+
+    /** MORPH del pad XY (2026-09-26): read-modify-write de
+        pendingVoiceParams (el mismo canal que setVoiceParams). */
+    void setMorph (float morphX, float morphY) override;
+    void setMorphZ (float morphZ) override;
+    void setVoiceLayerMorph (float layerGain2, float layerGain3) override;
     void loadModel(const NEURONiK::Common::SpectralModel& model, int slot) override;
 
     void setGlobalParams(const GlobalParams& p) override { pendingGlobalParams = p; }
@@ -41,6 +47,8 @@ public:
 private:
     void handleMidiEvent(const dsp::MidiMessage& m) override;
     void applyModulation() override;
+
+    std::unique_ptr<IVoice> createVoice (int index) override;
 
     ::NEURONiK::DSP::Synthesis::NeurotikVoice::Params pendingVoiceParams;
     std::array<float, 64> lastModulations { 0.0f };

@@ -19,6 +19,8 @@ import {
   audioEngineState,
   isAudioEngineReady,
   onAudioEngineChange,
+  onWorkletEnvelopeLevels,
+  onWorkletVoices,
   panicWorklet,
   pushEngineToWorklet,
   pushMidiToWorklet,
@@ -176,6 +178,52 @@ describe('audio engine / browser lifecycle', () => {
 
     expect(panicWorklet()).toBe(true);
     expect(lastNode.port.posted.at(-1)).toEqual({ type: 'neuronik:panic' });
+  });
+
+  it('el meter del worklet alimenta la aguja: envelopes [amp, filter] al suscriptor', async () => {
+    installFakeWebAudio();
+
+    const starting = startAudioEngine();
+    await vi.waitFor(() => expect(lastNode).not.toBeNull());
+    lastNode.port.emit({ type: 'neuronik:ready' });
+    await starting;
+
+    const received = [];
+    onWorkletEnvelopeLevels((pair) => received.push(pair));
+
+    // El meter lleva el par [amp, filter] en el MISMO orden del puente nativo.
+    lastNode.port.emit({ type: 'neuronik:meter', voices: 1, envelopes: [0.25, 0.9] });
+    expect(received).toEqual([[0.25, 0.9]]);
+
+    // Sin el par (meter viejo en cache, o frame degenerado): no dispara.
+    lastNode.port.emit({ type: 'neuronik:meter', voices: 1 });
+    lastNode.port.emit({ type: 'neuronik:meter', voices: 1, envelopes: [0.5] });
+    expect(received).toHaveLength(1);
+
+    await teardownAudioEngine();
+  });
+
+  it('ON_WORKLET_VOICES: fan-out del contador de voces al suscriptor (solo con dato)', async () => {
+    installFakeWebAudio();
+
+    const starting = startAudioEngine();
+    await vi.waitFor(() => expect(lastNode).not.toBeNull());
+    lastNode.port.emit({ type: 'neuronik:ready' });
+    await starting;
+
+    const received = [];
+    onWorkletVoices((count) => received.push(count));
+
+    // El meter lleva el numero de voces activas del motor.
+    lastNode.port.emit({ type: 'neuronik:meter', voices: 3 });
+    lastNode.port.emit({ type: 'neuronik:meter', voices: 0 });
+    expect(received).toEqual([3, 0]);
+
+    // Meter sin contador (frame degenerado): no dispara.
+    lastNode.port.emit({ type: 'neuronik:meter' });
+    expect(received).toHaveLength(2);
+
+    await teardownAudioEngine();
   });
 
   it('teardown returns to idle and every sender goes quiet', async () => {

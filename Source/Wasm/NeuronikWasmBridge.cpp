@@ -132,6 +132,9 @@ WASM_EXPORT int neuronikGlobalParamsSize()
  * engineType selects the active engine (0 = NEURONiK, 1 = Neurotik) because the
  * models hang off the concrete engine, not the facade. loadModel fans the model
  * out to every voice (whole-POD swap + rebuild latch, same as the native plugin).
+ * FASE 11.1: el v1 del puente cruza 128 floats PLANOS (amplitudes + offsets) y no
+ * tiene sitio para los frames, asi que un modelo de CAPAS suena su capa 0: el
+ * clamp esta abajo, junto al struct que se rellena.
  */
 WASM_EXPORT void neuronikLoadModel (int slot, int engineType, const float* data, int isValid)
 {
@@ -141,6 +144,15 @@ WASM_EXPORT void neuronikLoadModel (int slot, int engineType, const float* data,
     NEURONiK::Common::SpectralModel model;
     std::memcpy (model.amplitudes.data(), data, 64 * sizeof (float));
     std::memcpy (model.frequencyOffsets.data(), data + 64, 64 * sizeof (float));
+
+    // FASE 11.1 — CLAMP DE CAPAS DEL v1: el struct nace con layerCount = 1 (la
+    // capa 0, la que viaja en estos 128 floats) y aqui se deja EXPLICITO, porque
+    // es una decision de formato y no un accidente: el bloque por slot se queda
+    // en ~33 KB (un modelo de 3 capas x 16 frames seria ~100 KB por slot, el
+    // presupuesto que el plan de capas deja fuera del v1 WASM). El DSP no lee
+    // ningun campo de capa, de modo que el camino nativo/WASM sigue bit-exacto
+    // (paridad A-E, 0 ulps) mientras la WebUI avisa de que suena la capa 0.
+    model.layerCount = 1;
     model.isValid = isValid != 0;
 
     auto& inst = instance();
@@ -190,6 +202,128 @@ WASM_EXPORT int neuronikGlobalParamsLayout (int* outOffsets, int maxFields)
         return n;
     }
     return count;
+}
+
+/**
+ * FASE 11.3 — LAS CAPAS cruzan la frontera (2026-09-26). UNA llamada que
+ * carga el slot COMPLETO: la raiz (`data`, el layout v1 de 128 floats) como
+ * capa 0 y las capas extras (`extraData`) como capas 1..2. `loadModel(model,
+ * slot)` REEMPLAZA el struct entero, asi que la carga en dos llamadas
+ * BORRARIA la raiz; con este export el slot queda atomico y por el camino
+ * de siempre. El v1 (`neuronikLoadModel`) no cambia ni un byte: quien no
+ * llama aqui tiene exactamente el clamp de 11.1 (capa 0 unica).
+ *
+ * Layout del buffer de capas (JS lo escribe en un scratch de heap), repetido
+ * `layerFrames` veces: { amps[64], offsets[64], frameF0 } = 193 floats por
+ * frame; los pesos temporales viajan detras (`layerFrames` floats) y el peso
+ * estatico como argumento escalar. Frames clampeados a kMaxFrames (16), capas
+ * a kMaxLayers (3) — el mismo trato que el lector de presets.
+ */
+WASM_EXPORT void neuronikLoadModelLayers (int slot, int engineType,
+                                          const float* data, int isValid,
+                                          const float* extraData, int layerFrames,
+                                          float layerWeight, const float* frameWeights)
+{
+    if (data == nullptr || slot < 0 || slot >= 4)
+        return;
+
+    NEURONiK::Common::SpectralModel model;
+    std::memcpy (model.amplitudes.data(), data, 64 * sizeof (float));
+    std::memcpy (model.frequencyOffsets.data(), data + 64, 64 * sizeof (float));
+    model.isValid = isValid != 0;
+
+    using Model = NEURONiK::Common::SpectralModel;
+
+    if (extraData != nullptr && layerFrames > 0)
+    {
+        const int count = layerFrames > Model::kMaxFrames ? Model::kMaxFrames : layerFrames;
+        constexpr int floatsPerFrame = 3 * 64 + 1;
+
+        model.setLayerCount (2);
+        model.setLayerWeightAt (1, layerWeight);
+        model.setNumFramesOf (1, count);
+
+        for (int f = 0; f < count; ++f)
+        {
+            const float* src = extraData + (size_t) f * (size_t) floatsPerFrame;
+            float* amps = model.ampsOf (1, f);
+            float* offs = model.offsetsOf (1, f);
+
+            for (int i = 0; i < 64; ++i)
+            {
+                amps[(size_t) i] = src[(size_t) i];
+                offs[(size_t) i] = src[64 + (size_t) i];
+            }
+
+            model.setF0At (1, f, src[128]);   // 0 = rejilla comun (sin remapeo)
+
+            const float w = (frameWeights != nullptr) ? frameWeights[(size_t) f] : 1.0f;
+            model.setFrameWeightAt (1, f, w);
+        }
+    }
+    // (sin extraData el modelo queda en layerCount = 1: el clamp del v1)
+
+    auto& inst = instance();
+    if (inst.engine == nullptr)
+        return;
+
+    if (engineType == 1)
+        static_cast<NEURONiK::DSP::NeurotikEngine*> (inst.engine.get())->loadModel (model, slot);
+    else
+        static_cast<NEURONiK::DSP::NeuronikEngine*> (inst.engine.get())->loadModel (model, slot);
+}
+
+/**
+ * MORPH del pad XY + eje temporal (2026-09-26): los tres son VoiceParams y
+ * antes no cruzaban la frontera por NINGUN camino — en el plugin los escribe
+ * NEURONiKProcessor::synchronizeEngineParameters desde el APVTS, pero el worklet
+ * no tiene APVTS. Read-modify-write de pendingVoiceParams en el motor ACTIVO
+ * (los defaults del struct no se tocan), misma seguridad que setVoiceParams.
+ * Valores fuera de [0,1] se clampean aqui, en la frontera.
+ */
+WASM_EXPORT void neuronikSetVoiceMorph (float morphX, float morphY, float morphZ)
+{
+    auto& inst = instance();
+    if (inst.engine == nullptr)
+        return;
+
+    const float x = morphX < 0.0f ? 0.0f : (morphX > 1.0f ? 1.0f : morphX);
+    const float y = morphY < 0.0f ? 0.0f : (morphY > 1.0f ? 1.0f : morphY);
+    const float z = morphZ < 0.0f ? 0.0f : (morphZ > 1.0f ? 1.0f : morphZ);
+
+    if (inst.engine->getType() == NEURONiK::DSP::ISynthesisEngine::Type::Neurotik)
+    {
+        auto* neurotik = static_cast<NEURONiK::DSP::NeurotikEngine*> (inst.engine.get());
+        neurotik->setMorph (x, y);
+        neurotik->setMorphZ (z);
+    }
+    else
+    {
+        auto* neuronik = static_cast<NEURONiK::DSP::NeuronikEngine*> (inst.engine.get());
+        neuronik->setMorph (x, y);
+        neuronik->setMorphZ (z);
+    }
+}
+
+/**
+ * FASE 11.4: el VOLUMEN de las capas 1 y 2 (la capa 0 es el fondo, siempre
+ * al maximo). VoiceParams como los tres de arriba; en el plugin los escribe
+ * synchronizeEngineParameters desde el APVTS y aqui los cruza el worklet.
+ * Read-modify-write en el motor ACTIVO, clampeo a [0,1] en la frontera.
+ */
+WASM_EXPORT void neuronikSetVoiceLayerMorph (float layerGain2, float layerGain3)
+{
+    auto& inst = instance();
+    if (inst.engine == nullptr)
+        return;
+
+    const float g2 = layerGain2 < 0.0f ? 0.0f : (layerGain2 > 1.0f ? 1.0f : layerGain2);
+    const float g3 = layerGain3 < 0.0f ? 0.0f : (layerGain3 > 1.0f ? 1.0f : layerGain3);
+
+    if (inst.engine->getType() == NEURONiK::DSP::ISynthesisEngine::Type::Neurotik)
+        static_cast<NEURONiK::DSP::NeurotikEngine*> (inst.engine.get())->setVoiceLayerMorph (g2, g3);
+    else
+        static_cast<NEURONiK::DSP::NeuronikEngine*> (inst.engine.get())->setVoiceLayerMorph (g2, g3);
 }
 
 /** modMatrix field offsets appended after the base layout (returns count). */
@@ -244,6 +378,26 @@ WASM_EXPORT float neuronikGetMod (int targetIndex)
     float mods[64] {};
     inst.engine->getModulationValues (mods, 64);
     return (targetIndex >= 0 && targetIndex < 64) ? mods[targetIndex] : 0.0f;
+}
+
+/**
+ * Envelope levels for the UI (the WebUI's ADSR needles). Same feed the native
+ * bridge sends as telemetry `envelopes: [amp, filter]` (ParameterBridge reads
+ * getEnvelopeLevels); the worklet meter polls it at its ~21 ms cadence so the
+ * browser page (SOUND ON) sees the same needles the plugin does. The engine
+ * returns the FIRST active voice's levels (same convention as native).
+ */
+WASM_EXPORT void neuronikGetEnvelopeLevels (float* outAmp, float* outFilter)
+{
+    auto& inst = instance();
+    if (inst.engine == nullptr || outAmp == nullptr || outFilter == nullptr)
+    {
+        if (outAmp != nullptr) *outAmp = 0.0f;
+        if (outFilter != nullptr) *outFilter = 0.0f;
+        return;
+    }
+
+    inst.engine->getEnvelopeLevels (*outAmp, *outFilter);
 }
 
 } // extern "C"

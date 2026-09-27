@@ -33,7 +33,7 @@ const juce::StringArray& MidiMappingManager::getLearnableParams()
         params.add(P::morphY); params.add(P::oscInharmonicity);
         params.add(P::oscRoughness); params.add(P::resonatorParity);
         params.add(P::resonatorShift); params.add(P::resonatorRolloff);
-        params.add(P::filterEnvAmount); params.add(P::fxSaturation);
+        params.add(P::fxSaturation);
         params.add(P::fxChorusMix); params.add(P::fxDelayTime);
         params.add(P::fxReverbMix); params.add(P::fxDelayFeedback);
         params.add(P::oscExciteNoise); params.add(P::excitationColor);
@@ -131,7 +131,6 @@ void MidiMappingManager::resetToDefaults()
     setMapping(P::resonatorParity, 16);
     setMapping(P::resonatorShift, 17);
     setMapping(P::resonatorRolloff, 18);
-    setMapping(P::filterEnvAmount, 79);
     setMapping(P::fxSaturation, 91);
     setMapping(P::fxChorusMix, 93);
     setMapping(P::fxDelayTime, 94);

@@ -67,6 +67,9 @@ public:
     float modMorphX = 0.0f;
     float modMorphY = 0.0f;
     float modMorphZ = 0.0f; // FASE 10: eje temporal (frames del modelo)
+    // FASE 11.3: el eje temporal de las capas 1 y 2 (destinos 29/30 de la matriz).
+    float modMorphZ2 = 0.0f;
+    float modMorphZ3 = 0.0f;
     float modInharmonicity = 0.0f;
     float modRoughness = 0.0f;
     float modParity = 0.0f;
@@ -94,14 +97,27 @@ public:
     float modEnvCutoff = 1.0f;    // ENV 2 -> Filter Cutoff (escala la env del filtro)
     float modEnvFltAttack = 0.0f; // ENV 2 -> Flt Attack (retrig ADSR filtro, aditivo)
     float modEnvFltDecay = 0.0f;  // ENV 2 -> Flt Decay (retrig ADSR filtro, aditivo)
+    float modEnvFltSustain = 0.0f;  // ENV 2 -> Flt Sustain (aditivo, clamp 0..1 en la voz)
+    float modEnvFltRelease = 0.0f;  // ENV 2 -> Flt Release (aditivo)
+    // ENV 2 -> "Filter Env Amt" (destino 12): suma al FACTOR de routing de la
+    // ruta ENV 2 -> Filter Cutoff (base 1.0 en modEnvCutoff). Es la profundidad
+    // del knob retirado filterEnvAmount, viviendo como modulacion de matriz.
+    float modEnvFltDepth = 0.0f;
 
     virtual void resetModulations() {
+        // modMorphZ (y los de las capas de 11.3) TIENEN que estar aqui: la matriz
+        // SUMA (case 28/29/30) en cada tramo de control, asi que un destino que
+        // no se limpia se acaba acumulando solo: con una ruta a Morph Z, el z de
+        // la voz corria sin freno hasta 1.0 y ahi se quedaba. Es el unico
+        // destino que se habia quedado fuera de la lista.
         modLevel = modCutoff = modResonance = modFilterRes = modMorphX = modMorphY = 0.0f;
+        modMorphZ = modMorphZ2 = modMorphZ3 = 0.0f;
         modInharmonicity = modRoughness = modParity = modShift = modRolloff = modUnison = 0.0f;
         modExciteNoise = modExciteColor = modImpulseMix = 0.0f;
         modAmpAttack = modAmpDecay = modAmpSustain = modAmpRelease = 0.0f;
         modEnvLevel = modEnvCutoff = 1.0f; // factores de routing (legacy)
-        modEnvFltAttack = modEnvFltDecay = 0.0f;
+        modEnvFltAttack = modEnvFltDecay = modEnvFltDepth = 0.0f;
+        modEnvFltSustain = modEnvFltRelease = 0.0f;
     }
     
     /** Resets the internal state of the voice. */

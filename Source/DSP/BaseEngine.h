@@ -45,6 +45,39 @@ public:
     void setPolyphony(int numVoices) override;
     void allNotesOff() override;
 
+    /** @brief Voces RESERVADAS ahora mismo (las del heap), no las que suenan.
+
+        Es el numero que dice si la reserva perezosa funciona: un motor recien
+        creado reserva `activeVoiceLimit` voces —16 la aditiva, 8 la neurotik—,
+        no las 32 de antes; subir la polifonia las añade y bajarla NO las quita
+        (una voz sonando no se puede desalojar; ver `ensureVoices`). */
+    int getNumAllocatedVoices() const noexcept { return (int) voices.size(); }
+
+    /** MORPH del pad XY (2026-09-26): publica (morphX, morphY) en el canal
+        de VoiceParams. La base solo publica (x, y): cada motor hace el
+        read-modify-write de SU struct de params — y el que lleva eje Z
+        (morphZ) lo anade en su override, porque el default del struct es
+        el que manda. */
+    virtual void setMorph (float morphX, float morphY)
+    {
+        (void) morphX; (void) morphY;
+    }
+
+    /** Eje temporal del morph (FASE 10): la base no lo publica — el motor
+        que lo usa hace el read-modify-write en su override. */
+    virtual void setMorphZ (float morphZ)
+    {
+        (void) morphZ;
+    }
+
+    /** FASE 11.4: el VOLUMEN de las capas 1 y 2 (la capa 0 siempre al
+        fondo, el legado). La base no lo publica: el motor que tiene
+        capas en su struct hace el read-modify-write en su override. */
+    virtual void setVoiceLayerMorph (float layerGain2, float layerGain3)
+    {
+        (void) layerGain2; (void) layerGain3;
+    }
+
 protected:
     /** Tamano de la rejilla de control, en muestras de audio.
 
@@ -76,8 +109,24 @@ protected:
     /** Common MIDI processing loop. */
     void processMidiBuffer(dsp::MidiBuffer& midiMessages);
 
+    /** Techo de voces: el mismo 32 que aplica `setPolyphony`. */
+    static constexpr int kMaxVoices = 32;
+
+    /** Crea la voz `index` (0-based). La implementa cada motor: la aditiva no
+        usa el indice; la neurotik lo usa como semilla del ruido de excitacion. */
+    virtual std::unique_ptr<IVoice> createVoice (int index) = 0;
+
+    /** Reserva PEREZOSA: crea voces hasta `count` (y las prepara si el motor ya
+        lo esta). Se llama SOLO desde el hilo de mensajes —constructor, prepare y
+        setPolyphony—: el hilo de audio nunca reserva, solo indexa. */
+    void ensureVoices (int count);
+
     std::vector<std::unique_ptr<IVoice>> voices;
     std::atomic<int> activeVoiceLimit { 16 };
+
+    /** `prepare()` ya paso: las voces nuevas que cree `ensureVoices` se preparan
+        en el acto (si no, nacerian sordas al subir la polifonia en caliente). */
+    bool voicesPrepared = false;
 
     // Shared FX
     Effects::Saturation saturation;

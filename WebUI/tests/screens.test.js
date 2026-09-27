@@ -14,11 +14,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { getDescriptor } from '../src/contracts/parameters.js';
+import { PARAMETERS } from '../generated/parameters.generated.js';
 import {
   GENERAL_PARAMETER_IDS,
   KEYS_TAB,
   KEYS_TAB_SELECTOR,
   SCREEN_PARAMETER_IDS,
+  VISUAL_PARAMETER_IDS,
 } from '../src/contracts/screens.js';
 import { SECTION_PARAMETER_IDS } from '../src/contracts/sections.js';
 
@@ -44,8 +46,8 @@ describe('ids de GENERAL', () => {
 });
 
 describe('SCREEN_PARAMETER_IDS', () => {
-  it('es el reparto del lienzo, sin duplicados', () => {
-    expect(SCREEN_PARAMETER_IDS).toEqual(SECTION_PARAMETER_IDS);
+  it('es el reparto del lienzo MÁS los ids que solo viven en una vista, sin duplicados', () => {
+    expect(SCREEN_PARAMETER_IDS).toEqual([...SECTION_PARAMETER_IDS, ...VISUAL_PARAMETER_IDS]);
     expect(new Set(SCREEN_PARAMETER_IDS).size).toBe(SCREEN_PARAMETER_IDS.length);
   });
 
@@ -53,8 +55,14 @@ describe('SCREEN_PARAMETER_IDS', () => {
     for (const id of GENERAL_PARAMETER_IDS) expect(SCREEN_PARAMETER_IDS).toContain(id);
   });
 
-  it('cubre los 70 del contrato', () => {
-    expect(SCREEN_PARAMETER_IDS).toHaveLength(70);
+  it('cubre TODOS los parámetros del contrato generado (ninguno sin dueño)', () => {
+    // 74 = las 72 celdas del lienzo + los morph del pad (FASE 10, camino B; 11.3
+    // sumo morphZ2/morphZ3 como celdas del cajon de MODELOS). El
+    // total sale del CONTRATO, no de una cuenta a mano: si el APVTS gana uno, esto
+    // falla hasta que la página lo posea. Y poseerlo no es cosmético: el store
+    // ignora lo que el host manda de un id que no tiene, así que un id sin dueño es
+    // un control que se queda mintiendo en cuanto el motor lo mueve.
+    expect([...SCREEN_PARAMETER_IDS].sort()).toEqual(PARAMETERS.map((parameter) => parameter.id).sort());
   });
 });
 

@@ -689,6 +689,37 @@ int main()
         check (recorder.withAction (BridgeActions::modelsState).size() == 2,
                "a loadPreset answers modelsState twice (snapshot hook + load hook)");
 
+        // Un cambio NATIVO de modelo —cargar un preset en el motor, o una carga
+        // desde el panel nativo— no pasa por el sondeo de PARAMETROS (los modelos
+        // no son del APVTS), asi que el sondeo los mira aparte. Sin esto la ficha
+        // MODELOS A-D, y las esquinas del pad, se quedaban con los nombres viejos:
+        // la unica otra publicacion responde a una carga pedida por la pagina.
+        bridge.publishPendingChanges();   // deja el sondeo al dia
+        recorder.messages.clear();
+
+        fakeModels.slotNames.set (0, "CZ-SWEP1");
+        bridge.publishPendingChanges();
+
+        const auto afterNativeChange = recorder.withAction (BridgeActions::modelsState);
+        check (afterNativeChange.size() == 1,
+               "un cambio NATIVO de modelo sale en el sondeo (la pagina no tiene otra via)");
+
+        if (afterNativeChange.size() == 1)
+            if (const auto* changed = afterNativeChange[0].getDynamicObject();
+                changed != nullptr)
+                if (const auto* names = changed->getProperty ("slots").getArray();
+                    names != nullptr && names->size() == 4)
+                    check ((*names)[0].getDynamicObject() != nullptr
+                               && (*names)[0].getDynamicObject()->getProperty ("name").toString()
+                                      == "CZ-SWEP1",
+                           "el modelsState del sondeo lleva el nombre NUEVO");
+
+        recorder.messages.clear();
+        bridge.publishPendingChanges();
+
+        check (recorder.withAction (BridgeActions::modelsState).empty(),
+               "y no lo repite en el siguiente sondeo (se publica el cambio, no el estado)");
+
         // Without a backend the message disappears entirely (additive degradation).
         bridge.setPresetController (nullptr);
         bridge.setModelController (nullptr);

@@ -36,9 +36,16 @@ export function createModSummary({ controls }) {
   element.className = 'mod-summary';
 
   const rows = routes.map((route, routeIndex) => {
-    const row = document.createElement('div');
+    // Fila BOTON: el mismo gesto que las rutas de ENVOLVENTES (envRoute en
+    // envelopeViews) — pulsarla abre el cajón de la MATRIZ resaltando SU slot.
+    // Quien ejecuta llega TARDE (la vista se fabrica antes del panel): el click
+    // llama a `openRoute` si app.js ya lo conectó; sin opener, la fila es texto.
+    const row = document.createElement('button');
+    row.type = 'button';
     row.className = 'mod-summary__row';
     row.dataset.slot = String(routeIndex + 1);
+    row.title = `RUTA ${routeIndex + 1}: abrir en la MATRIZ DE MODULACIÓN`;
+    row.addEventListener('click', () => openRoute?.(routeIndex + 1));
 
     const slot = document.createElement('span');
     slot.className = 'mod-summary__slot';
@@ -71,6 +78,11 @@ export function createModSummary({ controls }) {
     return { row, painted };
   });
 
+  // Quien abre el cajón de la MATRIZ (el panel, via app.js). Con null, las filas
+  // quedan en texto informativo (el click no lleva a ninguna parte): el opener
+  // es wiring, no estado — un repintado no lo toca.
+  let openRoute = null;
+
   return {
     element,
     rows,
@@ -84,6 +96,14 @@ export function createModSummary({ controls }) {
           span.textContent = displayText(control, realFromNormalized(control, normalized));
         }
       }
+    },
+
+    /**
+     * Conecta quién abre el cajón de la matriz resaltando el slot (app.js, tarde:
+     * la vista se fabrica antes del panel). Mismo cable que las rutas de ENVOLVENTES.
+     */
+    setRouteOpener(opener) {
+      openRoute = typeof opener === 'function' ? opener : null;
     },
   };
 }

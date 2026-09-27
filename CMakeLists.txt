@@ -178,6 +178,7 @@ message(STATUS "NEURONIK_SOURCES: ${NEURONIK_SOURCES}")
 
 add_library(NEURONiK_Common STATIC
     Source/Common/SpectralModel.h
+    Source/Common/SpectralModelWriter.h
 )
 
 target_link_libraries(NEURONiK_Common PRIVATE
@@ -758,6 +759,50 @@ target_link_libraries(NEURONiK_ModelSlotTest PRIVATE
 
 add_test(NAME NEURONiK_ModelSlotTest COMMAND NEURONiK_ModelSlotTest)
 
+# FASE 11.1: la HUELLA del modelo de 25 KB. El struct paso de ~8 KB a ~25 KB y
+# cada voz lleva OCHO copias (4 slots x models+frameCache), asi que el
+# presupuesto por voz lo manda el modelo, no la polifonia: los motores
+# pre-asignan 32 voces. Esta prueba mide heap y pila del procesador REAL
+# (contador propio sobre operator new/delete) y FIJA el presupuesto por slot,
+# por voz, por motor y por procesador. Compila el mismo juego de fuentes que el
+# de ranuras: necesita el procesador de verdad.
+add_executable(NEURONiK_MemoryBudgetTest
+    Tests/MemoryBudgetTest.cpp
+    Source/WebUI/ParameterBridge.cpp
+    ${NEURONIK_STATE_TEST_SOURCES}
+)
+
+target_include_directories(NEURONiK_MemoryBudgetTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Main"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/UI"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/Panels"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/State"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Serialization"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/WebUI"
+)
+
+target_compile_definitions(NEURONiK_MemoryBudgetTest PRIVATE
+    JucePlugin_Name="NEURONiK"
+)
+
+target_link_libraries(NEURONiK_MemoryBudgetTest PRIVATE
+    NEURONiK_FactoryModels
+    juce::juce_audio_basics
+    juce::juce_audio_processors
+    juce::juce_audio_utils
+    juce::juce_core
+    juce::juce_data_structures
+    juce::juce_dsp
+    juce::juce_graphics
+    juce::juce_gui_basics
+    juce::juce_gui_extra
+    NEURONiK_Common
+)
+
+add_test(NAME NEURONiK_MemoryBudgetTest COMMAND NEURONiK_MemoryBudgetTest)
+
 # Round-trip del ModelMaker con analisis REAL (2026-09-20): el flujo completo de la
 # herramienta (audio -> detectPitch/analyze -> export JSON -> loadModel en A-D) con
 # el MISMO codigo que la GUI conduce. Es la reproduccion automatica del flujo a mano.
@@ -940,6 +985,101 @@ target_link_libraries(NEURONiK_LeastSquaresGridTest PRIVATE
 )
 
 add_test(NAME NEURONiK_LeastSquaresGridTest COMMAND NEURONiK_LeastSquaresGridTest)
+
+# 2026-09-25: LOS RANGOS DEL RESIDUO con los CINCO WAV reales del banco CZ101
+# (../ABDCZ101/DOCS/patches, la misma ruta que inyecta el test acustico de
+# presets). El residuo de rejilla es el numero que la UI enseña en el indicador
+# y junto al aviso de pitch inestable: aqui se clava por material y por BANDA —
+# los tres tonales en verde (BASS1 6.2, HAMOG 4.5, PAD1 7.1 cents), SWEP1 en
+# amarillo (25.2: una rejilla con sub-armonico) y RRISE en naranja (243.9: un
+# barrido no es UNA rejilla) con la guardia disparada (548 cents). Las bandas
+# salen de SpectralAnalyzer::residualGreenCents/AmberCents, las MISMAS que usa
+# el pincel del indicador. Sin el banco el test saltea y pasa.
+add_executable(NEURONiK_Cz101ResidualRangesTest
+    Tests/Cz101ResidualRangesTest.cpp
+    Source/ModelMaker/Analysis/SpectralAnalyzer.cpp
+)
+
+target_include_directories(NEURONiK_Cz101ResidualRangesTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/ModelMaker/Analysis"
+)
+
+if(EXISTS "${NEURONIK_CZ101_WAV_DIR}/CZ-BASS1.wav")
+    target_compile_definitions(NEURONiK_Cz101ResidualRangesTest PRIVATE
+        NEURONiK_CZ101_WAV_DIR="${NEURONIK_CZ101_WAV_DIR}")
+endif()
+
+target_link_libraries(NEURONiK_Cz101ResidualRangesTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_audio_formats
+    juce::juce_core
+    juce::juce_dsp
+    NEURONiK_Common
+)
+
+add_test(NAME NEURONiK_Cz101ResidualRangesTest COMMAND NEURONiK_Cz101ResidualRangesTest)
+
+# FASE 11.2: clustering de parciales por FORMA DE ENVOLVENTE. El modulo puro
+# (LayerClustering.h) se prueba con trazas sinteticas — sin audio, deterministico
+# — y el analizador de punta a punta: drone + voz migrando deben dar un modelo
+# con 2 capas cuya RAIZ sea el drone, y un barrido de pitch fuerte NO debe
+# partirse (la puerta de rejilla).
+add_executable(NEURONiK_LayerClusteringTest
+    Tests/LayerClusteringTest.cpp
+    Source/ModelMaker/Analysis/SpectralAnalyzer.cpp
+)
+
+target_include_directories(NEURONiK_LayerClusteringTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/ModelMaker/Analysis"
+)
+
+target_link_libraries(NEURONiK_LayerClusteringTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_core
+    juce::juce_dsp
+    NEURONiK_Common
+)
+
+add_test(NAME NEURONiK_LayerClusteringTest COMMAND NEURONiK_LayerClusteringTest)
+
+# FASE 11.5: los DATOS DE VISTA de las capas que pinta la pestana "CAPAS" del
+# ModelMaker (indice -> capa, envolvente por frame, leyenda). Modulo PURO: se
+# prueba con modelos sinteticos, sin abrir una ventana.
+add_executable(NEURONiK_LayerViewTest
+    Tests/LayerViewTest.cpp
+    Source/ModelMaker/Analysis/SpectralAnalyzer.cpp
+)
+
+target_include_directories(NEURONiK_LayerViewTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/ModelMaker/Analysis"
+)
+
+target_link_libraries(NEURONiK_LayerViewTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_core
+    juce::juce_dsp
+    NEURONiK_Common
+)
+
+add_test(NAME NEURONiK_LayerViewTest COMMAND NEURONiK_LayerViewTest)
+
+# FASE 11.5: el MODELO PURO del indicador de rejilla del ModelMaker (la fila
+# "Rejilla: f0 ... | residuo ... | N picos", su color por bandas y lo que el
+# clic carga en el editor de pitch). Sin JUCE: la GUI solo pinta lo que el
+# modelo devuelve, y este test lo verifica sin abrir una ventana.
+add_executable(NEURONiK_GridIndicatorTest
+    Tests/GridIndicatorTest.cpp
+)
+
+target_include_directories(NEURONiK_GridIndicatorTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/ModelMaker/Analysis"
+)
+
+add_test(NAME NEURONiK_GridIndicatorTest COMMAND NEURONiK_GridIndicatorTest)
 # FASE 10.4: el emparejador del analisis temporal — un seno con vibrato
 # (offset sub-bin que evoluciona) debe producir frames que SIGUEN el vibrato.
 # El flujo completo temporal: analyzeTemporal -> export v2 (GUI) -> lector.
@@ -1001,6 +1141,53 @@ target_link_libraries(NEURONiK_FrameSamplerTest PRIVATE
 )
 
 add_test(NAME NEURONiK_FrameSamplerTest COMMAND NEURONiK_FrameSamplerTest)
+
+# FASE 11.3: el motor SUMA las capas (sampler por capa + morphZ2/morphZ3 +
+# pesos). Barrido por capas sintetico tipo RRISE (capa 0 = drone con dos
+# frames, capa 1 = parcial que barre): morphZ1 mueve el drone y no toca al
+# barrido, morphZ2 al reves. Con UNA capa el camino es bit-exacto al legado.
+add_executable(NEURONiK_LayerEngineTest
+    Tests/LayerEngineTest.cpp
+    Source/Wasm/NeuronikWasmBridge.cpp
+    ${NEURONIK_DSP_SOURCES}
+)
+
+target_include_directories(NEURONiK_LayerEngineTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+)
+
+target_link_libraries(NEURONiK_LayerEngineTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_core
+    juce::juce_dsp
+    NEURONiK_Common
+)
+
+add_test(NAME NEURONiK_LayerEngineTest COMMAND NEURONiK_LayerEngineTest)
+
+# 2026-09-25: OFFSETS TRANSPONIBLES (modo delta-n/n). El motor escala el
+# offset por base/f0 con el modo declarado, de modo que la inharmonicidad
+# se transpone con el teclado. Sin modo el factor es 1.0 EXACTO (legado bit
+# a bit, comprobado sobre el audio).
+add_executable(NEURONiK_TransposableOffsetsTest
+    Tests/TransposableOffsetsTest.cpp
+    ${NEURONIK_DSP_SOURCES}
+)
+
+target_include_directories(NEURONiK_TransposableOffsetsTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+)
+
+target_link_libraries(NEURONiK_TransposableOffsetsTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_core
+    juce::juce_dsp
+    NEURONiK_Common
+)
+
+add_test(NAME NEURONiK_TransposableOffsetsTest COMMAND NEURONiK_TransposableOffsetsTest)
 # El modo bow del motor modal: sostenido con arco (ganancia plena) frente al
 # legacy impulso+ruido, con el motor real. Pin de compatibilidad incluido
 # (bow=0 conserva el nivel historico del sostenido).
@@ -1142,15 +1329,18 @@ endif()
 
 
 # ============================================================================
-# SELFTEST ASSETS (modelo temporal real para el E2E del bridge)
+# SELFTEST ASSETS (los SEIS modelos del banco CZ101 para el E2E del bridge)
 # ============================================================================
 
-# El modelo de ejemplo de la FASE 10 (CZ-BASS1 -> 4 frames v2 con f0 por frame),
-# generado por la sonda CLI del ModelMaker a partir del WAV real del banco CZ101
-# (ver ROADMAP Fase 10.5). Viaja EMBEBIDO para que el selftest del bridge
-# (BridgeSelftest.h, siete direcciones) cargue en la ranura A un modelo del
-# dialecto temporal REAL y la direccion MODELOS cubra tambien el formato v2:
-# frames, span y f0 por frame atravesando APVTS -> pagina.
+# Los SEIS modelos del banco CZ101 (Assets/Models), generados por la sonda CLI
+# del ModelMaker a partir de los WAV reales de ../ABDCZ101/DOCS/patches. Viajan
+# EMBEBIDOS para que el selftest del bridge (BridgeSelftest.h, ocho direcciones)
+# sea AUTOCONTENIDO: la direccion MODELOS escribe los seis en su directorio
+# temporal, los REVALIDA con el lector de produccion —los dos dialectos del v2:
+# denso de 1 frame y con f0 por frame de 4 frames— y carga los cuatro del banco
+# en las ranuras A-D, que es lo que la pagina ensena. Antes aqui viajaba UN solo
+# modelo (el temporal de CZ-BASS1) y las otras tres ranuras eran JSON sinteticos
+# de un parcial: el E2E medía el formato, no el material.
 # NOTA: los assets van en el directorio del plugin (no en Tests/) porque el
 # generador de JUCE nombra los simbolos por contenido; el include lo consume
 # BridgeSelftest.h via NeuronikSelftestAssets.h.
@@ -1158,6 +1348,11 @@ juce_add_binary_data(NEURONiK_SelftestAssets
     HEADER_NAME "NeuronikSelftestAssets.h"
     NAMESPACE "NeuronikSelftestAssets"
     SOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Models/CZ-BASS1.neuronikmodel"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Models/CZ-HAMOG.neuronikmodel"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Models/CZ-PAD1.neuronikmodel"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Models/CZ-SWEP1.neuronikmodel"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Models/CZ-RRISE-temporal.neuronikmodel"
         "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Models/CZ-BASS1-temporal.neuronikmodel"
 )
 
@@ -1167,8 +1362,10 @@ juce_add_binary_data(NEURONiK_SelftestAssets
 # Documents/NEURONiK/Models/ en el arranque (installFactoryModels): los
 # presets de fabrica referencian esos ficheros por modelPath<slot>, el mismo
 # mecanismo de siempre, y un usuario que borre Documents los recupera solo.
-# Los SEIS presets (Assets/Presets, generados offline por
-# Tests/FactoryPresetGenerator.cpp) viajan en el MISMO binario:
+# Los SIETE presets (Assets/Presets, generados offline por
+# Tests/FactoryPresetGenerator.cpp) viajan en el MISMO binario — uno por
+# modelo mas CZ101-BANK, el BANCO en un preset (los cuatro patches tonales
+# en las cuatro esquinas del pad XY):
 # installFactoryPresets() los escribe a Documents/NEURONiK/Presets/ (flat,
 # getAllPresets no es recursivo) sustituyendo {{FACTORY_MODELS}} por ese
 # directorio de modelos.
@@ -1188,6 +1385,7 @@ juce_add_binary_data(NEURONiK_FactoryModels
         "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Presets/CZ-SWEP1.neuronikpreset"
         "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Presets/CZ-RRISE-temporal.neuronikpreset"
         "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Presets/CZ-BASS1-temporal.neuronikpreset"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Presets/CZ101-BANK.neuronikpreset"
 )
 
 # WEBVIEW2 BENCH (bancada de la WebUI + panel nativo)

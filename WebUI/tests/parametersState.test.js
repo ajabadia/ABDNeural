@@ -116,20 +116,19 @@ describe('ENV wiring defaults (preset nuevo)', () => {
     expect(d.defaultChoiceIndex).toBe(7); // 7 = ENV 2
   });
 
-  it('el knob de profundidad de la envolvente del filtro nace audible (1.0)', () => {
-    const d = getDescriptor('filterEnvAmount');
-
-    expect(d.defaultValue).toBe(1);
-    expect(d.defaultNormalized).toBe(1);
+  it('el knob filterEnvAmount ya no existe (la profundidad es el amount de la ruta)', () => {
+    // RETIRO 2026-09-26: con la ruta ENV 2 -> Filter Cutoff por matriz, el
+    // knob era la misma profundidad dos veces. La profundidad la pone el
+    // amount de la ruta (bipolar, -1..1).
+    expect(getDescriptor('filterEnvAmount')).toBeNull();
   });
 
-  it('defaultState siembra los tres y el estado pasa la validacion', () => {
-    const ids = ['mod1Source', 'mod2Source', 'filterEnvAmount'];
+  it('defaultState siembra las dos rutas y el estado pasa la validacion', () => {
+    const ids = ['mod1Source', 'mod2Source'];
     const state = defaultState(ids);
 
     expect(state.mod1Source).toBe(6);
     expect(state.mod2Source).toBe(7);
-    expect(state.filterEnvAmount).toBe(1);
     expect(validateState(ids, state)).toEqual([]);
   });
 });

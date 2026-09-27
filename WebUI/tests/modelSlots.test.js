@@ -26,8 +26,9 @@ afterEach(() => {
 });
 
 /** Estado del store que necesita la vista (lo demás lo ignora). */
-function makeState({ models = null, bridgeAvailable = true, modelError = null } = {}) {
-  return { models, bridgeAvailable, modelError };
+function makeState({ models = null, bridgeAvailable = true, modelError = null,
+                     localModelReady = false } = {}) {
+  return { models, bridgeAvailable, modelError, localModelReady };
 }
 
 /** Los cuatro slots tal cual los manda el puente (`modelsState`). */
@@ -138,6 +139,20 @@ describe('ranuras de modelo / la carga la pide al host', () => {
 
     expect(onLoad).toHaveBeenCalledTimes(1);
     expect(onLoad).toHaveBeenCalledWith(2);
+  });
+
+  it('sin host PERO con camino local (localModelReady) el botón se habilita', () => {
+    const onLoad = vi.fn();
+    const view = mount({ onLoad });
+
+    view.paint({}, makeState({ bridgeAvailable: false, localModelReady: true }));
+
+    const button = rowOf(0).querySelector('.model-slots__load');
+    expect(button.disabled).toBe(false);
+    expect(button.title).toContain('slot A');
+
+    button.click();
+    expect(onLoad).toHaveBeenCalledWith(0);
   });
 
   it('sin host el botón está deshabilitado y no pide nada', () => {

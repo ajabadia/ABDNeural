@@ -27,9 +27,7 @@ namespace
  */
 void installFactoryModels()
 {
-    const auto modelsDir = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
-                               .getChildFile ("NEURONiK")
-                               .getChildFile ("Models");
+    const auto modelsDir = NEURONiKProcessor::factoryModelsDirectory();
     modelsDir.createDirectory();
 
     // Regla de simbolos JUCE (patron BridgeSelftest.h): punto -> `_`,
@@ -78,11 +76,14 @@ void installFactoryModels()
 }
 
 /**
- * Presets de fabrica (banco CZ101): los seis presets generados OFFLINE por
+ * Presets de fabrica (banco CZ101): los siete presets generados OFFLINE por
  * Tests/FactoryPresetGenerator.cpp viajan embebidos con el marcador
  * {{FACTORY_MODELS}} en modelPath0 — un preset guarda rutas ABSOLUTAS y el
  * binario es comun a todas las maquinas, asi que el marcador se sustituye por
- * el directorio real de modelos al instalar. FLAT en Presets/ (getAllPresets
+ * el directorio real de modelos al instalar. Uno de ellos es el BANCO en un
+ * solo preset (CZ101-BANK): los cuatro patches TONALES en las cuatro ranuras,
+ * asi que el pad XY morfa el banco entero (abre en la esquina A y el pad
+ * recorre B/C/D). FLAT en Presets/ (getAllPresets
  * no es recursivo: en una subcarpeta no aparecerian en el navegador) y solo
  * si falta: nunca se regraba lo que el usuario ya tiene.
  */
@@ -120,6 +121,9 @@ void installFactoryPresets()
         { "CZ-BASS1-temporal.neuronikpreset",
           NeuronikFactoryModels::CZBASS1temporal_neuronikpreset,
           NeuronikFactoryModels::CZBASS1temporal_neuronikpresetSize },
+        { "CZ101-BANK.neuronikpreset",
+          NeuronikFactoryModels::CZ101BANK_neuronikpreset,
+          NeuronikFactoryModels::CZ101BANK_neuronikpresetSize },
     };
 
     for (const auto& preset : factory)
@@ -136,9 +140,17 @@ void installFactoryPresets()
 }
 } // namespace
 
+juce::File NEURONiKProcessor::factoryModelsDirectory()
+{
+    return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
+               .getChildFile ("NEURONiK")
+               .getChildFile ("Models");
+}
+
 NEURONiKProcessor::NEURONiKProcessor()
     : apvts(*this, nullptr, "Parameters", createParameterLayout()),
       midiFifo(1024),
+      commandQueue(std::make_unique<Command[]>(32)),   // Fase 11.1: 32 x ~25 KB = 800 KB fuera de la pila
       commandFifo(32)
 {
     presetManager = std::make_unique<NEURONiK::Serialization::PresetManager>(apvts);
@@ -193,7 +205,6 @@ NEURONiKProcessor::NEURONiKProcessor()
     LOAD_PARAM(resonatorParity);
     LOAD_PARAM(resonatorShift);
     LOAD_PARAM(resonatorRolloff);
-    LOAD_PARAM(filterEnvAmount);
     LOAD_PARAM(filterAttack);
     LOAD_PARAM(filterDecay);
     LOAD_PARAM(filterSustain);
@@ -247,9 +258,17 @@ void NEURONiKProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 
 void NEURONiKProcessor::setPolyphony(int numVoices)
 {
-    int newLimit = juce::jlimit(1, 32, numVoices);
+    const int newLimit = juce::jlimit(1, 32, numVoices);
     currentPolyphony.store(newLimit);
-    if (engine) engine->setPolyphony(newLimit);
+
+    if (engine)
+    {
+        // Bajo el mismo cerrojo que el cambio de motor: subir la polifonia RESERVA
+        // voces (heap) y la reserva no puede ocurrir mientras el hilo de audio
+        // recorre la lista. El editor llama a esto desde el hilo de mensajes.
+        const juce::ScopedLock engineLock(getCallbackLock());
+        engine->setPolyphony(newLimit);
+    }
 }
 
 int NEURONiKProcessor::getPolyphony() const { return currentPolyphony.load(); }
@@ -402,7 +421,6 @@ void NEURONiKProcessor::synchronizeEngineParameters()
         vParams.release = apvts.getRawParameterValue(IDs::envRelease)->load() * 1000.0f;
         vParams.filterCutoff = apvts.getRawParameterValue(IDs::filterCutoff)->load();
         vParams.filterRes = apvts.getRawParameterValue(IDs::filterRes)->load();
-        vParams.fEnvAmount = apvts.getRawParameterValue(IDs::filterEnvAmount)->load();
         vParams.fAttack = apvts.getRawParameterValue(IDs::filterAttack)->load() * 1000.0f;
         vParams.fDecay = apvts.getRawParameterValue(IDs::filterDecay)->load() * 1000.0f;
         vParams.fSustain = apvts.getRawParameterValue(IDs::filterSustain)->load();
@@ -410,6 +428,8 @@ void NEURONiKProcessor::synchronizeEngineParameters()
         vParams.morphX = apvts.getRawParameterValue(IDs::morphX)->load();
         vParams.morphY = apvts.getRawParameterValue(IDs::morphY)->load();
         vParams.morphZ = apvts.getRawParameterValue(IDs::morphZ)->load();
+        vParams.morphZ2 = apvts.getRawParameterValue(IDs::morphZ2)->load();
+        vParams.morphZ3 = apvts.getRawParameterValue(IDs::morphZ3)->load();
         vParams.inharmonicity = apvts.getRawParameterValue(IDs::oscInharmonicity)->load();
         vParams.roughness = apvts.getRawParameterValue(IDs::oscRoughness)->load();
         vParams.resonatorParity = apvts.getRawParameterValue(IDs::resonatorParity)->load();
@@ -436,6 +456,8 @@ void NEURONiKProcessor::synchronizeEngineParameters()
         ntParams.morphX = apvts.getRawParameterValue(IDs::morphX)->load();
         ntParams.morphY = apvts.getRawParameterValue(IDs::morphY)->load();
         ntParams.morphZ = apvts.getRawParameterValue(IDs::morphZ)->load();
+        ntParams.morphZ2 = apvts.getRawParameterValue(IDs::morphZ2)->load();
+        ntParams.morphZ3 = apvts.getRawParameterValue(IDs::morphZ3)->load();
         ntParams.excitationNoise = apvts.getRawParameterValue(IDs::oscExciteNoise)->load();
         ntParams.excitationColor = apvts.getRawParameterValue(IDs::excitationColor)->load();
         ntParams.impulseMix = apvts.getRawParameterValue(IDs::impulseMix)->load();

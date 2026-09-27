@@ -227,7 +227,32 @@ int ParameterBridge::publishPendingChanges()
         ++sent;
     }
 
+    // Y los MODELOS: no son del APVTS, asi que no los cubre el bucle de arriba, y
+    // una carga NATIVA no responde a nadie (la que pide la pagina ya se contesta
+    // sola). El sondeo es el unico sitio donde "lo que ha cambiado en nativo" se
+    // mira de verdad, asi que aqui se mira tambien lo que no es un parametro.
+    if (modelNamesChanged())
+        sendModelsState();
+
     return sent;
+}
+
+bool ParameterBridge::modelNamesChanged()
+{
+    if (models == nullptr)
+        return false;
+
+    const int numSlots = models->getNumModelSlots();
+    juce::StringArray names;
+
+    for (int slot = 0; slot < numSlots; ++slot)
+        names.add (models->getModelName (slot));
+
+    if (names == lastModelNames)
+        return false;
+
+    lastModelNames = names;
+    return true;
 }
 
 int ParameterBridge::closeOpenGestures()
@@ -292,6 +317,13 @@ void ParameterBridge::sendModelsState()
     juce::DynamicObject::Ptr message = new juce::DynamicObject();
     message->setProperty ("action", BridgeActions::modelsState);
     message->setProperty ("slots", juce::var (slots));
+
+    // Lo que se acaba de publicar ES lo ultimo dicho: el sondeo de cambios no lo
+    // vuelve a mandar (se publica el cambio, no el estado).
+    lastModelNames.clear();
+
+    for (int slot = 0; slot < numSlots; ++slot)
+        lastModelNames.add (models->getModelName (slot));
 
     ++stats.modelsSent;
     send (juce::var (message.get()), false);

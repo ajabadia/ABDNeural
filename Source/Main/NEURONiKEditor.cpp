@@ -167,7 +167,7 @@ void NEURONiKEditor::startSelftestIfRequested()
 
     // Sin `PageCapabilities`: el defecto del arnes es la capacidad COMPLETA, y este es
     // el dueno que la tiene entera — esta pagina SI publica la ficha MODELOS A-D, asi
-    // que las siete direcciones son obligatorias aqui. Declarar el omitido esta
+    // que las ocho direcciones son obligatorias aqui. Declarar el omitido esta
     // reservado a la bancada del piloto (que sirve la pagina retirada), y
     // Tests/webuiSelftestContractTest.mjs impide que se extienda a otra superficie.
     selftest = std::make_unique<NEURONiK::WebUI::BridgeSelftest> (

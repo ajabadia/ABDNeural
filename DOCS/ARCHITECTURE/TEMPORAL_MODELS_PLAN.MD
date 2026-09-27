@@ -175,9 +175,9 @@ modulación. Reparto propuesto:
 
 ### 4.3 Cajón MODELOS
 
-Muestra el recuento de frames por ranura (`selftest-model-a · 8 frames`) y el
-scrubber de z compartido con el drawer. Sin recuento = modelo estático v1 (o
-v2 de 1 frame): la UI no distingue, el motor tampoco.
+Muestra el recuento de frames por ranura (`CZ-BASS1-temporal · 4 frames`, un asset
+del banco) y el scrubber de z compartido con el drawer. Sin recuento = modelo
+estático v1 (o v2 de 1 frame): la UI no distingue, el motor tampoco.
 
 ## 5. Cadena de análisis temporal (ModelMaker)
 

@@ -81,6 +81,20 @@ describe('WebUI entry contract', () => {
     expect(app).toContain("if (id === 'randomize') store.randomize();");
   });
 
+  it('las rutas de ENVOLVENTES abren la MATRIZ: opener tardio cableado en app.js', () => {
+    // La vista se fabrica antes del panel (orden fijado por el selftest del host);
+    // el cable es un setRouteOpener que app.js hace cuando ya tiene el panel.
+    expect(app).toContain('canvasEnvCurvesView?.setRouteOpener');
+    expect(app).toContain("panel.openDrawerRoute('modMatrix', slot)");
+    // El opener del CAJON (IR A LA RUTA) pide la vuelta: cerrar la matriz
+    // reabre ENVOLVENTES. La del lienzo, no (el usuario nunca entro alli).
+    expect(app).toContain("panel.openDrawerRoute('modMatrix', slot, { returnTo: 'envelopes' })");
+    // El metodo del panel existe y es el dueño del gesto (abre + resalta + retorno).
+    expect(panel).toContain('function openDrawerRoute(sectionId, slot, { returnTo = null } = {})');
+    expect(panel).toContain('openDrawerRoute,');
+    expect(visuals).toContain('curves.setRouteOpener(options.onOpenRoute ?? null);');
+  });
+
   it('monta las vistas de ficha (curva ADSR, resumen de la matriz) aparte de las celdas', () => {
     expect(app).toContain("import { createVisual } from './ui/visuals.js'");
     expect(app).toContain('visualSpec.parameterIds.map(describeControl)');
@@ -90,8 +104,17 @@ describe('WebUI entry contract', () => {
     // La FABRICA vive en su modulo porque la usan la pagina y la suite del panel:
     // cuando estaba escrita dentro del test, el harness montaba una curva ADSR para
     // cualquier vista declarada (y el resumen de la matriz añadio una segunda).
-    expect(visuals).toContain("if (visualId === 'amp-envelope') return createEnvelopeCurve({ controls });");
-    expect(visuals).toContain("if (visualId === 'mod-summary') return createModSummary({ controls });");
+    // DISENO 9.x: ENVOLVENTES es compuesta desde su retiro de la curva única —
+    // lienzo (curvas + rutas de matriz) y cajón (bloques con knobs) en un módulo.
+    expect(visuals).toContain("if (visualId === 'envelope-curves') {");
+    expect(visuals).toContain('onTelemetry: options.onTelemetry ?? null,');
+    expect(visuals).toContain("if (visualId === 'envelope-blocks') {");
+    expect(visuals).toContain('const blocks = createEnvelopeBlocks({');
+    expect(visuals).toContain('routeControls: options.routeControls ?? [],');
+    expect(visuals).toContain('blocks.setRouteOpener(options.onOpenRoute ?? null);');
+    // El resumen de la matriz: filas botón con opener tardío (gesto de rutas).
+    expect(visuals).toContain("if (visualId === 'mod-summary') {");
+    expect(visuals).toContain('summary.setRouteOpener(options.onOpenRoute ?? null);');
     // La vista MODELOS es compuesta desde 8.3: pad dibujado + ranuras, montadas
     // por la misma fabrica (un solo punto de comportamiento, dos mitades).
     expect(visuals).toContain("if (visualId === 'model-slots') {");
@@ -99,16 +122,21 @@ describe('WebUI entry contract', () => {
     expect(visuals).toContain('createXyPad({ onEdit: options.onEdit ?? null })');
   });
 
-  it('las ranuras de modelo A–D piden la carga al store, que la pide al host', () => {
-    // El dialogo lo abre el HOST (la pagina no tiene sistema de ficheros), asi que el
-    // boton pasa por el store y no toca el cable por su cuenta.
-    expect(app).toContain('onLoad: (slot) => store.loadModel(slot)');
-    expect(app).toContain('onEdit: (id, value, phase) => store.pushParameter(id, value, phase)');
+  it('las ranuras de modelo A–D piden la carga al store: host O fichero local', () => {
+    // DOS caminos, una sola puerta (el store): con host el dialogo lo abre el
+    // host nativo (`loadModel` via cable); sin host, el input de fichero local
+    // (el handler `requestLocalFile` que app.js le entrega al store).
+    expect(app).toContain('onLoad: (slot) => store.loadModel(slot, {');
+    expect(app).toContain('requestLocalFile: (nextSlot) =>');
+    expect(app).toContain('await store.loadLocalModel(file, localModelSlot);');
+    expect(app).toContain('store.seedLocalModels(emptyLocalModels());');
+    expect(app).toContain('store.setLocalModelReady(true);');
     expect(store).toContain('transport?.sendLoadModel(slot);');
+    expect(store).toContain('requestLocalFile(slot);');
     expect(bridge).toContain("emit({ action: 'loadModel', slot });");
 
     // Y el panel le pasa el ESTADO entero a las vistas: las ranuras no son parametros
-    // (`state.models`) y se habilitan segun haya host.
+    // (`state.models`) y se habilitan segun haya a quien pedirle la carga.
     expect(panel).toContain('for (const visual of visuals) visual.paint(parameters, state);');
   });
 

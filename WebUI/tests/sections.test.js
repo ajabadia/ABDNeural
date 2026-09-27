@@ -1,7 +1,7 @@
 /**
  * Reparto del lienzo y su ENCAJE, medido.
  *
- * El ticket 8.2 pide que los 70 parámetros quepan en un solo lienzo, sin cajón ni
+ * El ticket 8.2 pide que los 72 parámetros quepan en un solo lienzo, sin cajón ni
  * pestañas. "Caben" no es una impresión: aquí se cuenta con los mismos números
  * que usa la CSS (GEOMETRY/CANVAS de sections.js) y se comprueba que la altura
  * total no pasa de la del lienzo. Si una ficha crece una fila de más, este test
@@ -43,12 +43,13 @@ function cssPixels(name) {
 }
 
 describe('sections / cobertura del contrato', () => {
-  it('cubre el contrato: 70 celdas propias, sin repetir ninguna', () => {
-    // FASE 10 (camino B): 72 del APVTS = 70 con celda en el reparto (morphZ
-    // entra al cajon de MODELOS) + 2 que el pad `model-xy` edita con un gesto
-    // coordinado (morphX/morphY dejaron de ser celdas).
-    expect(SECTION_PARAMETER_IDS).toHaveLength(70);
-    expect(new Set(SECTION_PARAMETER_IDS).size).toBe(70);
+  it('cubre el contrato: 71 celdas propias, sin repetir ninguna', () => {
+    // FASE 10 (camino B) + 11.3: 74 del APVTS = 72 con celda en el reparto
+    // (morphZ y, con las capas, morphZ2/morphZ3 entran al cajon de MODELOS) + 2
+    // que el pad `model-xy` edita con un gesto coordinado (morphX/morphY
+    // dejaron de ser celdas). 2026-09-26: - filterEnvAmount (retirado) = 71.
+    expect(SECTION_PARAMETER_IDS).toHaveLength(71);
+    expect(new Set(SECTION_PARAMETER_IDS).size).toBe(71);
   });
 
   it('cada id del lienzo existe en el contrato generado', () => {
@@ -105,7 +106,7 @@ describe('sections / bandas', () => {
 });
 
 describe('sections / encaje en el lienzo', () => {
-  it('los 70 controles caben en el alto del lienzo', () => {
+  it('los 71 controles caben en el alto del lienzo', () => {
     const total = canvasHeight();
 
     expect(total, `alto calculado ${total}px vs lienzo ${CANVAS.height}px`)
@@ -127,23 +128,25 @@ describe('sections / encaje en el lienzo', () => {
   });
 
   it('las fichas CON celdas miden lo mismo (rejilla regular)', () => {
-    // Las fichas SIN filas quedan fuera: las dos de vistas (MODELOS: sus cuatro
-    // ranuras son del motor; la de cajon de la MATRIZ: sus controles viven en el
-    // panel lateral) y las dos de cajon (GLOBAL & MASTER: solo su control base;
-    // LFO: los suyos viven en el FRONTAL, que SI aporta filas y va aparte).
+    // Las fichas SIN filas quedan fuera: las tres de vistas (MODELOS: sus cuatro
+    // ranuras son del motor; ENVOLVENTES: sus dos curvas + rutas viven en el
+    // lienzo y sus knobs en el cajon; la de cajon de la MATRIZ: sus controles
+    // viven en el panel lateral) y las de cajon (GLOBAL & MASTER: solo su
+    // control base; LFO: los suyos viven en el FRONTAL, que SI aporta filas).
     const cellCards = SECTIONS.filter((section) => section.ids.length > 0 && !section.drawer);
     const cellLessCards = SECTIONS.filter((section) => section.ids.length === 0 || section.drawer);
     const twoRow = cellCards.filter((section) => rowsOf(section) === 2);
     const heights = new Set(twoRow.map(cardHeight));
 
-    expect(cellLessCards.map((section) => section.id)).toEqual(['models', 'lfo', 'modMatrix', 'globalFull']);
+    // BALANCEO 9.3: el LFO vive en la banda del motor (orden de lectura).
+    expect(cellLessCards.map((section) => section.id)).toEqual(['lfo', 'envelopes', 'models', 'modMatrix', 'globalFull']);
     expect(cellCards.length).toBe(SECTIONS.length - cellLessCards.length);
-    // Todas las de dos filas miden lo mismo; FILTRO (una fila) es la excepcion
-    // declarada de la separacion 8.3 y es MAS BAJA.
+    // Todas las de dos filas miden lo mismo; FILTRO (apilado, 2 filas de
+    // una columna) sigue siendo ficha regular — sin excepciones.
     expect(heights.size).toBe(1);
     const filter = SECTIONS.find((section) => section.id === 'filter');
-    expect(rowsOf(filter)).toBe(1);
-    expect(cardHeight(filter)).toBeLessThan(cardHeight(twoRow[0]));
+    expect(rowsOf(filter)).toBe(2);
+    expect(cardHeight(filter)).toBe(cardHeight(twoRow[0]));
   });
 
   it('la ficha de MODELOS: en el CENTRO, solo el pad; las ranuras en su cajon', () => {
@@ -158,9 +161,10 @@ describe('sections / encaje en el lienzo', () => {
     expect(card.drawer.visual).toBe('model-slots');
     expect(drawerVisual).toBeTruthy();
 
-    // MORPH-Z vive aqui (FASE 10): ficha con cajon => su celda SOLO en el
-    // cajon, bajo la vista de ranuras; el lienzo se queda con el pad.
-    expect(card.ids).toEqual(['morphZ']);
+    // MORPH-Z vive aqui (FASE 10) y los z de las capas 1 y 2 tambien (FASE
+    // 11.3): ficha con cajon => sus celdas SOLO en el cajon, bajo la vista de
+    // ranuras; el lienzo se queda con el pad.
+    expect(card.ids).toEqual(['morphZ', 'morphZ2', 'morphZ3']);
     expect(padVisual.parameterIds).toEqual(['morphX', 'morphY']);
     // morphX/morphY (camino B) ya no son celdas: existen en el contrato y el
     // pad es su control.
@@ -173,9 +177,9 @@ describe('sections / encaje en el lienzo', () => {
     // Una columna: la vista llena el cuerpo de la ficha, no reparte celdas.
     expect(card.columns).toBe(1);
 
-    // 70 celdas propias (morphZ incluido; morphX/morphY viven en el pad):
-    // una ranura no es una mas.
-    expect(SECTION_PARAMETER_IDS).toHaveLength(70);
+    // 71 celdas propias (morphZ + morphZ2/morphZ3; morphX/morphY viven en el
+    // pad): una ranura no es una mas. 2026-09-26: - filterEnvAmount.
+    expect(SECTION_PARAMETER_IDS).toHaveLength(71);
     expect(SECTION_PARAMETER_IDS).not.toContain('models');
     expect(SECTION_PARAMETER_IDS).not.toContain('model-slots');
 
@@ -192,23 +196,26 @@ describe('sections / encaje en el lienzo', () => {
     const drawerSection = SECTIONS.find((section) => section.id === 'modMatrix');
     const models = SECTIONS.find((section) => section.id === 'models');
 
-    // Cero filas: sus 12 celdas no empujan el encaje.
+    // Cero filas: sus 12 celdas no empujan el encaje. TRANSICION 9.3: con el
+    // LFO en la banda del motor, la banda del fondo es de cajones puros — el
+    // resumen CIERRA la banda (minBodyHeight 164), mide lo que una ficha.
     expect(rowsOf(drawerSection)).toBe(0);
-    expect(cardHeight(drawerSection)).toBeLessThan(cardHeight(SECTIONS[0]));
-    // Pero sus ids SI son del reparto: el store y el recuento siguen viendo 70.
+    expect(cardHeight(drawerSection)).toBe(cardHeight(SECTIONS[0]));
+    // Pero sus ids SI son del reparto: el store y el recuento siguen viendo 72.
     expect(drawerSection.ids).toHaveLength(12);
     expect(SECTION_PARAMETER_IDS).toContain('mod1Source');
 
-    // Banda del fondo: LFO + matriz + global (la caja LFO entra con los
-    // carriles que GLOBAL deja al ceder dos).
+    // Banda del fondo (TRANSICION 9.3): matriz + global — el LFO vive ahora en
+    // la banda del motor; el resumen de la matriz cierra la banda con el cuerpo
+    // de la casa (164).
     const band = BANDS.find((candidate) => candidate.includes(drawerSection));
 
-    expect(band.map((section) => section.id)).toEqual(['lfo', 'modMatrix', 'globalFull']);
+    expect(band.map((section) => section.id)).toEqual(['modMatrix', 'globalFull']);
     expect(band.reduce((total, section) => total + section.span, 0)).toBe(CANVAS.lanes);
-    // El alto de la banda lo manda el LFO: su FRONTAL (2 filas) es lo mas alto
-    // (la matriz y el global son armazon de cajon).
-    const lfo = SECTIONS.find((section) => section.id === 'lfo');
-    expect(Math.max(...band.map(cardHeight))).toBe(cardHeight(lfo));
+    // El alto lo manda el RESUMEN de la matriz (minBodyHeight 164): el global
+    // estira con el. Ese es el cuerpo que repintara la vista.
+    expect(Math.max(...band.map(cardHeight))).toBe(cardHeight(drawerSection));
+    expect(cardHeight(drawerSection)).toBe(206);
     expect(models).toBeTruthy();
   });
 
@@ -229,24 +236,49 @@ describe('sections / encaje en el lienzo', () => {
     expect(visual.parameterIds.length).toBe(section.drawer.groups.length * 3);
   });
 
-  it('la curva ADSR vive en la celda LIBRE de su ficha (no cambia el encaje)', () => {
-    const card = SECTIONS.find((section) => section.visual === 'amp-envelope');
-    const visual = SECTION_VISUALS['amp-envelope'];
+  it('la ficha ENVOLVENTES: DOS curvas en el lienzo, bloques con knobs en el cajon', () => {
+    const card = SECTIONS.find((section) => section.id === 'envelopes');
+    const curves = SECTION_VISUALS[card.visual];
+    const blocks = SECTION_VISUALS[card.drawer.visual];
 
-    expect(card?.id).toBe('envelopes');
-    expect(visual).toBeTruthy();
+    // DISENO 9.x: la unica curva ADSR se retira; el lienzo lleva el visual
+    // compuesto (curvas + rutas de matriz) y el cajon los bloques editables.
+    expect(card.visual).toBe('envelope-curves');
+    expect(curves).toBeTruthy();
+    expect(card.drawer.visual).toBe('envelope-blocks');
+    expect(blocks).toBeTruthy();
+    expect(card.drawer.badge).toBe('2 ADSR');
+    expect(card.drawer.trigger).toBe('EDIT');
 
-    // Se alimenta de parametros que la ficha YA pinta (no inventa ids)
-    for (const id of visual.parameterIds)
-      expect(card.ids).toContain(id);
+    // El lienzo se alimenta de las ocho ADSR Y de los doce de la matriz: cruza
+    // los slots con las fuentes ENV 1/2, no copia las rutas. Los doce salen de
+    // la SSOT de la matriz (los ids de su ficha), no de una lista repetida.
+    const matrix = SECTIONS.find((section) => section.id === 'modMatrix');
 
-    // Y ocupa un hueco real: ids + vista <= celdas de la rejilla. Esta es la razon
-    // de que anadir la curva no mueva ni una fila del lienzo.
-    expect(card.ids.length + 1).toBeLessThanOrEqual(card.columns * rowsOf(card));
+    expect(curves.parameterIds).toEqual([
+      'envAttack', 'envDecay', 'envSustain', 'envRelease',
+      'filterAttack', 'filterDecay', 'filterSustain', 'filterRelease',
+      ...matrix.ids,
+    ]);
+    expect(curves.parameterIds.filter((id) => id.startsWith('mod'))).toHaveLength(12);
 
-    // No es una celda de parametro: el reparto sigue teniendo 70
-    expect(SECTION_PARAMETER_IDS).not.toContain('amp-envelope');
-    expect(SECTION_PARAMETER_IDS).toHaveLength(70);
+    // Los bloques del cajon: un id por knob, las ocho ADSR, sin la matriz.
+    expect(blocks.parameterIds).toEqual(card.ids);
+    expect(card.drawer.blocks.flat()).toEqual(card.ids);
+    expect(card.drawer.blocks).toEqual([
+      ['envAttack', 'envDecay', 'envSustain', 'envRelease'],
+      ['filterAttack', 'filterDecay', 'filterSustain', 'filterRelease'],
+    ]);
+
+    // Ficha de cajon: cero filas en el lienzo; su cuerpo lo cierra la vista
+    // (minBodyHeight, mecanismo del pad de MODELOS) y no mueve el encaje.
+    expect(rowsOf(card)).toBe(0);
+    expect(curves.minBodyHeight).toBeGreaterThan(0);
+    expect(canvasHeight()).toBeLessThanOrEqual(CANVAS.height);
+
+    // No es una celda de parametro: el reparto sigue contando 71
+    expect(SECTION_PARAMETER_IDS).not.toContain('envelope-curves');
+    expect(SECTION_PARAMETER_IDS).toHaveLength(71);
   });
 
   it('la caja LFO: frontal rate+depth en el lienzo, el resto en el cajon', () => {
@@ -272,19 +304,34 @@ describe('sections / encaje en el lienzo', () => {
     const filter = SECTIONS.find((section) => section.id === 'filter');
     const envelopes = SECTIONS.find((section) => section.id === 'envelopes');
 
-    // Los 11 ids de la antigua FILTRO & ENVOLVENTE, repartidos sin duplicados.
+    // Los 10 ids vivos de la antigua FILTRO & ENVOLVENTE (filterEnvAmount se
+    // retiro en 2026-09-26: la profundidad es el amount de la ruta en la
+    // matriz), repartidos sin duplicados.
     const union = [...filter.ids, ...envelopes.ids];
     expect(new Set(union).size).toBe(union.length);
     expect(union.sort()).toEqual([
       'envAttack', 'envDecay', 'envSustain', 'envRelease',
-      'filterAttack', 'filterCutoff', 'filterDecay', 'filterEnvAmount',
+      'filterAttack', 'filterCutoff', 'filterDecay',
       'filterRelease', 'filterRes', 'filterSustain',
     ].sort());
-    // La profundidad de la env del filtro es del FILTRO (knob de su banda).
-    expect(filter.ids).toContain('filterEnvAmount');
+    // El knob retirado no vuelve por ningun lado del lienzo.
+    expect(SECTION_PARAMETER_IDS).not.toContain('filterEnvAmount');
     // Las ADSR completas viven en ENVOLVENTES; la curva sigue en su celda libre.
     expect(envelopes.ids).toEqual(['envAttack', 'envDecay', 'envSustain', 'envRelease', 'filterAttack', 'filterDecay', 'filterSustain', 'filterRelease']);
-    expect(SECTION_PARAMETER_IDS).toHaveLength(70);
+    expect(SECTION_PARAMETER_IDS).toHaveLength(71);
+  });
+
+  it('BALANCEO 9.3: el LFO vive en la banda del motor y FILTRO apila sus 2 controles', () => {
+    const bandIds = BANDS.map((band) => band.map((section) => section.id));
+
+    // Banda 0: motor + LFO (el hueco que dejo filterEnvAmount lo paga el LFO).
+    expect(bandIds[0]).toEqual(['oscillator', 'resonator', 'filter', 'lfo']);
+    // La banda del fondo queda matriz + global (transicion, pendiente de decidir).
+    expect(bandIds[2]).toEqual(['modMatrix', 'globalFull']);
+
+    const filter = SECTIONS.find((section) => section.id === 'filter');
+    expect(filter.span).toBe(2);
+    expect(filter.columns).toBe(1); // apilados: cutoff encima, resonancia debajo
   });
 
   it('la accion RANDOM es accion, no parametro, y no ocupa celda', () => {
@@ -302,7 +349,7 @@ describe('sections / encaje en el lienzo', () => {
 
     // No es un id del APVTS: no aparece en las celdas ni en el encaje
     expect(SECTION_PARAMETER_IDS).not.toContain('randomize');
-    expect(SECTION_PARAMETER_IDS).toHaveLength(70);
+    expect(SECTION_PARAMETER_IDS).toHaveLength(71);
   });
 });
 

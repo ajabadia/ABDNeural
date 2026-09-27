@@ -30,9 +30,9 @@ public:
         float oscLevel = 1.0f;
         float attack = 10.0f, decay = 100.0f, sustain = 0.7f, release = 500.0f;
         float filterCutoff = 20000.0f, filterRes = 0.1f;
-        // 1.0 (espeja el default del APVTS): la ruta por defecto
-        // ENV 2 -> Filter Cutoff nace cantando (pluck clasico).
-        float fEnvAmount = 1.0f;
+        // filterEnvAmount se retiro (2026-09-26): la matriz es LA profundidad.
+        // La ruta ENV 2 -> Filter Cutoff parte de factor 1.0 (modEnvCutoff) y el
+        // destino "Filter Env Amt" (12) suma a ella (IVoice::modEnvFltDepth).
         float fAttack = 10.0f, fDecay = 100.0f, fSustain = 0.7f, fRelease = 500.0f;
         float resonatorRollOff = 1.0f;
         float resonatorParity = 0.5f;
@@ -40,6 +40,14 @@ public:
         float morphX = 0.5f;
         float morphY = 0.5f;
         float morphZ = 0.0f; // FASE 10: frame canonico por defecto
+        // FASE 11.3: el eje temporal de las CAPAS 1 y 2 (solo suenan si el modelo
+        // cargado las tiene). Default 0.0 = frame canonico: el legado no se mueve.
+        float morphZ2 = 0.0f;
+        float morphZ3 = 0.0f;
+        // FASE 11.4: el VOLUMEN de las capas 1 y 2 (0 = callada). Default 1.0:
+        // el legado — las capas suenan enteras como en 11.3.
+        float layerGain2 = 1.0f;
+        float layerGain3 = 1.0f;
         float inharmonicity = 0.0f;
         float roughness = 0.0f;
         float unisonDetune = 0.01f;
@@ -95,6 +103,12 @@ private:
     dsp::LinearSmoothedValue<float> morphXSmoother;
     dsp::LinearSmoothedValue<float> morphYSmoother;
     dsp::LinearSmoothedValue<float> morphZSmoother;
+    // FASE 11.3: los z de las capas 1 y 2, con el mismo glide que morphZ.
+    dsp::LinearSmoothedValue<float> morphZ2Smoother;
+    dsp::LinearSmoothedValue<float> morphZ3Smoother;
+    // FASE 11.4: el volumen de las capas 1 y 2, con el mismo glide (20 ms).
+    dsp::LinearSmoothedValue<float> layerGain2Smoother;
+    dsp::LinearSmoothedValue<float> layerGain3Smoother;
     dsp::LinearSmoothedValue<float> inharmonicitySmoother;
     dsp::LinearSmoothedValue<float> roughnessSmoother;
     dsp::LinearSmoothedValue<float> paritySmoother;

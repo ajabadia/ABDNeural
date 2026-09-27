@@ -13,6 +13,7 @@
 
 #include <array>
 #include "../../Common/SpectralModel.h"
+#include "../FrameSampler.h"   // FASE 11.3: LayerMorphZ + sampler por capa
 
 namespace NEURONiK::DSP::Core {
 
@@ -48,8 +49,36 @@ public:
     void setBaseFrequency(float hz) noexcept;
     void loadModel(const NEURONiK::Common::SpectralModel& model, int slot) noexcept;
 
-    /** FASE 10: eje temporal (mismo contrato que Resonator::setMorphZ). */
-    void setMorphZ (float z) noexcept { morphZ = juce::jlimit (0.0f, 1.0f, z); }
+    /** FASE 10: eje temporal de la CAPA 0 (mismo contrato que Resonator::setMorphZ). */
+    void setMorphZ (float z) noexcept { setLayerMorphZ (0, z); }
+
+    /**
+     * FASE 11.4: el VOLUMEN de UNA capa (0..1) en el frame efectivo.
+     * Es otro parametro de voz del slot —como su z (11.3)— pero la capa a
+     * 0.0 queda CALLADA (y su z deja de importar); a 1.0 suena entera.
+     * Con el reparto del analizador (cada indice pertenece a UNA capa)
+     * el gesto es lineal sobre esa capa, no un barrido de frames: MANDA
+     * EL Z de la capa, y la ganancia la sube y baja.
+     */
+    void setLayerGain (int layer, float gain) noexcept
+    {
+        constexpr int kMax = NEURONiK::Common::SpectralModel::kMaxLayers;
+        layerGains[(size_t) juce::jlimit (0, kMax - 1, layer)] =
+            juce::jlimit (0.0f, 1.0f, gain);
+    }
+
+
+    /**
+     * FASE 11.3: el eje temporal de UNA capa. La capa 0 es `morphZ` (el de
+     * siempre); las capas 1..2 son `morphZ2`/`morphZ3` y solo tienen efecto si
+     * el modelo cargado TIENE esa capa: un modelo v2 puro (layerCount == 1)
+     * ignora los z de arriba, que es lo que deja el legado bit-exacto.
+     */
+    void setLayerMorphZ (int layer, float z) noexcept
+    {
+        constexpr int kMaxLayers = NEURONiK::Common::SpectralModel::kMaxLayers;
+        layerZ[(size_t) juce::jlimit (0, kMaxLayers - 1, layer)] = juce::jlimit (0.0f, 1.0f, z);
+    }
 
     // --- Real-time safe processing ---
     void updateParameters(float morphX, float morphY, float resonance, float detune) noexcept;
@@ -68,10 +97,14 @@ private:
     std::array<NEURONiK::Common::SpectralModel, 4> models;
 
     // FASE 10: cache de frames muestreados (mismo esquema que Resonator).
+    // FASE 11.3: el cache es del frame EFECTIVO del slot, es decir de la SUMA
+    // de sus capas (Common::sampleLayeredFrame), cada una con su z.
     std::array<NEURONiK::Common::SpectralModel, 4> frameCache;
-    float morphZ = 0.0f;
-    float lastMorphZ = -1.0f;
-    float lastConsumedZ = -1.0f;
+    NEURONiK::Common::LayerMorphZ layerZ = NEURONiK::Common::restLayerMorphZ();
+    NEURONiK::Common::LayerGains layerGains = NEURONiK::Common::restLayerGains();
+    NEURONiK::Common::LayerMorphZ lastLayerZ { { -1.0f, -1.0f, -1.0f } };
+    NEURONiK::Common::LayerMorphZ lastConsumedZ { { -1.0f, -1.0f, -1.0f } };
+    NEURONiK::Common::LayerGains lastLayerGains { -1.0f, -1.0f, -1.0f };
     bool  frameCacheValid = false;
 
     float baseFrequency = 440.0f;

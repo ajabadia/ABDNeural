@@ -1,10 +1,12 @@
 /**
  * ABDNeural — anti-drift del contrato entre el selftest del puente y la pagina.
  *
- * El selftest de siete direcciones (`Source/WebUI/BridgeSelftest.h`) habla con la
+ * El selftest de ocho direcciones (`Source/WebUI/BridgeSelftest.h`) habla con la
  * WebUI por unos anclajes concretos: el primer `input[type=range]`, el `<code>` del
  * pie de pagina, la pestana KEYS, la rueda de modulacion del teclado compartido, la
- * ficha MODELOS A-D (fila + nombre de cada ranura), el cajon lateral de la matriz
+ * ficha MODELOS A-D (fila + nombre de cada ranura), el PAD XY con su anillo de
+ * morph-Z (la vista del pad, su superficie, el aro y el arco de valor), el cajon
+ * lateral de la matriz
  * (disparador, cajon abierto, ruta y la celda de un parametro), la accion de ficha
  * (el boton por `data-action`, con RANDOM como unica accion hoy) y el helper de MIDI
  * de la pagina (`__pilotSendMidi`). Ademas comprueba que los 11 ids de la pestana
@@ -99,6 +101,12 @@ const expectedAnchors = {
   randomizeAction: 'randomize',
   modelSlotRow: '.model-slots__row',
   modelSlotName: '.model-slots__name',
+  // El pad XY y su anillo (direccion MORPH): la vista, la superficie del pad
+  // COMPARTIDO, el aro de esta pagina y el arco de valor.
+  padVisual: 'model-xy',
+  padSurface: '.abd-xypad__pad',
+  zRing: '.xy-pad__zring',
+  zRingFill: '.zring-fill',
   midiHelper: '__pilotSendMidi',
 };
 
@@ -115,6 +123,9 @@ const pageTests = listSources(path.join('WebUI', 'tests'));
 // Sus ficheros entran en el escaneo como dueños legitimos de anclajes.
 const sharedSources = [
   '../ABDSharedAssets/components/drawer.js',
+  // El pad XY de la ficha MODELOS es el componente compartido: la superficie que
+  // el selftest agarra (`padSurface`) la publica el, no la pagina.
+  '../ABDSharedAssets/components/xypad.js',
   '../ABDSharedAssets/styles/components/widgets.css',
 ].map((relative) => ({
   relative,
@@ -152,6 +163,13 @@ const anchorOwners = {
   randomizeAction: { files: ['WebUI/src/contracts/sections.js'], pageForm: "action: 'randomize'" },
   modelSlotRow: { files: ['WebUI/src/ui/modelSlots.js'], pageForm: 'model-slots__row' },
   modelSlotName: { files: ['WebUI/src/ui/modelSlots.js'], pageForm: 'model-slots__name' },
+  // La vista del pad la marca NEURONiK (`dataset.visual`), y la superficie que
+  // escucha el gesto vive en el componente compartido; el aro y su arco son
+  // overlay propio de la pagina (`ui/xyPad.js`).
+  padVisual: { files: ['WebUI/src/ui/xyPad.js'], pageForm: "'model-xy'" },
+  padSurface: { files: ['../ABDSharedAssets/components/xypad.js'], pageForm: 'abd-xypad__pad' },
+  zRing: { files: ['WebUI/src/ui/xyPad.js'], pageForm: 'xy-pad__zring' },
+  zRingFill: { files: ['WebUI/src/ui/xyPad.js'], pageForm: 'zring-fill' },
   midiHelper: { files: ['WebUI/src/contracts/paramStore.js'] },
 };
 
@@ -199,7 +217,7 @@ if (cppGeneralIds.length > 0 && pageGeneralIds.length > 0
   console.error(`       pagina: ${pageGeneralIds.join(', ')}`);
 }
 
-// --- 5. Las siete direcciones son obligatorias -------------------------------------
+// --- 5. Las ocho direcciones son obligatorias --------------------------------------
 //
 // Hasta el ticket 8.4 el arnes podia declarar una direccion NO APLICABLE cuando el
 // dueno servia la pagina retirada del piloto, que no llevaba ni la ficha MODELOS A-D

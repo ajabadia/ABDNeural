@@ -75,7 +75,10 @@ export function createModelSlots({ onLoad = null } = {}) {
      */
     paint(_parameters, state) {
       const models = Array.isArray(state?.models) ? state.models : [];
-      const available = state?.bridgeAvailable === true;
+      // Disponible = hay a quien pedirle la carga: el host (dialogo nativo)
+      // o el input de fichero local (modo navegador, 2026-09-26). Sin host y
+      // sin camino local, deshabilitado — no se finge una carga.
+      const available = state?.bridgeAvailable === true || state?.localModelReady === true;
       let loaded = 0;
 
       for (const row of rows) {
@@ -101,7 +104,7 @@ export function createModelSlots({ onLoad = null } = {}) {
         row.button.disabled = !available;
         row.button.title = available
           ? `Cargar un .neuronikmodel en el slot ${row.label}`
-          : 'sin host: los modelos los carga el plugin';
+          : 'sin host y sin motor local: nada puede cargar el fichero';
       }
 
       const error = state?.modelError ?? null;

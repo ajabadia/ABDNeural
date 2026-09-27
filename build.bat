@@ -12,6 +12,7 @@ REM        build.bat build modelmaker   -> build limpio incluyendo ModelMaker
 REM        build.bat noselftest         -> omite el E2E del bridge (paso 9)
 REM        build.bat tests              -> modo rapido: solo contrato + suite de pruebas
 REM        build.bat nowasm             -> omite el WASM del worklet (puede quedar viejo)
+REM        build.bat nopause            -> sin pausa final (para automatizacion)
 REM
 REM  ModelMaker queda fuera por defecto a proposito: es otro entregable. Su
 REM  Version.h (fichero versionado) SOLO se incrementa en builds marcadas como
@@ -26,7 +27,8 @@ REM  uso y deja el cajon abierto), nativo->JS, JS->nativo, GENERAL, MIDI y MODEL
 REM  A-D — y SIN omitidos: la maquinaria de "direccion no aplicable" se fue con el
 REM  piloto (ticket 8.4). Exit code != 0 si alguna direccion no se mueve.
 REM
-REM  El script siempre termina con PAUSA, incluso si algo falla.
+REM  El script siempre termina con PAUSA, incluso si algo falla (build.bat
+REM  nopause la omite para correr automatizado: CI, agentes, una sola pasada).
 REM  Cada pasada deja ademas build-last-run.log (log espejo de la consola),
 REM  asi si la ventana se cierra sin querer el resultado queda en disco.
 REM ============================================================================
@@ -37,6 +39,8 @@ if not "%~1"=="--internal-log" (
     exit /b !ERRORLEVEL!
 )
 
+REM ---- Argumentos ----
+set "NOPAUSE=0"
 set "BUILD_DIR="
 set "WITH_MODELMAKER=0"
 set "MM_RELEASE=0"
@@ -47,10 +51,12 @@ set "WITH_WASM=1"
 for %%A in (%*) do (
     if /I "%%A"=="--internal-log" (
         rem bandera del envoltorio de log: ignorar
+    ) else if /I "%%A"=="nopause" (
+        set "NOPAUSE=1"
     ) else if /I "%%A"=="modelmaker" (
         set "WITH_MODELMAKER=1"
     ) else if /I "%%A"=="release" (
-        set "MM_RELEASE=1""
+        set "MM_RELEASE=1"
     ) else if /I "%%A"=="noselftest" (
         set "WITH_SELFTEST=0"
     ) else if /I "%%A"=="tests" (
@@ -335,6 +341,7 @@ if "%EXIT_CODE%"=="0" (
     echo  RESULTADO: CON ERRORES ^(codigo %EXIT_CODE%^)
 )
 echo =======================================================
+if "%NOPAUSE%"=="1" exit /b %EXIT_CODE%
 echo.
 pause
 exit /b %EXIT_CODE%

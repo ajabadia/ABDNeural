@@ -359,7 +359,6 @@ int main()
         setReal (apvts, State::IDs::mod2Source, 0.0f);
         setReal (apvts, State::IDs::mod2Destination, 0.0f);
         setReal (apvts, State::IDs::mod2Amount, 0.0f);
-        setReal (apvts, State::IDs::filterEnvAmount, 0.6f); // el knob SIGUE vivo
         legacy = apvts.copyState();
 
         const auto pristine = legacy.createCopy(); // el arbol ANTES de migrar
@@ -400,8 +399,18 @@ int main()
                 ++touched;
         }
         check (touched == 0, "no other parameter is touched by the migration");
-        check (std::abs (readReal (apvts, State::IDs::filterEnvAmount) - 0.6f) < 1.0e-4,
-               "filterEnvAmount survives as the depth knob (0.6)");
+
+        // El knob RETIRADO (2026-09-26; la matriz es LA profundidad): un preset
+        // viejo que lo traiga carga normal y migratePresetState suelta el hijo,
+        // mismo precedente que harmMix (seccion 6).
+        auto withKnob = apvts.copyState();
+        juce::ValueTree retiredKnob ("PARAM");
+        retiredKnob.setProperty ("id", juce::var ("filterEnvAmount"), nullptr);
+        retiredKnob.setProperty ("value", 0.6, nullptr);
+        withKnob.appendChild (retiredKnob, nullptr);
+
+        check (Serialization::migratePresetState (withKnob, *layout.processor) == 1,
+               "the retired filterEnvAmount child is dropped by the migration");
 
         // RANURAS OCUPADAS: sin sitio libre, la migracion no inserta nada.
         auto full = apvts.copyState();

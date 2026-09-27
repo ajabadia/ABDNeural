@@ -11,7 +11,7 @@
                  parabolica sub-bin, MEDIANA de cents <= 35):
 
                    1. INSTALACION — el constructor del processor escribe los
-                      seis modelos y los seis presets embebidos en
+                      seis modelos y los SIETE presets embebidos en
                       Documents/NEURONiK/{Models,Presets} (solo si faltan):
                       los instalados no conservan el marcador y apuntan a
                       modelos que existen (path nativo, sin separadores
@@ -38,6 +38,14 @@
                  El contrato de parciales pide validated >= min(3, fuertes):
                  el frame 0 de CZ-RRISE-temporal tiene UN solo parcial con
                  amp >= 0.05 (el material de arranque del barrido).
+
+                   5. EL BANCO EN UN PRESET — CZ101-BANK llena las CUATRO
+                      ranuras con los cuatro patches tonales: se comprueba que
+                      carga A-D con sus nombres y que la tabla de parciales que
+                      publica el motor CAMBIA entre la esquina A (morphX/Y = 0,
+                      el default del layout) y el centro (0.5/0.5 = los cuatro
+                      modelos mezclados). Sin contrato de cents: el render del
+                      banco suma cuatro modelos.
 
                  NEURONiK_DEBUG_RENDER=1 imprime el RMS cada 4 bloques
                  (diagnostico de la envolvente de la senal renderizada).
@@ -139,6 +147,19 @@ namespace
           NeuronikFactoryModels::CZBASS1temporal_neuronikpreset,
           NeuronikFactoryModels::CZBASS1temporal_neuronikpresetSize },
     };
+
+    /** El preset de BANCO: los cuatro patches TONALES en las cuatro ranuras
+        (A-D) para que el pad XY morfe el banco entero. Se valida aparte porque
+        rompe dos supuestos de la tabla de arriba: no tiene UN WAV de fuente (son
+        cuatro) y su render no es un modelo, es la mezcla de cuatro. */
+    constexpr const char* kBankPresetName = "CZ101-BANK";
+    constexpr const char* kBankModels[4] = {
+        "CZ-BASS1.neuronikmodel", "CZ-HAMOG.neuronikmodel",
+        "CZ-PAD1.neuronikmodel",  "CZ-SWEP1.neuronikmodel",
+    };
+
+    const char* const kBankPresetData = NeuronikFactoryModels::CZ101BANK_neuronikpreset;
+    const int kBankPresetSize = NeuronikFactoryModels::CZ101BANK_neuronikpresetSize;
 
     juce::File documentsSub (const char* sub)
     {
@@ -365,6 +386,23 @@ int main()
                        "el preset instalado apunta a su modelo real: " + juce::String (entry.presetName));
             }
         }
+
+        // El banco: instalado, sin marcador y con las CUATRO rutas reales.
+        const auto bankFile = presetsDir.getChildFile (juce::String (kBankPresetName)
+                                                      + Serialization::PresetManager::presetExtension);
+        check (bankFile.existsAsFile(), "preset de banco instalado: Presets/CZ101-BANK");
+
+        if (bankFile.existsAsFile())
+        {
+            const auto text = bankFile.loadFileAsString();
+            bool bankOk = ! text.contains (kModelsMarker);
+
+            for (const auto* model : kBankModels)
+                bankOk = bankOk && text.contains (modelsDir.getChildFile (model).getFullPathName());
+
+            check (bankOk,
+                   "el banco instalado no conserva el marcador y apunta a sus cuatro modelos");
+        }
     }
 
     //==========================================================================
@@ -551,6 +589,115 @@ int main()
         #else
         std::cout << "  [skip] sin NEURONiK_CZ101_WAV_DIR: el chequeo contra la fuente se omite\n";
         #endif
+    }
+
+    //==========================================================================
+    // 5. EL BANCO EN UN PRESET — CZ101-BANK: las cuatro ranuras cargadas y el
+    //    pad XY moviendo el sonido (la tabla de parciales que el motor publica
+    //    para la UI es determinista, no depende de fase ni de envolventes).
+    //==========================================================================
+    std::cout << "\nBanco de fabrica (CZ101-BANK)\n";
+    {
+        const auto stagedBank = stagePresets.getChildFile (juce::String (kBankPresetName)
+                                                          + Serialization::PresetManager::presetExtension);
+        stagedBank.replaceWithText (unmarkPreset (kBankPresetData, kBankPresetSize, stageModels));
+
+        NEURONiKProcessor audio;
+        audio.setRateAndBufferSizeDetails (48000.0, 512);
+        audio.prepareToPlay (48000.0, 512);
+        audio.getPresetManager().loadPresetFromFile (stagedBank);
+
+        // Las cuatro ranuras: path real en el APVTS y nombre en la ficha A-D.
+        bool slotsOk = true;
+
+        for (int slot = 0; slot < 4; ++slot)
+        {
+            const auto want = stageModels.getChildFile (kBankModels[slot]).getFullPathName();
+            const auto wantName = juce::File (kBankModels[slot]).getFileNameWithoutExtension();
+            const auto got = audio.getAPVTS().state.getProperty ("modelPath" + juce::String (slot)).toString();
+
+            slotsOk = slotsOk && got == want
+                               && audio.getModelNames()[(size_t) slot] == wantName;
+        }
+
+        check (slotsOk, "el preset de banco carga los CUATRO modelos en las ranuras A-D");
+
+        const int note = 47; // B2: la f0 de los cuatro patches (124-125 Hz)
+
+        // Tabla de parciales del motor con el pad en (x, y): un bloque basta
+        // para que el motor consuma el modelo del slot y publique la tabla.
+        auto tableAt = [&audio, note] (float x, float y)
+        {
+            audio.getAPVTS().getParameter (State::IDs::morphX)->setValueNotifyingHost (x);
+            audio.getAPVTS().getParameter (State::IDs::morphY)->setValueNotifyingHost (y);
+
+            juce::AudioBuffer<float> buf (2, 512);
+            juce::MidiBuffer midi;
+            midi.addEvent (juce::MidiMessage::noteOn (1, note, 0.9f), 0);
+            buf.clear();
+            audio.processBlock (buf, midi);
+
+            std::array<float, 64> table {};
+
+            for (int i = 0; i < 64; ++i)
+                table[(size_t) i] = audio.spectralDataForUI[(size_t) i].load();
+
+            return table;
+        };
+
+        const auto cornerA = tableAt (0.0f, 0.0f);
+        const auto center  = tableAt (0.5f, 0.5f);
+
+        double aSum = 0.0, cSum = 0.0, distance = 0.0;
+
+        for (int i = 0; i < 64; ++i)
+        {
+            aSum += (double) cornerA[(size_t) i];
+            cSum += (double) center[(size_t) i];
+            distance += std::abs ((double) cornerA[(size_t) i] - (double) center[(size_t) i]);
+        }
+
+        check (aSum > 0.5 && cSum > 0.5,
+               "el motor publica tabla de parciales en la esquina A y en el centro");
+
+        // Si B-D no estuvieran cargados (o el pad no llegara al motor), la tabla
+        // del centro seria la de A: este es el check que lo caza.
+        check (distance > 0.05,
+               "el pad CAMBIA la tabla de parciales (centro = mezcla de A-D, no la ranura A otra vez; distancia "
+                   + juce::String (distance, 3) + ")");
+
+        // Y el banco SUENA en las dos posiciones (contrato de audio, no de cents).
+        constexpr int kBlock = 512, kBlocks = 32;
+        juce::AudioBuffer<float> capture (1, kBlock * kBlocks);
+        juce::AudioBuffer<float> blockBuf (2, kBlock);
+
+        auto renderAt = [&] (float x, float y)
+        {
+            audio.getAPVTS().getParameter (State::IDs::morphX)->setValueNotifyingHost (x);
+            audio.getAPVTS().getParameter (State::IDs::morphY)->setValueNotifyingHost (y);
+
+            for (int b = 0; b < kBlocks; ++b)
+            {
+                juce::MidiBuffer midi;
+
+                if (b == 0)
+                    midi.addEvent (juce::MidiMessage::noteOn (1, note, 0.9f), 0);
+
+                blockBuf.clear();
+                audio.processBlock (blockBuf, midi);
+                capture.copyFrom (0, b * kBlock, blockBuf, 0, 0, kBlock);
+            }
+
+            return bufferRms (capture);
+        };
+
+        const auto rmsCorner = renderAt (0.0f, 0.0f);
+        const auto rmsCenter = renderAt (0.5f, 0.5f);
+
+        check (rmsCorner > 1.0e-4f && std::isfinite (rmsCorner),
+               "el banco suena en la esquina A (RMS " + juce::String (rmsCorner, 5) + ")");
+        check (rmsCenter > 1.0e-4f && std::isfinite (rmsCenter),
+               "el banco suena con el pad en el centro (RMS " + juce::String (rmsCenter, 5) + ")");
     }
 
     stage.deleteRecursively();

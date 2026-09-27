@@ -143,11 +143,14 @@ const SpectralModel& Resonator::frameForSlot (int slot) noexcept
 {
     // Refresco bajo demanda: O(128) por slot SOLO si el cache esta invalidado
     // (loadModel) o z cambio desde el ultimo morfeo.
-    if (!frameCacheValid || morphZ != lastMorphZ)
+    if (!frameCacheValid || layerZ != lastLayerZ || layerGains != lastLayerGains)
     {
+        // FASE 11.3: el frame del slot es la SUMA de sus capas, cada una con su z.
+        // FASE 11.4: ...y cada una con SU ganancia (0 = capa callada).
         for (int s = 0; s < 4; ++s)
-            sampleFrame (models[(size_t) s], morphZ, frameCache[(size_t) s]);
-        lastMorphZ = morphZ;
+            sampleLayeredFrame (models[(size_t) s], layerZ, layerGains, frameCache[(size_t) s]);
+        lastLayerZ = layerZ;
+        lastLayerGains = layerGains;
         frameCacheValid = true;
     }
     return frameCache[(size_t) slot];
@@ -159,7 +162,7 @@ void Resonator::updateHarmonicsFromModels(float morphX, float morphY) noexcept
     morphY = dsp::jlimit(0.0f, 1.0f, morphY);
 
     // Optimization: check if anything meaningful changed
-    bool anythingChanged = modelChanged || (morphZ != lastConsumedZ) ||
+    bool anythingChanged = modelChanged || (layerZ != lastConsumedZ) || (layerGains != lastLayerGains) ||
                           (morphX != lastMorphX) || (morphY != lastMorphY) ||
                           (baseFrequency != lastBaseFreq) || (stretchingAmount != lastStrecth) ||
                           (parityAmount != lastParity) || (shiftAmount != lastShift) ||
@@ -169,7 +172,8 @@ void Resonator::updateHarmonicsFromModels(float morphX, float morphY) noexcept
 
     // Update latches
     lastMorphX = morphX; lastMorphY = morphY;
-    lastConsumedZ = morphZ;
+    lastConsumedZ = layerZ;
+    lastLayerGains = layerGains;
     lastBaseFreq = baseFrequency; lastStrecth = stretchingAmount;
     lastParity = parityAmount; lastShift = shiftAmount;
     lastRollOff = rollOffAmount; lastUnisonDetune = unisonDetune;
@@ -194,6 +198,13 @@ void Resonator::updateHarmonicsFromModels(float morphX, float morphY) noexcept
         mC = mA;
         mD = mB;
     }
+
+    // 2026-09-25: OFFSETS TRANSPONIBLES. Con el modo declarado el offset
+    // guardado es relativo a la rejilla de analisis y SIGUE a la nota:
+    // offset_efectivo = offset * baseFrequency/offsetRootHz, con lo que la
+    // desviacion en cents de cada parcial (offset/(n*f0)) no cambia al
+    // transportar. Sin modo, factor 1.0 EXACTO y la suma es el legado.
+    const float offsetScale = mA->offsetScaleAt (baseFrequency);
 
     float tempAmps[64];
 
@@ -224,7 +235,7 @@ void Resonator::updateHarmonicsFromModels(float morphX, float morphY) noexcept
         const float gridRatio = (mA->frameF0 > 0.0f && mA->f0At(0) > 0.0f)
                                     ? mA->frameF0 / mA->f0At(0)
                                     : 1.0f;
-        float partialFreq = ((baseFrequency * stretchedHarmonic * shiftAmount) + morphedOffset) * gridRatio;
+        float partialFreq = ((baseFrequency * stretchedHarmonic * shiftAmount) + morphedOffset * offsetScale) * gridRatio;
 
         // FIX (2026-09-21): un parcial sobre Nyquist queda mudo (phaseIncrements=0),
         // pero su amplitud seguia contando en la normalizacion -> el nivel total

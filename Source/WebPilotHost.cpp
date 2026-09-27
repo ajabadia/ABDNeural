@@ -32,7 +32,7 @@
  *          y el snapshot que esta exe llevaba embebido de ella: ahora la unica pagina
  *          es `WebUI/dist`, se sirve SIEMPRE desde disco, y un fallo de disco da la
  *          pagina de diagnostico (que dice donde la busco y como arreglarlo) en vez de
- *          contestar con otra pagina. Corre las MISMAS seis direcciones del selftest
+ *          contestar con otra pagina. Corre las MISMAS ocho direcciones del selftest
  *          que el plugin, sin omitidos: desde 8.4 no hay una segunda pagina a la que
  *          rebajar el liston.
  */
@@ -600,7 +600,15 @@ namespace
             if (finished)
                 return;
 
-            if (nowMs() > pollTimeoutMs)
+            // El presupuesto de arranque vigila la PAGINA, no el selftest: cuenta
+            // desde el lanzamiento e incluye la carga, y con una carga lenta
+            // (medido en vivo: 14 s con `dist` recien construido) dejaba al
+            // selftest sin margen justo mientras corria su ultima direccion: el
+            // proceso salia con `reason=timeout` y SIN veredicto, que `finish`
+            // declara FAIL. Con la pagina lista, quien decide es el presupuesto
+            // del PROPIO arnes (`BridgeSelftest::timeoutMs`), que siempre acaba
+            // en un veredicto y no puede colgarse.
+            if (metrics.reactReadyMs < 0.0 && nowMs() > pollTimeoutMs)
             {
                 finish ("timeout");
                 return;
