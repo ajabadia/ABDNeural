@@ -41,6 +41,7 @@
 
 #include "Serialization/PresetMigration.h"
 #include "State/ParameterDefinitions.h"
+#include "State/ModMatrixFromState.h"
 #include "CoreModules/NeuronikEngine.h"
 #include "Common/SpectralModel.h"
 
@@ -97,29 +98,29 @@ juce::ValueTree legacyPreset()
 /** El arbol de preset traducido a lo que el motor recibe de verdad. Es la
     unica traduccion que hace NEURONiKProcessor, aqui escrita a mano para no
     arrastrar un AudioProcessor entero a un test de audio. */
+/**
+ * El preset de un arbol a los numeros que recibe el motor, con la MISMA
+ * traduccion que usa el producto (State/ModMatrixFromState.h).
+ *
+ * Lo unico que cambia respecto al producto es de donde se lee: aqui el
+ * ValueTree del preset guardado, en el procesador los atomicos vivos del APVTS.
+ * Los nombres de los campos y el orden en que se leen son los mismos codigo,
+ * y esa es la parte que no puede separarse sin que el test deje de comprobar
+ * lo que dice comprobar. Antes esta funcion vivia aqui copiada: un rename de
+ * `mod3Amount` rompia el producto en silencio y este test seguia en verde.
+ */
 DSP::GlobalParams toGlobalParams (const juce::ValueTree& state)
 {
+    const auto routes = State::readModMatrix (
+        [&state] (int slot, State::ModField field) -> float
+        {
+            return (float) (double) state.getChildWithProperty (
+                "id", State::modMatrixParameterId (slot, field)).getProperty ("value");
+        });
+
     DSP::GlobalParams params;
-
-    const auto read = [&state] (const char* id) -> float
-    {
-        return (float) (double) state.getChildWithProperty ("id", juce::String (id))
-                            .getProperty ("value");
-    };
-
-    for (int slot = 1; slot <= 4; ++slot)
-    {
-        // El nombre del id se guarda en un String CON NOMBRE: el puntero de
-        // toRawUTF() caduca en cuanto muere el temporal que lo creo, y un id
-        // leido de un puntero colgando compara cualquier cosa.
-        const juce::String source      = juce::String ("mod") + juce::String (slot) + "Source";
-        const juce::String destination = juce::String ("mod") + juce::String (slot) + "Destination";
-        const juce::String amount      = juce::String ("mod") + juce::String (slot) + "Amount";
-
-        params.modMatrix[slot - 1].source      = (int) read (source.toRawUTF8());
-        params.modMatrix[slot - 1].destination = (int) read (destination.toRawUTF8());
-        params.modMatrix[slot - 1].amount      = read (amount.toRawUTF8());
-    }
+    for (int slot = 0; slot < State::kModMatrixSlots; ++slot)
+        params.modMatrix[slot] = routes[slot];
 
     return params;
 }
@@ -222,6 +223,71 @@ void reportFirstDifference (const std::vector<float>& a, const std::vector<float
 int main()
 {
     std::printf ("=== Paridad de la migracion de presets: el audio no puede cambiar ===\n");
+
+    // ── LA TRADUCCION, EN ABSOLUTO ────────────────────────────────────────
+    // Lo de mas abajo de esta linea compara el preset migrado CONTRA el que no
+    // esta migrado. Es una comparacion diferencial, y por eso es ciega a una
+    // parte entera de la traduccion: si esta lee el campo equivocado, el preset
+    // de antes y el de despues se estropean LOS DOS por igual y la comparacion
+    // sale igual. Se comprobo: hacer que `destination` lea `amount` deja este
+    // bloque diferencial en verde, porque estropea los dos lados a la vez y se
+    // cancela.
+    //
+    // O sea que el test de mas abajo comprueba LA MIGRACION, no la traduccion.
+    // Para la traduccion hace falta un aserto que mire el resultado de cabeza:
+    // estos doce numeros tienen que acabar en estas cuatro rutas. Con el
+    // sabotaje de arriba, ESTE bloque se pone rojo, que es lo que el
+    // diferencial no puede hacer.
+    {
+        auto known = juce::ValueTree ("STATE");
+        // Ranura 1: LFO 1 (1) -> Inharmonicity (2), amount -0.5. El amount va
+        // NEGATIVO a proposito: una traduccion que se comiera el signo pasaria
+        // un test con amounts solo positivos, y el signo es la mitad de lo que
+        // significa que la matriz sea bipolar.
+        known.appendChild (param (State::IDs::mod1Source,      1.0), nullptr);
+        known.appendChild (param (State::IDs::mod1Destination, 2.0), nullptr);
+        known.appendChild (param (State::IDs::mod1Amount,     -0.5), nullptr);
+        // Ranura 2: destino 31, que NO existe en la tabla. La traduccion no
+        // filtra ni recorta a proposito —eso lo hace el motor, que descarta lo
+        // que no cabe en kModDestinations—, asi que el 31 tiene que llegar
+        // tal cual. Si alguien anade un clamp aqui, este aserto lo delata.
+        known.appendChild (param (State::IDs::mod2Source,      7.0), nullptr);
+        known.appendChild (param (State::IDs::mod2Destination, 31.0), nullptr);
+        known.appendChild (param (State::IDs::mod2Amount,      0.25), nullptr);
+        // Ranura 3 ausente del todo: un preset guardado puede no traerla, y lo
+        // que falte tiene que salir en cero, no en basura de pila.
+        known.appendChild (param (State::IDs::mod4Source,      3.0), nullptr);
+        known.appendChild (param (State::IDs::mod4Destination, 10.0), nullptr);
+        known.appendChild (param (State::IDs::mod4Amount,      1.0), nullptr);
+
+        const auto routes = State::readModMatrix (
+            [&known] (int slot, State::ModField field) -> float
+            {
+                return (float) (double) known.getChildWithProperty (
+                    "id", State::modMatrixParameterId (slot, field)).getProperty ("value");
+            });
+
+        struct Expected { int source; int destination; float amount; };
+        const Expected expected[4] =
+        {
+            {  1,  2, -0.50f },   // ranura 1, con el signo intacto
+            {  7, 31,  0.25f },   // ranura 2, destino fuera de tabla sin recortar
+            {  0,  0,  0.00f },   // ranura 3, ausente del preset
+            {  3, 10,  1.00f },   // ranura 4
+        };
+
+        for (int slot = 0; slot < 4; ++slot)
+        {
+            char message[160];
+            std::snprintf (message, sizeof (message),
+                           "la traduccion pone la ranura %d en %d -> %d @ %.2f",
+                           slot + 1, expected[slot].source, expected[slot].destination,
+                           (double) expected[slot].amount);
+            check (routes[slot].source == expected[slot].source
+                   && routes[slot].destination == expected[slot].destination
+                   && routes[slot].amount == expected[slot].amount, message);
+        }
+    }
 
     auto before = legacyPreset();
     auto after = legacyPreset();

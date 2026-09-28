@@ -7,6 +7,7 @@
 // Documents/NEURONiK/{Models,Presets}/ en el arranque.
 #include <NeuronikFactoryModels.h>
 #include "../State/ParameterDefinitions.h"
+#include "../State/ModMatrixFromState.h"
 #include "../DSP/CoreModules/NeuronikEngine.h"
 #include "../DSP/CoreModules/NeurotikEngine.h"
 #include "../DSP/Synthesis/AdditiveVoice.h"
@@ -513,13 +514,24 @@ void NEURONiKProcessor::fillGlobalParams(NEURONiK::DSP::GlobalParams& gParams)
     gParams.lfo2.syncMode = juce::roundToInt(apvts.getRawParameterValue(IDs::lfo2SyncMode)->load());
     gParams.lfo2.rhythmicDivision = juce::roundToInt(apvts.getRawParameterValue(IDs::lfo2RhythmicDivision)->load());
 
-    for (int i = 0; i < 4; ++i)
-    {
-        juce::String prefix = "mod" + juce::String(i + 1);
-        gParams.modMatrix[i].source = (int)apvts.getRawParameterValue(prefix + "Source")->load();
-        gParams.modMatrix[i].destination = (int)apvts.getRawParameterValue(prefix + "Destination")->load();
-        gParams.modMatrix[i].amount = apvts.getRawParameterValue(prefix + "Amount")->load();
-    }
+    // LA MATRIZ, con la traduccion compartida (State/ModMatrixFromState.h). El
+    // nombre de cada campo y el orden de lectura viven alli, no aqui: asi el
+    // rename de un id rompe el producto y el test a la vez, en vez de romper
+    // solo la carga de presets en silencio (getRawParameterValue devuelve
+    // nullptr para un id que ya no existe y el preset parece vacio).
+    //
+    // Lo que SI es de aqui es de donde se lee: los atomicos vivos del APVTS, no
+    // apvts.state, que va con retardo. Por eso la traduccion es una plantilla
+    // sobre un lector y no una funcion que reciba el estado.
+    const auto modMatrix = readModMatrix (
+        [this] (int slot, ModField field)
+        {
+            const auto* value = apvts.getRawParameterValue (modMatrixParameterId (slot, field));
+            return value != nullptr ? value->load() : 0.0f;
+        });
+
+    for (int i = 0; i < kModMatrixSlots; ++i)
+        gParams.modMatrix[i] = modMatrix[i];
 }
 
 void NEURONiKProcessor::enterMidiLearnMode(const juce::String& paramID)

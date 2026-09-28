@@ -23,6 +23,7 @@
 #include "../Source/Serialization/PresetMigration.h"
 #include "../Source/State/ParameterDefinitions.h"
 #include "../Source/State/ParameterDescriptors.h"
+#include "../Source/State/ModMatrixFromState.h"
 
 #include <iostream>
 
@@ -328,6 +329,50 @@ int main()
     }
 
     // --- 6. Migration is a no-op for a current preset ----------------------------
+    // --- 3b. Los doce ids de la matriz existen de verdad ---------------------
+    // El producto lee la matriz con apvts.getRawParameterValue (id), y eso
+    // devuelve nullptr para un id que no existe. Con el guard nullptr -> 0 que
+    // hay en NEURONiKProcessor, un id renombrado deja las DOCE rutas en Off: el
+    // preset carga sin quejarse y no modula nada. El crash que habia antes era
+    // visible; el silencio es peor, asi que los doce ids se comprueban aqui,
+    // contra un procesador de verdad, que es lo unico que puede saber que un id
+    // existe.
+    //
+    // Se comprueba el id que devuelve modMatrixParameterId y no el PARAM de la
+    // matriz: el parametro es correcto y aun asi podria estar equivocado, que
+    // es justo lo que la traduccion compartida evita que dos sitios adventren.
+    std::cout << "\nMatrix parameter ids\n";
+
+    {
+        const auto known = Serialization::currentParameterIds (*layout.processor);
+
+        juce::StringArray missing;
+        for (int slot = 0; slot < State::kModMatrixSlots; ++slot)
+        {
+            for (const auto field : { State::ModField::source,
+                                      State::ModField::destination,
+                                      State::ModField::amount })
+            {
+                const auto id = State::modMatrixParameterId (slot, field);
+                if (! known.contains (id))
+                    missing.add (id);
+            }
+        }
+
+        check (missing.isEmpty(),
+               "the twelve matrix parameter ids all exist in the processor"
+               + (missing.isEmpty() ? juce::String()
+                                    : juce::String (" (missing: ") + missing.joinIntoString (", ") + ")"));
+
+        // Y que no haya un PARAM de mas: si alguien anade un quinto campo a la
+        // matriz sin tocar la traduccion, el parametro existe y no lo lee
+        // nadie, que es un preset que guarda un valor que no vuelve.
+        check (known.contains (State::modMatrixParameterId (0, State::ModField::source))
+               && known.contains (State::modMatrixParameterId (State::kModMatrixSlots - 1,
+                                                               State::ModField::amount)),
+               "slot numbering is one-based (mod1Source) and the last slot is mod4Amount");
+    }
+
     std::cout << "\nMigration helper\n";
 
     {

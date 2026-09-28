@@ -17,6 +17,23 @@ namespace NEURONiK::DSP
 {
 
 /**
+ * @brief Una ruta de la matriz de modulacion: fuente, destino y cantidad.
+ * @details Vive en el namespace y no dentro de `GlobalParams` para poder
+ *          devolver un array de ellas (State/ModMatrixFromState.h) sin arrastrar
+ *          el struct entero a la capa de State. No depende de nada.
+ *
+ *          Y va ANTES que `GlobalParams`, que lo tiene por miembro: declararlo
+ *          despues rompe con "no es un miembro de GlobalParams", que es un error
+ *          bastante menos util que el que uno espera.
+ */
+struct ModRoute {
+    int source = 0;         //!< indice en getModSources()
+    int destination = 0;    //!< indice en getModDestinationTable()
+    float amount = 0.0f;    //!< profundidad bipolar
+};
+
+
+/**
  * Common structures for engine parameters. Plain data only: the host fills it
  * and hands it to the engine (ISynthesisEngine::setGlobalParams / the Runtime
  * facade), which owns the real-time safe handoff.
@@ -42,11 +59,6 @@ struct GlobalParams {
         float depth = 1.0f;
     } lfo1, lfo2;
 
-    struct ModRoute {
-        int source = 0;
-        int destination = 0;
-        float amount = 0.0f;
-    };
     ModRoute modMatrix[4];
 };
 
