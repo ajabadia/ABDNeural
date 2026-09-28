@@ -66,13 +66,18 @@ struct ModDestination
 {
     const char* label;
     const char* parameterId;   //!< nullptr for "Off" (drives nothing)
+
+    /** @brief El destino se resuelve POR VOZ, no como un parametro del bus. */
+    bool perNote = false;
+    /** @brief Con su envolvente, la ruta REEMPLAZA el factor en vez de sumar. */
+    bool replaces = false;
 };
 
 /** @brief Modulation destinations in preset-index order (see ModDestination). */
 inline constexpr ModDestination kModDestinationTable[] =
 {
     { "Off",            nullptr },
-    { "Osc Level",      "oscLevel" },
+    { "Osc Level",      "oscLevel",      true, true },
     { "Inharmonicity",  "oscInharmonicity" },
     { "Roughness",      "oscRoughness" },
     { "Morph X",        "morphX" },
@@ -81,18 +86,18 @@ inline constexpr ModDestination kModDestinationTable[] =
     { "Amp Decay",      "envDecay" },
     { "Amp Sustain",    "envSustain" },
     { "Amp Release",    "envRelease" },
-    { "Filter Cutoff",  "filterCutoff" },
+    { "Filter Cutoff",  "filterCutoff",  true, true },
     { "Filter Res",     "filterRes" },
     // Index 12: "Filter Env Amt" — the parameter was retired (2026-09-26;
     // the matrix amount IS the depth) but the destination LABEL stays: the
     // indices are the preset format. The engine adds it to the 1.0 routing
     // factor of ENV 2 (AdditiveVoice::modEnvFltDepth), so the label keeps
     // its meaning: more/less/inverted envelope through the route.
-    { "Filter Env Amt", nullptr },
-    { "Flt Attack",     "filterAttack" },
-    { "Flt Decay",      "filterDecay" },
-    { "Flt Sustain",    "filterSustain" },
-    { "Flt Release",    "filterRelease" },
+    { "Filter Env Amt", nullptr,          true, true },
+    { "Flt Attack",     "filterAttack",  true, true },
+    { "Flt Decay",      "filterDecay",   true, true },
+    { "Flt Sustain",    "filterSustain", true, true },
+    { "Flt Release",    "filterRelease", true, true },
     { "Saturation",     "fxSaturation" },
     { "Delay Time",     "fxDelayTime" },
     { "Delay FB",       "fxDelayFeedback" },

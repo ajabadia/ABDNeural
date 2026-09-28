@@ -238,16 +238,30 @@ int main()
     // vez de sumar. Son los que hacen que un preset nuevo suene (ENV 1 -> VCA,
     // ENV 2 -> cutoff) y los que se perderian si el switch se sustituyera por
     // la tabla sin llevar la politica con el.
-    const int kReplacing[] = { 1, 10, 12, 13, 14, 15, 16 };
+    // Los que reemplazan se LEEN de la tabla, no de una lista escrita aqui. La
+    // lista vivia en dos sitios —este array y el contrato JSON de ABDSharedAssets—
+    // y nada obligaba a que los dos dijeran lo mismo: se podia anadir un
+    // destino con regla de reemplazo, anadirlo al JSON, y este array se
+    // quedaba intacto sin que nadie se enterara. Ahora hay un sitio, y
+    // ModulationContract (Tests/ModulationContractTest.cpp) lo compara con el
+    // JSON campo a campo.
+    std::vector<int> replacing;
+    std::vector<int> perNote;
 
-    bool everyReplacingIsAddressable = true;
-    for (auto index : kReplacing)
+    for (std::size_t i = 0; i < destinations.size(); ++i)
     {
-        if (index >= static_cast<int> (destinations.size()))
-            everyReplacingIsAddressable = false;
+        if (destinations[i].replaces) replacing.push_back ((int) i);
+        if (destinations[i].perNote)   perNote.push_back ((int) i);
     }
-    check (everyReplacingIsAddressable,
-           "todo destino que reemplaza tiene indice valido en la tabla");
+
+    const std::vector<int> expectedReplacing { 1, 10, 12, 13, 14, 15, 16 };
+    check (replacing == expectedReplacing,
+           "los siete destinos que reemplazan son los que declara la tabla");
+    // perNote y replaces van juntos en este contrato: un destino o pregunta por
+    // la fuente de la voz o no pregunta. Si algun dia se separan, este aserto
+    // avisa en vez de dejarlos separarse en silencio.
+    check (perNote == expectedReplacing,
+           "perNote y replaces coinciden: los siete van de la mano");
 
     // El destino 12 no conduce parametro pero si modula: su parametro se
     // retiro y la PROFUNDIDAD vive en la ruta. parameterId null NO significa

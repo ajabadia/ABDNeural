@@ -513,6 +513,81 @@ target_link_libraries(NEURONiK_PresetMigrationParityTest PRIVATE
 
 add_test(NAME NEURONiK_PresetMigrationParityTest COMMAND NEURONiK_PresetMigrationParityTest)
 
+# ── El puente con el contrato de ABDSharedAssets ───────────────────────────
+# El contrato (contracts/neuronik_modulation_matrix.json) y la tabla del motor
+# son dos repos sin nada que los una: se puede cambiar la tabla y el JSON se
+# queda como estaba, y la pagina —que lee el JSON— sigue enseñando un destino
+# que el motor no modula.
+#
+# El exportador es una HERRAMIENTA: vuelca el lado de C++ y no necesita el repo
+# hermano, que es justo cuando mas falta hace. El test es el que COMPARA, y el
+# que necesita los dos.
+#
+# La ruta del hermano entra como definicion de compilacion y NO como argumento,
+# porque un argumento se puede olvidar en un ctest: ejecutandose sin el, el
+# guard pasaria en verde sin comparar nada. Con la definicion, si el repo no esta
+# el test lo dice y falla.
+set(NEURONiK_SIBLING_ASSETS "${CMAKE_CURRENT_SOURCE_DIR}/../ABDSharedAssets")
+
+add_executable(NEURONiK_ModulationContractDump
+    Tests/ModulationContractDump.cpp
+)
+
+target_include_directories(NEURONiK_ModulationContractDump PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Tests"
+)
+
+# El MISMO conjunto que el test, y no por casualidad. Con un conjunto menor, el
+# enlace depende del ORDEN en que se construyan los targets: JUCE engancha los
+# .cpp de cada modulo al primer target que lo enlaza, asi que uno de los dos se
+# queda sin los objetos de graphics y revienta con LNK2019 en
+# `juce::Colour::Colour(uint32)`. Depender del orden de build no es una cosa que
+# se pueda dejar: el dia que el CI construya en paralelo, falla en la maquina
+# de otro y no en la tuya.
+target_link_libraries(NEURONiK_ModulationContractDump PRIVATE
+    juce::juce_audio_basics
+    juce::juce_audio_formats
+    juce::juce_audio_processors
+    juce::juce_core
+    juce::juce_data_structures
+    juce::juce_dsp
+    juce::juce_events
+    juce::juce_graphics
+)
+
+add_executable(NEURONiK_ModulationContractTest
+    Tests/ModulationContractTest.cpp
+)
+
+target_include_directories(NEURONiK_ModulationContractTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/State"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Tests"
+)
+
+# El MISMO conjunto que ModulationMatrixTest, que ya enlaza bien: el fallo tipico
+# aqui es dejar fuera un modulo y que reviente con LNK2019 en
+# `juce::Colour::Colour(uint32)`, el inicializador dinamico de
+# juce::Colours::aliceblue que entra por ParameterDefinitions.h.
+target_link_libraries(NEURONiK_ModulationContractTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_audio_formats
+    juce::juce_audio_processors
+    juce::juce_core
+    juce::juce_data_structures
+    juce::juce_dsp
+    juce::juce_events
+    juce::juce_graphics
+)
+
+target_compile_definitions(NEURONiK_ModulationContractTest PRIVATE
+    NEURONiK_SIBLING_ASSETS="${NEURONiK_SIBLING_ASSETS}"
+)
+
+add_test(NAME NEURONiK_ModulationContractTest COMMAND NEURONiK_ModulationContractTest)
+
 # ============================================================================
 # WASM PARITY REFERENCE (Fase 5)
 # ============================================================================

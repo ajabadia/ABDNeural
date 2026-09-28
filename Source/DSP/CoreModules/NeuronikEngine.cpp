@@ -209,6 +209,24 @@ constexpr bool everyDestinationDeclaresSomething (int index = 1)
 static_assert (everyDestinationDeclaresSomething(),
                "toda fila salvo el Off declara una regla: la tabla no esta a cero");
 
+// `perNote` en la tabla de parametros y "esta fila PREGUNTA por la fuente" en
+// esta son la MISMA COSA, y hasta ahora no lo decia nadie. El contrato JSON
+// publica `perNote` para que otras superficies (la pagina, ABDEep) sepan que
+// hay una ruta por voz detras, asi que si las dos tablas se separan, el
+// contrato esta mintiendo. Se comprueba en las 31 filas con dos funciones, y no
+// con treinta y una lineas que se quedan viejas el dia que anadas un destino.
+constexpr bool perNoteMatchesTheEngine (int index = 0)
+{
+    return index >= kNumModDestinations
+        ? true
+        : (kModDestinationTable[index].perNote
+            == (kModDestinations[index].env.kind != Kind::none))
+          && perNoteMatchesTheEngine (index + 1);
+}
+
+static_assert (perNoteMatchesTheEngine(),
+               "perNote dice lo mismo que la rama env de cada fila");
+
 static_assert (kModDestinations[0].add.kind == Kind::none
                && kModDestinations[0].env.kind == Kind::none,
                "el destino 0 (Off) es inerte A PROPOSITO: no es un destino que aplica un 0");
