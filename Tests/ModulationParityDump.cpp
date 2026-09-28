@@ -44,37 +44,17 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
-#include <cstring>
 #include <string>
 #include <vector>
 
-#include "CoreModules/NeuronikEngine.h"
-#include "Common/SpectralModel.h"
+#include "ParityHarness.h"
 
 namespace {
 
-using NEURONiK::Common::SpectralModel;
+namespace Parity = NEURONiK::Tests::Parity;
 
-constexpr int kBlockSize = 64;
 constexpr int kBlocks = 4;
 constexpr int kNumDestinations = 31;
-
-/** Dos frames: frame 0 seno puro, frame 1 con el segundo parcial. Con morphX y
-    morphY a 0 el morfeo bilineal se queda en el slot A, asi que el audio es
-    estable entre renders. */
-SpectralModel parityModel()
-{
-    SpectralModel m;
-    m.amplitudes.fill (0.0f);
-    m.frequencyOffsets.fill (0.0f);
-    m.amplitudes[0] = 1.0f;
-    m.isValid = true;
-    m.extraAmps[0].fill (0.0f);
-    m.extraOffsets[0].fill (0.0f);
-    m.extraAmps[0][1] = 0.5f;
-    m.frameCount = 2;
-    return m;
-}
 
 /** FNV-1a de 64 sobre los bytes CRUDOS: lo que se compara es el patron de bits
     de la muestra, no una aproximacion con tolerancia. */
@@ -97,41 +77,10 @@ std::uint64_t renderHash (const NEURONiK::DSP::GlobalParams& params,
                           const dsp::MidiMessage& gesture)
 {
     NEURONiK::DSP::NeuronikEngine engine;
-    // DOS voces, no dieciseis. La reserva es perezosa y prepare() crea las que
-    // pida activeVoiceLimit: con 41 escenarios por delante, pagar 16 voces para
-    // tocar una nota multiplica el tiempo por ocho sin cambiar ni un bit del
-    // audio (con una sola nota sonando las otras quince solo anadirian
-    // silencio).
-    engine.setPolyphony (2);
-    engine.prepare (44100.0, kBlockSize);
-    engine.loadModel (parityModel(), 0);
-
-    NEURONiK::DSP::Synthesis::AdditiveVoice::Params voice;
-    voice.attack = 1.0f;
-    voice.decay = 1000.0f;
-    voice.sustain = 0.7f;
-    voice.release = 10.0f;
-    voice.morphX = 0.0f;
-    voice.morphY = 0.0f;
-    // EL FILTRO, ABAJO DEL TODO. Con el cutoff por defecto (20000 Hz) el
-    // `jlimit(20, 20000, ...)` de AdditiveVoice satura siempre y la envolvente
-    // del filtro no mueve NADA: los seis destinos de ENV 2 rendian audio
-    // identico y la red era ciega justo en la rama que mas importa, la de
-    // reemplazo. Con el cutoff a 300 Hz la envolvente SI mueve el corte y cada
-    // destino se distingue de los otros.
-    voice.filterCutoff = 300.0f;
-    voice.filterRes = 0.5f;
-    voice.fAttack = 1.0f;
-    voice.fDecay = 200.0f;
-    voice.fSustain = 0.5f;
-    voice.fRelease = 10.0f;
-
-    engine.setVoiceParams (voice);
-    engine.setGlobalParams (params);
-    engine.updateParameters();
+    Parity::prepare (engine, params);
 
     Hasher hasher;
-    dsp::AudioBuffer<float> buffer (2, kBlockSize);
+    dsp::AudioBuffer<float> buffer (2, Parity::kBlockSize);
 
     for (int block = 0; block < kBlocks; ++block)
     {

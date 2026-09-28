@@ -42,13 +42,12 @@
 #include "Serialization/PresetMigration.h"
 #include "State/ParameterDefinitions.h"
 #include "State/ModMatrixFromState.h"
-#include "CoreModules/NeuronikEngine.h"
-#include "Common/SpectralModel.h"
+#include "ParityHarness.h"
 
 namespace {
 
-using NEURONiK::Common::SpectralModel;
 using namespace NEURONiK;
+namespace Parity = NEURONiK::Tests::Parity;
 
 int passed = 0;
 int failed = 0;
@@ -59,7 +58,6 @@ void check (bool condition, const char* name)
     else           { ++failed; std::printf ("  [FAIL] %s\n", name); }
 }
 
-constexpr int kBlockSize = 64;
 constexpr int kBlocks = 6;
 
 /** Un PARAM del arbol de preset, como los que escribe PresetManager. */
@@ -125,56 +123,21 @@ DSP::GlobalParams toGlobalParams (const juce::ValueTree& state)
     return params;
 }
 
-SpectralModel parityModel()
-{
-    SpectralModel m;
-    m.amplitudes.fill (0.0f);
-    m.frequencyOffsets.fill (0.0f);
-    m.amplitudes[0] = 1.0f;
-    m.isValid = true;
-    m.extraAmps[0].fill (0.0f);
-    m.extraOffsets[0].fill (0.0f);
-    m.extraAmps[0][1] = 0.5f;
-    m.frameCount = 2;
-    return m;
-}
-
-/** Todas las muestras de los dos canales, en orden. */
+/**
+ * Todas las muestras de los dos canales, en orden. El rig sale de
+ * ParityHarness.h, el MISMO que usa ModulationParityDump: esta comprobacion
+ * depende de la ruta del usuario (LFO 1 -> Cutoff) sumando sobre el factor que
+ * migra ENV 2, y eso solo se nota con el corte a media pista.
+ */
 std::vector<float> render (const DSP::GlobalParams& params)
 {
     DSP::NeuronikEngine engine;
-    engine.setPolyphony (2);
-    engine.prepare (44100.0, kBlockSize);
-    engine.loadModel (parityModel(), 0);
-
-    DSP::Synthesis::AdditiveVoice::Params voice;
-    voice.attack = 1.0f;
-    voice.decay = 1000.0f;
-    voice.sustain = 0.7f;
-    voice.release = 10.0f;
-    voice.morphX = 0.0f;
-    voice.morphY = 0.0f;
-    // El filtro, ABAJO del todo (300 Hz), por el mismo motivo que en
-    // ModulationParityDump: con el cutoff por defecto el jlimit de AdditiveVoice
-    // satura y la envolvente del filtro no mueve el corte, con lo que la mitad
-    // de esta comprobacion seria ciega. Ademas esta ruta (LFO 1 -> Cutoff, la
-    // que el usuario ya tenia) se suma al factor que migra ENV 2, asi que es
-    // justo el caso donde se_notaria_ un factor mal puesto.
-    voice.filterCutoff = 300.0f;
-    voice.filterRes = 0.5f;
-    voice.fAttack = 1.0f;
-    voice.fDecay = 200.0f;
-    voice.fSustain = 0.5f;
-    voice.fRelease = 10.0f;
-
-    engine.setVoiceParams (voice);
-    engine.setGlobalParams (params);
-    engine.updateParameters();
+    Parity::prepare (engine, params);
 
     std::vector<float> samples;
-    samples.reserve ((std::size_t) kBlocks * kBlockSize * 2);
+    samples.reserve ((std::size_t) kBlocks * Parity::kBlockSize * 2);
 
-    dsp::AudioBuffer<float> buffer (2, kBlockSize);
+    dsp::AudioBuffer<float> buffer (2, Parity::kBlockSize);
     for (int block = 0; block < kBlocks; ++block)
     {
         buffer.clear();
@@ -191,14 +154,15 @@ std::vector<float> render (const DSP::GlobalParams& params)
     return samples;
 }
 
-/** Comparacion BIT A BIT: el mismo patron de bits, no "muy parecido". */
-int countDiffering (const std::vector<float>& a, const std::vector<float>& b)
-{
-    if (a.size() != b.size())
-        return -1;
+/** Comparacion BIT A BIT: el mismo patron de bits, no "muy parecido".
 
-    int different = 0;
-    for (std::size_t i = 0; i < a.size(); ++i)
+    Compara hasta donde llegan las dos. Que el TAMANO cuadre es un aserto aparte,
+    del llamante: antes esta funcion devolvia -1 si no cuadraba y salia "-1 de
+    768 muestras distintas", que parece un recuento y no lo es. */
+std::size_t countDiffering (const std::vector<float>& a, const std::vector<float>& b)
+{
+    std::size_t different = 0;
+    for (std::size_t i = 0; i < a.size() && i < b.size(); ++i)
         if (std::memcmp (&a[i], &b[i], sizeof (float)) != 0)
             ++different;
     return different;
@@ -208,14 +172,12 @@ int countDiffering (const std::vector<float>& a, const std::vector<float>& b)
 void reportFirstDifference (const std::vector<float>& a, const std::vector<float>& b)
 {
     for (std::size_t i = 0; i < a.size() && i < b.size(); ++i)
-    {
-        if (std::memcmp (&a[i], &b[i], sizeof (float)) == 0)
-            continue;
-
-        std::printf ("         primera diferencia en la muestra %zu: %.9g vs %.9g\n",
-                     i, (double) a[i], (double) b[i]);
-        return;
-    }
+        if (std::memcmp (&a[i], &b[i], sizeof (float)) != 0)
+        {
+            std::printf ("         primera diferencia en la muestra %zu: %.9g vs %.9g\n",
+                         i, (double) a[i], (double) b[i]);
+            return;
+        }
 }
 
 } // namespace
@@ -336,14 +298,19 @@ int main()
     const auto samplesBefore = render (toGlobalParams (before));
     const auto samplesAfter  = render (toGlobalParams (after));
 
-    const int different = countDiffering (samplesBefore, samplesAfter);
+    // El tamano, por su cuenta. Sin esto un desajuste se contaria como
+    // "muchas muestras iguales" en vez de decir que no se pueden comparar.
+    check (samplesBefore.size() == samplesAfter.size(),
+           "las dos versiones rinden el mismo numero de muestras");
+
+    const auto different = countDiffering (samplesBefore, samplesAfter);
     if (different != 0)
         reportFirstDifference (samplesBefore, samplesAfter);
 
     char message[160];
     std::snprintf (message, sizeof (message),
-                   "migrar un preset pre-ENV no cambia ni una muestra (%d de %zu)",
-                   different < 0 ? -1 : different, samplesBefore.size());
+                   "migrar un preset pre-ENV no cambia ni una muestra (%zu de %zu)",
+                   different, samplesBefore.size());
     check (different == 0, message);
 
     // Una red que dice "todo igual" porque las dos versiones eran silencio no

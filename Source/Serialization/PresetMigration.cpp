@@ -123,7 +123,8 @@ int insertEnvModRoutes (juce::ValueTree& state)
         // la otra no, sin motivo. El commit que la introdujo decia "en la
         // primera ranura libre", y en un preset de cuatro la primera ranura
         // libre es cualquiera de las cuatro.
-        for (int slot = 1; slot <= 4 && inserted < 2; ++slot)
+        // Sin tope: el `inserted < 2` que estaba aqui era codigo muerto.
+        for (int slot = 1; slot <= 4; ++slot)
         {
             if (read (slot, "Source") != 0 || read (slot, "Destination") != 0)
                 continue;   // la ranura ya la ocupa el usuario
