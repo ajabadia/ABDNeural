@@ -413,12 +413,45 @@ int main()
                "the retired filterEnvAmount child is dropped by the migration");
 
         // RANURAS OCUPADAS: sin sitio libre, la migracion no inserta nada.
+        // Las CUATRO, que es lo que dice el nombre del caso: hasta ahora solo
+        // ocupaba la 1 y la 2, y con el limite `slot <= 2` de la migracion la 3
+        // y la 4 no contaban como libres. Era un test que se pasaba por el
+        // defecto que comprobaba.
         auto full = apvts.copyState();
         setReal (apvts, State::IDs::mod1Source, 1.0f); // choice 1 = LFO 1
         setReal (apvts, State::IDs::mod2Source, 2.0f); // choice 2 = LFO 2
+        setReal (apvts, State::IDs::mod3Source, 1.0f);
+        setReal (apvts, State::IDs::mod4Source, 2.0f);
         full = apvts.copyState();
         check (Serialization::insertEnvModRoutes (full) == 0,
-               "no free slot: nothing is inserted (same sound, sentinel keeps the wiring)");
+               "no free slot in any of the four: nothing is inserted (same sound, sentinel keeps the wiring)");
+
+        // MEDIO OCUPADO: con la 1 y la 2 del usuario, las dos rutas tienen que
+        // caer en la 3 y la 4. Con el limite `slot <= 2` solo cabia una.
+        auto half = apvts.copyState();
+        setReal (apvts, State::IDs::mod1Source, 1.0f);
+        setReal (apvts, State::IDs::mod2Source, 2.0f);
+        setReal (apvts, State::IDs::mod3Source, 0.0f);
+        setReal (apvts, State::IDs::mod4Source, 0.0f);
+        half = apvts.copyState();
+        check (Serialization::insertEnvModRoutes (half) == 2,
+               "two free slots in the back half: BOTH env routes are inserted");
+
+        // Y la 1 y la 2 vuelven a su estado de fabrica, que es de donde sale
+        // `current`: el caso de abajo compara un preset "ya migrado" y hereda
+        // todo lo que los anteriores dejaron puesto.
+        //
+        // Los DESTINOS tambien, que es la parte que faltaba. El caso legacy de
+        // arriba los deja a 0 y nunca los devuelve, asi que `current` tenia
+        // mod1 = ENV 1 -> Off y mod2 = ENV 2 -> Off: dos fuentes sin destino,
+        // que no son ninguna ruta. Con la migracion solo mirando la 1 y la 2
+        // eso no se notaba; con las cuatro, la migracion rellenaba la 3 y la 4
+        // con dos rutas de verdad y este aserto fallaba — con razon, porque
+        // estaba mirando un preset que no era el que decia ser.
+        setReal (apvts, State::IDs::mod1Source, 6.0f);        // choice 6 = ENV 1
+        setReal (apvts, State::IDs::mod1Destination, 1.0f);    // Osc Level
+        setReal (apvts, State::IDs::mod2Source, 7.0f);        // choice 7 = ENV 2
+        setReal (apvts, State::IDs::mod2Destination, 10.0f);   // Filter Cutoff
 
         // Estado actual: ya trae las rutas por defecto, no inserta nada.
         auto current = apvts.copyState();

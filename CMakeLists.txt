@@ -475,6 +475,44 @@ target_link_libraries(NEURONiK_ModulationParityDump PRIVATE
     NEURONiK_Common
 )
 
+# ── Migrar un preset: el arbol bien, pero el sonido tambien ────────────────
+# insertEnvModRoutes mete dos rutas ENV en los presets anteriores a las fuentes
+# ENV y su comentario promete que el preset "suena igual". PresetRoundTripTest
+# comprueba el ARBOL que queda; este comprueba el AUDIO que sale. La promesa es
+# Es bit a bit, no "parecido": los destinos 1 y 10 perguntan por la fuente y
+# ASIGNAN el amount al factor de routing, y ese factor nace en 1.0, que es
+# justo lo que escribe la migracion.
+#
+# Por que el motor entra aqui y no un mock: la mitad del objeto de este test es
+# que modEnvLevel y modEnvCutoff y las demas viven en la VOZ, y una voz de
+# mentira no comprobaria nada.
+add_executable(NEURONiK_PresetMigrationParityTest
+    Tests/PresetMigrationParity.cpp
+    ${NEURONIK_DSP_SOURCES}
+    Source/Serialization/PresetMigration.cpp
+)
+
+target_include_directories(NEURONiK_PresetMigrationParityTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/State"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Serialization"
+)
+
+target_link_libraries(NEURONiK_PresetMigrationParityTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_audio_formats
+    juce::juce_audio_processors
+    juce::juce_core
+    juce::juce_data_structures
+    juce::juce_dsp
+    juce::juce_events
+    juce::juce_graphics
+    NEURONiK_Common
+)
+
+add_test(NAME NEURONiK_PresetMigrationParityTest COMMAND NEURONiK_PresetMigrationParityTest)
+
 # ============================================================================
 # WASM PARITY REFERENCE (Fase 5)
 # ============================================================================

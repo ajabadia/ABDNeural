@@ -43,8 +43,11 @@ juce::StringArray currentParameterIds (const juce::AudioProcessor& processor);
  *          two routes this inserts (ENV 1 -> Osc Level, ENV 2 -> Filter Cutoff,
  *          both amount 1.0) only make the existing wiring VISIBLE and editable
  *          in the matrix. An empty route (source 0 and destination 0) is fair
- *          game: slot 1 is preferred, then 2. Without a free slot nothing is
- *          inserted and the preset keeps sounding identical (sentinel 1.0).
+ *          game, and all FOUR slots are scanned in order, not just the first
+ *          two: a preset whose slot 1 the user already filled gets ENV 1 in
+ *          slot 2 and ENV 2 in slot 3, rather than ENV 2 being dropped. Without
+ *          a free slot nothing is inserted and the preset keeps sounding
+ *          identical (sentinel 1.0).
  * @returns the number of routes inserted (0..2).
  */
 int insertEnvModRoutes (juce::ValueTree& state);
