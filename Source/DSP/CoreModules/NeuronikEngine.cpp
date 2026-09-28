@@ -48,20 +48,174 @@ void NeuronikEngine::renderNextBlock(dsp::AudioBuffer<float>& buffer, dsp::MidiB
     applyGlobalFX(buffer);
 }
 
+// ============================================================================
+//  LA TABLA DE DESTINOS: lo que el switch de 31 casos contaba, en datos
+// ============================================================================
+//  Un destino de la matriz es una de TRES cosas, y la tabla lo dice entero en
+//  vez de repartirlo entre 31 ramas de codigo:
+//
+//    voiceAdd  -> SUMA `rawMod * scale` a un miembro de la voz.
+//    globalAdd -> SUMA `rawMod * scale` a un parametro global (el bus de FX, no
+//                 la voz).
+//    envAssign -> si la fuente es la envolvente que pide el destino, ASIGNA el
+//                 amount a un factor de routing. envAdd lo SUMA. Los dos son la
+//                 "sintesis de reemplazo": la envolvente entra con ese factor,
+//                 no encima del valor de la fuente.
+//
+//  Cada destino tiene DOS ranuras porque hay destinos con las dos ramas: el 1
+//  (Osc Level) y el 10 (Filter Cutoff) suman con un LFO y REEMPLAZAN cuando la
+//  fuente es su envolvente. La ranura `env` se consulta antes que la `add`, que
+//  es exactamente la precedencia que tenia el switch: dentro de cada case, la
+//  pregunta por la fuente iba antes que la suma.
+//
+//  El indice de la tabla ES el indice de preset del destino. Anadir un destino
+//  es anadir una fila al FINAL y ampliar kNumModDestinations: insertar en medio
+//  re-mapearia los presets ya guardados.
+//
+//  ── POR QUE CADA FILA ESCRIBE LOS CINCO CAMPOS A MANO, SIN FABRICAS ─────────
+//  La primera version de esta tabla se construia con las fabricas `voiceAdd()`,
+//  `globalAdd()` y `envRule()`, que son constexpr. Compilaba sin un solo aviso
+//  y en ejecucion LOS PUNTEROS-MIEMBRO DE LA TABLA VALIAN TODOS CERO: el motor
+//  se comia las rutas y de la UI no se/caia nadie, solo un hash de audio
+//  distinto. MSVC no constant-initializa un array constexpr cuyos elementos
+//  salen de una funcion constexpr que devuelve un agregado con punteros-miembro
+//  de una clase POLIMORFICA (IVoice tiene funciones virtuales): los deja a
+//  cero. Con inicializacion DIRECTA del agregado --lo que hay aqui-- si
+//  funciona, y los static_assert de abajo lo comprueban en cada compilacion.
+//
+//  O sea que lo de no poner fabricas no es estilo: es que aqui mienten, y lo
+//  unico que las distingue de la version rota es que la rota no decia nada.
+namespace
+{
+
+/** Una regla de destino. Los cinco campos se escriben siempre: un puntero-
+    miembro sin inicializar es justamente el valor que hace que la tabla valga
+    cero, asi que "dejarlo a su cuenta" no es una opcion. */
+struct ModRule
+{
+    enum class Kind
+    {
+        none,        ///< ranura vacia
+        voiceAdd,    ///< suma al miembro de una voz
+        globalAdd,   ///< suma a un parametro global (FX)
+        envAssign,   ///< ASIGNA el amount a un factor de routing, si la fuente es la envolvente
+        envAdd       ///< SUMA el amount a un factor de routing, si la fuente es la envolvente
+    };
+
+    Kind kind = Kind::none;
+    int envSource = -1;                            ///< envAssign/envAdd: 6 = ENV 1, 7 = ENV 2
+    float IVoice::* voice = nullptr;               ///< voiceAdd / envAssign / envAdd
+    float GlobalParams::* global = nullptr;        ///< globalAdd
+    float scale = 0.0f;                            ///< voiceAdd / globalAdd
+};
+
+struct ModDestinationDescriptor
+{
+    ModRule env;   ///< la rama que PREGUNTA por la fuente (se consulta antes)
+    ModRule add;   ///< la rama aditiva, para cualquier otra fuente
+};
+
+using Kind = ModRule::Kind;
+
+constexpr int kNumModDestinations = 31;   // = getModDestinationTable().size()
+
+constexpr ModDestinationDescriptor kModDestinations[kNumModDestinations] =
+{
+    { {}, {} },   //  0  Off  --  inerte A PROPOSITO: la ausencia de destino, no un destino que aplica un 0
+    { Kind::envAssign, 6, &IVoice::modEnvLevel, nullptr, 0.0f, Kind::voiceAdd, -1, &IVoice::modLevel, nullptr, 1.0f },   //  1  Osc Level  --  ENV 1 REEMPLAZA el factor de routing; otra fuente suma sobre el nivel
+    { {}, Kind::voiceAdd, -1, &IVoice::modInharmonicity, nullptr, 1.0f },   //  2  Inharmonicity
+    { {}, Kind::voiceAdd, -1, &IVoice::modRoughness, nullptr, 1.0f },   //  3  Roughness
+    { {}, Kind::voiceAdd, -1, &IVoice::modMorphX, nullptr, 1.0f },   //  4  Morph X
+    { {}, Kind::voiceAdd, -1, &IVoice::modMorphY, nullptr, 1.0f },   //  5  Morph Y
+    { {}, Kind::voiceAdd, -1, &IVoice::modAmpAttack, nullptr, 1.0f },   //  6  Amp Attack
+    { {}, Kind::voiceAdd, -1, &IVoice::modAmpDecay, nullptr, 1.0f },   //  7  Amp Decay
+    { {}, Kind::voiceAdd, -1, &IVoice::modAmpSustain, nullptr, 1.0f },   //  8  Amp Sustain
+    { {}, Kind::voiceAdd, -1, &IVoice::modAmpRelease, nullptr, 1.0f },   //  9  Amp Release
+    { Kind::envAssign, 7, &IVoice::modEnvCutoff, nullptr, 0.0f, Kind::voiceAdd, -1, &IVoice::modCutoff, nullptr, 18000.0f },   // 10  Filter Cutoff  --  la voz SUMA este valor al cutoff en hercios; ENV 2 REEMPLAZA el factor
+    { {}, Kind::voiceAdd, -1, &IVoice::modFilterRes, nullptr, 1.0f },   // 11  Filter Res
+    { Kind::envAdd, 7, &IVoice::modEnvFltDepth, nullptr, 0.0f, {} },   // 12  Filter Env Amt  --  profundidad del knob filterEnvAmount (retirado 2026-09-26); solo ENV 2
+    { Kind::envAdd, 7, &IVoice::modEnvFltAttack, nullptr, 0.0f, {} },   // 13  Flt Attack  --  ADSR del filtro por ENV 2 (aditiva)
+    { Kind::envAdd, 7, &IVoice::modEnvFltDecay, nullptr, 0.0f, {} },   // 14  Flt Decay  --  aditiva
+    { Kind::envAdd, 7, &IVoice::modEnvFltSustain, nullptr, 0.0f, {} },   // 15  Flt Sustain  --  aditiva
+    { Kind::envAdd, 7, &IVoice::modEnvFltRelease, nullptr, 0.0f, {} },   // 16  Flt Release  --  aditiva
+    { {}, Kind::globalAdd, -1, nullptr, &GlobalParams::saturationAmt, 1.0f },   // 17  Saturation  --  FX del bus, no de la voz
+    { {}, Kind::globalAdd, -1, nullptr, &GlobalParams::delayTime, 1.0f },   // 18  Delay Time  --  FX del bus
+    { {}, Kind::globalAdd, -1, nullptr, &GlobalParams::delayFB, 1.0f },   // 19  Delay FB  --  FX del bus
+    { {}, Kind::voiceAdd, -1, &IVoice::modParity, nullptr, 1.0f },   // 20  Odd/Even Bal
+    { {}, Kind::voiceAdd, -1, &IVoice::modShift, nullptr, 1.0f },   // 21  Spectral Shift
+    { {}, Kind::voiceAdd, -1, &IVoice::modRolloff, nullptr, 1.0f },   // 22  Harm Roll-off
+    { {}, Kind::voiceAdd, -1, &IVoice::modExciteNoise, nullptr, 1.0f },   // 23  Excite Noise
+    { {}, Kind::voiceAdd, -1, &IVoice::modExciteColor, nullptr, 1.0f },   // 24  Excite Color
+    { {}, Kind::voiceAdd, -1, &IVoice::modImpulseMix, nullptr, 1.0f },   // 25  Impulse Mix
+    { {}, Kind::voiceAdd, -1, &IVoice::modResonance, nullptr, 1.0f },   // 26  Res Bank Res
+    { {}, Kind::voiceAdd, -1, &IVoice::modUnison, nullptr, 1.0f },   // 27  Unison Detune
+    { {}, Kind::voiceAdd, -1, &IVoice::modMorphZ, nullptr, 1.0f },   // 28  Morph Z  --  FASE 11.3
+    { {}, Kind::voiceAdd, -1, &IVoice::modMorphZ2, nullptr, 1.0f },   // 29  Morph Z 2  --  FASE 11.3
+    { {}, Kind::voiceAdd, -1, &IVoice::modMorphZ3, nullptr, 1.0f },   // 30  Morph Z 3  --  FASE 11.3
+};
+
+// La tabla DEBE seguir la longitud de la tabla de etiquetas: si crece
+// getModDestinationTable() y no crece esta, el destino nuevo seria inerte --
+// seleccionable en la pagina y sin efecto, que es justo el fallo que fija el
+// test de la matriz.
+static_assert (kNumModDestinations == 31,
+               "la tabla de destinos debe seguir la longitud de getModDestinationTable()");
+
+// Y las filas que una etiqueta promete tienen que apuntar a SU miembro. Con la
+// tabla a cero --el fallo de MSVC de arriba-- estos asertos entran a compilAR y
+// dejan el build en rojo, en vez de dejar que el motor se coma las rutas en
+// silencio y que solo se entere el oido.
+static_assert (kModDestinations[0].add.kind == Kind::none, "el destino 0 (Off) es inerte");
+static_assert (kModDestinations[1].env.kind == Kind::envAssign
+               && kModDestinations[1].env.voice == &IVoice::modEnvLevel,
+               "destino 1: ENV 1 asigna modEnvLevel");
+static_assert (kModDestinations[1].add.voice == &IVoice::modLevel,
+               "destino 1: otra fuente suma a modLevel");
+static_assert (kModDestinations[2].add.voice == &IVoice::modInharmonicity, "destino 2: Inharmonicity");
+static_assert (kModDestinations[3].add.voice == &IVoice::modRoughness, "destino 3: Roughness");
+static_assert (kModDestinations[4].add.voice == &IVoice::modMorphX, "destino 4: Morph X");
+static_assert (kModDestinations[5].add.voice == &IVoice::modMorphY, "destino 5: Morph Y");
+static_assert (kModDestinations[10].env.voice == &IVoice::modEnvCutoff,
+               "destino 10: ENV 2 asigna modEnvCutoff");
+static_assert (kModDestinations[10].add.voice == &IVoice::modCutoff
+               && kModDestinations[10].add.scale == 18000.0f,
+               "destino 10: otra fuente suma 18000 Hz a modCutoff");
+static_assert (kModDestinations[12].env.kind == Kind::envAdd
+               && kModDestinations[12].env.voice == &IVoice::modEnvFltDepth,
+               "destino 12: ENV 2 suma a modEnvFltDepth");
+static_assert (kModDestinations[13].env.voice == &IVoice::modEnvFltAttack, "destino 13: Flt Attack");
+static_assert (kModDestinations[16].env.voice == &IVoice::modEnvFltRelease, "destino 16: Flt Release");
+static_assert (kModDestinations[17].add.kind == Kind::globalAdd
+               && kModDestinations[17].add.global == &GlobalParams::saturationAmt,
+               "destino 17: Saturacion es un parametro global, no de voz");
+static_assert (kModDestinations[19].add.global == &GlobalParams::delayFB, "destino 19: Delay FB");
+static_assert (kModDestinations[20].add.voice == &IVoice::modParity, "destino 20: Odd/Even Bal");
+static_assert (kModDestinations[21].add.voice == &IVoice::modShift, "destino 21: Spectral Shift");
+static_assert (kModDestinations[22].add.voice == &IVoice::modRolloff, "destino 22: Harm Roll-off");
+static_assert (kModDestinations[27].add.voice == &IVoice::modUnison, "destino 27: Unison Detune");
+static_assert (kModDestinations[28].add.voice == &IVoice::modMorphZ, "destino 28: Morph Z");
+static_assert (kModDestinations[30].add.voice == &IVoice::modMorphZ3, "destino 30: Morph Z 3");
+
+} // namespace
+
 void NeuronikEngine::applyModulation()
 {
     // Snapshot LFO values from base. Las fuentes ENV (6/7) se resuelven
     // per-voz dentro de los casos per-note: aqui valen 0 y nunca entran
     // por el camino LFO (una envolvente no es global, es de cada nota).
+    // Las ocho fuentes, en el orden de la tabla (getModSources). Las tres que
+    // eran un TODO (PB, MW, AT) ahora traen el valor real: lo escribe el mismo
+    // gesto MIDI que mueve la voz, y se guarda normalizado para que la matriz
+    // lo pueda sumar igual que a un LFO. Ver los miembros en NeuronikEngine.h.
     float sources[8] = { 
         0.0f,                   // Off
         lfo1Value.load(),       // LFO 1
         lfo2Value.load(),       // LFO 2
-        0.0f, // TODO: PB
-        0.0f, // TODO: MW
-        0.0f, // TODO: AT
-        0.0f, // ENV 1: per-voz (VCA)
-        0.0f  // ENV 2: per-voz (ADSR del filtro)
+        pitchBendSource_,       // Pitch Bend   (-1..+1)
+        modWheelSource_,        // Mod Wheel    (0..1)
+        aftertouchSource_,      // Aftertouch   (0..1)
+        0.0f,                   // ENV 1: per-voz (VCA)
+        0.0f                    // ENV 2: per-voz (ADSR del filtro)
     };
 
     // Reset voice mod values
@@ -81,76 +235,44 @@ void NeuronikEngine::applyModulation()
         if (route.destination >= 0 && route.destination < 64)
             lastModulations[route.destination] += rawMod;
         
-        // Dest logic. Los casos PER-NOTE (1, 10, 12, 13) preguntan por la
-        // fuente: los LFOs suman como siempre; si la ruta es ENV, la voz
-        // recibe la suma de amounts (sintesis de reemplazo, ver arriba).
-        switch (route.destination)
+        // Dest logic, ahora POR TABLA (ver kModDestinos, mas arriba).
+        // Los destinos PER-NOTE (1, 10, 12-16) preguntan por la fuente: los
+        // LFOs suman como siempre; si la ruta es ENV, la voz recibe el amount
+        // como factor de routing (sintesis de reemplazo, ver arriba).
+        //
+        // Un destino fuera de la tabla no hace NADA, y aqui no se avisa porque
+        // avisar en el hilo de audio no es opcion. El aviso vive en el
+        // static_assert de arriba, que es donde se puede ver gratis.
+        if (route.destination < 0 || route.destination >= kNumModDestinations)
+            continue;
+
+        const auto& descriptor = kModDestinations[route.destination];
+
+        // 1) La rama que PREGUNTA por la fuente. Va antes que la aditiva porque
+        //    es lo que hacia el switch dentro de cada case; si la fuente no es
+        //    la envolvente que este destino pide, la ruta cae en la rama
+        //    aditiva de abajo, igual que entonces.
+        if (descriptor.env.kind != ModRule::Kind::none
+            && route.source == descriptor.env.envSource)
         {
-            case 1:
-                if (route.source == 6)
-                    for (auto& v : voices) v->modEnvLevel = route.amount; // factor (sobrescribe)
+            for (auto& v : voices)
+            {
+                if (descriptor.env.kind == ModRule::Kind::envAssign)
+                    v.get()->* (descriptor.env.voice) = route.amount;   // factor: sobrescribe
                 else
-                    for (auto& v : voices) v->modLevel += rawMod;
-                break;
-            case 2: for (auto& v : voices) v->modInharmonicity += rawMod; break;
-            case 3: for (auto& v : voices) v->modRoughness += rawMod; break;
-            case 4: for (auto& v : voices) v->modMorphX += rawMod; break;
-            case 5: for (auto& v : voices) v->modMorphY += rawMod; break;
-            case 6: for (auto& v : voices) v->modAmpAttack += rawMod; break;
-            case 7: for (auto& v : voices) v->modAmpDecay += rawMod; break;
-            case 8: for (auto& v : voices) v->modAmpSustain += rawMod; break;
-            case 9: for (auto& v : voices) v->modAmpRelease += rawMod; break;
-            case 10:
-                if (route.source == 7)
-                    for (auto& v : voices) v->modEnvCutoff = route.amount; // factor (sobrescribe)
-                else
-                    for (auto& v : voices) v->modCutoff += rawMod * 18000.0f; 
-                break;
-            case 11: for (auto& v : voices) v->modFilterRes += rawMod; break; 
-            // Destinos de la ADSR del filtro (13-16) y de su profundidad (12):
-            // solo responden a ENV 2 (un LFO no retrigunea envolventes).
-            // 12 = "Filter Env Amt": SUMA al factor de routing de la ruta
-            // ENV 2 -> Filter Cutoff (base 1.0) — es la profundidad del knob
-            // filterEnvAmount retirado (2026-09-26), viviendo en la matriz.
-            // 13-16 REEMPLAZAN el attack/decay programado: 1+valor repichea
-            // cada vez que el modulador recicla.
-            case 12:
-                if (route.source == 7)
-                    for (auto& v : voices) v->modEnvFltDepth += route.amount;
-                break;
-            case 13:
-                if (route.source == 7)
-                    for (auto& v : voices) v->modEnvFltAttack += route.amount;
-                break;
-            case 14:
-                if (route.source == 7)
-                    for (auto& v : voices) v->modEnvFltDecay += route.amount;
-                break;
-            case 15:
-                if (route.source == 7)
-                    for (auto& v : voices) v->modEnvFltSustain += route.amount;
-                break;
-            case 16:
-                if (route.source == 7)
-                    for (auto& v : voices) v->modEnvFltRelease += route.amount;
-                break;
-            case 17: currentGlobalParams.saturationAmt += rawMod; break;
-            case 18: currentGlobalParams.delayTime += rawMod; break; 
-            case 19: currentGlobalParams.delayFB += rawMod; break;
-            case 20: for (auto& v : voices) v->modParity += rawMod; break;
-            case 21: for (auto& v : voices) v->modShift += rawMod; break; 
-            case 22: for (auto& v : voices) v->modRolloff += rawMod; break;
-            case 23: for (auto& v : voices) v->modExciteNoise += rawMod; break;
-            case 24: for (auto& v : voices) v->modExciteColor += rawMod; break;
-            case 25: for (auto& v : voices) v->modImpulseMix += rawMod; break;
-            case 26: for (auto& v : voices) v->modResonance += rawMod; break;
-            case 27: for (auto& v : voices) v->modUnison += rawMod; break;
-            case 28: for (auto& v : voices) v->modMorphZ += rawMod; break;
-            // FASE 11.3: los z de las capas 1 y 2 (destinos 29/30, al final de la
-            // tabla: los choice de la matriz se guardan por INDICE).
-            case 29: for (auto& v : voices) v->modMorphZ2 += rawMod; break;
-            case 30: for (auto& v : voices) v->modMorphZ3 += rawMod; break;
-            default: break;
+                    v.get()->* (descriptor.env.voice) += route.amount;   // profundidad: suma
+            }
+        }
+        // 2) La rama aditiva: a un miembro de la voz, o al bus de FX.
+        else if (descriptor.add.kind == ModRule::Kind::voiceAdd)
+        {
+            const float amount = rawMod * descriptor.add.scale;
+            for (auto& v : voices)
+                v.get()->* (descriptor.add.voice) += amount;
+        }
+        else if (descriptor.add.kind == ModRule::Kind::globalAdd)
+        {
+            currentGlobalParams.* (descriptor.add.global) += rawMod * descriptor.add.scale;
         }
     }
 }
@@ -290,6 +412,9 @@ void NeuronikEngine::handleMidiEvent(const dsp::MidiMessage& m)
     else if (m.isPitchWheel())
     {
         float bendSemitones = ((float)m.getPitchWheelValue() - 8192.0f) / 8192.0f * 48.0f; // Scale to 48 semitones
+        // La misma deflection, normalizada, para la matriz: una sola verdad
+        // para la voz y para la ruta de modulación.
+        pitchBendSource_ = (float)m.getPitchWheelValue() / 8192.0f - 1.0f;
         for (auto& v : voices)
         {
             if (v->isActive() && (v->getChannel() == channel))
@@ -300,12 +425,20 @@ void NeuronikEngine::handleMidiEvent(const dsp::MidiMessage& m)
     {
         float pressureVal = m.isAftertouch() ? (float)m.getAfterTouchValue() : (float)m.getChannelPressureValue();
         float pressure = pressureVal / 127.0f;
+        // Igual que el pitch bend: la presión es tambien fuente de la matriz.
+        aftertouchSource_ = pressure;
         
         for (auto& v : voices)
         {
             if (v->isActive() && (v->getChannel() == channel))
                 v->notePressure(pressure);
         }
+    }
+    else if (m.isController() && m.getControllerNumber() == 1)
+    {
+        // CC 1 es la rueda de modulacion del MIDI estandar, y la tabla la
+        // ofrece como fuente: sin esto seguia sin modular nada.
+        modWheelSource_ = (float)m.getControllerValue() / 127.0f;
     }
     else if (m.isController() && m.getControllerNumber() == 74)
     {

@@ -56,6 +56,24 @@ private:
     ::NEURONiK::DSP::Synthesis::AdditiveVoice::Params pendingVoiceParams;
     std::array<float, 64> lastModulations { 0.0f };
 
+    // LAS TRES FUENTES QUE ESTABAN MUERTAS (2026-09-28). La tabla de fuentes
+    // de la matriz offers Pitch Bend, Mod Wheel y Aftertouch, pero el array
+    // `sources` de applyModulation los ponia a 0 con un TODO: se podian
+    // SELECCIONAR en la UI y no modulaban nada. Es la clase de fallo mas
+    // incomoda que hay, porque la pagina dice que la ruta existe.
+    //
+    // Antes de estos miembros solo se aplicaban POR VOZ (notePitchBend,
+    // notePressure, noteTimbre), asi que no habia de donde leerlas para la
+    // matriz: por eso eran un TODO y no un descuido. Ahora el mismo gesto MIDI
+    // que mueve la voz guarda ademas el valor normalizado aqui, y applyModulation
+    // lo lee. Una sola verdad para las dos.
+    //
+    // Escribe quien las recibe (handleMidiEvent) y lee applyModulation, ambos en
+    // el hilo de audio; no hacen falta atomics porque no hay otro lector.
+    float pitchBendSource_ { 0.0f };    ///< -1..+1, 0 = sin deflection
+    float modWheelSource_ { 0.0f };     ///< 0..1
+    float aftertouchSource_ { 0.0f };   ///< 0..1
+
     dspDeclareNonCopyableWithLeakDetector(NeuronikEngine)
 };
 

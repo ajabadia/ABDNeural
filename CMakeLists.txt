@@ -404,6 +404,77 @@ target_link_libraries(NEURONiK_DSPReferenceTest PRIVATE
 
 add_test(NAME NEURONiK_DSPReferenceTest COMMAND NEURONiK_DSPReferenceTest)
 
+# ── La matriz de modulacion: la tabla de fuentes contra el motor ────────────
+# El fallo que fija: la tabla ofrecia Pitch Bend, Mod Wheel y Aftertouch, y el
+# motor las ponia a 0 con un TODO. Se podian seleccionar y no modulaban nada.
+# Un test que lee la tabla y comprueba que las ocho fuentes son direccionables
+# es lo que evita que eso vuelva.
+# El motor entra POR FUENTE (NEURONIK_DSP_SOURCES), no por una biblioteca: el
+# test conduce el motor de verdad —prepare, un bloque con un gesto MIDI y
+# renderNextBlock— porque lo que hay que comprobar es lo que ENTREGA la ruta, no
+# lo que declara la tabla.
+add_executable(NEURONiK_ModulationMatrixTest
+    Tests/ModulationMatrixTest.cpp
+    ${NEURONIK_DSP_SOURCES}
+)
+
+target_include_directories(NEURONiK_ModulationMatrixTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/State"
+)
+
+# State/ParameterDefinitions.h entra por juce_audio_processors, que arrastra
+# juce::StringArray y juce::Colour. Sin juce_graphics el enlazado revienta con
+# LNK2019 en `juce::Colour::Colour(uint32)`, el inicializador dinamico de
+# juce::Colours::aliceblue. Por eso graphics va explicito y no por sorpresa.
+target_link_libraries(NEURONiK_ModulationMatrixTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_audio_formats
+    juce::juce_core
+    juce::juce_data_structures
+    juce::juce_dsp
+    juce::juce_events
+    juce::juce_graphics
+    NEURONiK_Common
+)
+
+add_test(NAME NEURONiK_ModulationMatrixTest COMMAND NEURONiK_ModulationMatrixTest)
+
+# ── La red de paridad de la matriz: una HERRAMIENTA, no un test ─────────────
+# Vuelca un hash por escenario de modulacion (41, con audio real). Se ejecuta
+# antes y despues de tocar el motor y se diffa: si las dos salidas coinciden, el
+# cambio no ha movido ni un ULP.
+#
+# NO entra en ctest, y por las dos razones que estan en la cabecera del
+# fichero: el hash es de bytes CRUDOS (mismo codigo, distinto hash en Debug que
+# en Release) y cuesta alrededor de un minuto. Un golden que solo vale para una
+# configuracion, en un target que aparece en todas, es una bomba de reloja.
+#
+#   NEURONiK_ModulationParityDump > antes.txt
+#   <cambia el motor>
+#   NEURONiK_ModulationParityDump > despues.txt && diff antes.txt despues.txt
+add_executable(NEURONiK_ModulationParityDump
+    Tests/ModulationParityDump.cpp
+    ${NEURONIK_DSP_SOURCES}
+)
+
+target_include_directories(NEURONiK_ModulationParityDump PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+)
+
+target_link_libraries(NEURONiK_ModulationParityDump PRIVATE
+    juce::juce_audio_basics
+    juce::juce_audio_formats
+    juce::juce_core
+    juce::juce_data_structures
+    juce::juce_dsp
+    juce::juce_events
+    juce::juce_graphics
+    NEURONiK_Common
+)
+
 # ============================================================================
 # WASM PARITY REFERENCE (Fase 5)
 # ============================================================================
@@ -802,6 +873,44 @@ target_link_libraries(NEURONiK_MemoryBudgetTest PRIVATE
 )
 
 add_test(NAME NEURONiK_MemoryBudgetTest COMMAND NEURONiK_MemoryBudgetTest)
+
+# El VST3 recien compilado, ESCANEADO e instanciado como haria un DAW, en un
+# proceso que no sabe nada del procesador: lo unico que comparte con el plugin es
+# el .vst3 de disco. Los parametros esperados salen del MISMO contrato que
+# compila el plugin (NEURONiK_ParameterContract), asi que un bundle viejo y unas
+# fuentes nuevas no pueden dar los dos verde.
+#
+# La dependencia del target VST3 no es cosmetica: sin ella, un ctest sobre un
+# arbol ya construido mediria el bundle de la corrida anterior.
+add_executable(NEURONiK_Vst3LoadTest
+    Tests/Vst3LoadTest.cpp
+)
+
+target_link_libraries(NEURONiK_Vst3LoadTest PRIVATE
+    NEURONiK_ParameterContract
+    juce::juce_audio_basics
+    juce::juce_audio_processors
+    juce::juce_core
+    juce::juce_data_structures
+    juce::juce_events
+    juce::juce_graphics
+    juce::juce_gui_basics
+    juce::juce_gui_extra
+)
+
+target_compile_definitions(NEURONiK_Vst3LoadTest PRIVATE
+    NEURONIK_VST3_PATH="$<TARGET_FILE:NEURONiK_VST3>"
+    # Sin esto, juce::VST3PluginFormat no existe: el formato de ESCANEO de VST3
+    # solo se compila con el flag del host (es lo que hace falta aqui, no el
+    # lado cliente, que es el que lleva el plugin).
+    JUCE_PLUGINHOST_VST3=1
+)
+
+if(TARGET NEURONiK_VST3)
+    add_dependencies(NEURONiK_Vst3LoadTest NEURONiK_VST3)
+endif()
+
+add_test(NAME NEURONiK_Vst3LoadTest COMMAND NEURONiK_Vst3LoadTest)
 
 # Round-trip del ModelMaker con analisis REAL (2026-09-20): el flujo completo de la
 # herramienta (audio -> detectPitch/analyze -> export JSON -> loadModel en A-D) con
@@ -1467,6 +1576,46 @@ if(NEURONIK_NODE_EXECUTABLE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/WebUI/node_m
     )
 else()
     message(STATUS "playwright not installed: NEURONiK_WebUiVisualRegression test skipped")
+endif()
+
+# ---------------------------------------------------------------------------
+# AGUJAS EN MODO NAVEGADOR (needle-probe), el otro E2E que arranca el motor real.
+# ---------------------------------------------------------------------------
+# El tercer spec de navegador, y el UNICO que no mira la pagina del plugin: mira
+# `WebUI/needle-probe/`, la pagina de PRUEBA que monta las dos vistas de
+# produccion de las agujas de ADSR y las alimenta con el MISMO par
+# `envelopes=[amp, filter]` que manda el plugin por el bridge — aqui por el meter
+# del worklet. Comprueba el ciclo entero de la aguja en el navegador: sin motor
+# las cuatro existen pero estan ocultas; con nota las cuatro se ven, pintan nivel,
+# son gemelas entre vistas y MIDEN los sustains que pidio la pagina (0.8 y 0.2,
+# via el canal `neuronik:voice`); tras el note-off las cuatro se ocultan.
+#
+# Es un test APARTE (y no un caso mas de la regresion visual) por la misma razon
+# que aquellos dos: `visual.spec.js` compara contra binarios versionados y su
+# bloque de agujas genera una referencia MAS, mientras que este solo afirma
+# numeros — asi que se puede correr, investigar o saltar sin tocar las
+# referencias. Ademas necesita el servidor de DEV (la pagina no entra en `dist`),
+# que es el segundo `webServer` de `playwright.config.js`.
+#
+# PUERTOS PROPIOS, los dos, por el motivo medido que ya evita el E2E de smoke:
+# con `--strictPort` dos servidores en el mismo se comen un EADDRINUSE y el
+# fallo aparece a los 13 s hablando de puertos, no de agujas. Este test no
+# comparte ni el preview de `dist` (5240) ni el dev de needle-probe (5241) con
+# los otros dos, y aun asi hereda su candado: el `webServer` de `dist` lanza
+# `npm run build` sobre el MISMO directorio de salida, y dos `vite build` a la
+# vez se pisan (medido, no supuesto).
+if(NEURONIK_NODE_EXECUTABLE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/WebUI/node_modules/@playwright/test/cli.js")
+    add_test(NAME NEURONiK_WebUiNeedleProbeE2e
+        COMMAND ${NEURONIK_NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/WebUI/node_modules/@playwright/test/cli.js" test e2e/needleProbe.spec.js
+    )
+    set_tests_properties(NEURONiK_WebUiNeedleProbeE2e PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/WebUI"
+        TIMEOUT 600
+        RESOURCE_LOCK "neuronik_webui_dist"
+        ENVIRONMENT "NEURONIK_E2E_PORT=5240;NEURONIK_E2E_PROBE_PORT=5241"
+    )
+else()
+    message(STATUS "playwright not installed: NEURONiK_WebUiNeedleProbeE2e test skipped")
 endif()
 
 
