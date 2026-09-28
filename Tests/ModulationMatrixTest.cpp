@@ -189,6 +189,49 @@ int main()
     check (near (probeRoute (0, dsp::MidiMessage::pitchWheel (1, 16383)), 0.0f),
            "Off modula cero aunque muevas la rueda");
 
+    // ── La tabla constexpr llego ZEROS a la ejecucion, o no llego ───────────
+    // Los static_assert del motor comprueban la tabla en TIEMPO DE COMPILACION.
+    // El fallo de MSVC que motivo todo esto es precisamente que el valor
+    // correcto se ve al compilar y llega a cero en el binario, asi que un
+    // aserto de compilacion no lo puede ver: hace falta leer la tabla cuando el
+    // programa ya esta corriendo.
+    //
+    // Este bloque lee los 31 `label` y los 31 `parameterId` del constexpr tal
+    // cual estan en memoria. Si MSVC vuelve a callarse, aqui hay un nullptr y
+    // el test revienta con un mensaje que lo dice, en vez de dejar que el motor
+    // se coma las rutas.
+    {
+        const auto& constexprTable = NEURONiK::State::kModDestinationTable;
+        const auto count = NEURONiK::State::kModDestinationCount;
+
+        std::size_t nullLabels = 0;
+        std::size_t mismatchedWithVector = 0;
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            if (constexprTable[i].label == nullptr)
+                ++nullLabels;
+            else if (i < destinations.size()
+                     && std::string (constexprTable[i].label) != destinations[i].label)
+                ++mismatchedWithVector;
+        }
+
+        char message[160];
+        std::snprintf (message, sizeof (message),
+                       "la tabla constexpr llego entera a memoria (%zu etiquetas, %zu nulas)",
+                       count, nullLabels);
+        check (nullLabels == 0, message);
+
+        std::snprintf (message, sizeof (message),
+                       "la tabla constexpr y getModDestinationTable() dicen lo mismo (%zu discrepancias)",
+                       mismatchedWithVector);
+        check (mismatchedWithVector == 0, message);
+
+        // Y que el vector no se haya quedado corto al construirse desde el
+        // constexpr, que seria la otra forma de que las dos tablas se separen.
+        check (destinations.size() == count,
+               "getModDestinationTable() tiene una fila por cada entrada del constexpr");
+    }
+
     // ── La politica de reemplazo, que el switch escondia ──────────────────
     // Estos son los destinos cuyo caso en NeuronikEngine::applyModulation
     // PREGUNTA por la fuente y, si es una envolvente, REEMPLAZA el factor en

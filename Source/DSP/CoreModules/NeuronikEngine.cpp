@@ -10,6 +10,20 @@
 
 #include "DspCore.h"
 #include "NeuronikEngine.h"
+
+// Los NOMBRES de la tabla de destinos, en su forma constexpr. Es el unico
+// include que hace falta para atar las dos tablas, y entra aqui precisamente
+// porque ModDestinationTable.h NO arrastra juce: cinco targets compilan este
+// fichero (NEURONiK, WebPilotHost, WasmParityTest, ModulationMatrixTest,
+// ModulationParityDump, PresetMigrationParity) y varios no enlazan
+// juce_audio_processors, que es lo que traeria ParameterDefinitions.h.
+#include "State/ModDestinationTable.h"
+
+// Los simbolos de la tabla de destinos, para que los static_assert de mas abajo
+// los nombren sin repetir el namespace en cada linea.
+using NEURONiK::State::kModDestinationCount;
+using NEURONiK::State::kModDestinationTable;
+using NEURONiK::State::modDestinationLabelIs;
 #include "../Synthesis/AdditiveVoice.h"
 #include "../DspSafety.h"
 
@@ -154,47 +168,124 @@ constexpr ModDestinationDescriptor kModDestinations[kNumModDestinations] =
     { {}, Kind::voiceAdd, -1, &IVoice::modMorphZ3, nullptr, 1.0f },   // 30  Morph Z 3  --  FASE 11.3
 };
 
-// La tabla DEBE seguir la longitud de la tabla de etiquetas: si crece
-// getModDestinationTable() y no crece esta, el destino nuevo seria inerte --
-// seleccionable en la pagina y sin efecto, que es justo el fallo que fija el
-// test de la matriz.
-static_assert (kNumModDestinations == 31,
+// La tabla DEBE seguir la longitud de la tabla de etiquetas. La longitud se
+// compara contra el constexpr de ModDestinationTable.h y no contra un 31
+// escrito a mano: asi el numero vive en un solo sitio, que es el que la UI
+// lee, y anadir un destino obliga a las dos tablas a crecer a la vez.
+static_assert (kNumModDestinations == static_cast<int> (kModDestinationCount),
                "la tabla de destinos debe seguir la longitud de getModDestinationTable()");
 
-// Y las filas que una etiqueta promete tienen que apuntar a SU miembro. Con la
-// tabla a cero --el fallo de MSVC de arriba-- estos asertos entran a compilAR y
-// dejan el build en rojo, en vez de dejar que el motor se coma las rutas en
-// silencio y que solo se entere el oido.
-static_assert (kModDestinations[0].add.kind == Kind::none, "el destino 0 (Off) es inerte");
-static_assert (kModDestinations[1].env.kind == Kind::envAssign
-               && kModDestinations[1].env.voice == &IVoice::modEnvLevel,
-               "destino 1: ENV 1 asigna modEnvLevel");
-static_assert (kModDestinations[1].add.voice == &IVoice::modLevel,
-               "destino 1: otra fuente suma a modLevel");
-static_assert (kModDestinations[2].add.voice == &IVoice::modInharmonicity, "destino 2: Inharmonicity");
-static_assert (kModDestinations[3].add.voice == &IVoice::modRoughness, "destino 3: Roughness");
-static_assert (kModDestinations[4].add.voice == &IVoice::modMorphX, "destino 4: Morph X");
-static_assert (kModDestinations[5].add.voice == &IVoice::modMorphY, "destino 5: Morph Y");
-static_assert (kModDestinations[10].env.voice == &IVoice::modEnvCutoff,
-               "destino 10: ENV 2 asigna modEnvCutoff");
-static_assert (kModDestinations[10].add.voice == &IVoice::modCutoff
-               && kModDestinations[10].add.scale == 18000.0f,
-               "destino 10: otra fuente suma 18000 Hz a modCutoff");
-static_assert (kModDestinations[12].env.kind == Kind::envAdd
-               && kModDestinations[12].env.voice == &IVoice::modEnvFltDepth,
-               "destino 12: ENV 2 suma a modEnvFltDepth");
-static_assert (kModDestinations[13].env.voice == &IVoice::modEnvFltAttack, "destino 13: Flt Attack");
-static_assert (kModDestinations[16].env.voice == &IVoice::modEnvFltRelease, "destino 16: Flt Release");
-static_assert (kModDestinations[17].add.kind == Kind::globalAdd
-               && kModDestinations[17].add.global == &GlobalParams::saturationAmt,
-               "destino 17: Saturacion es un parametro global, no de voz");
-static_assert (kModDestinations[19].add.global == &GlobalParams::delayFB, "destino 19: Delay FB");
-static_assert (kModDestinations[20].add.voice == &IVoice::modParity, "destino 20: Odd/Even Bal");
-static_assert (kModDestinations[21].add.voice == &IVoice::modShift, "destino 21: Spectral Shift");
-static_assert (kModDestinations[22].add.voice == &IVoice::modRolloff, "destino 22: Harm Roll-off");
-static_assert (kModDestinations[27].add.voice == &IVoice::modUnison, "destino 27: Unison Detune");
-static_assert (kModDestinations[28].add.voice == &IVoice::modMorphZ, "destino 28: Morph Z");
-static_assert (kModDestinations[30].add.voice == &IVoice::modMorphZ3, "destino 30: Morph Z 3");
+// ── LA RED, en tres capas ───────────────────────────────────────────────────
+//
+// (1) Ninguna fila, salvo el Off, puede estar VACIA. Este es el que caza la
+//     tabla constant-inicializada a cero —el fallo de MSVC de arriba— en las 31
+//     filas de una vez. La condicion mira que la fila DECLARE ALGUNA REGLA, no
+//     que tenga punteros: una fila a cero tiene `kind == Kind::none` en las dos
+//     ramas, mientras que una fila buena tiene al menos una. Un aserto de
+//     "ningun puntero es nullptr" NO serviria aqui, porque el fallo que hay que
+//     cazar ES un puntero a cero y compararlo contra nullptr no distingue el
+//     puntero a cero de uno de verdad.
+//
+// (2) Cada fila, una por una, es la que su ETIQUETA dice. El nombre sale de
+//     kModDestinationTable, que es la tabla que pinta la pagina: si alguien
+//     intercambia dos filas ahi, el nombre de la fila N deja de cuadrar con la
+//     regla de la fila N y el build se rompe aqui, que es donde esta la regla.
+//     Este era el hueco de verdad: hasta ahora el puntero estaba atado en
+//     18 de 31 filas y el nombre en ninguna, asi que cruzar las dos tablas
+//     —intercambiar "Inharmonicity" y "Roughness"— no rompia NADA.
+//
+// (3) El puntero de cada fila. Con la tabla a cero estos asertos entran a
+//     compilar y dejan el build en rojo, en vez de dejar que el motor se coma
+//     las rutas en silencio y que solo se entere el oido.
+constexpr bool everyDestinationDeclaresSomething (int index = 1)
+{
+    return index >= kNumModDestinations
+        ? true
+        : (kModDestinations[index].add.kind != Kind::none
+           || kModDestinations[index].env.kind != Kind::none)
+          && everyDestinationDeclaresSomething (index + 1);
+}
+
+static_assert (everyDestinationDeclaresSomething(),
+               "toda fila salvo el Off declara una regla: la tabla no esta a cero");
+
+static_assert (kModDestinations[0].add.kind == Kind::none
+               && kModDestinations[0].env.kind == Kind::none,
+               "el destino 0 (Off) es inerte A PROPOSITO: no es un destino que aplica un 0");
+
+// El nombre va en la MISMA expresion que el puntero. El literal del nombre esta
+// duplicado aqui a proposito: es el clavo. Si el nombre de una fila cambia en
+// la tabla de parametros, hay que venir aqui a confirmar el cambio a mano, y
+// mientras tanto el build esta rojo en vez de servir Inharmonicity donde la
+// pagina dice Roughness.
+static_assert (modDestinationLabelIs ( 0, "Off"),          "fila 0 de la tabla: Off");
+static_assert (modDestinationLabelIs ( 1, "Osc Level")     && kModDestinations[ 1].env.kind == Kind::envAssign
+                                                          && kModDestinations[ 1].env.voice == &IVoice::modEnvLevel
+                                                          && kModDestinations[ 1].add.voice == &IVoice::modLevel,
+               "destino 1: Osc Level -- ENV 1 asigna modEnvLevel, otra fuente suma a modLevel");
+static_assert (modDestinationLabelIs ( 2, "Inharmonicity") && kModDestinations[ 2].add.voice == &IVoice::modInharmonicity,
+               "destino 2: Inharmonicity");
+static_assert (modDestinationLabelIs ( 3, "Roughness")     && kModDestinations[ 3].add.voice == &IVoice::modRoughness,
+               "destino 3: Roughness");
+static_assert (modDestinationLabelIs ( 4, "Morph X")       && kModDestinations[ 4].add.voice == &IVoice::modMorphX,
+               "destino 4: Morph X");
+static_assert (modDestinationLabelIs ( 5, "Morph Y")       && kModDestinations[ 5].add.voice == &IVoice::modMorphY,
+               "destino 5: Morph Y");
+static_assert (modDestinationLabelIs ( 6, "Amp Attack")    && kModDestinations[ 6].add.voice == &IVoice::modAmpAttack,
+               "destino 6: Amp Attack");
+static_assert (modDestinationLabelIs ( 7, "Amp Decay")     && kModDestinations[ 7].add.voice == &IVoice::modAmpDecay,
+               "destino 7: Amp Decay");
+static_assert (modDestinationLabelIs ( 8, "Amp Sustain")   && kModDestinations[ 8].add.voice == &IVoice::modAmpSustain,
+               "destino 8: Amp Sustain");
+static_assert (modDestinationLabelIs ( 9, "Amp Release")   && kModDestinations[ 9].add.voice == &IVoice::modAmpRelease,
+               "destino 9: Amp Release");
+static_assert (modDestinationLabelIs (10, "Filter Cutoff") && kModDestinations[10].env.kind == Kind::envAssign
+                                                          && kModDestinations[10].env.voice == &IVoice::modEnvCutoff
+                                                          && kModDestinations[10].add.voice == &IVoice::modCutoff
+                                                          && kModDestinations[10].add.scale == 18000.0f,
+               "destino 10: Filter Cutoff -- ENV 2 asigna modEnvCutoff, otra fuente suma 18000 Hz");
+static_assert (modDestinationLabelIs (11, "Filter Res")    && kModDestinations[11].add.voice == &IVoice::modFilterRes,
+               "destino 11: Filter Res");
+static_assert (modDestinationLabelIs (12, "Filter Env Amt")&& kModDestinations[12].env.kind == Kind::envAdd
+                                                          && kModDestinations[12].env.voice == &IVoice::modEnvFltDepth,
+               "destino 12: Filter Env Amt -- ENV 2 SUMA la profundidad (no asigna)");
+static_assert (modDestinationLabelIs (13, "Flt Attack")    && kModDestinations[13].env.voice == &IVoice::modEnvFltAttack,
+               "destino 13: Flt Attack");
+static_assert (modDestinationLabelIs (14, "Flt Decay")     && kModDestinations[14].env.voice == &IVoice::modEnvFltDecay,
+               "destino 14: Flt Decay");
+static_assert (modDestinationLabelIs (15, "Flt Sustain")   && kModDestinations[15].env.voice == &IVoice::modEnvFltSustain,
+               "destino 15: Flt Sustain");
+static_assert (modDestinationLabelIs (16, "Flt Release")   && kModDestinations[16].env.voice == &IVoice::modEnvFltRelease,
+               "destino 16: Flt Release");
+static_assert (modDestinationLabelIs (17, "Saturation")    && kModDestinations[17].add.kind == Kind::globalAdd
+                                                          && kModDestinations[17].add.global == &GlobalParams::saturationAmt,
+               "destino 17: Saturacion es un parametro global (FX), no de voz");
+static_assert (modDestinationLabelIs (18, "Delay Time")    && kModDestinations[18].add.global == &GlobalParams::delayTime,
+               "destino 18: Delay Time es un parametro global (FX)");
+static_assert (modDestinationLabelIs (19, "Delay FB")      && kModDestinations[19].add.global == &GlobalParams::delayFB,
+               "destino 19: Delay FB es un parametro global (FX)");
+static_assert (modDestinationLabelIs (20, "Odd/Even Bal")  && kModDestinations[20].add.voice == &IVoice::modParity,
+               "destino 20: Odd/Even Bal");
+static_assert (modDestinationLabelIs (21, "Spectral Shift")&& kModDestinations[21].add.voice == &IVoice::modShift,
+               "destino 21: Spectral Shift");
+static_assert (modDestinationLabelIs (22, "Harm Roll-off") && kModDestinations[22].add.voice == &IVoice::modRolloff,
+               "destino 22: Harm Roll-off");
+static_assert (modDestinationLabelIs (23, "Excite Noise")  && kModDestinations[23].add.voice == &IVoice::modExciteNoise,
+               "destino 23: Excite Noise");
+static_assert (modDestinationLabelIs (24, "Excite Color")  && kModDestinations[24].add.voice == &IVoice::modExciteColor,
+               "destino 24: Excite Color");
+static_assert (modDestinationLabelIs (25, "Impulse Mix")   && kModDestinations[25].add.voice == &IVoice::modImpulseMix,
+               "destino 25: Impulse Mix");
+static_assert (modDestinationLabelIs (26, "Res Bank Res")  && kModDestinations[26].add.voice == &IVoice::modResonance,
+               "destino 26: Res Bank Res");
+static_assert (modDestinationLabelIs (27, "Unison Detune") && kModDestinations[27].add.voice == &IVoice::modUnison,
+               "destino 27: Unison Detune");
+static_assert (modDestinationLabelIs (28, "Morph Z")       && kModDestinations[28].add.voice == &IVoice::modMorphZ,
+               "destino 28: Morph Z");
+static_assert (modDestinationLabelIs (29, "Morph Z 2")     && kModDestinations[29].add.voice == &IVoice::modMorphZ2,
+               "destino 29: Morph Z 2");
+static_assert (modDestinationLabelIs (30, "Morph Z 3")     && kModDestinations[30].add.voice == &IVoice::modMorphZ3,
+               "destino 30: Morph Z 3");
 
 } // namespace
 

@@ -14,6 +14,8 @@
 #include <vector>
 #include <memory>
 
+#include "ModDestinationTable.h"
+
 namespace NEURONiK::State {
 
 namespace IDs {
@@ -138,71 +140,70 @@ namespace IDs {
 }
 
 /**
- * @brief One modulation destination: the label a mod slot stores, and the
- *        parameter that destination drives (nullptr for "Off").
+ * @brief Cada `parameterId` de la tabla es exactamente el `IDs::` que le toca.
  *
- * @details THIS ORDER IS PRESET STATE. A mod destination is stored as its INDEX
- *          (`mod1Destination` = 20 is what an old preset means by "Odd/Even
- *          Bal"), so entries may be APPENDED but never reordered or removed.
- *          That is why the labels and the ids live in the same table instead of
- *          being matched by hand in two files.
+ * La tabla de ModDestinationTable.h lleva los ids como TEXTO, porque esa
+ * cabecera no puede incluir `IDs::` sin arrastrar juce_audio_processors a los
+ * targets de DSP. El precio de esa vuelta son treinta y una cadenas duplicadas,
+ * y este es el punto donde se pagan: si alguien renombra `IDs::filterCutoff`, el
+ * build se rompe aqui, en el sitio del rename.
  *
- *          Which ENGINE can use a destination is deliberately NOT here: it is
- *          derived from `engineCoverageFor (parameterId)` in
- *          ParameterDescriptors.h, so a destination can never claim a different
- *          engine than the parameter it actually drives.
+ * Las dos filas sin parametro (0 = "Off" y 12 = "Filter Env Amt", retirado el
+ * 2026-09-26) se comprueban aparte, porque para ellas la verdad es que NO hay
+ * id, no que el id es una cadena vacia.
  */
-struct ModDestination
-{
-    const char* label;
-    const char* parameterId;   //!< nullptr for "Off" (drives nothing)
-};
+static_assert (kModDestinationTable[0].parameterId == nullptr,
+               "destino 0 (Off) no conduce parametro");
+static_assert (kModDestinationTable[12].parameterId == nullptr,
+               "destino 12 (Filter Env Amt): el parametro se retiro, la etiqueta sigue");
 
-/** @brief Modulation destinations in preset-index order (see ModDestination). */
+#define ABD_CHECK_MOD_DEST_ID(index, id) \
+    static_assert (modDestinationTextIs (kModDestinationTable[index].parameterId, IDs::id), \
+                   "destino " #index ": parameterId tiene que ser IDs::" #id)
+
+ABD_CHECK_MOD_DEST_ID ( 1, oscLevel);
+ABD_CHECK_MOD_DEST_ID ( 2, oscInharmonicity);
+ABD_CHECK_MOD_DEST_ID ( 3, oscRoughness);
+ABD_CHECK_MOD_DEST_ID ( 4, morphX);
+ABD_CHECK_MOD_DEST_ID ( 5, morphY);
+ABD_CHECK_MOD_DEST_ID ( 6, envAttack);
+ABD_CHECK_MOD_DEST_ID ( 7, envDecay);
+ABD_CHECK_MOD_DEST_ID ( 8, envSustain);
+ABD_CHECK_MOD_DEST_ID ( 9, envRelease);
+ABD_CHECK_MOD_DEST_ID (10, filterCutoff);
+ABD_CHECK_MOD_DEST_ID (11, filterRes);
+ABD_CHECK_MOD_DEST_ID (13, filterAttack);
+ABD_CHECK_MOD_DEST_ID (14, filterDecay);
+ABD_CHECK_MOD_DEST_ID (15, filterSustain);
+ABD_CHECK_MOD_DEST_ID (16, filterRelease);
+ABD_CHECK_MOD_DEST_ID (17, fxSaturation);
+ABD_CHECK_MOD_DEST_ID (18, fxDelayTime);
+ABD_CHECK_MOD_DEST_ID (19, fxDelayFeedback);
+ABD_CHECK_MOD_DEST_ID (20, resonatorParity);
+ABD_CHECK_MOD_DEST_ID (21, resonatorShift);
+ABD_CHECK_MOD_DEST_ID (22, resonatorRolloff);
+ABD_CHECK_MOD_DEST_ID (23, oscExciteNoise);
+ABD_CHECK_MOD_DEST_ID (24, excitationColor);
+ABD_CHECK_MOD_DEST_ID (25, impulseMix);
+ABD_CHECK_MOD_DEST_ID (26, resonatorRes);
+ABD_CHECK_MOD_DEST_ID (27, unisonDetune);
+ABD_CHECK_MOD_DEST_ID (28, morphZ);
+ABD_CHECK_MOD_DEST_ID (29, morphZ2);
+ABD_CHECK_MOD_DEST_ID (30, morphZ3);
+
+#undef ABD_CHECK_MOD_DEST_ID
+
+/** @brief Modulation destinations in preset-index order (see ModDestination).
+
+    Los NOMBRES viven en ModDestinationTable.h, que es una tabla `constexpr` sin
+    includes. Este vector se construye a partir de ella, asi que la firma y
+    todos los consumidores siguen igual, pero ahora los nombres estan en un sitio
+    donde el motor puede usarlos en un static_assert: ese es el punto de que la
+    tabla sea constexpr y no un `std::vector` construido a mano. */
 inline const std::vector<ModDestination>& getModDestinationTable()
 {
-    static const std::vector<ModDestination> table
-    {
-        { "Off",            nullptr },
-        { "Osc Level",      IDs::oscLevel },
-        { "Inharmonicity",  IDs::oscInharmonicity },
-        { "Roughness",      IDs::oscRoughness },
-        { "Morph X",        IDs::morphX },
-        { "Morph Y",        IDs::morphY },
-        { "Amp Attack",     IDs::envAttack },
-        { "Amp Decay",      IDs::envDecay },
-        { "Amp Sustain",    IDs::envSustain },
-        { "Amp Release",    IDs::envRelease },
-        { "Filter Cutoff",  IDs::filterCutoff },
-        { "Filter Res",     IDs::filterRes },
-        // Index 12: "Filter Env Amt" — the parameter was retired (2026-09-26;
-        // the matrix amount IS the depth) but the destination LABEL stays: the
-        // indices are the preset format. The engine adds it to the 1.0 routing
-        // factor of ENV 2 (AdditiveVoice::modEnvFltDepth), so the label keeps
-        // its meaning: more/less/inverted envelope through the route.
-        { "Filter Env Amt", nullptr },
-        { "Flt Attack",     IDs::filterAttack },
-        { "Flt Decay",      IDs::filterDecay },
-        { "Flt Sustain",    IDs::filterSustain },
-        { "Flt Release",    IDs::filterRelease },
-        { "Saturation",     IDs::fxSaturation },
-        { "Delay Time",     IDs::fxDelayTime },
-        { "Delay FB",       IDs::fxDelayFeedback },
-        { "Odd/Even Bal",   IDs::resonatorParity },
-        { "Spectral Shift", IDs::resonatorShift },
-        { "Harm Roll-off",  IDs::resonatorRolloff },
-        { "Excite Noise",   IDs::oscExciteNoise },
-        { "Excite Color",   IDs::excitationColor },
-        { "Impulse Mix",    IDs::impulseMix },
-        { "Res Bank Res",   IDs::resonatorRes },
-        { "Unison Detune",  IDs::unisonDetune },
-        // APPEND siempre: los choice de la matriz guardan INDICE de preset
-        // (insertar en medio re-mapearia presets guardados).
-        { "Morph Z",        IDs::morphZ },
-        { "Morph Z 2",      IDs::morphZ2 },
-        { "Morph Z 3",      IDs::morphZ3 },
-    };
-
+    static const std::vector<ModDestination> table (std::begin (kModDestinationTable),
+                                                     std::end (kModDestinationTable));
     return table;
 }
 
