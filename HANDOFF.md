@@ -6391,7 +6391,7 @@ los dos.
 > Canon: la "SECCION CANONICA — las 14 direcciones del selftest" consolida AGUJA y las barras ENV
 > (los consumidores del par); esta entrada documenta el TRANSPORTE dual que los alimenta.
 
-## SECCION CANONICA — las 14 direcciones del selftest: indice, AGUJA y barras ENV
+## SECCION CANONICA — las 15 direcciones del selftest: indice, AGUJA, barras ENV y MIDI-CC
 
 Referencia unica y vigente de lo que mide el arnes (Source/WebUI/BridgeSelftest.h). Las entradas
 cronologicas de este fichero cuentan COMO se llego a cada pieza; donde una entrada vieja y esta
@@ -6426,6 +6426,7 @@ con `--selftest`.
 | 8 | JS -> NATIVO | un input real sobre el slider llega al APVTS |
 | 9 | GENERAL | los 11 ids de la pestana GENERAL llegan al estado de la pagina |
 | 10 | MIDI | una nota de la pagina entra al motor y la rueda de mod nativa se refleja en la pagina |
+| 10b | MIDI-CC | el menu MIDI CONTROL del LCD arma el learn de CUTOFF, un CC del motor gana la asignacion y ese mismo CC mueve el parametro (detalle abajo) |
 | 11 | ACCIONES | RANDOM por SU boton mueve el APVTS y el pie publica lo mismo; con freezeResonator respeta los congelados |
 | 12 | MORPH | esquinas A-D del pad, lectura del estado del pad, gesto pad+aro y hit-testing en la pagina viva |
 | 13 | ESQUINA | el clic en la esquina A del pad (ranura 0) abre el cajon de MODELOS con SU ranura resaltada (data-slot-visual) |
@@ -6480,12 +6481,53 @@ Las tres invariantes, medidas DENTRO de AGUJA (mismas lecturas, entran en su ver
 
 Evidencia en el log: `barras 8 (OK, gemelas OK)` (4 del cajon + 4 del resumen).
 
-### Estado de verificacion (27 Sep)
+### MIDI-CC (canon): el LCD arma el learn, un CC del motor lo gana y mueve el parametro
 
-Standalone: las 14 direcciones OK con AGUJA en sus cuatro fases, la gemelidad de barras y
-ESQUINA (selftest-exit=0 en la ultima corrida del dia). Bancada: 13/13 OK en la pasada completa de las 21:11
-con AGUJA de tres fases y barras sin gemelidad; las fases PANIC y gemelas de barras miden en
-bancada en la PROXIMA pasada completa (el arnes es compartido y ya compila en los tres objetivos).
+Direccion 10b, entre MIDI y ACCIONES (antes del sorteo, que moveria todos los valores que
+esta direccion mide). La tabla CC -> parametro vive en el MOTOR (`MidiMappingManager`, atomics
+RT) y la pagina la ensena y la edita, nunca la posee. Cuatro fases, cada una por su camino de
+verdad:
+
+1. **ARMADO POR EL LCD**: los BOTONES del D-pad (`lcdPanel.js`: `.abd-lcd-panel__btn--*`, gesture
+   `pointerdown`) navegan `MENU -> right x4 -> OK -> OK -> right`: en una raiz de cinco items los
+   cursores `^`/`v` (+-5) son vuelta completa, asi que la navegacion va por el encoder +1
+   (`right`); `MENU` abre la raiz, `OK` entra en MIDI CONTROL y en "CC CUTOFF", y el `right` en
+   EDIT dispara el `onEdit` de un item `cc` (`sendMidiCcLearn` -> `enterMidiLearnMode`).
+2. **LA NOTA CC GANA**: el `injectController` del arnes (la ruta del MIDI externo, barrida en
+   `processBlock` ANTES del filtro de canal) con el CC **75** — libre en la tabla de fabrica
+   (CUTOFF nace en 74), asi que la asignacion no se confunde con la de fabrica. Consume el learn y
+   no toca el parametro (`continue` en el barrido).
+3. **LA NOTA CC MUEVE EL PARAMETRO**: el MISMO CC a valor 0 encola y `applyPendingCcChanges` lo
+   aplica por `setValueNotifyingHost`; el cutoff de la pagina (pie normalizado) tiene que BAJAR —
+   sondeo con salida temprana (patron AGUJA, 30 tomas x 30 ms, escaladas por la env var).
+4. **LA PANTALLA LO PINTA**: el item sigue en EDIT y su linea 2 tiene que decir `CC 75` — la tabla
+   que el motor acaba de escribir, de vuelta en la pagina.
+
+Al salir: `resetToDefaults()` (la tabla vuelve a fabrica) y CUTOFF a ABIERTO, que es lo que
+asumen el sorteo de ACCIONES y el ZRING.
+
+**REGLA DE PRODUCTO que esta direccion fijo** (no la tenia el puente): la tabla CC no es del
+APVTS, asi que un learn completado por HARDWARE —el gesto clasico de MIDI Learn, el mismo que
+mide esta direccion— la reescribe en el hilo de audio y nadie avisaba a la pagina: su menu MIDI
+CONTROL se quedaba con la tabla vieja (en la primera corrida, `CC --`). Ahora `MidiMappingManager`
+lleva un contador de version (`getTableVersion()`, movido por todo mutador: learn, clear, reset y
+la carga de estado) y el poll del editor (`NeuronikWebView::poll`) y el de la bancada
+(`WebPilotHost`) republian `midiCcState` cuando cambia, antes del sondeo, para que la tabla y
+los valores lleguen en el MISMO tick. Sin eso, el menu mentiria justo despues del gesto para el
+que existe.
+
+Evidencia en el log: `MIDI-CC: learn del LCD sobre CUTOFF -> CC 75 (OK), nota CC (0/127) al motor:
+CUTOFF 0.545 -> 0.000 (baja), pantalla del LCD "CC 75" (esperado "CC 75") -> OK`.
+
+### Estado de verificacion (28 Sep, con MIDI-CC)
+
+Standalone: **las 15 direcciones OK** (MIDI-CC incluida, LCD mostrando `CC 75`), selftest-exit=0.
+
+Bancada: MIDI-CC **OK** (misma cadena, mismo LCD). La corrida completa da **FAIL por AGUJA**:
+`barras 8 (OK, gemelas DIVERGENTES)` — la invariante de gemelidad (3) entre la copia del cajon y
+la del resumen del lienzo. Es la primera vez que la bancada mide esa invariante (el estado del 27
+Sep la dejaba pendiente), AGUJA corre ANTES que MIDI-CC y la direccion nueva no toca barras, asi
+que es una falla de la pagina en la bancada, no una regresion de MIDI-CC. Queda abierta.
 
 ---
 
@@ -6556,13 +6598,30 @@ mismo con `vite@5.4.21`). Se salva sin tocar `node_modules` apuntando al store:
 La reparacion de verdad es `pnpm install` en el monorepo; no se ha hecho porque rehace el
 `pnpm-lock.yaml` que esta modificado por trabajo ajeno.
 
-### MCP Codebase memory: sigue CAIDO, ahora con otro sintoma
+### MCP Codebase memory: VUELTO, y los dos repos ya estan indexados
 
-Ocho intentos de la sesion anterior dieron `MCP error -32001: Request timed out` (incluso
-`list_projects`). Hoy el servidor responde al catalogo de herramientas pero **toda llamada falla con
-`Not connected`** (`list_projects`, `index_repository` en `fast` y en `moderate`). No hay indice ni
-artefacto local en `.codebase-memory/`. Quedan por indexar `ABDNeural` y `ABDCZ101` (en `moderate`,
-no `full`: las aristas de similitud/semantica son las que tardan). `ABDMS2000` no se ha tocado.
+Ocho intentos de la sesion anterior dieron `MCP error -32001: Request timed out`; mas tarde, el
+servidor respondia al catalogo pero **toda llamada fallaba con `Not connected`**. El 2026-09-28, al
+cerrar el bloque del bundle, `list_projects` respondio y se indexaron los dos repos en `moderate`
+(no `full`: las aristas de similitud/semantica son las que tardan):
+
+- `D-desarrollos-ABDSynths-ABDNeural`: **4 236 nodos / 10 837 aristas** (no estaba indexado; el
+  exclude se queda con `build-reference`, `build-wasm`, `WebUI/dist`, `WebUI/node_modules` y demas).
+- `D-desarrollos-ABDSynths-ABDCZ101`: **12 159 nodos / 31 837 aristas** (ya habia indice, de antes
+  de hoy; reindexado para que recoge el distintivo de bloques, `usesSkew` y el bundle).
+- `ABDMS2000` sigue sin tocarse, como estaba.
+
+Comprobado que el grafo sirve para lo que se le pregunta: `search_graph("reclaim idle voices")` en
+ABDNeural devuelve `BaseEngine::reclaimIdleVoices` (`Source/DSP/BaseEngine.cpp:186-223`) con sus
+vecinos (`ensureVoices`, `getNumAllocatedVoices`, `voices`, `kMaxVoices`) y del lado WebUI
+`onWorkletVoices`; en CZ101, `usesSkew` aparece en `WebUI/src/contracts/registry.gen.js:1476`, que
+es el predicado unico de hoy.asi que no hace falta el indice local de simbolos que se planeaba como
+plan B: el grafo esta y se actualiza.
+
+TRAMPA DE LA HERRAMIENTA, para el que venga: los argumentos numericos de este MCP llegan como
+CADENA y el servidor los rechaza (`limit: Invalid input: expected number, received string`); la
+forma de seguir es **no pasar numeros** y usar los valores por defecto (`search_graph` sin `limit`
+va bien).
 
 ---
 
@@ -6599,3 +6658,110 @@ Dos notas de la pasada:
   `-87.0f / 0.0f`, y MSVC lo rechaza al plegar la constante. La sesion dueña lo arreglo ella
   misma con `-std::numeric_limits<float>::infinity()` (mismo valor IEEE, ahora documentado
   en el propio fichero); recompilado encima sin mas cambios.
+
+---
+
+## 2026-09-28 — MIDI-CC: la direccion 10b del arnes, y el hueco del puente que hacia falta para medirla
+
+El arnés no media el eslabon CC -> parametro: la pagina gestionaba el CC (LCD, menu MIDI CONTROL)
+y el motor lo aplicaba, pero nadie media el camino entero. Anadida la direccion **MIDI-CC** entre
+MIDI y ACCIONES (antes del sorteo, que moveria los valores que mide), con las cuatro fases del
+canon: learn armado por el D-pad del LCD, la nota CC 75 del motor ganando la asignacion, esa
+misma nota moviendo CUTOFF (0.545 -> 0.000 en APVTS y en el pie de la pagina, con sondeo de
+salida temprana) y la pantalla del LCD enseñando `CC 75`.
+
+Lo interesante es lo que la direccion encontro al nacer: **el puente no publicaba la tabla cuando
+el learn lo completaba HARDWARE**. `sendMidiCcState()` salia solo con un snapshot completo o
+tras una accion `midiCc*` de la propia pagina, asi que el menu MIDI CONTROL se quedaba con la
+tabla vieja justo despues del gesto clasico de MIDI Learn (en la primera corrida pintaba
+`CC --` en vez de `CC 75`). Arreglado de raiz, no en el arnés:
+
+- `MidiMappingManager` lleva ahora un contador de version de la TABLA (`getTableVersion()`), que
+  mueve todo mutador — learn, clear, reset y la carga de estado — incluida la reescritura que
+  hace el bloque de audio con `setMappingByIndex`.
+- El poll del editor (`NeuronikWebView::poll`) y el de la bancada (`WebPilotHost::timerCallback`)
+  republican `midiCcState` cuando esa version cambia, ANTES del sondeo de parametros, para que
+  la tabla y los valores lleguen en el mismo tick. El primer poll la manda siempre: el menu ya no
+  arranca en "CC --".
+
+Verificacion: los tres objetivos compilan; **Standalone 15/15 con RESULT: OK** (exit 0);
+**bancada: MIDI-CC OK** con la misma cadena y el mismo LCD; `ctest` de lo tocado en verde
+(ParameterBridge, StatePersistence, MidiChannelFilter, MidiPort).
+
+Pendiente que dejo la corrida de la bancada: AGUJA falla ahi con `barras gemelas DIVERGENTES`.
+Es la primera medicion de esa invariante fuera del plugin (el estado del 27 Sep la dejaba
+pendiente), corre antes que MIDI-CC y la direccion nueva no toca las barras, asi que es una
+falla propia de la pagina en la bancada. Queda abierta y sin tocar.
+
+> Canon: la "SECCION CANONICA - las 15 direcciones del selftest" lleva la fila 10b del indice y
+> la subseccion "MIDI-CC (canon)", con la REGLA DE PRODUCTO que esta direccion fijo (la tabla CC
+> se publica tambien cuando cambia sola, no solo cuando la pagina lo pide).
+
+## 2026-09-28 — mientras haya OTRO hilo en el arbol, los commits van por partes
+
+La entrega anterior (`92f6fac`) metio en un commit tres bloques de trabajo que
+no eran mios: lo de ModelMaker, selftest y bridge estaba a medias en el arbol,
+y como el encargo era "commitea todo" se fue con el. El resultado no fue un
+desastre —todo verde, todo commiteado— pero el commit dice cosas que su autor no
+sabia, y el dia que un cambio seculote rompa, la bisect tendra que leer un
+mensaje que mezcla tres motivos.
+
+LA REGLA, para cuando haya mas de un hilo en el arbol:
+
+1. **Stagear por rutas, nunca con `git add -A`.** `git add -u` mas la lista
+   explicita de lo tuyo es la via que funciona: `git add -u` y luego
+   `git add <fichero> <fichero>...` de lo tuyo. Antes de commitear, un
+   `git status --porcelain` y a LEER la lista: si hay un `M` de un fichero que
+   no has tocado, no se commitea (aunque "este relacionado con lo mio").
+2. **`git add -p` cuando un fichero tenga los dos autores.** Es lo normal en
+   `panel.js`, `app.js` o `main.css`: se stagea hunk a hunk y el commit lleva
+   solo tu parte. Cuesta mas, pero el mensaje del commit miente menos.
+3. **NUNCA `git stash -u` para "ver como queda el arbol".** Sin `-u` solo
+   aparta tus cambios versionados; con `-u` se lleva tambien TODO lo que este
+   sin trackear, que es justo el scratch y el trabajo a medias del otro hilo. Le
+   paso aqui el 2026-09-28: un `git stash -u` colado en un comando se trago las
+   veinte sondas del otro hilo durante medio minuto y las devolvio con
+   `git stash pop`. Nada se perdio, pero fue por poco, y no hacia falta: el
+   estado se mira con `git status` y `git log`, que no se comen nada.
+4. **Lo que no es tuyo se queda en el arbol, y se dice en el mensaje** si el
+   commit lo incluye: una linea que diga que el commit arrastra trabajo ajeno
+   en vuelo vale mas que descubrirlo en el `git log`.
+
+Y el porque de escribirlo: la higiene de commits no sale de un estilo, sale del
+hecho de que varias sesiones comparten el mismo checkout. Lo que hace
+`Tests/referencedFilesExist.mjs` con los ficheros nombrados por el build, esto
+lo hace con los commits: que el mensaje diga la verdad de lo que lleva dentro.
+
+## 2026-09-28 — la regresion visual del lienzo puede correr sola (Windows, en cada push)
+
+Las once referencias de `WebUI/e2e/snapshots/` se comparaban solo en esta maquina. Ahora hay
+`.github/workflows/webui-visual-qa.yml`: se dispara en cada push a `master` y en cada PR que toque
+`WebUI/`, y corre SOLO `e2e/visual.spec.js` en `windows-latest`.
+
+**`windows-latest` es un requisito del test, no una preferencia**: las referencias se generaron en
+Chromium/Windows y la pagina usa `system-ui` sin webfont, asi que su rasterizado cambia entre
+sistemas y un runner Linux fallaria por antialiasing, no por el codigo.
+
+**No se reusa la accion `ajabadia/ABDSharedCode/.github/actions/pnpm-workspace-bootstrap`** que usan
+ABDMS2000 y ABDEep, y el motivo esta escrito en el propio YAML: esa accion instala en la RAIZ del
+workspace y verifica `<proyecto>/node_modules/@abdsynths/*`, mientras que el layout de NEURONiK es
+otro — su workspace es `WebUI/` (con `WebUI/pnpm-workspace.yaml` y su propio lock), o sea que los
+tres checkout siguen siendo hermanos pero el install va ahi y los enlaces caen en
+`ABDNeural/WebUI/node_modules/@abdsynths/*`. Adaptar la accion seria tocar un repo compartido; el
+workflow replica el layout a mano, con la guardia que hace falta: `pnpm install` puede salir en
+verde y dejar los `workspace:*` sin enlazar, y el error sale veinte pasos mas tarde en Vite sin
+mencionar el workspace. Aqui el install es `--frozen-lockfile` (hay lock versionado), al reves que
+en el hermano.
+
+**Lo que NO entra, escrito para que se lea como exclusion y no como olvido**: los guards de node
+(`workletSyncTest`, `localMorphZRouteTest`, `localModelCacheTest`) comparan el WASM de `build-wasm/`,
+que en el runner no existe sin compilarlo con emscripten, y el smoke `e2e/localMode.spec.js` mide
+el canal del worklet con el reloj del `AudioContext`. Los dos entran en cuanto el runner tenga el
+paso de `build-wasm`, que es lo que los guards necesitan.
+
+**Lo que no se puede verificar aqui**: el workflow corre en GitHub, no en local. Lo verificado es el
+YAML (parsea, con sus diez pasos), que las rutas del layout coinciden con `WebUI/pnpm-workspace.yaml`
+(`../../ABDSharedAssets`, `../../ABDSharedCode/MidiKeyboard`) y que el comando que ejecuta es
+exactamente el que pasa en verde en local (`npx playwright test e2e/visual.spec.js` con
+`NEURONIK_E2E_PORT=5239`, el mismo puerto que le pasa ctest). El primer push a `master` es lo que lo
+demuestra de verdad.
