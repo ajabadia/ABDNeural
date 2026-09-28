@@ -1,0 +1,161 @@
+name: WebUI Visual QA
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - master
+    paths:
+      - "WebUI/e2e/**"
+      - "WebUI/src/**"
+      - "WebUI/index.html"
+      - "WebUI/playwright.config.js"
+      - "WebUI/package.json"
+      - "WebUI/pnpm-lock.yaml"
+      - "WebUI/pnpm-workspace.yaml"
+      - ".github/workflows/webui-visual-qa.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: webui-visual-qa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  visual-regression:
+    name: Playwright visual regression (Chromium)
+    # Las referencias de WebUI/e2e/snapshots/ se generaron en Chromium/Windows: la
+    # pagina no carga ninguna webfont (usa `system-ui`) y su rasterizado cambia
+    # entre sistemas operativos, asi que un baseline de Windows sobre un runner
+    # Linux fallaria por antialiasing y no por el codigo. `runs-on: windows-latest`
+    # es un requisito del test, no una preferencia.
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    env:
+      CI: true
+
+    steps:
+      # ── Layout de HERMANOS ─────────────────────────────────────────────────
+      # El WebUI declara `@abdsynths/shared` y `@abdsynths/midi-keyb` como
+      # "workspace:*", y esos paquetes NO estan publicados en ningun registry:
+      # solo existen como repos hermanos. Por eso los tres checkout van como
+      # hermanos en la raiz del workspace, igual que en local.
+      #
+      # POR QUE NO SE REUSA la accion `ajabadia/ABDSharedCode/.github/actions/
+      # pnpm-workspace-bootstrap` (que es la que usan ABDMS2000 y ABDEep): esa
+      # accion instala en la RAIZ del workspace y verifica
+      # `<proyecto>/node_modules/@abdsynths/*`, y el layout de NEURONiK es
+      # distinto — su workspace es `WebUI/` (WebUI/pnpm-workspace.yaml, con su
+      # propio lock), asi que los enlaces caen en
+      # `ABDNeural/WebUI/node_modules/@abdsynths/*` y el install va ahi. Copiar
+      # el layout a mano es lo que hace falta, no adaptar la accion.
+      - name: Checkout ABDNeural (este repo)
+        uses: actions/checkout@v4
+        with:
+          path: ABDNeural
+
+      - name: Checkout ABDSharedCode (@abdsynths/midi-keyb)
+        uses: actions/checkout@v4
+        with:
+          repository: ajabadia/ABDSharedCode
+          path: ABDSharedCode
+
+      - name: Checkout ABDSharedAssets (@abdsynths/shared)
+        uses: actions/checkout@v4
+        with:
+          repository: ajabadia/ABDSharedAssets
+          path: ABDSharedAssets
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '10'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Con lock versionado (WebUI/pnpm-lock.yaml), al reves que en el hermano:
+      # aqui el install SI es reproducible y `--frozen-lockfile` lo dice.
+      # `PUPPETEER_SKIP_DOWNLOAD`: MidiKeyboard lo trae como devDependency y
+      # son ~150 MB que este job no usa (el navegador es el de Playwright).
+      - name: Install WebUI dependencies
+        shell: bash
+        working-directory: ABDNeural/WebUI
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: '1'
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+
+      # El fallo de este bootstrap es silencioso: `pnpm install` puede salir en
+      # verde y dejar los `workspace:*` sin enlazar, y el error sale veinte
+      # pasos mas tarde, en Vite, sin mencionar el workspace. Se comprueba aqui.
+      - name: Verify the workspace layout
+        shell: bash
+        working-directory: ABDNeural/WebUI
+        run: |
+          set -euo pipefail
+
+          fail() { echo "::error::$1"; exit 1; }
+
+          for dir in ../../ABDSharedCode/MidiKeyboard ../../ABDSharedAssets; do
+            [ -d "${dir}" ] || fail "Falta el hermano '${dir}': el layout de hermanos no se creo."
+          done
+
+          [ -s pnpm-workspace.yaml ] || fail "WebUI/pnpm-workspace.yaml no existe o esta vacio."
+
+          shopt -s nullglob
+          linked=(node_modules/@abdsynths/*)
+
+          if [ "${#linked[@]}" -eq 0 ]; then
+            fail "pnpm no enlazo ningun paquete @abdsynths/* en WebUI/node_modules."
+          fi
+
+          for link in "${linked[@]}"; do
+            printf '  %-16s -> %s\n' "$(basename "${link}")" "$(readlink -f "${link}" 2>/dev/null || echo "${link}")"
+          done
+          echo "Workspace listo: ${#linked[@]} paquete(s) @abdsynths/* enlazados."
+
+      - name: Install Playwright Chromium
+        shell: bash
+        working-directory: ABDNeural/WebUI
+        run: pnpm exec playwright install chromium
+
+      # SOLO la regresion visual (11 capturas). El `webServer` del config construye
+      # `dist` antes de servirlo, asi que el job mide el bundle de verdad.
+      #
+      # Lo que NO entra, y por que (esclusion y no olvido):
+      #   - `Tests/workletSyncTest.mjs` y los demas guards de node: comparan el
+      #     WASM de `build-wasm/`, que en el runner no existe sin compilarlo
+      #     (emscripten). Salen en el ctest local, no aqui.
+      #   - `e2e/localMode.spec.js` (el smoke del MODO LOCAL): comparte la
+      #     pagina y el motor con esta suite y mide el canal del worklet, que
+      #     depende del reloj del AudioContext; entra en cuanto el runner tenga
+      #     el paso de `build-wasm`, que es lo que los guards necesitan.
+      - name: Run visual regression suite
+        shell: bash
+        working-directory: ABDNeural/WebUI
+        env:
+          # El mismo puerto que le pasa ctest (NEURONiK_WebUiVisualRegression):
+          # las dos suites de navegador usan puertos distintos porque pueden
+          # solaparse.
+          NEURONIK_E2E_PORT: '5239'
+        run: pnpm exec playwright test e2e/visual.spec.js --reporter=list
+
+      # El informe y las imagenes de diff son justo lo que hace falta para
+      # revisar un fallo de referencia, asi que se suben siempre.
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            ABDNeural/WebUI/playwright-report/
+            ABDNeural/WebUI/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
