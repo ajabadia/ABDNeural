@@ -15,18 +15,24 @@
 # arbol que alimenta el layout esta limpio": ahi arbol == commit y da igual
 # en que orden se compilen.
 #
-# QUE RECOMPILA: UN SOLO PASO. build_wasm.bat, y nada mas. El paso que
-# generaba la firma aqui --NEURONiK_LayoutExport en nativo, con su propio
-# manejo de fallos-- se ha ido a build_wasm.bat, que ya regenera la tabla antes
-# de compilar y comprueba al final que el binario y la tabla cuadran. Aqui eran
-# DOS pasos que podian quedar a medias: si este vigilante generaba la firma y el
-# build fallaba tres minutos despues, la tabla se quedaba regenerada y el
-# `.wasm` viejo, que es exactamente el desajuste que se daba por cerrado.
+# QUE RECOMPILA: UN SOLO PASO, Y EL QUE EJECUTA ES build_wasm.bat. Este
+# vigilante no hace nada del trabajo: arma el entorno, espera el commit, y le
+# pasa el.build. Lo que antes vivia aqui --generar la firma con
+# NEURONiK_LayoutExport, y despues volver a pasar el test de la firma-- se ha ido
+# dentro, donde ya estaba su sitio.
 #
-# Los dos compilanadores siguen siendo dos --la firma en nativo, el binario con
-# emscripten-- pero ahora los manda el MISMO comando, en la misma pasada y sobre
-# el mismo arbol. Ver el paso 3 y el cierre de build_wasm.bat.
-
+# POR QUE ESO MEJORA, Y NO ES SOLO MENOS TRABAJO. Los dos eran pasos que podian
+# quedar a medias: si este vigilante regeneraba la tabla y el build fallaba tres
+# minutos despues, la firma se quedaba nueva y el `.wasm` viejo, que es
+# exactamente el desajuste que el montaje pretendia cerrar. Y el test que se
+# volvia a pasar aqui no podia fallar nunca: build_wasm.bat lo corre como su
+# ultimo cierre, asi que si el build habia salido bien, aqui ya no quedaba nada
+# que decidir. Era un paso que no podia cambiar el resultado y que solo existia
+# para que el vigilante tuviera algo que decir.
+#
+# Lo que este vigilante conserva es lo que el build no da: ESPERAR, y decir
+# "commit y artefactos juntos" en el momento en que ya cuadran, que es la parte
+# accionable.
 cd "$(dirname "$0")"
 
 POLL="${1:-30}"
@@ -75,32 +81,31 @@ while true; do
     say "commit $HEAD_SHORT detectado y arbol quieto. A recompilar."
     say "    $(git log -1 --format='%s')"
 
-    # --- 1. el binario ---------------------------------------------------
+    # --- 1. el binario, y con el la comprobacion --------------------------
+    # Un solo paso. build_wasm.bat regenera la firma antes de compilar, sincroniza
+    # el binario y CIERRA con el test de la firma, asi que si esto sale bien los
+    # dos artefactos ya estan de acuerdo: no hay un segundo paso aqui que volver
+    # a pasar lo mismo, ni un sitio donde el resultado de la comprobacion se
+    # guarde aparte del log del build.
+    #
     # El ".\\" NO es cosmetico: desde Git Bash, `cmd //c build_wasm.bat` no
     # encuentra el fichero --MSYS desactiva la busqueda del directorio actual--
     # y falla al instante con "no se reconoce como un comando", que el vigilante
     # leia como un fallo del build. Comprobado: con ".\\" arranca. El vigilante
     # esta pensado para Git Bash, de ahi el prefijo.
+    say "[1/1] build_wasm.bat (emscripten; puede tardar minutos)"
     if ! cmd //c ".\build_wasm.bat" nopause >>"$LOG" 2>&1; then
       say "    FALLO build_wasm.bat. Ver wasm-last-run.log y $LOG"
+      say "    Lo mas probable es la FIRMA: si el .wasm y gp-layout.generated.js"
+      say "    no cuadran, el propio build lo dice al final. NO los commitees por"
+      say "    separado: o los dos del mismo arbol, o ninguno."
       exit 1
     fi
 
-    # --- 2. que los dos hablen del mismo layout ---------------------------
-    #(build_wasm.bat YA ejecuta este mismo test como su ultimo guard, asi que
-    #  si el paso 1 ha salido bien, este no puede fallar. Se queda por dos cosas
-    #  que el build no da: la salida del test en el log del vigilante, que es lo
-    #  que se lee al volver, y el aviso de "commit y artefactos juntos" de abajo,
-    #  que es la parte accionable cuando los dos ya cuadran. Cuesta dos segundos.)
-    say "[2/2] comprobando el binario servido contra la pagina"
-    if node Tests/wasmLayoutFingerprintTest.mjs 2>&1 | tee -a "$LOG"; then
-      say "LISTO: el .wasm y la pagina hablan del mismo layout."
-      say "      La pagina ya no avisara. Commit y artefactos juntos:"
-      say "      git status --short"
-      exit 0
-    fi
-    say "El .wasm y gp-layout.generated.js no cuadran. NO los commitees separados."
-    exit 1
+    say "LISTO: el .wasm y la pagina hablan del mismo layout."
+    say "      La pagina ya no avisara. Commit y artefactos juntos:"
+    say "      git status --short"
+    exit 0
   fi
   sleep "$POLL"
   heartbeat
