@@ -22,6 +22,10 @@ lo de la primera mitad del fichero cuenta cómo se llegó, no qué es cierto hoy
 
 ### Canon (vigente: leer esto primero)
 
+- [ESTADO ACTUAL (se mantiene en cada entrada)](#estado-actual-se-mantiene-en-cada-entrada)
+  — lo unico de la parte alta que dice lo que es cierto hoy: ctest, vitest, lo
+  que quedo a medias y el canon que esta sesion ha pagado
+
 - [SECCION CANONICA — las 15 direcciones del selftest: indice, AGUJA, barras ENV, medidor-PANIC y MIDI-CC](#seccion-canonica-las-15-direcciones-del-selftest-indice-aguja-barras-env-medidor-panic-y-midi-cc) — las 15 direcciones del arnés, con su índice de orden de corrida y todas las subsecciones
 - [SECCION CANONICA — VOLVER (direccion 1b-bis): el retorno del salto ENV -> MATRIZ](#seccion-canonica-volver-direccion-1b-bis-el-retorno-del-salto-env---matriz) — VOLVER (1b-bis) en sección propia
 - [2026-09-27 — PENDIENTES: todo lo que quedó abierto en esta sesion, con su dueño y su coste](#2026-09-27-pendientes-todo-lo-que-quedó-abierto-en-esta-sesion-con-su-dueño-y-su-coste) — pendientes que quedaron abiertos el 27/09, con dueño y coste
@@ -167,6 +171,74 @@ lo de la primera mitad del fichero cuenta cómo se llegó, no qué es cierto hoy
 - [2026-09-26 — rejillas entrelazadas en la sonda: el parcial 4 de SWEP1 no es un error de 212 cents](#2026-09-26-rejillas-entrelazadas-en-la-sonda-el-parcial-4-de-swep1-no-es-un-error-de-212-cents)
 - [2026-09-25 (aj): los rangos del residuo del banco CZ101, fijados en el ctest](#2026-09-25-aj-los-rangos-del-residuo-del-banco-cz101-fijados-en-el-ctest) — rangos del residuo fijados en el ctest
 - [2026-09-26 (am): la huella del modelo de 25 KB, medida y con presupuesto](#2026-09-26-am-la-huella-del-modelo-de-25-kb-medida-y-con-presupuesto)
+
+## ESTADO ACTUAL (se mantiene en cada entrada)
+
+> Este bloque es lo UNICO de la parte alta del fichero que describe lo que es
+> cierto HOY. Todo lo demas de aqui para abajo cuenta como se llego, y la
+> seccion [Estado y punto de partida (2026-09-16/18)](#estado-y-punto-de-partida-2026-09-1618-referencia)
+> y las marcadas «historico» son de la semana de arranque.
+>
+> **COMO SE MANTIENE:** en cada entrada nueva, el que la escribe deja aqui lo
+> que ha cambiado de este bloque y lo demas lo toca. Si algo de aqui ya no es
+> cierto, se corrige aqui; no se corrige escribiendo abajo. La fecha es la de
+> la ultima entrada que lo actualizo, no la de la seccion.
+
+**Medido el 2026-09-29** (la sesion del bus del hueco, la tabla unica del
+espejo y el LCD derivado del estado):
+
+| | |
+|---|---|
+| ctest | **49/52** (94%), con `-C Debug -j 4`. Antes 51/51; los 3 rojos son trabajo en vuelo del otro hilo (ver abajo) |
+| vitest | **498/504** en verde. Los 6 rojos, tambien del otro hilo |
+| Paridad WASM <-> nativo | bit-exacta en los 9 casos de la matriz, 184320 muestras |
+| `.wasm` servido | 58 campos, el ancho de HEAD. El arbol de trabajo tiene 90 sin commitear |
+
+**Los tres ctest rojos, y de quien son:**
+
+- `NEURONiK_FxCatalogueTest` — SEGFAULT. El binario (15:37) es anterior a
+  `Source/DSP/FxCatalogue.h` (15:51), que otro hilo tiene modificado sin
+  commitear. No es un defecto del repo: es un exe viejo.
+- `NEURONiK_ReferencedFiles` y `NEURONiK_WebUiVisualRegression` — del mismo
+  trabajo en vuelo: el catalogo de efectos va por delante del descriptor.
+
+**Los 6 vitest rojos:** los ids `fx1Param5..12` que otro hilo ha anadido al bus
+del hueco, que todavia no tienen control ni descriptor. Ademas
+`WebUI/generated/parameters.generated.js` tiene 8 valores `NaN` sin formatear
+(`-nan(ind)`), asi que **vitest no arranca con nada** hasta que se regenere.
+
+**Lo que quedo a medias en esta sesion** (importante: el arbol esta limpio pero
+estas piezas NO llegaron a aplicarse):
+
+- La **firma del layout al arrancar** quedo en cuatro piezas. Dos estan
+  aplicadas: el export `neuronikGlobalParamsLayoutFingerprint` del puente y el
+  exportador `NEURONiK_LayoutExport` que escribe
+  `WebUI/generated/gp-layout.generated.js`. **Sin aplicar:** la funcion que la
+  compara en `audioWorkletEngine.js` y el aviso en la linea de audio. Los
+  tests de `gpMirror` (11) si estan; los de `audioEngine` no.
+- El `.wasm` de `public/worklet` es anterior al export de la firma, que es
+  justo el caso que la firma deberia detectar. Con el trabajo en vuelo, ademas
+  lleva dentro el ancho de bus de 90 campos que no esta commiteado.
+- Los huecos 2-4: el motor publica los cuatro buses y el contrato solo tiene
+  el primero. El layout esta listo; falta la mitad de la migracion.
+
+**Canon que esta sesion ha pagado:**
+
+> Una verdad que vive en un lado y otra en el otro, sin que nada las compare,
+> cuesta un commit entero. Ha pasado cinco veces: la cuenta de campos, el orden
+> del bus, la doble numeracion del layout, la clase de cada campo y la replica
+> del struct en dos listas del worklet.
+>
+> Dos reglas salen de ahi, y las dos se pueden comprobar:
+>
+> **1.** El binario servido es parte del contrato aunque no salga en ningun
+> `git diff`. Si una tabla se genera, la pagina y el `.wasm` tienen que venir
+> de ella.
+>
+> **2.** Si un modulo tiene un `if` sobre una lista escrita a mano para
+> distinguir un caso, esa lista deberia ser un parametro que venga de la fuente.
+> Y si ese modulo se registra al importarse y no exporta nada, su logica no es
+> testeable: es momento de partirlo en dos.
 
 ## Estado de la instrumentación del arranque (bancada WebView2)
 
@@ -8975,3 +9047,60 @@ hilo cierre lo suyo, el proximo `build_wasm.bat` lo recoge; el hash de aqui
 > distinguir un caso, esa lista deberia ser un parametro que venga de la fuente.
 > Y si además ese modulo se registra al importarse y no exporta nada, su
 > logica no es testeable: es momento de partirlo en dos.
+
+## 2026-09-29 — el LCD derivado del estado, la tabla unica del espejo y el estado al principio
+
+Tres encargos encadenados, y al final el que hace que los dos primeros se puedan
+leer sin abrir el log.
+
+**1. El menu del LCD deriva del estado.** `fx1Type` + `choiceIndexFromNormalized`
+dicen que efecto hay puesto, y de ahi salen los nombres: `SAT DRIVE`, `CHO RATE`,
+`REV SIZE`, `JUN WEAR`. Cuantos mandos hay los dice la fila del catalogo, no el
+hueco: la saturacion declara 1, el chorus 2, la reverb 4. Con cuatro entradas
+fijas, tres eran knobs muertos. Y el arbol se rehace al vivo comparando
+`menuSignature()` en `paint()` -- quien pinta no sabe como se deriva el nombre, solo
+compara una cadena. Commit `b4de870`.
+
+**2. La tabla unica del espejo.** `INT_FIELDS` (14 indices) y `BPM_FIELD` estaban
+escritas a mano en el worklet, y `localMorphZRouteTest` y `neuronik_wasm_parity`
+tenian cada una su copia. Ahora `GlobalParamsLayout()` construye
+`GlobalParamField { offset, kind }` y de ella salen los tres exports de offsets, el
+nuevo de clases, y la firma. `scalarFieldCount()` cuenta la misma tabla que empieza
+el constructor, asi que el corte del segundo export no puede separarse del layout.
+Commits `d229540`, `f7a15e0`, `7474a73`.
+
+**Lo que ese trabajoenia debajo, y no se habia visto:** el `.wasm` versionado en
+`public/worklet` era anterior a la tabla unica, y publicaba **34 campos** frente a
+los 40 que la pagina escribe. Los seis mandos del hueco se perdian en silencio: el
+worklet recibia `[34, 0.7]`, no encontraba offset, y `writeGpField` hacia `return`.
+Ademas el worklet concatenaba `base.concat(mod)`, que duplicaba matriz y bus: decia
+94 campos para un layout de 58. Commit `f52bc9b`, con `workletMirrorLayoutTest`
+como el unico test que junta las tres mitades.
+
+**3. Los tests de node usan la tabla unica, y el aviso se ve.** El dangling de
+`base.concat(mod)` era el pendiente 2 del handoff anterior. Y el `console.warn` de
+los campos inalcanzables se ha convertido en algo en la linea de audio --
+`4 sin motor`, con los ids y el remedio en el tooltip -- que se retira solo cuando
+la lista vuelve a estar vacia. Commits `d229540`, `a323b6a`.
+
+**4. El parametro muerto.** `createLcdTop` recibia `engineType` y no lo leia nunca:
+solo decidia si leer el motor del store o devolver 0. `app.js` pasaba una lambda
+equivalente al store, asi que funcionaba por la razon equivocada. Commit `a715b4f`.
+
+**5. El worklet, partido en dos.** Un `AudioWorkletProcessor` que se registra al
+importarse no exporta nada, asi que su logica no era testeable. Tres modulos nuevos:
+la traduccion de los eventos (el recorte a 14 bits y el pitch bend de -1..1 a
+0..16383), la cola que reparte por bloque, y el aviso de los campos ausentes. 24
+tests. Cazar un `pitchBend` con NaN escribiendose en el heap, que antes se colaba.
+Commit `a6ace0b`.
+
+**El bloque de ESTADO ACTUAL de arriba** es lo que se mantiene: en cada entrada se
+tocan sus cuatro bloques --ctest, vitest, lo que quedo a medias y el canon-- y el
+resto del handoff se deja como esta. La razon de fondo esta en el propio bloque:
+las secciones canonicas del 16/09 ya no son ciertas, y el indice salva la
+navegacion pero no el contenido.
+
+**Canon que esta sesion ha pagado, y por que esta aqui:** una verdad que vive en
+un lado y otra en el otro, sin que nada las compare, cuesta un commit entero. Ha
+pasado cinco veces seguidas. Las dos reglas que salen de ahi estan en el bloque de
+arriba, y las dos se pueden comprobar.
