@@ -50,8 +50,18 @@ struct SpectralModel
 
     // Frames 1..kMaxFrames-1 (evolucion temporal; solo validos si
     // frameCount > k). frameCount==1 => estatico, aqui no hay nada util.
-    std::array<std::array<float, 64>, kMaxFrames - 1> extraAmps;
-    std::array<std::array<float, 64>, kMaxFrames - 1> extraOffsets;
+    //
+    // Estos DOS son los que faltaban cuando el arreglo anterior se hizo: el
+    // comentario de arriba decia "los unicos sin inicializador" y se cubrieron
+    // `amplitudes` y `frequencyOffsets`, pero estos quedaron fuera. Se nota solo
+    // en un modelo que declare MAS DE UN frame, porque `ampsOf(0)` cae en
+    // `amplitudes` (que si estaba a cero) y `ampsOf(1)` cae en `extraAmps` (que
+    // no). Asi que un SpectralModel recien construido con frameCount = 3 traia
+    // el patron 0xCDCDCDCD de MSVC en los frames 1 y 2, y la vista de capas lo
+    // leia como 64 parciales activos con energia de 1e8: de ahi los 7 fallos del
+    // LayerViewTest, que no son del test sino del modelo.
+    std::array<std::array<float, 64>, kMaxFrames - 1> extraAmps {};
+    std::array<std::array<float, 64>, kMaxFrames - 1> extraOffsets {};
 
     int  frameCount = 1;        // 1..kMaxFrames; 1 = modelo estatico (legado)
     // FASE 10: espaciado entre parciales del analisis (f0 del frame), en Hz.

@@ -42,6 +42,22 @@ namespace NEURONiK::DSP::Utils {
  */
 using SIMDFloat = juce::dsp::SIMDRegister<float>;
 
+// OJO, `alignas` en los arrays de abajo NO es opcional ni cosmetico.
+//
+// `fromRawArray` y `copyToRawArray` de JUCE empiezan las dos por
+// `jassert (isSIMDAligned (a))`, y `isSIMDAligned` comprueba que el puntero
+// caiga en un multiplo de `SIMDRegisterSize` (16 bytes con SSE). Un `float[4]`
+// en la pila solo tiene garantia de 4 bytes de alineacion, asi que la asercion
+// salta segun donde caiga el marco, y en un build de depuracion el fallo se ve
+// como un crash a mitad de un test de audio, muy lejos de la linea que lo
+// causa. Los arrays de miembro del Resonator ya llevaban `alignas (16)` por
+// esto mismo; aqui faltaban los tres de pila.
+//
+// Con SSE el `store` de 16 bytes sobre un puntero desalineado no rompe nada
+// en la practica, y por eso el fallo sale en Debug y no en release. Eso no lo
+// hace cosmetico: es undefined behavior, y el mismo codigo sobre ARM/NEON o
+// con el vectorizador otro dia puede no tolerarlo.
+
 /**
  * Loads 4 floats from a pointer into a SIMD register (unaligned).
  */
@@ -80,7 +96,7 @@ inline SIMDFloat setZero() noexcept
  */
 inline float sumRegister(SIMDFloat v) noexcept
 {
-    float vals[4];
+    alignas (16) float vals[4];
     v.copyToRawArray(vals);
     return vals[0] + vals[1] + vals[2] + vals[3];
 }
@@ -94,7 +110,7 @@ inline SIMDFloat simdSelect(MaskType mask, SIMDFloat a, SIMDFloat b) noexcept
     // In newer JUCE versions, MaskType has a select method.
     // In older ones, we use bitwise ops by casting to int register or using the Scalar fallback.
     // The scalar loop is the most portable way when JUCE versions are uncertain.
-    float va[4], vb[4], vr[4];
+    alignas (16) float va[4], vb[4], vr[4];
     a.copyToRawArray(va);
     b.copyToRawArray(vb);
 
@@ -146,7 +162,7 @@ namespace NEURONiK::DSP::Utils {
 /** 4 lanes escalares: semantica exacta de SIMDRegister<float> en WASM. */
 struct SIMDFloat
 {
-    float lanes[4] { 0.0f, 0.0f, 0.0f, 0.0f };
+    alignas (16) float lanes[4] { 0.0f, 0.0f, 0.0f, 0.0f };
 
     SIMDFloat() noexcept = default;
 
