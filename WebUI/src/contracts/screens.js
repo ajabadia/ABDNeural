@@ -39,21 +39,25 @@ export const VISUAL_PARAMETER_IDS = [
 ].filter((id) => !SECTION_PARAMETER_IDS.includes(id));
 
 /**
- * Los ids que el store POSEYE pero que todavia no tienen celda: los cinco del
- * bus del hueco 1 que no son la mezcla ni el drive (`fx1Type`, `fx1Gain` y
- * `fx1Param2..4`).
+ * Los ids que el store POSEYE pero que ninguna ficha reclama.
  *
  * POSEEDOS Y NO PINTADOS SON COSAS DISTINTAS, y confundirlas rompe el store en
  * silencio. Un id fuera de `SCREEN_PARAMETER_IDS` es un id que el store ignora
  * cuando llega del host (la regla de abajo), asi que un id del bus que no
- * estuviera aqui haria que mover el selector de efecto en el host no le
- * llegara a la pagina: el knob se quedaria quieto en pantalla
- * mientras el motor ya habia cambiado.  Estar en la lista no dice que se pinte: `sections.js`
- * es quien dice eso, y ahi estos cinco no estan.
+ * estuviera aqui haria que mover el selector de efecto en el host no le llegara
+ * a la pagina: el knob se quedaria quieto en pantalla mientras el motor ya habia
+ * cambiado.
+ *
+ * VACIA DESDE EL 2026-09-29, cuando los cinco ids del modulo del hueco 1
+ * (`fx1Type`, `fx1Gain` y `fx1Param2..4`) pasaron a la ficha de EFECTOS y de ahi
+ * al `.fx-module` de su cajon.
+ *
+ * LA LISTA NO SE BORRA: se deja a proposito, y vacia, porque es la que AVISA. Un
+ * id del bus que vuelva a caerse (un hueco nuevo, o un `fx2Param1` que se cuele
+ * sin celda) hace que esta lista vuelva a tener algo, y `screens.test.js` se
+ * pone rojo sin que nadie tenga que acordarse de que la lista existe.
  */
-export const SLOT_MODULE_PARAMETER_IDS = [
-  'fx1Type', 'fx1Gain', 'fx1Param2', 'fx1Param3', 'fx1Param4',
-];
+export const SLOT_MODULE_PARAMETER_IDS = [];
 
 /**
  * Todos los ids que posee el store: los del lienzo, en orden de lectura, MÁS los

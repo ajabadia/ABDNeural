@@ -114,6 +114,26 @@ test.describe('NEURONiK Visual Regression - el lienzo', () => {
     });
   }
 
+  // Los CAJONES. Una foto por ficha NO los cubre, y despues del rack FX (cajon
+  // de EFECTOS, 2026-09-29) hay superficies nuevas que se pueden pintar mal sin
+  // que ninguna referencia se entere: un modulo con el tema de la familia
+  // equivocado, un hueco con tres knobs muertos, un texto que se sale.
+  //
+  // La lista sale del CONTRATO (`section.drawer`), como la de las fichas: un
+  // cajon nuevo nace con su referencia que falta, y el fallo lo dice.
+  for (const section of SECTIONS.filter((candidate) => candidate.drawer)) {
+    test(`cajon ${section.id}`, async ({ page }) => {
+      await page.locator(`[data-drawer-trigger="${section.id}"]`).click();
+
+      // Contar ANTES de comparar, por el mismo motivo que las fichas: un
+      // selector que no encuentra el cajon no puede quedarse en verde.
+      const drawer = page.locator(`#drawer-${section.id}`);
+
+      await expect(drawer).toHaveCount(1);
+      await expect(drawer).toHaveScreenshot(`cajon-${section.id}.png`, { animations: 'disabled' });
+    });
+  }
+
   test('el lienzo entero con el tema claro', async ({ page }) => {
     await page.locator('.abd-theme-switcher__btn', { hasText: 'Light' }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');

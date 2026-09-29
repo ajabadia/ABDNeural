@@ -449,9 +449,10 @@ test('el distintivo vivo del lienzo abre SU cajon (MODELOS, GLOBAL y ENVOLVENTES
   // las ocho celdas de la ficha (las dos envelopes por sus cuatro knobs).
   await expect(envelopesChip).toHaveText('8/8');
   await expect(modelsChip).toHaveAttribute('aria-label', /^0\/4 RANURAS: abrir el caj/);
-  // MODELOS, GLOBAL, LFO y ENVOLVENTES. La MATRIZ conserva su resumen y no
-  // cuelga chip, y las cuatro fichas sin cajon no pueden colgarlo.
-  await expect(page.locator('.card__badge')).toHaveCount(4);
+  // MODELOS, GLOBAL, LFO, ENVOLVENTES y EFECTOS (este ultimo entro el
+  // 2026-09-29 con el cajon de los modulos de hueco). La MATRIZ conserva su
+  // resumen y no cuelga chip, y las cuatro fichas sin cajon no pueden colgarlo.
+  await expect(page.locator('.card__badge')).toHaveCount(5);
 
   // El texto visible no es decoracion: el EDIT de la MISMA ficha tiene que
   // seguir dentro de la cabecera (un chip que empuja el EDIT fuera dejaria a la

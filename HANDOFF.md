@@ -8585,3 +8585,108 @@ que ya esta en el bus tiene que ser un no-op, no una sobrescritura.
 > son numeros distintos por construccion. Y el viaje de ahi se congela junto al
 > rango: si el rango se congela pero la conversion no, la fila parece correcta y
 > suena mal.
+
+---
+
+## El cajon de EFECTOS: un `.fx-module` por hueco, con el tema por familia
+
+La ficha de EFECTOS pasa a ser de cajon. Sus dos celdas del bus (la mezcla y el
+drive del hueco 1) bajan a un modulo, y el cajon lleva **un modulo por hueco del
+rack**, con el tema de la FAMILIA del efecto que hay puesto.
+
+### La puerta, y es la misma que la de la migracion
+
+Un modulo se llena si el hueco tiene bus, y la prueba es que el store posea
+`fxNType`. Hoy solo el hueco 1 lo tiene, asi que los otros tres se pintan con su
+chasis, su LED y su titulo, y en el cuerpo una frase que dice que su bus no esta
+publicado. **No se inventan ids para llenarlos, ni se les pone el efecto de la
+cadena por defecto**: ese reparto vive en `fxDefaultTypeForSlot`, en C++, y
+escribirlo tambien en la pagina seria la segunda copia de una tabla que ya
+existe.
+
+La ventaja de que la puerta sea "el store posee el id" y no una lista escrita a
+mano es que el hueco 2 se llenara solo cuando publique su bus, sin que nadie
+edite la pagina. Un id escrito aqui que el host no declara es un id que el store
+ignora al escribirle y un modulo con mandos que no suenan.
+
+### El tema, y por que la pagina NO importa `fx-effects.json`
+
+La hoja compartida (`@abdsynths/shared/styles/components/fx.css`) ya define el
+chasis `.fx-module` y los **once temas por familia**; la pagina solo pone el
+atributo `data-fx-theme` con la familia que le da el catalogo exportado
+(`generated/fx-catalog.generated.js`, que el exportador llena leyendo el
+contrato compartido).
+
+Y NO se importa `contracts/fx-effects.json` en la pagina, a proposito: ese
+fichero vive en el repositorio hermano y la pagina se embebe en el plugin como
+binario, asi que un import ahi haria fallar el build en un clon sin el hermano.
+El camino es el que ya funciona: **build-time, no runtime**.
+
+`fx-modules` declara `parameterIds: []` a proposito (una vista no reparte
+celdas) y recibe los view-models de la FICHA por `options.controls`.
+
+### Lo que se quedo en la ficha del lienzo, y por que
+
+Los ONCE mandos planos de los huecos 2, 3 y 4, como `frontal`. No por
+leftover: son los de los huecos que aun no tienen bus. La rejilla sigue a 7
+columnas y el alto de la ficha no cambia ni un pixel (11 celdas en 7 columnas
+son dos filas, como eran 13).
+
+Y el mix del hueco 1 **no** se quedo en la ficha: una celda de mezcla sin el
+selector al lado es la mezcla de algo que el usuario no puede ver. Partida en
+dos superficies, la ficha y el cajon cuentan cosas distintas del mismo hueco.
+
+### Los mandos, y el nombre y las unidades
+
+El bus publica cuatro posiciones para todos los efectos porque el hueco no sabe
+cuantos mandos va a necesitar el que le pongas; quien lo sabe es la FILA. Por
+eso los knobs que el efecto no declara **se esconden** (la saturacion declara
+uno, el Schroeder cuatro), y por eso el nombre del mando lo pone la fila
+(`drive`, `decay`) y no el id del host (`FX 1 Param 1`).
+
+El readout va en las **unidades del efecto**: el descriptor del host declara el
+bus en 0..1, asi que la celda escribe "38%", y ese 0.38 es el decay de un
+Schroeder, que va de 0.10 a 0.98. La conversion usa las MISMAS funciones que el
+resto de la pagina (`fromNormalized`/`formatValue`), no una cuenta propia: dos
+formulas para el mismo sesgo son dos numeros que acaban discrepando.
+
+### Un fallo que solo se ve preguntando DONDE
+
+Los tests de inventario contaban 77 celdas y cuadraban, y aun asi la pagina
+tenia los mandos del bus **en la rejilla en vez de en su modulo**: la vista se
+fabricaba con cero controles, ningun modulo se pintaba con bus, `claimBlocks()`
+devolvia vacio y las celdas se caian al cuerpo de la ficha por el `?? body` del
+panel. Se veia entero y con todos los mandos, y no habia ni un rojo.
+
+`tests/fxModules.test.js` tiene por eso un bloque que pregunta **donde cae cada
+celda**, no solo que exista. Es el que habria parado esto.
+
+### Verificado
+
+- vitest **448/448** (25 nuevos en `fxModules.test.js`: la puerta, el tema por
+  familia, los knobs que el efecto no declara, y donde caen las celdas).
+- **Control negativo**: tres sabotajes, los tres en rojo y solo en las
+  aserciones de su caso. Poner el tema por efecto en vez de por familia rompe
+  tres (coro y coro BBD dejan de verse igual); no esconder los knobs que el
+  efecto no usa rompe dos; ignorar la puerta rompe la que dice que el hueco 1
+  es el unico con bus.
+- Regresion visual: se anadio una foto **por cajon** (no habia ninguna, y el
+  cajon de efectos es superficie nueva). Las seis se generan solas desde el
+  contrato.
+- ctest **48/49**. El unico rojo sigue siendo `ModulationContractTest`, que es
+  de la fase 2 y del repositorio hermano.
+- `NEURONiK_WebUiNeedleProbeE2e` appeared rojo en una pasada completa y verde
+  en las siguientes. **No es de este cambio**: falla en
+  `page.waitForFunction(__probeReady)` —la pagina de prueba no llega a estar
+  lista en 60 s— y pasa solo (`ctest -R WebUiNeedleProbeE2e` y
+  `-R WebUiVisualRegression`, ambos verdes). Es el servidor de dev de la sonda
+  tardando en arrancar cuando viene detras de otra tanda de navegador.
+
+> Canon: una celda se cuenta como cableada cuando esta DONDLE tiene que estar, no
+> solo cuando existe. El `?? body` del panel convierte "la vista no reclamo este
+> id" en "la celda aparece en otro sitio", y ahi no hay ningun error: la pagina
+> se ve entera.
+
+> Canon: la puerta de una vista se deriva de lo que el store POSEE, no de una
+> lista escrita a mano. La lista hay que mantenerla; la puerta se sola con que
+> aparezca el id.

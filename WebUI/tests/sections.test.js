@@ -50,10 +50,14 @@ describe('sections / cobertura del contrato', () => {
     // dejaron de ser celdas). 2026-09-26: - filterEnvAmount (retirado) = 71.
     // 2026-09-29: el hueco 1 del rack de efectos aporta DOS celdas donde el
     // mando suelto `fxSaturation` ocupaba una (el drive y la mezcla del hueco),
-    // y el APVTS pasa de 73 a 79. Los otros cinco parametros del bus NO estan
-    // sin cablear: son del modulo del hueco, que todavia no esta montado.
-    expect(SECTION_PARAMETER_IDS).toHaveLength(72);
-    expect(new Set(SECTION_PARAMETER_IDS).size).toBe(72);
+    // y el APVTS pasa de 73 a 79.
+    // 2026-09-29 (tarde): los CINCO que faltaban (fx1Type, fx1Gain y
+    // fx1Param2..4) dejan de estar sin cablear. Eran del modulo del hueco, y el
+    // modulo esta montado: viven en el `.fx-module` del cajon de EFECTOS. De
+    // 72 a 77, que es exactamente el final del recuento que llevaba meses
+    // esperando: el APVTS entero tiene celda y ninguna se repite.
+    expect(SECTION_PARAMETER_IDS).toHaveLength(77);
+    expect(new Set(SECTION_PARAMETER_IDS).size).toBe(77);
   });
 
   it('cada id del lienzo existe en el contrato generado', () => {
@@ -74,18 +78,16 @@ describe('sections / cobertura del contrato', () => {
       .map((descriptor) => descriptor.id)
       .filter((id) => !covered.has(id));
 
-    // Los CINCO del bus del hueco 1 que todavia no tienen celda, y no por
-    // olvido: `fx1Type` y `fx1Gain` son del MODULO DEL HUECO (el selector de
-    // efecto y su ganancia), y `fx1Param2..4` son posiciones de bus que el
-    // efecto de serie —la saturacion, que declara UN mando— no usa. Los cinco
-    // aparecen cuando se monte ese modulo, y hasta entonces estan aqui
-    // NOMBRADOS, no escondidos: si se cuela otro id sin control, el fallo sigue
-    // siendo rojo, y cuando la lista se vacie este test avisa de que el modulo
-    // ya esta y la lista se ha olvidado.
-    const pendingSlotModule = [
-      'fx1Type', 'fx1Gain', 'fx1Param2', 'fx1Param3', 'fx1Param4',
-    ];
-
+    // VACIA, y el propio test lo dice: hasta el 2026-09-29 esto era la
+    // lista de los CINCO del bus del hueco 1 que estaban sin celda. Ya no estan:
+    // el modulo del hueco esta montado (`fx1Type` y `fx1Gain` viven en la
+    // cabecera de su `.fx-module`, y `fx1Param2..4` en su rejilla de mandos, con
+    // las que el efecto declare y escondidas las demas).
+    //
+    // Y NO SE BORRA EL TEST: sigue siendo la unica cuenta que dice "el APVTS
+    // entero esta cableado". Un `fx2Param1` que se cuele sin celda sale aqui
+    // nombrados, no desaparecen en un recuento que nadie mira.
+    const pendingSlotModule = [];
     expect(missing).toEqual(pendingSlotModule);
   });
 
@@ -156,7 +158,10 @@ describe('sections / encaje en el lienzo', () => {
 
     // El orden es el de SECTIONS: GLOBAL & MASTER subio a la banda del motor
     // (2026-09-28, al lado del LFO) y por eso aparece aqui, enmedio.
-    expect(cellLessCards.map((section) => section.id)).toEqual(['lfo', 'globalFull', 'modMatrix', 'envelopes', 'models']);
+    // `fx` entra el 2026-09-29: sus dos celdas del bus bajaron al cajon, y las
+    // ONCE que quedan en la rejilla son su `frontal` (los mandos planos de los
+    // huecos 2..4, que aun no tienen bus). Sigue siendo ficha de cajon.
+    expect(cellLessCards.map((section) => section.id)).toEqual(['lfo', 'globalFull', 'modMatrix', 'envelopes', 'models', 'fx']);
     expect(cellCards.length).toBe(SECTIONS.length - cellLessCards.length);
     // Todas las de dos filas miden lo mismo; FILTRO (apilado, 2 filas de
     // una columna) sigue siendo ficha regular — sin excepciones.
@@ -197,7 +202,7 @@ describe('sections / encaje en el lienzo', () => {
     // 72 celdas propias (morphZ + morphZ2/morphZ3; morphX/morphY viven en el
     // pad): una ranura no es una mas. 2026-09-26: - filterEnvAmount.
     // 2026-09-29: + el drive y la mezcla del hueco 1 de efectos.
-    expect(SECTION_PARAMETER_IDS).toHaveLength(72);
+    expect(SECTION_PARAMETER_IDS).toHaveLength(77);
     expect(SECTION_PARAMETER_IDS).not.toContain('models');
     expect(SECTION_PARAMETER_IDS).not.toContain('model-slots');
 
@@ -297,7 +302,7 @@ describe('sections / encaje en el lienzo', () => {
 
     // No es una celda de parametro: el reparto sigue contando 72
     expect(SECTION_PARAMETER_IDS).not.toContain('envelope-curves');
-    expect(SECTION_PARAMETER_IDS).toHaveLength(72);
+    expect(SECTION_PARAMETER_IDS).toHaveLength(77);
   });
 
   it('la caja LFO: frontal rate+depth en el lienzo, el resto en el cajon', () => {
@@ -337,7 +342,7 @@ describe('sections / encaje en el lienzo', () => {
     expect(SECTION_PARAMETER_IDS).not.toContain('filterEnvAmount');
     // Las ADSR completas viven en ENVOLVENTES; la curva sigue en su celda libre.
     expect(envelopes.ids).toEqual(['envAttack', 'envDecay', 'envSustain', 'envRelease', 'filterAttack', 'filterDecay', 'filterSustain', 'filterRelease']);
-    expect(SECTION_PARAMETER_IDS).toHaveLength(72);
+    expect(SECTION_PARAMETER_IDS).toHaveLength(77);
   });
 
   it('BALANCEO 9.3: el LFO vive en la banda del motor y FILTRO apila sus 2 controles', () => {
@@ -373,7 +378,7 @@ describe('sections / encaje en el lienzo', () => {
 
     // No es un id del APVTS: no aparece en las celdas ni en el encaje
     expect(SECTION_PARAMETER_IDS).not.toContain('randomize');
-    expect(SECTION_PARAMETER_IDS).toHaveLength(72);
+    expect(SECTION_PARAMETER_IDS).toHaveLength(77);
   });
 });
 

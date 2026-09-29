@@ -24,6 +24,7 @@ import { createEnvelopeBlocks, createEnvelopeCurves } from './envelopeViews.js';
 import { createSpectral } from './spectral.js';
 import { createModelSlots } from './modelSlots.js';
 import { createModSummary } from './modSummary.js';
+import { createFxModules } from './fxModules.js';
 import { createXyPad, CORNER_KEYBOARD_HINT } from './xyPad.js';
 
 import { MOD_DESTINATIONS } from '../../generated/parameters.generated.js';
@@ -90,6 +91,18 @@ export function createVisual(visualId, controls, options = {}) {
     blocks.setRouteOpener(options.onOpenRoute ?? null);
 
     return blocks;
+  }
+
+  // El cuerpo del CAJÓN de EFECTOS: un `.fx-module` por hueco del rack, con el
+  // tema de la FAMILIA del efecto que hay puesto. No pide `parameterIds`: sus
+  // celdas las reparte el panel dentro de lo que devuelve `claimBlocks()`, y el
+  // número de mandos de cada hueco depende del efecto elegido, que en el
+  // momento de construir la vista todavía no se sabe.
+  if (visualId === 'fx-modules') {
+    // Los view-models son los de la FICHA (`options.controls`), no los de la
+    // vista: el modulo tiene que saber que ids del bus posee el store, y eso no
+    // sale de `parameterIds`, que va vacio a proposito. Ver app.js.
+    return createFxModules({ controls: options.controls ?? controls });
   }
 
   // Las 4 rutas de la matriz: sus 12 controles viven en el cajón, así que en el

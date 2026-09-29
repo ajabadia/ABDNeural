@@ -1549,6 +1549,59 @@ button.mod-summary__row:focus-visible {
   color: var(--color-text-dim, #4a637a);
 }
 
+/* === LOS MODULOS DE EFECTO DEL CAJON EFECTOS ==============================
+   El chasis, el token `--fx-*` y los ONCE temas por familia viven en la hoja
+   compartida (`@abdsynths/shared/styles/components/fx.css`); aqui solo esta la
+   COMPOSICION: como se ordenan los cuatro modulos en el cajon y que se les hace
+   a las celdas que el panel cuelga dentro.
+
+   DOS COLUMNAS, y no cuatro, porque el cajon mide 640 px: cuatro huecos en fila
+   darian 150 px por modulo, y un knob de 48 con su etiqueta de 9 px no cabe
+   legible a esa medida. En 2x2 cada modulo tiene 300 px y caben los cuatro
+   mandos del bus (ganancia, mezcla y dos parametros) sin apretar. */
+.fx-modules {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+/* El selector de efecto va en la CABECERA, junto al nombre. Es lo unico del
+   modulo que no es un mando, y es lo que explica de que familia es el acento que
+   se ve. Sin esta regla la celda del `choice` se estiraria al ancho del titulo
+   (`flex: 1`) y el selector ocuparia media cabecera. */
+.fx-module__type {
+  flex: 0 0 auto;
+  min-width: 96px;
+}
+
+.fx-module__type .cell--choice {
+  width: 100%;
+}
+
+/* La frase de un hueco SIN BUS. Va centrada y en el texto apagado, y no como un
+   error: no lo es. El hueco existe, tiene chasis y aparece en el rack, lo que
+   no tiene todavia es la forma de publishar sus mandos. */
+.fx-module__empty {
+  margin: 0;
+  padding: 6px 2px;
+  text-align: center;
+  font-size: var(--text-xs, 8px);
+  color: var(--color-text-dim, #4a637a);
+}
+
+/* Las celdas del bus no usan el alto de fila de la rejilla del lienzo (80 px):
+   dentro del modulo van en la rejilla de `fx.css`, que ya las coloca. */
+.fx-module__params .cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.fx-module__params .cell[hidden] {
+  display: none;
+}
+
 /* En el cajón hay ancho de sobra: la lista de 28 destinos no debe seguir recortada
    al ancho que necesita en la rejilla del lienzo. */
 .drawer .cell--choice .abd-select__field {

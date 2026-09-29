@@ -363,7 +363,9 @@ describe('el criterio del distintivo vivo (una cuenta, dos destinos)', () => {
     expect(missing).toEqual([]);
     // El numero de fichas con cajon, para que la lista se note al anadir una.
     expect(withDrawer.map((card) => card.id).sort())
-      .toEqual(['envelopes', 'globalFull', 'lfo', 'modMatrix', 'models']);
+    // `fx` entra aqui el 2026-09-29, cuando EFECTOS paso a ser la quinta
+    // ficha con cajon (sus cuatro modulos de hueco).
+      .toEqual(['envelopes', 'fx', 'globalFull', 'lfo', 'modMatrix', 'models']);
   });
 
   it('el distintivo declara DE QUE se cuenta, y el chip solo si se pide', () => {
@@ -382,6 +384,6 @@ describe('el criterio del distintivo vivo (una cuenta, dos destinos)', () => {
       .map((card) => card.id)
       .sort();
 
-    expect(withChip).toEqual(['envelopes', 'globalFull', 'lfo', 'models']);
+    expect(withChip).toEqual(['envelopes', 'fx', 'globalFull', 'lfo', 'models']);
   });
 });

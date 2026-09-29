@@ -360,8 +360,8 @@ describe('panel / lienzo único', () => {
     // —son del modulo del hueco, que no esta montado— y por eso el `toEqual`
     // contra `SECTION_PARAMETER_IDS` (no contra el contrato entero) sigue siendo
     // la asercion que de verdad dice "cada celda pintada esta en el reparto".
-    expect(ids).toHaveLength(72);
-    expect(new Set(ids).size).toBe(72);
+    expect(ids).toHaveLength(77);
+    expect(new Set(ids).size).toBe(77);
     expect(ids.sort()).toEqual([...SECTION_PARAMETER_IDS].sort());
   });
 
@@ -404,21 +404,27 @@ describe('panel / lienzo único', () => {
 
     // 47 floats menos masterLevel, que es el fader nativo del host: es el ÚNICO
     // control que no sale de la familia compartida (contrato de 8.1 paso 2c).
-    expect(countOf('.cell--knob')).toBe(47);
+    // 2026-09-29: +4. Los CINCO ids que faltaban del modulo del hueco ya no
+    // estan sin celda, pero solo CUATRO son knob: `fx1Type` es un desplegable y
+    // va a la cabecera de su modulo (el quinto desplegable de abajo).
+    expect(countOf('.cell--knob')).toBe(51);
     expect(countOf('.cell--baseline')).toBe(1);
     expect(countOf('.cell--toggle')).toBe(5);
     // 19 choices: 13 desplegables + 5 segmentados (motor, syncs, ondas LED) +
     // 1 NumberBox (midiChannel; masterBPM cuenta como knob en el recuento de
     // celdas). Familia COMPARTIDA: si alguien construye uno inline, esto cae.
-    expect(countOf('.cell--choice .abd-select__field')).toBe(13);   // 16: dos ondas (LED) + midiChannel (NumberBox)
+    // 2026-09-29: +1, el selector de efecto del hueco 1 (`fx1Type`), que vive
+    // en la cabecera de su modulo.
+    expect(countOf('.cell--choice .abd-select__field')).toBe(14);   // 16: dos ondas (LED) + midiChannel (NumberBox)
     expect(countOf('.cell--choice .abd-segmented__group')).toBe(5);   // 3 del lienzo (motor, syncs) + las dos ondas LED de los cajones
-    // El total son las CELDAS pintadas, y desde 2026-09-29 son 72: el hueco 1
-    // del rack de efectos aporta dos (el drive y la mezcla) donde el mando
-    // suelto `fxSaturation` ocupaba una. Los otros cinco ids del bus NO se
-    // cuentan aqui a proposito: son del modulo del hueco, que no esta montado,
-    // y no son celdas todavia.
+    // El total son las CELDAS pintadas, y son 77 desde el 2026-09-29: el hueco
+    // 1 del rack aporta dos (el drive y la mezcla) donde el mando suelto
+    // `fxSaturation` ocupaba una, y los cinco ids que faltaban del modulo del
+    // hueco han dejado de estar sin celda. Las celdas del cajon CUENTAN: un id
+    // que el store posee y la pagina pinta en el cajon esta tan cableado como
+    // uno de la rejilla (si no, el store lo ignoraria en silencio al escribir).
     expect(countOf('.cell--knob') + countOf('.cell--baseline')
-      + countOf('.cell--toggle') + countOf('.cell--choice')).toBe(72);
+      + countOf('.cell--toggle') + countOf('.cell--choice')).toBe(77);
   });
 
   it('el gating por motor se reevalua con cada snapshot sin reescribir el valor', () => {
@@ -478,7 +484,7 @@ describe('panel / lienzo único', () => {
 
     // 47 menos masterBPM (NumberBox). El hueco 1 del rack sumo una celda de
     // knob mas (el drive), y su mezcla tambien, que es la que cuenta aqui.
-    expect(dials).toHaveLength(46);
+    expect(dials).toHaveLength(50);
 
     for (const dial of dials) expect(dial.tabIndex).toBe(0);
   });
@@ -720,7 +726,10 @@ describe('panel / ficha de cajon (matriz de modulacion)', () => {
     // ENVOLVENTES se sumo al mundo de los que si cambian (ver el test de abajo).
     panel.paint(makeState());
 
-    expect(document.querySelectorAll('.card__badge')).toHaveLength(4);
+    // 2026-09-29: EFECTOS se suma (su distintivo cuenta las celdas del bus), y
+    // con el son cinco fichas con chip.
+    expect(document.querySelectorAll('.card__badge')).toHaveLength(5);
+    expect(chipOf('fx')).not.toBeNull();
     expect(chipOf('models')).not.toBeNull();
     expect(chipOf('globalFull')).not.toBeNull();
     expect(chipOf('lfo')).not.toBeNull();
@@ -1979,9 +1988,10 @@ describe('panel / recorrido E2E de los cuatro cajones con EDIT', () => {
   // a la banda del motor (2026-09-28, al lado de la LFO), asi que su posicion en
   // esta lista no es decorativa: si alguien la moviera sin mover la ficha, la
   // asercion de orden cae.
-  const EDITABLE_DRAWERS = ['lfo', 'globalFull', 'modMatrix', 'envelopes', 'models'];
+  // `fx` entra el 2026-09-29, con los cuatro modulos de hueco.
+  const EDITABLE_DRAWERS = ['lfo', 'globalFull', 'modMatrix', 'envelopes', 'models', 'fx'];
 
-  it('inventario: exactamente los cuatro cajones con trigger EDIT', () => {
+  it('inventario: exactamente los cinco cajones con trigger EDIT', () => {
     mountPanel();
 
     const triggers = [...document.querySelectorAll('[data-drawer-trigger]')]

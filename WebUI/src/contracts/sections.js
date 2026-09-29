@@ -153,6 +153,15 @@ export const SECTION_VISUALS = {
     id: 'envelope-blocks',
     parameterIds: ['envAttack', 'envDecay', 'envSustain', 'envRelease', 'filterAttack', 'filterDecay', 'filterSustain', 'filterRelease'],
   },
+  // El CAJON de EFECTOS: un `.fx-module` por hueco, con el tema de la familia
+  // del efecto puesto. `parameterIds` va VACIO a proposito, y no por olvido: los
+  // mandos de un hueco son los que declara la FILA del efecto elegido, que no se
+  // sabe al construir la vista (ver ui/fxModules.js). Los ids del bus viajan en
+  // `drawer.blocks` de la ficha, y el panel los reparte con `claimBlocks()`.
+  'fx-modules': {
+    id: 'fx-modules',
+    parameterIds: [],
+  },
   // El pad SOLO: es lo que vive en la ficha del lienzo (el cuerpo de la ficha
   // lo cierra su minBodyHeight). Edita morphX/morphY: UN control UN nodo — la
   // capa del pad es la unica declaracion visual (camino B, FASE 10).
@@ -529,28 +538,81 @@ export const SECTIONS = [
     // centro. Sin cajon: los controles van en la rejilla, solo mas estrechos.
     //
     // Y LA REJILLA PASO DE 6 A 7 COLUMNAS CON EL BUS (2026-09-29), y no por
-    // gusto: el hueco 1 aporta dos mandos donde antes habia uno, la ficha se
-    // queda con 13 controles, y en 6 columnas eso son TRES filas. El lienzo es
+    // gusto: el hueco 1 aporto dos mandos donde antes habia uno, la ficha se
+    // quedo con 13 controles, y en 6 columnas eso son TRES filas. El lienzo es
     // de alto FIJO (ver CANVAS), asi que una fila de mas no se encoge: se
     // desborda, y el desborde del lienzo se come la fila de abajo. Con 7 columnas,
-    // 13 controles entran en dos filas (7 + 6) y el alto de la ficha no cambia.
-    // Se paga con celdas mas estrechas, que es el mismo precio que ya pagan las
-    // otras fichas de 5 carriles.
+    // los 13 entran en dos filas (7 + 6) y el alto de la ficha no cambia. Se paga
+    // con celdas mas estrechas, que es el mismo precio que ya pagan las otras
+    // fichas de 5 carriles.
     //
-    // BUS POR HUECO 1 (2026-09-29): la ficha pinta `fx1Mix` y `fx1Param1` en
-    // lugar del mando suelto `fxSaturation` que ya no existe. Son los dos
-    // mandos que el hueco 1 declara, y solo esos dos: el hueco tiene cuatro
-    // posiciones de bus y `fx1Param2..4` no se pintan porque el efecto que hay
-    // puesto (saturacion) declara UN mando, y pintar cuatro seria tres knobs
-    // que no hacen nada. Cuantos mandos hay los dice el `numParams` de la fila,
-    // que llega en el catalogo exportado (`generated/fx-catalog.generated.js`);
-    // cuando se monte el modulo del hueco, ese es el que decide cuantos.
+    // Con el bus al cajon la ficha se queda con ONCE, que en 7 columnas siguen a
+    // ser dos filas: el alto no cambia ni por un pixel, asi que este 7 no hay que
+    // volver a tocarlo cuando lleguen los buses de los huecos 2..4.
     //
-    // `fx1Type` y `fx1Gain` tampoco se pintan todavia: son del modulo del hueco,
-    // no de la ficha. Ver la seccion de preparacion del rack en HANDOFF.md.
+    // CAJON DE LOS MODULOS (2026-09-29). El hueco de efecto no son cinco mandos:
+    // es un SELECTOR de efecto y, despues de elegirlo, un numero de mandos que
+    // depende de la fila. Por eso los ids del bus de un hueco van a su
+    // `.fx-module` en el cajon (visual `fx-modules`) y no a la rejilla: pintar
+    // cinco celdas fijas seria pintar tres knobs muertos cada vez que el efecto
+    // puesto declara menos.
+    //
+    // LO QUE SE QUEDA EN LA FICHA SON LOS ONCE MANDOS PLANOS, y no por leftover:
+    // son los de los huecos 2, 3 y 4, que todavia NO tienen bus (solo el hueco 1
+    // lo publico). Cuando un hueco tenga bus, sus mandos planos se migran (ver
+    // PresetMigrationFx) y salen de aqui. Un `frontal` que contenga ids planos
+    // justo para que la ficha no se quede vacia seria una fila de knobs que no
+    // describen el modulo que tienen encima.
+    //
+    // Y POR QUE EL MIX DEL HUECO 1 BAJO AL CAJON Y NO SE QUEDO EN LA FICHA: una
+    // celda de mezcla sin el selector al lado es la mezcla de algo que el usuario
+    // no puede ver. El modulo entero cabe en un cajon lateral y se lee de un
+    // vistazo; partida en dos superficies, la ficha y el cajon cuentan cosas
+    // distintas del mismo hueco.
+    drawer: {
+      badge: '4 HUECOS',
+      // 2026-09-29: distintivo VIVO de celdas ACTIVAS, el mismo criterio que la
+      // caja LFO y ENVOLVENTES (cuantas celdas de la ficha consume el motor que
+      // esta sonando). Los ids del bus son `engines: 'both'`, asi que con
+      // cualquiera de los dos motores la ficha esta entera. Los ids planos de los
+      // huecos 2..4 son tambien `both`, asi que el distintivo no distingue aun un
+      // hueco con bus de uno que no lo tiene: lo diria el numero de celdas, no el
+      // nombre del modulo.
+      liveBadge: { mode: 'active', label: 'FX', onCard: true },
+      trigger: 'EDIT',
+      // La vista del cajon NO reparte celdas: el panel monta las celdas dentro
+      // de los modulos que devuelve la vista (`claimBlocks`).
+      visual: 'fx-modules',
+      // Solo el hueco 1 tiene bus HOY. Los modulos de los huecos 2..4 se pintan
+      // igual (chasis, LED, titulo) pero con su frase de "sin bus", y los ids
+      // planos que hoy los manejan se quedan en la ficha: un modulo con ids que
+      // el host no declara es un modulo con mandos que no suenan.
+      blocks: [
+        ['fx1Type', 'fx1Gain', 'fx1Mix', 'fx1Param1', 'fx1Param2', 'fx1Param3', 'fx1Param4'],
+      ],
+      // Los once planos del lienzo, en el orden de la ficha de siempre.
+      frontal: [
+        'fxDelayTime',
+        'fxDelayFeedback',
+        'fxDelaySync',
+        'fxDelayDivision',
+        'fxChorusRate',
+        'fxChorusDepth',
+        'fxChorusMix',
+        'fxReverbSize',
+        'fxReverbDamping',
+        'fxReverbWidth',
+        'fxReverbMix',
+      ],
+    },
     ids: [
+      'fx1Type',
+      'fx1Gain',
       'fx1Mix',
       'fx1Param1',
+      'fx1Param2',
+      'fx1Param3',
+      'fx1Param4',
       'fxDelayTime',
       'fxDelayFeedback',
       'fxDelaySync',

@@ -24,6 +24,11 @@
 import '@abdsynths/shared/styles/tokens.css';
 import '@abdsynths/shared/styles/components/widgets.css';
 import '@abdsynths/shared/styles/components/backgrounds.css';
+// Los temas de los modulos de efecto, por FAMILIA. Van en la hoja compartida y no
+// en `main.css` a proposito: son los MISMOS tokens que el registro `fxTheme.js`
+// declara, y las dos mitades estan atadas por el test de ABDSharedAssets. Copiar
+// los once colores aqui seria la tercera copia, y la que nadie actualiza.
+import '@abdsynths/shared/styles/components/fx.css';
 import './styles/main.css';
 
 import { createParameterStore } from './contracts/paramStore.js';
@@ -199,6 +204,18 @@ const bands = BANDS.map((band) => band.map((section) => {
   // la repinta con el snapshot del lienzo.
   const drawerVisual = drawerVisualSpec
     ? createVisual(drawerVisualSpec.id, drawerVisualControls(drawerVisualSpec), {
+      // LOS CONTROLES DE LA FICHA, y no solo los de la vista. Una vista de cajon
+      // puede necesitar los view-models de los ids de la FICHA: los modulos de
+      // EFECTOS tienen que saber que ids del bus posee el store para decidir que
+      // huecos tienen bus, y eso no sale de `parameterIds` (que va vacio a
+      // proposito, porque una vista no reparte celdas).
+      //
+      // Sin esto, la vista se fabricaba con CERO controles: ningun modulo se
+      // pintaba con bus y las celdas se caian al cuerpo de la ficha por el
+      // `?? body` del panel. El fallo es silencioso y total: la pagina se ve
+      // entera y con todos los mandos, pero los del bus estan en la rejilla
+      // en vez de en su modulo.
+      controls,
       onLoad: (slot) => store.loadModel(slot, {
         requestLocalFile: (nextSlot) => { localModelSlot = nextSlot; localModelInput.click(); },
       }),
