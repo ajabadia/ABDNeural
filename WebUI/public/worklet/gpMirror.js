@@ -42,6 +42,16 @@ export const FIELD_CLASS = Object.freeze({
  * hacer sin inventar un tercer layout.
  */
 export function readGpLayout (Module) {
+    // EL EXPORT QUE NO EXISTE, que es un caso distinto del que no cuadra.
+    // Sin este guardia, un `.wasm` anterior a la tabla unica revienta con un
+    // "is not a function" de JavaScript: el aviso de aqui no llega nunca, la
+    // pagina ve un error crudo en vez de su linea de "sin motor", y el
+    // remedy (recompilar el .wasm) queda enterrado en un stack.
+    if (typeof Module._neuronikGlobalParamsFieldKinds !== 'function')
+        throw new Error(`este .wasm no publica la clase de los campos del espejo
+            (neuronikGlobalParamsFieldKinds): es anterior a la tabla unica del layout.
+            Recompila el .wasm (build_wasm.bat) y sincroniza WebUI/dist.`);
+
     const fieldCount = Module._neuronikGlobalParamsLayout(0, 0);
     const kindCount = Module._neuronikGlobalParamsFieldKinds(0, 0);
 

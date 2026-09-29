@@ -232,6 +232,14 @@ function setF64At(byteOffset, v) {
   heap32[(byteOffset >> 2) + 1] = i32Bridge[1];
 }
 
+// El contador de fallos se declara ANTES que `writeParams`, que es quien lo
+// suma. `let` no sube al principio del modulo como `var`: si se declarara
+// detras, la primera llamada leeria la zona temporal y reventaria con un
+// ReferenceError, que es un fallo ruidoso pero con el mensaje equivocado.
+let totalFailed = 0;
+let totalCompared = 0;
+let totalCases = 0;
+
 function writeParams(p) {
   heap32.fill(0, gpPtr >> 2, (gpPtr + gpSize) >> 2);
   const off = (i) => heap32[(layoutPtr >> 2) + i];
@@ -246,8 +254,15 @@ function writeParams(p) {
   // 10 reverbWidth, 11 reverbMix, 12-16 lfo1, 17-21 lfo2, luego modMatrix
   // (12 campos, desde MOD_MATRIX_FIELD) y despues el bus de cada hueco.
   setF32(0, p.masterLevel); setF32(1, p.saturationAmt); setF64At(gpPtr + off(2), p.bpm);
-  if (!isDouble(2))
-    console.error('[layout] AVISO: el campo 2 (bpm) ya no es el unico double');
+  // Esto entra en el VEREDICTO, no en la consola. Un `console.error` aqui es
+  // un aviso que no avisa a nadie, que es justo el patron que este test se
+  // ha pasado la sesion quitando: si el bpm deja de ser el unico double,
+  // `setF64At` estaria escribiendo ahi un float de 8 bytes, el motor leeria
+  // otros 8, y la paridad daria rojo por el motivo equivocado.
+  if (!isDouble(2)) {
+    console.error('[layout] el campo 2 (bpm) ya no es el unico double');
+    ++totalFailed;
+  }
   setF32(3, p.delayTime);   setF32(4, p.delayFB);
   setF32(5, p.chorusRate);  setF32(6, p.chorusDepth); setF32(7, p.chorusMix);
   setF32(8, p.reverbSize);  setF32(9, p.reverbDamping); setF32(10, p.reverbWidth); setF32(11, p.reverbMix);
@@ -321,10 +336,6 @@ function ulpDistance(a, b) {
   return Math.abs(ta - tb);
 }
 
-let totalFailed = 0;
-let totalCompared = 0;
-let totalCases = 0;
-
 // Un caso = una pareja (sample rate, tamaño de bloque). La matriz entera se
 // recorre: cada caso tiene su propia referencia nativa, así que esto valida de
 // verdad sample rate y block size, no una sola pareja.
@@ -376,8 +387,9 @@ for (const c of reference.cases) {
 
 Module._free(gpPtr); Module._free(layoutPtr);
 
-// La relacion de los dos exports va en el mismo veredicto que la paridad:
-// si uno miente, el modulo no sirve para comparar nada.
+// La relacion de los dos exports y la clase de cada campo van en el mismo
+// veredicto que la paridad: si uno miente, el modulo no sirve para comparar
+// nada, y un test que solo dice FALLO en la consola no es un test.
 if (totalFailed > 0 || !layoutRelationOk) {
   console.error(`[parity] FALLO: ${totalFailed} comparacion(es) fuera de su presupuesto de ulps.`);
   process.exit(1);

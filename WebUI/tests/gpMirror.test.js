@@ -74,6 +74,23 @@ describe('gpMirror / readGpLayout', () => {
 
     expect(() => readGpLayout(Module)).toThrow(/anterior a la tabla unica/);
   });
+
+  it('LANZA, y con el remedio, si el export de clases NO EXISTE', () => {
+    // El caso ANTERIOR es un .wasm que tiene el export pero con el recuento
+    // descuadrado. Este es el otro, y el mas probable: clonar el repo, no
+    // recompilar, y que el binario servido sea el de antes de la tabla unica.
+    // Sin guardia, `Module._neuronikGlobalParamsFieldKinds(0, 0)` revienta con
+    // un "is not a function" de JavaScript que no dice que hay que recompilar
+    // nada: el worklet lo captura y lo manda por el port, pero la pagina ve
+    // un error crudo en vez de su linea de "sin motor".
+    const Module = fakeModule({ offsets: [0, 4, 8], kinds: [0, 0, 0] });
+    delete Module._neuronikGlobalParamsFieldKinds;
+
+    expect(() => readGpLayout(Module))
+      .toThrow(/neuronikGlobalParamsFieldKinds/);
+    expect(() => readGpLayout(Module))
+      .toThrow(/Recompila el \.wasm/);
+  });
 });
 
 describe('gpMirror / writeGpField', () => {

@@ -144,8 +144,26 @@ const fueraDelLayout = fields
     .map(([fieldIndex]) => fieldIndex)
     .filter((fieldIndex) => fieldIndex >= byteOffsets.length);
 
-check(layout.fieldCount === Module._neuronikGlobalParamsLayout(0, 0),
-      `el puente publica ${layout.fieldCount} campos con offset y con clase`);
+// La clase de un campo NO se comprueba comparando el numero que el puente
+// acaba de devolver, que no puede fallar (se compara consigo mismo). Se
+// comprueba ESCRIBIENDO un campo entero y mirando lo que queda en el
+// espejo: si la tabla dijera float, ahi estaria el patron de bits de IEEE
+// (28 -> 0x41C00000, que es 1105199104).
+const enteros = layout.fieldKinds.filter((kind) => kind === 1).length;
+
+check(enteros === 14,
+      `el puente clasifica 14 campos como enteros (son ${enteros}): la matriz`
+      + ' y las tres posiciones enteras de cada LFO');
+
+// El destino 28 (Morph Z) es un entero de la matriz. Su indice de vista
+// sale de la TABLA, no de aqui: escribir a mano el offset seria la copia
+// de vuelta, que es lo que este fichero acaba de dejar de hacer.
+const morphZ = byteOffsets[28] / 4;
+
+writeField(28, 28);
+check(vistas.i32[morphZ] === 28,
+      `un campo entero se escribe como entero (28, y no ${vistas.i32[morphZ]})`);
+check(vistas.f32[morphZ] !== 28, 'y leido como float el mismo hueco NO vale 28');
 
 check(fueraDelLayout.length === 0,
       `los ${fields.length} campos que escribe la pagina estan en el layout del motor`
