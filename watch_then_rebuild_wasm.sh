@@ -23,9 +23,11 @@ set -uo pipefail
 cd "$(dirname "$0")"
 
 POLL="${1:-30}"
-# El commit desde el que vigilo: el mio ultimo. Cualquier HEAD distinto es
-# del otro hilo.
-BASE="337857c"
+# BASE se arma SOLO al arrancar: el commit que hay en este momento. No
+# escribirlo a mano porque cualquier commit propio lo dejaria viejo, y el
+# vigilante creeria que tu commit es del otro hilo. Se puede pasar como
+# segundo argumento para arrancar ya con la guardia de otro commit.
+BASE="${2:-$(git rev-parse --short HEAD)}"
 LOG="wasm-rebuild.log"
 
 say() { printf '[%s] %s\n' "$(date '+%H:%M:%S')" "$*" | tee -a "$LOG"; }
@@ -39,7 +41,7 @@ heartbeat() {
   [ $((TICKS % 10)) -eq 0 ] || return 0
   local dirty
   dirty="$(git status --porcelain -- Source WebUI/generated | wc -l)"
-  say "sigo esperando: HEAD $BASE, $dirty rutas sin commitear en el arbol del layout"
+  say "sigo esperando: HEAD $(git rev-parse --short HEAD), $dirty rutas sin commitear en el arbol del layout"
 }
 
 # El layout se construye desde Source/ y WebUI/generated/. Si algo de ahi
@@ -51,9 +53,6 @@ feed_dirty() {
 }
 
 say "=== esperando a que el otro hilo commitee (base $BASE, sondeo ${POLL}s)"
-if [ "$(git rev-parse --short HEAD)" != "$BASE" ]; then
-  say "AVISO: HEAD ya no es $BASE; la base de este vigilante ha caducado."
-fi
 
 while true; do
   HEAD_SHORT="$(git rev-parse --short HEAD)"
