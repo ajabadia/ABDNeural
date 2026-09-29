@@ -207,18 +207,21 @@ del hueco, que todavia no tienen control ni descriptor. Ademas
 `WebUI/generated/parameters.generated.js` tiene 8 valores `NaN` sin formatear
 (`-nan(ind)`), asi que **vitest no arranca con nada** hasta que se regenere.
 
-**Lo que quedo a medias en esta sesion** (importante: el arbol esta limpio pero
-estas piezas NO llegaron a aplicarse):
+**Lo que quedo pendiente, y su estado:**
 
-- La **firma del layout al arrancar** quedo en cuatro piezas. Dos estan
-  aplicadas: el export `neuronikGlobalParamsLayoutFingerprint` del puente y el
-  exportador `NEURONiK_LayoutExport` que escribe
-  `WebUI/generated/gp-layout.generated.js`. **Sin aplicar:** la funcion que la
-  compara en `audioWorkletEngine.js` y el aviso en la linea de audio. Los
-  tests de `gpMirror` (11) si estan; los de `audioEngine` no.
-- El `.wasm` de `public/worklet` es anterior al export de la firma, que es
-  justo el caso que la firma deberia detectar. Con el trabajo en vuelo, ademas
-  lleva dentro el ancho de bus de 90 campos que no esta commiteado.
+- La **firma del layout al arrancar** esta IMPLEMENTADA y con tests: el export
+  `neuronikGlobalParamsLayoutFingerprint` del puente, el exportador
+  `NEURONiK_LayoutExport` que escribe `WebUI/generated/gp-layout.generated.js`,
+  el worklet que la postea en `neuronik:ready`, la comparacion en
+  `audioWorkletEngine.js` y el aviso en la linea de audio (`binario ajeno`, con
+  las dos firmas en el tooltip). Lo que NO se ha hecho es recompilar el `.wasm`,
+  que sigue siendo anterior al export: es decir, el mecanismo esta listo y
+  todavia no ha podido saltar en la practica. Es el unico `build_wasm.bat` que
+  falta, y hay que hacerlo cuando el otro hilo cierre, no antes.
+- `WebUI/generated/gp-layout.generated.js` esta generado con el ancho de bus
+  de HEAD (58 campos), que es el del `.wasm` versionado. Si se commitea el
+  ancho de 90, hay que regenerarlo EN EL MISMO commit que el `.wasm`, o la
+  pagina dira que el binario no es el suyo cuando los dos estan bien.
 - Los huecos 2-4: el motor publica los cuatro buses y el contrato solo tiene
   el primero. El layout esta listo; falta la mitad de la migracion.
 
@@ -9093,6 +9096,11 @@ la traduccion de los eventos (el recorte a 14 bits y el pitch bend de -1..1 a
 0..16383), la cola que reparte por bloque, y el aviso de los campos ausentes. 24
 tests. Cazar un `pitchBend` con NaN escribiendose en el heap, que antes se colaba.
 Commit `a6ace0b`.
+
+**La firma del layout** (export del puente, exportador, worklet, comparacion y
+aviso en la linea de audio) queda implementada y con tests, pero SIN commit y sin
+`.wasm` recompilado: el mecanismo esta listo y todavia no ha podido saltar. Es el
+unico `build_wasm.bat` que falta, y toca cuando el otro hilo cierre.
 
 **El bloque de ESTADO ACTUAL de arriba** es lo que se mantiene: en cada entrada se
 tocan sus cuatro bloques --ctest, vitest, lo que quedo a medias y el canon-- y el

@@ -15,7 +15,7 @@
     Event layout: Runtime::Event is standard-layout, 24 bytes:
       [0]i32 type  [1]i32 channel  [2]i32 note  [3]i32 value14
       [4]f32 value [5]i32 sampleOffset
-    GlobalParams: JS never hardcodes offsets. THREE exports publish the layout
+    GlobalParams: JS never hardcodes offsets. FOUR exports publish the layout
     (all built from the same globalParamsLayout(), in
     GlobalParamsLayout.h, so they cannot disagree):
       - neuronikGlobalParamsLayout: the WHOLE layout, and the numbering
@@ -30,7 +30,16 @@
       - neuronikGlobalParamsFieldKinds: the CLASS of each field in that
         same order (0 float, 1 int, 2 double). The offset says WHERE to
         write; this says WITH WHICH VIEW, and that is also a fact about the
-        struct, so it does not belong in a hand-written list in JS.
+        struct, so it does not belong in a hand-written list in JS;
+      - neuronikGlobalParamsLayoutFingerprint: ONE integer that changes
+        if the count, ANY offset or ANY class of that table changes. The
+        page carries the one its contract was written against (in
+        WebUI/generated/gp-layout.generated.js, produced by the same
+        header) and compares at startup, so a `.wasm` from another build is
+        caught BEFORE the first push instead of after a knob that does
+        nothing. The other three exports can all be correct and still be
+        the wrong layout; this one is the check that they are the right
+        ones.
     ADSR de la voz: el POD VoiceEnvelopeWire (8 floats) en su propio canal,
     con el mismo patron (voiceEnvelopeSize/Layout + setVoiceEnvelope).
 
@@ -536,6 +545,29 @@ WASM_EXPORT int neuronikGlobalParamsFieldKinds (int* outKinds, int maxFields)
     }
 
     return count;
+}
+
+/**
+ * UNA FIRMA del layout entero, para que la pagina sepa si el `.wasm` que
+ * tiene delante es de ESTA tabla y no de otra compilacion.
+ *
+ * Sin argumentos y con un entero de vuelta: es una pregunta de si o no
+ * sobre el binario entero, no una tabla mas que traer.
+ *
+ * POR QUE NO BASTA CON QUE CAMPOS PUBLICA, que es lo que ya se
+ * comprueba. Contar detecta el binario que publica menos de los que la
+ * pagina escribe --el fallo de los seis mandos del hueco 1-- pero no el
+ * que publica los mismos con otro orden o con otra clase: ahi la pagina
+ * escribe en el hueco equivocado, y como los dos lados cuentan igual no
+ * hay nada que se enclose. Esto si, porque la firma se hace con los tres
+ * hechos juntos.
+ *
+ * Sale de la MISMA tabla que los otros tres, asi que no puede quedarse
+ * vieja por su cuenta: si el struct cambia, cambia con ella.
+ */
+WASM_EXPORT unsigned int neuronikGlobalParamsLayoutFingerprint ()
+{
+    return globalParamsLayoutFingerprint();
 }
 
 WASM_EXPORT void neuronikAllNotesOff()

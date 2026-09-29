@@ -687,27 +687,49 @@ export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = nu
     sampleRate = 0,
     error = null,
     unreachableFieldIds = [],
+    layoutMismatch = null,
   }) {
     audioLabel.textContent = audioOwnerLabel(owner);
 
     const fuera = Array.isArray(unreachableFieldIds) ? unreachableFieldIds : [];
+    // El `.wasm` que se cargo NO es el layout de esta pagina. Va antes que
+    // `fuera` porque es el problema DE FONDO: `fuera` son los mandos que este
+    // motor no publica, que se arregla recompilando; este es que el motor
+    // entero no es el de esta pagina, y recompilando puede no bastar si la
+    // pagina cambio sin regenerar su firma.
+    const binarioAjeno = layoutMismatch != null;
 
     // El detalle se pinta por aqui para que el aviso viaje pegado al estado
     // del motor en los cinco casos, y para que se limpie SOLO cuando la
     // lista vuelve a estar vacia (un `.wasm` al dia la deja vacia).
     const detalle = (texto) => {
-      audioDetail.textContent = fuera.length > 0
-        ? `${texto} · ${fuera.length} sin motor`
-        : texto;
-      // El atributo es el enganche al color (main.css) y el `title` es donde
-      // van los ids: la linea es corta a proposito y el remedy (recompilar el
-      // `.wasm`) no cabe en 8 px.
-      audioDetail.dataset.issue = fuera.length > 0 ? 'unreachable' : '';
-      audioDetail.title = fuera.length > 0
-        ? `El espejo pide ${fuera.length} campo(s) que este motor no publica: `
-          + `${fuera.join(', ')}. Esos mandos mueven la pagina y no llegan al motor: `
-          + 'recompila el .wasm (build_wasm.bat) y sincroniza WebUI/dist.'
+      // Los dos avisos se acumulan: un binario ajeno puede ademas no publicar
+      // algun campo, y callarse uno seria dejar un sintoma a medias.
+      const partes = [texto];
+      if (binarioAjeno) partes.push('binario ajeno');
+      if (fuera.length > 0) partes.push(`${fuera.length} sin motor`);
+
+      audioDetail.textContent = partes.join(' · ');
+
+      // El atributo es el enganche al color (main.css) y el `title` es donde va
+      // el detalle largo: la linea es de 8 px y el remedio no cabe ahi. El del
+      // binario ajeno va PRIMERO, porque explica el otro.
+      audioDetail.dataset.issue = (binarioAjeno || fuera.length > 0)
+        ? 'unreachable'
         : '';
+
+      const detalles = [];
+
+      if (binarioAjeno) {
+        const hex = (value) => '0x' + (value >>> 0).toString(16);
+        detalles.push(layoutMismatch.got === null
+          ? 'El .wasm no publica la firma de su layout, asi que no se puede ni comprobar que sea de esta pagina: es anterior a la tabla unica del layout. Recompila el .wasm (build_wasm.bat) y sincroniza WebUI/dist.'
+          : 'El .wasm que se cargo tiene el layout ' + hex(layoutMismatch.got) + ' y esta pagina espera el ' + hex(layoutMismatch.expected) + ': el binario y la pagina son de compilaciones distintas. Los mandos pueden moverse en la pagina sin llegar al sitio que les toca. Recompila el .wasm (build_wasm.bat), regenera WebUI/generated/gp-layout.generated.js con NEURONiK_LayoutExport, y sincroniza WebUI/dist.');
+      }
+
+      if (fuera.length > 0)
+        detalles.push('El espejo pide ' + fuera.length + ' campo(s) que este motor no publica: ' + fuera.join(', ') + '. Esos mandos mueven la pagina y no llegan al motor: recompila el .wasm (build_wasm.bat) y sincroniza WebUI/dist.');
+      audioDetail.title = detalles.join(' ');
     };
 
     const localMode = owner === AUDIO_OWNER.WORKLET;

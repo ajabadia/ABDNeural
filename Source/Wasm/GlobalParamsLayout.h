@@ -22,6 +22,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include "../DSP/DspTypes.h"
@@ -186,6 +187,80 @@ inline std::vector<GlobalParamField> globalParamsLayout ()
  */constexpr std::size_t scalarFieldCount ()
 {
     return sizeof (kScalarFields) / sizeof (kScalarFields[0]);
+}
+
+/**
+ * @brief Una firma del layout ENTERO, para que la pagina sepa si el
+ *        `.wasm` que tiene delante es de esta tabla.
+ *
+ * @details POR QUE HACE FALTA, y por que no basta con la cuenta de campos.
+ *
+ *          Contar campos detecta el `.wasm` que publica MENOS de los que la
+ *          pagina escribe, que era el fallo de los seis mandos del hueco 1.
+ *          No detecta el otro: un `.wasm` que publica 58 campos igual de
+ *          muchos, pero con el orden o la clase cambiados. Ahi la pagina
+ *          escribe en el hueco equivocado y todo parece funcionar, porque
+ *          los dos lados hablan de 58. La cuenta no lo ve; esta firma si,
+ *          porque mezcla los TRES hechos del layout --cuantos campos son,
+ *          donde cae cada uno y de que clase se escribe-- y cualquier
+ *          cambio en cualquiera de los tres la mueve.
+ *
+ *          Es un FNV-1a de 32 bits. No es criptografia: es una firma para
+ *          que una pagina y un binario se reconozcan, y para eso 32 bits
+ *          sobran. El fallo que se perdona es el de una colision fortuita,
+ *          que daria un falso aviso; el que no se perdona es el contrario,
+ *          dejar pasar un `.wasm` viejo sin que nadie se entere, que es
+ *          el que costo el hueco entero.
+ *
+ *          Sale de la TABLA y no de un numero escrito al lado: cambiar el
+ *          layout cambia la firma porque cambia la tabla de la que sale.
+ *          Por eso la pagina puede llevar la suya en un fichero generado
+ *          sin estar comparando contra una copia del struct.
+ */
+inline std::uint32_t layoutFingerprintOf (const std::vector<GlobalParamField>& layout)
+{
+    constexpr std::uint32_t fnvOffsetBasis = 2166136261u;
+    constexpr std::uint32_t fnvPrime      = 16777619u;
+
+    // Mezclar UN byte por vuelta, en little endian, que es como el struct
+    // esta en memoria. Asi la firma no depende de como se imprima el
+    // entero en la pagina: los dos lados mezclan los mismos bytes.
+    const auto mix = [&fnvPrime] (std::uint32_t& hash, std::uint32_t value)
+    {
+        for (int shift = 0; shift < 32; shift += 8)
+            hash = (hash ^ ((value >> shift) & 0xFFu)) * fnvPrime;
+    };
+
+    std::uint32_t hash = fnvOffsetBasis;
+
+    // La cuenta va la primera y por su cuenta, para que un layout de 58
+    // campos y otro de 58 con los campos desplazados uno no se confundan
+    // por un accidente de la suma.
+    mix (hash, static_cast<std::uint32_t> (layout.size ()));
+
+    for (const auto& field : layout)
+    {
+        mix (hash, static_cast<std::uint32_t> (field.offset));
+        mix (hash, static_cast<std::uint32_t> (field.kind));
+    }
+
+    return hash;
+}
+
+/**
+ * La firma DE ESTA TABLA, que es la que se publica.
+ *
+ * Delgada a proposito: toda la cuenta vive en `layoutFingerprintOf`, que
+ * recibe el layout como parametro. Asi `Tests/WasmLayoutOrderTest.cpp`
+ * puede darle un layout perturbado --un offset movido, una clase
+ * cambiada, un campo de mas-- y comprobar que la firma se mueve, sin
+ * tener que tocar el struct de verdad para ver lo mismo. Un test que
+ * solo puede passarse con el valor bueno no prueba que la firma dependa
+ * de lo que dice depender.
+ */
+inline std::uint32_t globalParamsLayoutFingerprint ()
+{
+    return layoutFingerprintOf (globalParamsLayout ());
 }
 
 } // namespace

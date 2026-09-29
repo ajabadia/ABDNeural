@@ -20,6 +20,9 @@
  *    WebView2 runtimes): the page keeps working bridge-only.
  */
 
+import { GP_LAYOUT_FINGERPRINT, GP_LAYOUT_FIELD_COUNT }
+  from '../../generated/gp-layout.generated.js';
+
 import {
   gpFieldsFromState,
   gpIdsBeyondFieldCount,
@@ -200,6 +203,48 @@ export async function startAudioEngine() {
 }
 
 /**
+ * El `.wasm` que se cargo, ¿es el layout de esta pagina?
+ *
+ * La firma esperada sale de `gp-layout.generated.js`, que escribe
+ * `NEURONiK_LayoutExport` desde la MISMA tabla (`GlobalParamsLayout.h`) de la
+ * que el puente construye el layout. No se compara con una cuenta de campos,
+ * que es lo que se hacia, porque contar no ve el caso peligroso: dos binarios
+ * con los mismos 58 campos y distinto orden o distinta clase. Ahi la pagina
+ * escribe en el miembro equivocado y no se oye nada raro.
+ *
+ * `null` (lo que llega de un `.wasm` sin el export) NO cuenta como ausencia
+ * de problema: un binario que no puede responder a la pregunta es justo el
+ * caso que hay que avisar, y `readGpLayout` ya habria lanzado antes con un
+ * mensaje mejor.
+ */
+function noteLayoutFingerprint (fingerprint) {
+  const got = fingerprint ?? null;
+
+  const mismatch = got === GP_LAYOUT_FINGERPRINT
+    ? null
+    : { got, expected: GP_LAYOUT_FINGERPRINT, expectedFieldCount: GP_LAYOUT_FIELD_COUNT };
+
+  // Un aviso por cuenta, como el de los campos ausentes: la firma no cambia
+  // durante la vida del motor, pero el aviso anterior tiene que poder
+  // retirarse cuando el binario vuelve a ser el bueno.
+  const before = audioEngineState.layoutMismatch;
+  if ((before === null) === (mismatch === null) && (before?.got ?? null) === (mismatch?.got ?? null)) return;
+
+  audioEngineState.layoutMismatch = mismatch;
+  notify();
+
+  if (mismatch === null) return;
+
+  if (got === null) {
+    console.warn('el .wasm no publica la firma de su layout: es anterior a la tabla unica. Recompila el .wasm (build_wasm.bat) y sincroniza WebUI/dist.');
+    return;
+  }
+
+  const hex = (value) => '0x' + (value >>> 0).toString(16);
+  console.warn('el .wasm que se cargo tiene el layout ' + hex(got) + ' y esta pagina espera el ' + hex(GP_LAYOUT_FINGERPRINT) + ': el binario y la pagina son de compilaciones distintas, y los mandos pueden moverse en la pagina sin llegar al sitio que les toca. Recompila el .wasm (build_wasm.bat), regenera WebUI/generated/gp-layout.generated.js con NEURONiK_LayoutExport, y sincroniza WebUI/dist.');
+}
+
+/**
  * Cuenta que parte del espejo de la pagina llega al motor, y avisa de
  * lo que no. Es la contraparte de pagina de `reportMissingFields` del
  * worklet: aqui se nombran los IDS, que es lo que una persona puede
@@ -237,6 +282,9 @@ function waitForReady(workletNode, timeoutMs) {
 
       if (type === 'neuronik:ready') {
         clearTimeout (timer);
+        // ANTES que la cuenta: si el binario no es el de esta pagina, los
+        // ids que falten son el sintoma menos grave del asunto.
+        noteLayoutFingerprint (event.data.layoutFingerprint);
         noteGpLayout (event.data.paramsFieldCount);
         // Kept attached: this listener is also the page consumer of
         // 'neuronik:meter' (voices + morphZMod fan-out). Removing it here

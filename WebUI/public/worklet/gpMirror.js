@@ -34,7 +34,8 @@ export const FIELD_CLASS = Object.freeze({
  * Las dos mitades del espejo, leidas del modulo.
  *
  * @param {object} Module el glue de emscripten ya instanciado.
- * @returns {{ fieldCount: number, byteOffsets: number[], fieldKinds: number[] }}
+ * @returns {{ fieldCount: number, byteOffsets: number[], fieldKinds: number[],
+ *            fingerprint: number|null }}
  *
  * LANZA si los dos exports no cuentan los mismos campos: serian mitades
  * distintas de una misma verdad, que es el fallo silencioso que se ha estado
@@ -70,7 +71,22 @@ export function readGpLayout (Module) {
 
     Module._free(ptr);
 
-    return { fieldCount, byteOffsets, fieldKinds };
+    // LA FIRMA DE ESTE BINARIO, y solo la de este binario. Aqui no se
+    // compara con nada: el worklet no tiene ni debe tener la firma
+    // esperada --esa vive en la pagina, en el fichero generado-- porque
+    // el worklet no puede decir "tu motor esta viejo": no sabe de que
+    // motor se trata. Solo puede decir de que motor es, que es
+    // exactamente lo que hace un numero.
+    //
+    // `null` cuando el `.wasm` no publica el export, que es un binario
+    // anterior a el. No se lanza por esto: el guardia de mas abajo ya
+    // habria parado con un mensaje mejor, y llegar aqui con la clase
+    // presente pero sin firma no ocurre.
+    const fingerprint = typeof Module._neuronikGlobalParamsLayoutFingerprint === 'function'
+        ? Module._neuronikGlobalParamsLayoutFingerprint()
+        : null;
+
+    return { fieldCount, byteOffsets, fieldKinds, fingerprint };
 }
 
 /**

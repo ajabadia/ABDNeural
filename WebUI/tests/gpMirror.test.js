@@ -25,7 +25,7 @@ import {
 } from '../public/worklet/gpMirror.js';
 
 /** Un Module de mentira: heap real, exports con la misma forma que el glue. */
-function fakeModule({ offsets, kinds, kindCount = null }) {
+function fakeModule({ offsets, kinds, kindCount = null, fingerprint = 0xc548f50d, noFingerprint = false }) {
   const HEAP32 = new Int32Array(64);
   const ptr = 16; // alineado a 4, con sitio de sobra para unas pocas entradas
 
@@ -36,7 +36,7 @@ function fakeModule({ offsets, kinds, kindCount = null }) {
     return n;
   };
 
-  return {
+  const mod = {
     HEAP32,
     _malloc: () => ptr,
     _free: () => {},
@@ -44,6 +44,16 @@ function fakeModule({ offsets, kinds, kindCount = null }) {
     _neuronikGlobalParamsFieldKinds: (outPtr, max) =>
       fill(kinds, kindCount === null ? kinds : kindCount, outPtr, max),
   };
+
+  // La firma la publica el puente. Por defecto es la de este `wasm` de
+  // mentira; `noFingerprint` la quita, que es el binario viejo. Se hace
+  // con una bandera y no con `fingerprint: undefined` porque un valor por
+  // defecto no distingue lo que no se ha pasado de lo que se pasa a undefined,
+  // y aqui lo que se quiere es justo poder quitar el export.
+  if (!noFingerprint)
+    mod._neuronikGlobalParamsLayoutFingerprint = () => fingerprint;
+
+  return mod;
 }
 
 /** El espejo: tres vistas sobre el MISMO ArrayBuffer, como en el worklet. */
@@ -90,6 +100,38 @@ describe('gpMirror / readGpLayout', () => {
       .toThrow(/neuronikGlobalParamsFieldKinds/);
     expect(() => readGpLayout(Module))
       .toThrow(/Recompila el \.wasm/);
+  });
+
+  it('REPORTA la firma del binario, y no la espera a nadie', () => {
+    // El worklet no sabe de que motor se trata: solo puede decir de que
+    // motor ES. Comparar es cosa de la pagina, que es quien tiene la firma
+    // esperada en su fichero generado. Por eso esto devuelve el numero y
+    // no un si o no.
+    const Module = fakeModule({ offsets: [0, 4], kinds: [0, 1] });
+
+    expect(readGpLayout(Module).fingerprint).toBe(0xc548f50d);
+  });
+
+  it('la firma es null si el export NO existe, no un 0 cualquiera', () => {
+    // Un 0 seria un numero valido que la pagina compararia y declararia
+    // 'binario ajeno' sin saber que no sabe. El null se
+    // distingue de cualquier valor, que es lo que permite que el aviso diga
+    // 'no publica la firma' y no 'la firma no coincide'.
+    const Module = fakeModule({
+      offsets: [0, 4],
+      kinds: [0, 1],
+      noFingerprint: true,
+    });
+
+    expect(readGpLayout(Module).fingerprint).toBeNull();
+  });
+
+  it('una firma DISTINTA se devuelve tal cual, sin juzgarla aqui', () => {
+    // Si el modulo la marcara como mala, la comparacion estaria en los dos
+    // lados y volveriamos a tener dos verdades. Solo hay una: la pagina.
+    const Module = fakeModule({ offsets: [0, 4], kinds: [0, 1], fingerprint: 999 });
+
+    expect(readGpLayout(Module).fingerprint).toBe(999);
   });
 });
 
