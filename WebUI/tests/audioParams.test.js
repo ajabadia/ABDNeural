@@ -15,6 +15,8 @@ import {
   CONTRACT_TO_VOICE_FIELD,
   engineIndexFromNormalized,
   gpFieldsFromState,
+  gpIdsBeyondFieldCount,
+  highestGpField,
   defaultGpFields,
   defaultVoiceFields,
   voiceFieldsFromState,
@@ -85,6 +87,35 @@ describe('CONTRACT_TO_GP_FIELD', () => {
 
       expect (resolved, contractId).toBeCloseTo (cxxDefault, 4);
     }
+  });
+});
+
+describe('la cuenta del espejo: gpIdsBeyondFieldCount', () => {
+  // LO QUE NO SE PODIA VER. El worklet recibe [indice, valor], busca el
+  // offset en el layout que le publico el motor, y si no lo encuentra se
+  // lo come: el knob se mueve en la pagina y no suena. Con el .wasm que
+  // hay hoy en `public/worklet` (el de 2026-09-28) el motor publica 34
+  // campos -22 escalares + 12 de la matriz- y la pagina escribe hasta
+  // el 39, o sea los seis del bus. El 34 sale de llamar
+  // `neuronikModMatrixLayout(0, 0)` sobre ESE binario, no de este codigo.
+  it('con el .wasm de 34 campos se queda fuera JUSTO el bus del hueco 1', () => {
+    expect(gpIdsBeyondFieldCount (34)).toEqual ([
+      'fx1Gain', 'fx1Mix', 'fx1Param1', 'fx1Param2', 'fx1Param3', 'fx1Param4',
+    ]);
+  });
+
+  it('con el tramo entero publicado (40 campos) no queda nada fuera', () => {
+    // 22 + 12 + 6 = 40: la cuenta que daria el puente con el bus
+    // publicandolo entero. Cuando el .wasm se recompile, esta lista
+    // tiene que quedar VACIA, y es la comprobacion de que lo hizo.
+    expect(highestGpField ()).toBe (39);
+    expect(gpIdsBeyondFieldCount (40)).toEqual ([]);
+  });
+
+  it('sin respuesta del motor (NaN) no inventa campos fuera', () => {
+    // Un worklet viejo que no conteste `paramsFieldCount` no puede hacer
+    // que la pagina se crea que todo se pierde: la cuenta se queda quieta.
+    expect(gpIdsBeyondFieldCount (NaN)).toEqual ([]);
   });
 });
 

@@ -151,6 +151,40 @@ describe('audio engine / browser lifecycle', () => {
     expect(lastNode.options.processorOptions.sampleRate).toBe(48000);
   });
 
+  it('el motor corto avisa de los mandos que NO le llegan, por su id', async () => {
+    // EL CASO REAL DE HOY: el .wasm de public/worklet es anterior al
+    // layout que publica el bus, asi que publica 34 campos y la pagina
+    // escribe hasta el 39. Sin esto, los seis mandos del hueco se
+    // mueven en la pagina y no suenan, sin un solo aviso.
+    installFakeWebAudio();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const starting = startAudioEngine();
+
+    await vi.waitFor(() => expect(lastNode).not.toBeNull());
+    lastNode.port.emit({ type: 'neuronik:ready', paramsFieldCount: 34 });
+    await starting;
+
+    expect(audioEngineState.paramsFieldCount).toBe(34);
+    expect(audioEngineState.unreachableFieldIds).toEqual([
+      'fx1Gain', 'fx1Mix', 'fx1Param1', 'fx1Param2', 'fx1Param3', 'fx1Param4',
+    ]);
+    // El aviso NOMBRA los ids: el numero de campo no dice nada a quien
+    // tiene que arreglarlo, y lo que hay que arreglar es el `.wasm`.
+    expect(warn).toHaveBeenCalled();
+    expect(String(warn.mock.calls[0][0])).toContain('fx1Param1');
+    expect(String(warn.mock.calls[0][0])).toContain('34');
+
+    // Y con el tramo entero publicado, la lista se vacia y nadie avisa.
+    warn.mockClear();
+    lastNode.port.emit({ type: 'neuronik:layout', paramsFieldCount: 40 });
+
+    expect(audioEngineState.unreachableFieldIds).toEqual([]);
+    expect(warn).not.toHaveBeenCalled();
+
+    warn.mockRestore();
+  });
+
   it('devuelve el remover: tras el apagado el canal ya no avisa', async () => {
     // El canal es estado de modulo y sobrevive al documento; quien se suscribe
     // es quien lo devuelve (ver el apagado de pagina en src/app.js).

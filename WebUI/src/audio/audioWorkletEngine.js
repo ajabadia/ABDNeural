@@ -20,7 +20,11 @@
  *    WebView2 runtimes): the page keeps working bridge-only.
  */
 
-import { gpFieldsFromState, voiceFieldsFromState } from '../wasm/audioParams.js';
+import {
+  gpFieldsFromState,
+  gpIdsBeyondFieldCount,
+  voiceFieldsFromState,
+} from '../wasm/audioParams.js';
 import {
   AUDIO_STATUS_BLOCKED,
   workletAllowed,
@@ -36,6 +40,12 @@ export const audioEngineState = {
   error: null,
   sampleRate: 0,
   voices: 0,
+  // Cuantos campos del espejo publica el motor de este `.wasm`, y
+  // cuales de los que escribe la pagina se quedan fuera. Una lista
+  // vacia significa que llega todo; con contenido, hay mandos que
+  // mueven la pagina y no suenan, y eso NO se ve por ningun otro lado.
+  paramsFieldCount: 0,
+  unreachableFieldIds: [],
 };
 
 let listeners = [];
@@ -189,6 +199,32 @@ export async function startAudioEngine() {
   }
 }
 
+/**
+ * Cuenta que parte del espejo de la pagina llega al motor, y avisa de
+ * lo que no. Es la contraparte de pagina de `reportMissingFields` del
+ * worklet: aqui se nombran los IDS, que es lo que una persona puede
+ * arreglar (recompilar el `.wasm`); en el worklet solo hay indices.
+ *
+ * Un aviso por cuenta, porque el numero no cambia durante la vida del
+ * motor y `neuronik:layout` puede llegar tantas veces como campos falten.
+ */
+let warnedGpLayout = null;
+
+function noteGpLayout (paramsFieldCount) {
+  if (!Number.isFinite (paramsFieldCount) || warnedGpLayout === paramsFieldCount) return;
+
+  warnedGpLayout = paramsFieldCount;
+  audioEngineState.paramsFieldCount = paramsFieldCount;
+  audioEngineState.unreachableFieldIds = gpIdsBeyondFieldCount (paramsFieldCount);
+  notify ();
+
+  const fuera = audioEngineState.unreachableFieldIds;
+  if (fuera.length > 0)
+    console.warn (`el motor publica ${paramsFieldCount} campos del espejo y la pagina` +
+      ` escribe ${fuera.length} mas (${fuera.join (', ')}): en el navegador esos` +
+      ' mandos mueven la pagina y no llegan al motor. Recompila el .wasm.');
+}
+
 function waitForReady(workletNode, timeoutMs) {
   return new Promise ((resolve) => {
     const timer = setTimeout (() => {
@@ -201,6 +237,7 @@ function waitForReady(workletNode, timeoutMs) {
 
       if (type === 'neuronik:ready') {
         clearTimeout (timer);
+        noteGpLayout (event.data.paramsFieldCount);
         // Kept attached: this listener is also the page consumer of
         // 'neuronik:meter' (voices + morphZMod fan-out). Removing it here
         // silences telemetry right after the handshake.
@@ -209,6 +246,11 @@ function waitForReady(workletNode, timeoutMs) {
         clearTimeout (timer);
         workletNode.port.removeEventListener ('message', onMessage);
         resolve ({ ok: false, error: event.data.error });
+      } else if (type === 'neuronik:layout') {
+        // El worklet ha encontrado un campo del espejo que su layout
+        // no publica. Es el aviso de que el `.wasm` es anterior al
+        // puente; sin el, esos campos se pierden en silencio.
+        noteGpLayout (event.data.paramsFieldCount);
       } else if (type === 'neuronik:meter') {
         audioEngineState.voices = event.data.voices;
         if (typeof event.data.voices === 'number')

@@ -15,8 +15,18 @@
     Event layout: Runtime::Event is standard-layout, 24 bytes:
       [0]i32 type  [1]i32 channel  [2]i32 note  [3]i32 value14
       [4]f32 value [5]i32 sampleOffset
-    GlobalParams: JS never hardcodes offsets — call globalParamsLayout()
-    once and write fields by the returned offsets.
+    GlobalParams: JS never hardcodes offsets. TWO exports publish the order
+    (both built from the same globalParamsLayout(), in
+    GlobalParamsLayout.h, so they cannot disagree):
+      - neuronikGlobalParamsLayout: the WHOLE layout, and the numbering
+        the page writes by — the 22 scalars, the 4x3 modulation matrix and
+        the bus of every slot (params[0..3], gain, mix). This is the one
+        the worklet uses;
+      - neuronikModMatrixLayout: only the tail AFTER the scalars (matrix +
+        bus), renumbered from zero, for a caller that wants the matrix and
+        the bus without the globals in front. It is a VIEW of the tail of
+        the layout above, NOT a continuation: appending it to the full
+        layout would duplicate the matrix and the bus.
     ADSR de la voz: el POD VoiceEnvelopeWire (8 floats) en su propio canal,
     con el mismo patron (voiceEnvelopeSize/Layout + setVoiceEnvelope).
 

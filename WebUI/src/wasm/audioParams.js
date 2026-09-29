@@ -102,6 +102,35 @@ export const CONTRACT_TO_GP_FIELD = {
   fx1Mix: 39,
 };
 
+/** El campo mas alto que escribe esta pagina. */
+export const highestGpField = () => Math.max (...Object.values (CONTRACT_TO_GP_FIELD));
+
+/**
+ * Los ids que la pagina escribe y el motor de este `.wasm` NO publica.
+ *
+ * `fieldCount` es lo que el worklet contesto al arrancar
+ * (`neuronik:ready.paramsFieldCount`), que es el numero de campos que el
+ * layout del motor publica de verdad.
+ *
+ * ESTA CUENTA ES LA QUE FALTABA, porque el fallo que aparece aqui es
+ * SILENCIOSO por construccion: el worklet recibe el par [indice, valor],
+ * busca su offset, no lo encuentra y se lo come. El knob se mueve, la
+ * pagina no se queja y el motor no oye nada. Con el .wasm que hay hoy en
+ * `public/worklet` (el de 2026-09-28) son los seis del bus: el puente ya
+ * publica el tramo entero, pero el binario es anterior a ese cambio.
+ *
+ * Vive aqui, y no en `audioWorkletEngine.js`, porque el que sabe que
+ * indices escribe esta pagina es este mapa.
+ */
+export function gpIdsBeyondFieldCount (fieldCount) {
+  if (!Number.isFinite (fieldCount)) return [];
+
+  return Object.entries (CONTRACT_TO_GP_FIELD)
+    .filter (([, fieldIndex]) => fieldIndex >= fieldCount)
+    .map (([contractId]) => contractId)
+    .sort ();
+}
+
 /**
  * contractId -> ADSR field index (order from neuronikVoiceEnvelopeLayout).
  *

@@ -1735,6 +1735,25 @@ else()
     message(STATUS "node not found: NEURONiK_LocalModelCache test skipped")
 endif()
 
+# El ESPEJO DE PARAMETROS contra el BINARIO que se sirve al navegador: la pagina
+# escribe `GlobalParams` por indice de campo y el worklet traduce ese indice con
+# el layout que publico el motor. Con el `.wasm` de public/worklet anterior al
+# layout (publicaba 34 campos y la pagina escribe hasta el 39) los seis mandos del
+# hueco 1 se perdian EN SILENCIO: el worklet no tenia offset donde escribir y se
+# lo comia. Este test arranca el worklet de verdad contra ese binario y exige que
+# publique todos los campos que la pagina escribe, y que un campo de mas llegue
+# avisado. Junta las tres mitades que se separan solas: el mapa de la pagina
+# (`WebUI/src/wasm/audioParams.js`), el layout del puente
+# (`Tests/WasmLayoutOrderTest.cpp`) y el artefacto. Sin el `.wasm` avisa y pasa
+# (mismo skip que NEURONiK_WorkletSync).
+if(NEURONIK_NODE_EXECUTABLE)
+    add_test(NAME NEURONiK_WorkletMirrorLayout
+        COMMAND ${NEURONIK_NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/Tests/workletMirrorLayoutTest.mjs"
+    )
+else()
+    message(STATUS "node not found: NEURONiK_WorkletMirrorLayout test skipped")
+endif()
+
 # E2E de navegador REAL (Playwright + Chromium): el smoke del MODO LOCAL que hasta hoy se
 # verificaba a mano -SOUND ON arranca el motor WASM, la ficha RANURAS carga un modelo, una
 # tecla enciende la voz y el pad mueve morphX/morphY con su anillo bailando-. Sirve `dist`

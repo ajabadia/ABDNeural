@@ -25,6 +25,17 @@
  *  15 lfo1.rhythmicDivision          16 lfo1.depth
  *  17..21 lfo2.* (same order)
  *  22..33 modMatrix[r].{source,destination,amount} r=0..3
+ *  34..39 fx[0].{params[0..3], gain, mix}  (el hueco 1; los demas
+ *    huecos van detras, y el contrato solo tiene este migrado)
+ *
+ * Los 34..39 los publica `neuronikModMatrixLayout`, que devuelve EL
+ * TRAMO QUE VA DETRAS DE LOS ESCALARES con la numeracion desde cero.
+ * Antes publicaba solo los doce de la matriz: los del bus se recogian
+ * en el vector y se descartaban, y como se solapan, lo que se veia era
+ * un numero que parecia completo. Ese export se usa para pedir la cola
+ * sin los escalares delante; para escribir por indice de campo esta
+ * tabla se construye con `neuronikGlobalParamsLayout` a secas (abajo,
+ * en `allocateBuffers`, esta el porque de no concatenar las dos).
  *
  * ADSR (canal `neuronik:voice`, 2026-09-28) — el layout de
  * NeuronikWasmBridge.cpp::neuronikVoiceEnvelopeLayout(). Son VoiceParams, no
@@ -143,28 +154,31 @@ class NeuronikProcessor extends AudioWorkletProcessor {
     this.gpSize = Module._neuronikGlobalParamsSize();
     this.gpPtr = Module._malloc (this.gpSize);
 
-    // Layout descriptor: field offsets of the base layout plus the mod matrix
-    // appended after it (both queries return their field count when out==0).
-    const baseFields = Module._neuronikGlobalParamsLayout (0, 0);
-    const modFields = Module._neuronikModMatrixLayout (0, 0);
-    this.paramsFieldCount = baseFields + modFields;
-    const scratchPtr = Module._malloc (4 * (baseFields + modFields));
-    const scratch = Module.HEAP32.subarray (scratchPtr >> 2, (scratchPtr >> 2) + baseFields + modFields);
+    // UNA sola tabla de translation: la que publica
+    // `neuronikGlobalParamsLayout`, que es el layout COMPLETO con los
+    // indices que usa la pagina (0..21 escalares, 22..33 matriz, 34.. el
+    // bus). Los offsets se guardan en BYTES, no como indice de vista, para
+    // que las vistas f32 y f64 compartan un solo buffer.
+    //
+    // Y POR QUE NO SE LE CONCATENA `neuronikModMatrixLayout`: ese export
+    // publica el MISMO tramo -matriz y bus- pero RENUMERADO desde cero, y
+    // antes de que el puente publicase el tramo entero solo eran doce
+    // campos (la matriz), de modo que anadirlos si tenia sentido. Metido
+    // detras de un layout que ya los trae, el concat duplica la matriz y el
+    // bus: el indice 58 apuntaria al primer campo de la matriz otra vez, y
+    // `paramsFieldCount` diria 94 cuando el layout tiene 58. Se conserva el
+    // export para quien pida la cola sin los escalares delante, pero quien
+    // escribe por indice de campo usa esta tabla y solo esta.
+    const fieldCount = Module._neuronikGlobalParamsLayout (0, 0);
+    this.paramsFieldCount = fieldCount;
+    this.reportedMissingCount = 0;
 
-    const basePtr = Module._malloc (4 * baseFields);
-    Module._neuronikGlobalParamsLayout (basePtr, baseFields);
-    const base = Module.HEAP32.subarray (basePtr >> 2, (basePtr >> 2) + baseFields);
+    const layoutPtr = Module._malloc (4 * fieldCount);
+    Module._neuronikGlobalParamsLayout (layoutPtr, fieldCount);
+    this.gpFieldByteOffsets = Array.from (
+      Module.HEAP32.subarray (layoutPtr >> 2, (layoutPtr >> 2) + fieldCount));
 
-    const modPtr = Module._malloc (4 * modFields);
-    Module._neuronikModMatrixLayout (modPtr, modFields);
-    const mod = Module.HEAP32.subarray (modPtr >> 2, (modPtr >> 2) + modFields);
-
-    // Keep byte offsets (not view indices) so f32/f64 views share one buffer.
-    this.gpFieldByteOffsets = Array.from (base).concat (Array.from (mod));
-
-    Module._free (basePtr);
-    Module._free (modPtr);
-    Module._free (scratchPtr);
+    Module._free (layoutPtr);
 
     this.gpMirror = new ArrayBuffer (this.gpSize);
     this.gpF32 = new Float32Array (this.gpMirror);
@@ -206,6 +220,42 @@ class NeuronikProcessor extends AudioWorkletProcessor {
     this.rightView = null;
   }
 
+  /** Campo pedido por la pagina que el layout del motor NO publica. */
+  noteMissingField(fieldIndex) {
+    if (!this.missingGpFields) this.missingGpFields = new Set ();
+    this.missingGpFields.add (fieldIndex);
+  }
+
+  /**
+   * Avisa de los campos que el motor no publica, UNA vez por push y solo
+   * si ha aparecido alguno nuevo.
+   *
+   * POR QUE AL FINAL DEL PUSH y no dentro de `writeGpField`: un snapshot
+   * completo son 38 campos, y con el .wasm viejo seis no existen. Avisando en
+   * cada escritura salian seis mensajes y seis warnings para un solo
+   * `postMessage`, con la cuenta de menor a mayor. Y el aviso NO se repite
+   * en los pushes siguientes: los campos que faltan son siempre los
+   * mismos (el contrato no cambia con el tiempo) y repetirlo cada vez que
+   * se mueve un knob llenaria la consola de la pagina.
+   */
+  flushMissingFields() {
+    const missing = this.missingGpFields;
+    if (!missing || missing.size === this.reportedMissingCount) return;
+
+    this.reportedMissingCount = missing.size;
+    const lista = Array.from (missing).sort ((a, b) => a - b);
+
+    console.warn ('[worklet] el espejo pide', lista.length,
+      'campos que este motor no publica (de', this.paramsFieldCount, '):', lista,
+      '- o el .wasm de public/worklet es anterior al layout del puente,'
+      + ' o la pagina escribe un campo que ya no existe');
+    this.port.postMessage ({
+      type: 'neuronik:layout',
+      paramsFieldCount: this.paramsFieldCount,
+      missingFields: lista,
+    });
+  }
+
   /** Copy the JS mirror into the WASM heap and push it to the engine. */
   applyGpMirror() {
     const Module = this.module;
@@ -226,7 +276,14 @@ class NeuronikProcessor extends AudioWorkletProcessor {
   /** Write one GlobalParams field by layout index (handles the f64 bpm slot). */
   writeGpField(fieldIndex, value) {
     const byteOffset = this.gpFieldByteOffsets[fieldIndex];
-    if (byteOffset === undefined) return;
+    if (byteOffset === undefined) {
+      // Un campo que el LAYOUT no publica no tiene donde escribir, y
+      // hasta aqui se lo comia sin decir nada: con el .wasm viejo, que
+      // solo publicaba 34 campos, los seis del bus no llegaban al
+      // motor y ningun knob se quejaba. Ahora se cuentan y se avisa.
+      this.noteMissingField (fieldIndex);
+      return;
+    }
 
     if (fieldIndex === BPM_FIELD) {
       const f64Offset = byteOffset / 8;
@@ -271,6 +328,9 @@ class NeuronikProcessor extends AudioWorkletProcessor {
         if (!this.ready) return;
         for (const [fieldIndex, value] of message.fields ?? [])
           this.writeGpField (fieldIndex, value);
+        // UNA vez por push, no uno por campo (arriba, en
+        // `flushMissingFields`, esta el porque).
+        this.flushMissingFields ();
         this.applyGpMirror();
         break;
       }
