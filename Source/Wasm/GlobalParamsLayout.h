@@ -26,6 +26,8 @@
 
 #include "../DSP/DspTypes.h"
 
+using GP = NEURONiK::DSP::GlobalParams;
+
 // El layout se construye FUERA del `extern "C"` de abajo, y no por gusto: una
 // funcion con enlace C no puede devolver `std::vector` (C2526), que es el tipo
 // que hace falta para construir el layout entero de una vez.
@@ -33,16 +35,88 @@ namespace
 {
 
 /**
+ * COMO SE ESCRIBE UN CAMPO DEL ESPEJO en JS. No es un detalle: el espejo es
+ * un `ArrayBuffer` sobre el struct, asi que el mismo indice se escribe
+ * con `Float32Array`, `Int32Array` o `Float64Array` segun lo que sea el
+ * miembro de C++.
+ *
+ * POR QUE ESTA AQUI Y NO EN EL TRABAJADOR: son DOS hechos del mismo struct
+ * (su orden y su tipo) y por tanto que vivan en dos sitios. La lista que
+ * tenia el worklet (`INT_FIELDS` con doce indices, `BPM_FIELD` con uno) era
+ * justo eso: si un campo nuevo del struct es `int` y nadie lo anade a la
+ * lista, el espejo lo escribe como float y el motor lee el patron de bits de
+ * IEEE. Sin error, sin rojo, sin sonido. Ahora la publica el puente, que es
+ * el unico que sabe que es cada miembro.
+ *
+ * Viajan por el cable como `int` la matriz (source, destination) y las
+ * tres position del LFO (waveform, syncMode, rhythmicDivision).
+ */
+enum class GlobalParamFieldKind
+{
+    Float32 = 0,   //!< float
+    Int32   = 1,   //!< int
+    Float64 = 2,   //!< double (hoy solo bpm)
+};
+
+/** UN CAMPO del layout: donde esta, y de que clase se escribe. */
+struct GlobalParamField
+{
+    std::size_t offset;
+    GlobalParamFieldKind kind;
+};
+
+/**
+ * @brief LOS ESCALARES, con su clase, en el orden en que la pagina los
+ *        escribe (indices 0..21).
+ *
+ * @details Vive a NIVEL DE NAMESPACE y no dentro del constructor, y esa
+ *          es toda la gracia: `scalarFieldCount()` cuenta ESTA tabla (que es
+ *          el corte del segundo export) y el constructor la empieza. Las dos
+ *          mitades no pueden separarse porque no hay dos mitades: hay una.
+ *
+ *          `offsetof` es una expresion constante sobre un struct de datos
+ *          planos, asi que la tabla es `constexpr` y el nucleo de la
+ *          comprueba la ve al compilar, no al ejecutar.
+ */
+inline constexpr GlobalParamField kScalarFields[] = {
+    { offsetof (GP, masterLevel), GlobalParamFieldKind::Float32 },
+    { offsetof (GP, saturationAmt), GlobalParamFieldKind::Float32 },
+    { offsetof (GP, bpm), GlobalParamFieldKind::Float64 },   // el unico double
+    { offsetof (GP, delayTime), GlobalParamFieldKind::Float32 },
+    { offsetof (GP, delayFB), GlobalParamFieldKind::Float32 },
+    { offsetof (GP, chorusRate), GlobalParamFieldKind::Float32 },
+    { offsetof (GP, chorusDepth), GlobalParamFieldKind::Float32 },
+    { offsetof (GP, chorusMix), GlobalParamFieldKind::Float32 },
+    { offsetof (GP, reverbSize), GlobalParamFieldKind::Float32 },
+    { offsetof (GP, reverbDamping), GlobalParamFieldKind::Float32 },
+    { offsetof (GP, reverbWidth), GlobalParamFieldKind::Float32 },
+    { offsetof (GP, reverbMix), GlobalParamFieldKind::Float32 },
+    { offsetof (GP, lfo1.waveform), GlobalParamFieldKind::Int32 },
+    { offsetof (GP, lfo1.rateHz), GlobalParamFieldKind::Float32 },
+    { offsetof (GP, lfo1.syncMode), GlobalParamFieldKind::Int32 },
+    { offsetof (GP, lfo1.rhythmicDivision), GlobalParamFieldKind::Int32 },
+    { offsetof (GP, lfo1.depth), GlobalParamFieldKind::Float32 },
+    { offsetof (GP, lfo2.waveform), GlobalParamFieldKind::Int32 },
+    { offsetof (GP, lfo2.rateHz), GlobalParamFieldKind::Float32 },
+    { offsetof (GP, lfo2.syncMode), GlobalParamFieldKind::Int32 },
+    { offsetof (GP, lfo2.rhythmicDivision), GlobalParamFieldKind::Int32 },
+    { offsetof (GP, lfo2.depth), GlobalParamFieldKind::Float32 },
+};
+
+/**
  * @brief EL LAYOUT COMPLETO de GlobalParams, en el orden que publica la pagina.
  *
- * @details UNA SOLA COPIA DEL ORDEN, y esa es toda la razon de que este bloque
- *          exista. Lo consumen los dos exports de layout
- *          (`neuronikGlobalParamsLayout` y `neuronikModMatrixLayout`): con bucles
- *          propios cada uno, el dia que uno cambiara de orden los dos estarian
- *          mintiendo a la vez, y el unico que se entera es el navegador. La
- *          pagina escribe el espejo por INDICES (`WebUI/src/wasm/audioParams.js`),
- *          no por offset, asi que un orden distinto no da ningun error: escribe
- *          en el campo de al lado.
+ * @details UNA SOLA COPIA DEL ORDEN Y DE LOS TIPOS, que es lo que hacen
+ *          falta: la pagina escribe el espejo por INDICES
+ *          (`WebUI/src/wasm/audioParams.js`), no por offset, asi que un orden
+ *          distinto no da ningun error, escribe en el campo de al lado. Y el
+ *          tipo tampoco: escribe en el sitio correcto con la vista equivocada.
+ *
+ *          Lo consumen los TRES exports de layout
+ *          (`neuronikGlobalParamsLayout`, `neuronikModMatrixLayout` y
+ *          `neuronikGlobalParamsFieldKinds`): con tablas propias cada uno, el
+ *          dia que uno cambiara los dos estarian mintiendo a la vez, y el
+ *          unico que se entera es el navegador.
  *
  *          EL ORDEN, que es el ABI que documenta la cabecera del export y el que
  *          asume la pagina:
@@ -67,45 +141,35 @@ namespace
  *          usa el motor, y no de una lista de 24 numeros escrita a mano, que es
  *          la forma de que el layout y el struct se separen sin que nada lo note.
  */
-inline std::vector<std::size_t> globalParamsLayout ()
+inline std::vector<GlobalParamField> globalParamsLayout ()
 {
-    using GP = NEURONiK::DSP::GlobalParams;
-
-    // Los escalares van en tabla porque son pocos y estan estables (no cambian);
-    // la matriz y el bus se anaden con bucles, por lo de arriba.
-    const std::size_t scalarOffsets[] = {
-        offsetof (GP, masterLevel), offsetof (GP, saturationAmt), offsetof (GP, bpm),
-        offsetof (GP, delayTime),   offsetof (GP, delayFB),
-        offsetof (GP, chorusRate),  offsetof (GP, chorusDepth),   offsetof (GP, chorusMix),
-        offsetof (GP, reverbSize),  offsetof (GP, reverbDamping),
-        offsetof (GP, reverbWidth), offsetof (GP, reverbMix),
-        offsetof (GP, lfo1.waveform), offsetof (GP, lfo1.rateHz),
-        offsetof (GP, lfo1.syncMode), offsetof (GP, lfo1.rhythmicDivision),
-        offsetof (GP, lfo1.depth),
-        offsetof (GP, lfo2.waveform), offsetof (GP, lfo2.rateHz),
-        offsetof (GP, lfo2.syncMode), offsetof (GP, lfo2.rhythmicDivision),
-        offsetof (GP, lfo2.depth),
-    };
-
-    std::vector<std::size_t> layout (std::begin (scalarOffsets), std::end (scalarOffsets));
+    std::vector<GlobalParamField> layout (std::begin (kScalarFields),
+                                           std::end (kScalarFields));
 
     for (int i = 0; i < 4; ++i)
     {
-        layout.push_back (offsetof (GP, modMatrix[i].source));
-        layout.push_back (offsetof (GP, modMatrix[i].destination));
-        layout.push_back (offsetof (GP, modMatrix[i].amount));
+        layout.push_back ({ offsetof (GP, modMatrix[i].source),
+                              GlobalParamFieldKind::Int32 });
+        layout.push_back ({ offsetof (GP, modMatrix[i].destination),
+                              GlobalParamFieldKind::Int32 });
+        layout.push_back ({ offsetof (GP, modMatrix[i].amount),
+                              GlobalParamFieldKind::Float32 });
     }
 
     // UN HUECO ENTERO: sus params, su ganancia y su mezcla, y luego el
     // siguiente. Es lo que hace que el bloque de un hueco sea CONTIGUO, que es
     // lo que la pagina necesita para localizar el hueco sin una tabla de indices.
+    // Todo float: el bus no tiene ningun entero.
     for (int slot = 0; slot < NEURONiK::DSP::kFxBusSlots; ++slot)
     {
         for (int p = 0; p < NEURONiK::DSP::kFxBusParams; ++p)
-            layout.push_back (offsetof (GP, fx[slot].params[p]));
+            layout.push_back ({ offsetof (GP, fx[slot].params[p]),
+                                  GlobalParamFieldKind::Float32 });
 
-        layout.push_back (offsetof (GP, fx[slot].gain));
-        layout.push_back (offsetof (GP, fx[slot].mix));
+        layout.push_back ({ offsetof (GP, fx[slot].gain),
+                              GlobalParamFieldKind::Float32 });
+        layout.push_back ({ offsetof (GP, fx[slot].mix),
+                              GlobalParamFieldKind::Float32 });
     }
 
     return layout;
@@ -115,30 +179,13 @@ inline std::vector<std::size_t> globalParamsLayout ()
  * @brief Cuantos escalares hay DELANTE de la matriz, que es donde empieza el
  *        tramo que publica `neuronikModMatrixLayout`.
  *
- * @details Lo cuenta la propia lista, con los MISMOS `offsetof` que el
- *          constructor, en vez de un 22 escrito a mano. Un escalar nuevo anadido
- *          a una tabla y no a la otra dejaba el segundo export publicando desde
- *          el campo equivocado, y como se solapan, sin decir nada.
- */
-constexpr std::size_t scalarFieldCount ()
+ * @details Lo cuenta la propia tabla, y no un 22 escrito a mano: un escalar
+ *          nuevo anadido a la tabla y el corte se iba solo, con el segundo
+ *          export publicando desde el campo equivocado y, como se solapan, sin
+ *          decir nada.
+ */constexpr std::size_t scalarFieldCount ()
 {
-    using GP = NEURONiK::DSP::GlobalParams;
-
-    const std::size_t scalarOffsets[] = {
-        offsetof (GP, masterLevel), offsetof (GP, saturationAmt), offsetof (GP, bpm),
-        offsetof (GP, delayTime),   offsetof (GP, delayFB),
-        offsetof (GP, chorusRate),  offsetof (GP, chorusDepth),   offsetof (GP, chorusMix),
-        offsetof (GP, reverbSize),  offsetof (GP, reverbDamping),
-        offsetof (GP, reverbWidth), offsetof (GP, reverbMix),
-        offsetof (GP, lfo1.waveform), offsetof (GP, lfo1.rateHz),
-        offsetof (GP, lfo1.syncMode), offsetof (GP, lfo1.rhythmicDivision),
-        offsetof (GP, lfo1.depth),
-        offsetof (GP, lfo2.waveform), offsetof (GP, lfo2.rateHz),
-        offsetof (GP, lfo2.syncMode), offsetof (GP, lfo2.rhythmicDivision),
-        offsetof (GP, lfo2.depth),
-    };
-
-    return sizeof (scalarOffsets) / sizeof (scalarOffsets[0]);
+    return sizeof (kScalarFields) / sizeof (kScalarFields[0]);
 }
 
 } // namespace

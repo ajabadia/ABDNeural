@@ -46,11 +46,11 @@ void check (bool condition, const char* what)
     ++gFailures;
 }
 
-void checkField (const std::vector<std::size_t>& layout, int index,
+void checkField (const std::vector<GlobalParamField>& layout, int index,
                  std::size_t expected, const char* what)
 {
     const bool inRange = index >= 0 && static_cast<std::size_t> (index) < layout.size();
-    const std::size_t actual = inRange ? layout[static_cast<std::size_t> (index)]
+    const std::size_t actual = inRange ? layout[static_cast<std::size_t> (index)].offset
                                        : static_cast<std::size_t> (-1);
 
     if (actual == expected)
@@ -62,6 +62,25 @@ void checkField (const std::vector<std::size_t>& layout, int index,
     std::printf ("  [FALLO] %-46s campo %2d: vale %lld, deberia ser %lld\n",
                  what, index, static_cast<long long> (actual),
                  static_cast<long long> (expected));
+    ++gFailures;
+}
+
+/** La CLASE de un campo, que es el otro medio del espejo. */
+void checkKind (const std::vector<GlobalParamField>& layout, int index,
+                GlobalParamFieldKind expected, const char* what)
+{
+    const bool inRange = index >= 0 && static_cast<std::size_t> (index) < layout.size();
+    const int actual = inRange ? static_cast<int> (layout[static_cast<std::size_t> (index)].kind)
+                                  : -1;
+
+    if (actual == static_cast<int> (expected))
+    {
+        std::printf ("  [ok]   %-46s campo %2d = %d\n", what, index, actual);
+        return;
+    }
+
+    std::printf ("  [FALLO] %-46s campo %2d: vale %d, deberia ser %d\n",
+                 what, index, actual, static_cast<int> (expected));
     ++gFailures;
 }
 
@@ -128,8 +147,8 @@ int main()
         const int gain1 = kExpectedScalars + kExpectedModMatrix + kBusBlock
                         + NEURONiK::DSP::kFxBusParams;
 
-        check (layout[static_cast<std::size_t> (gain0)] == offsetof (GP, fx[0].gain)
-               && layout[static_cast<std::size_t> (gain1)] == offsetof (GP, fx[1].gain),
+        check (layout[static_cast<std::size_t> (gain0)].offset == offsetof (GP, fx[0].gain)
+               && layout[static_cast<std::size_t> (gain1)].offset == offsetof (GP, fx[1].gain),
                "cada hueco tiene SU ganancia, y no la del parametro de al lado");
     }
 
@@ -145,7 +164,39 @@ int main()
         checkField (layout, kPageFx1Mix + 1, offsetof (GP, fx[1].params[0]),
                     "el hueco 2 empieza donde acaba el 1");
 
-    // ── 6) El corte que usa el segundo export ───────────────────────────────
+    // ── 6) LA CLASE DE CADA CAMPO, que hasta ahora era una lista a mano ---
+    // El espejo se escribe con Float32Array / Int32Array / Float64Array segun
+    // lo que sea el miembro, y el otro lado (el worklet) no lo puede inventar.
+    constexpr int kExpectedIntFields[] = { 12, 14, 15, 17, 19, 20, 22, 23, 25, 26,
+                                      28, 29, 31, 32 };
+
+    for (const int index : kExpectedIntFields)
+        checkKind (layout, index, GlobalParamFieldKind::Int32,
+                   "campo entero (los de la lista del worklet)");
+
+    // Y que NO haya ninguno mas, que es el fallo que importaba: un miembro
+    // nuevo que fuera `int` se escribiria con Float32Array y el motor leeria
+    // el patron de bits de IEEE (un 2.0 como 0x40000000). Sin excepcion.
+    int enteros = 0;
+    for (const auto& field : layout)
+        if (field.kind == GlobalParamFieldKind::Int32)
+            ++enteros;
+
+    check (enteros == static_cast<int> (sizeof (kExpectedIntFields)
+                                 / sizeof (kExpectedIntFields[0])),
+           "no hay campos enteros mas alla de los de la lista");
+
+    // Un UNICO double, el bpm. Un segundo double escribiendolo con
+    // Float32Array perderia la mitad de las mantisas, y eso no se oye hasta
+    // que alguien mueve el tempo.
+    int doubles = 0;
+    for (const auto& field : layout)
+        if (field.kind == GlobalParamFieldKind::Float64)
+            ++doubles;
+
+    check (doubles == 1, "el espejo tiene un solo double (el bpm)");
+
+    // ── 7) El corte que usa el segundo export ───────────────────────────────
     check (scalarFieldCount() == static_cast<std::size_t> (kExpectedScalars),
            "scalarFieldCount() cuenta los escalares de la tabla, no un 22 escrito a mano");
     check (layout.size() - scalarFieldCount()

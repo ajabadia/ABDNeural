@@ -49,6 +49,11 @@
  */
 
 import createModule from './neuronik_dsp.js';
+// La traduccion indice -> offset + clase vive en un modulo aparte porque el
+// puente publica las dos mitades y aqui no hay nada que decidir: lo que se
+// escribia con `INT_FIELDS` y `BPM_FIELD` escritas a mano son copias del
+// struct, y una copia se queda vieja sin avisar (ver `gpMirror.js`).
+import { readGpLayout, writeGpField as writeGpFieldIn } from './gpMirror.js';
 
 const EVENT_TYPE = { NOTE_ON: 0, NOTE_OFF: 1, PITCH_BEND: 2, CHANNEL_PRESSURE: 3 };
 
@@ -57,14 +62,8 @@ const MORPH_Z_DESTINATION = 28;
 const EVENT_BYTES = 24; // Runtime::Event: 4xi32 + f32 + i32 (static_assert'd)
 const MAX_EVENTS_PER_BLOCK = 16;
 
-/** Field 2 (bpm) is a double inside GlobalParams: written through the f64 view. */
-const BPM_FIELD = 2;
-// Fields whose GlobalParams member is a C++ int (DspTypes.h): written via
-// Int32 — an f32 write leaves the IEEE bit pattern (2.0 -> 0x40000000),
-// which the engine reads as garbage (route.source -> jlimit clamps it away).
-// Order-sensitive with the bridge layout: lfo{1,2}.{waveform,syncMode,
-// rhythmicDivision} and modMatrix[r].{source,destination}; amounts are float.
-const INT_FIELDS = new Set([12, 14, 15, 17, 19, 20, 22, 23, 25, 26, 28, 29, 31, 32]);
+// El bpm (unico double del espejo) y el resto de escalares: lo default que
+// el motor ya trae de su struct y que la pagina no tiene que mandar.
 const DEFAULT_BPM = 120.0;
 
 class NeuronikProcessor extends AudioWorkletProcessor {
@@ -169,16 +168,10 @@ class NeuronikProcessor extends AudioWorkletProcessor {
     // `paramsFieldCount` diria 94 cuando el layout tiene 58. Se conserva el
     // export para quien pida la cola sin los escalares delante, pero quien
     // escribe por indice de campo usa esta tabla y solo esta.
-    const fieldCount = Module._neuronikGlobalParamsLayout (0, 0);
-    this.paramsFieldCount = fieldCount;
+    // Offset Y clase, los dos del puente y de la misma tabla.
+    this.gpLayout = readGpLayout (Module);
+    this.paramsFieldCount = this.gpLayout.fieldCount;
     this.reportedMissingCount = 0;
-
-    const layoutPtr = Module._malloc (4 * fieldCount);
-    Module._neuronikGlobalParamsLayout (layoutPtr, fieldCount);
-    this.gpFieldByteOffsets = Array.from (
-      Module.HEAP32.subarray (layoutPtr >> 2, (layoutPtr >> 2) + fieldCount));
-
-    Module._free (layoutPtr);
 
     this.gpMirror = new ArrayBuffer (this.gpSize);
     this.gpF32 = new Float32Array (this.gpMirror);
@@ -273,31 +266,22 @@ class NeuronikProcessor extends AudioWorkletProcessor {
     Module._neuronikSetVoiceEnvelope (this.vePtr, this.veSize);
   }
 
-  /** Write one GlobalParams field by layout index (handles the f64 bpm slot). */
+  /**
+   * Un campo del espejo, por indice de campo. De que vista se escribe lo
+   * decide el puente (`gpMirror.js`), no este fichero.
+   */
   writeGpField(fieldIndex, value) {
-    const byteOffset = this.gpFieldByteOffsets[fieldIndex];
-    if (byteOffset === undefined) {
-      // Un campo que el LAYOUT no publica no tiene donde escribir, y
-      // hasta aqui se lo comia sin decir nada: con el .wasm viejo, que
-      // solo publicaba 34 campos, los seis del bus no llegaban al
-      // motor y ningun knob se quejaba. Ahora se cuentan y se avisa.
-      this.noteMissingField (fieldIndex);
-      return;
-    }
+    const escrito = writeGpFieldIn (this.gpLayout, fieldIndex, value, {
+      f32: this.gpF32,
+      i32: this.gpI32,
+      f64: this.gpF64,
+    });
 
-    if (fieldIndex === BPM_FIELD) {
-      const f64Offset = byteOffset / 8;
-      if (Number.isInteger (f64Offset)) this.gpF64[f64Offset] = Number (value);
-      return;
-    }
-
-    const f32Offset = byteOffset / 4;
-    if (INT_FIELDS.has (fieldIndex)) {
-      // C++ int member: store the integer value, never its f32 bit pattern.
-      if (Number.isInteger (f32Offset)) this.gpI32[f32Offset] = Math.round (Number (value));
-      return;
-    }
-    if (Number.isInteger (f32Offset)) this.gpF32[f32Offset] = Number (value);
+    // Un campo que el LAYOUT no publica no tiene donde escribir, y hasta
+    // aqui se lo comia en silencio: con el .wasm viejo, que solo publicaba
+    // 34 campos, los seis del bus no llegaban al motor y ningun knob se
+    // quejaba. Ahora se cuentan y se avisa.
+    if (!escrito) this.noteMissingField (fieldIndex);
   }
 
   /**

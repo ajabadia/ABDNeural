@@ -82,6 +82,7 @@ lo de la primera mitad del fichero cuenta cómo se llegó, no qué es cierto hoy
 - [ctest 51/51 y el bus del hueco ya viaja al navegador (2026-09-29)](#ctest-5151-y-el-bus-del-hueco-ya-viaja-al-navegador-2026-09-29) — el ctest completo al 100%, los 7 fallos del 85% atribuidos, y lo que queda del `.wasm`
 - [Los tests de paridad dejan de concatenar la cola del layout (2026-09-29)](#los-tests-de-paridad-dejan-de-concatenar-la-cola-del-layout-2026-09-29) — la tabla unica del layout, y la relacion entre los dos exports comprobada
 - [El aviso de mandos sin motor se ve en la pagina, no solo en la consola (2026-09-29)](#el-aviso-de-mandos-sin-motor-se-ve-en-la-pagina-no-solo-en-la-consola-2026-09-29) — `unreachableFieldIds` en la linea de audio, con los ids en el tooltip
+- [El espejo del navegador tiene UNA tabla: offset y clase, los publica el puente (2026-09-29)](#el-espejo-del-navegador-tiene-una-tabla-offset-y-clase-los-publica-el-puente-2026-09-29) — sin `INT_FIELDS` ni `BPM_FIELD`: la clase la publica el puente y la traduccion vive en un modulo testeable
 
 ### Arquitectura de la página y modo local
 
@@ -8913,3 +8914,64 @@ No hizo falta tocar `app.js`: `engineSnapshot` ya era una copia de
 
 > Canon: un aviso tiene que **saber retirarse**. Enseñar de mas para no perder un
 > fallo es cambiar un fallo silencioso por un falso positivo permanente.
+## El espejo del navegador tiene UNA tabla: offset y clase, los publica el puente (2026-09-29)
+
+Pendiente **1** de la entrada del ctest, cerrado, y de paso la mitad testeable
+del 2.
+
+El trabajoLET llevaba dentro `INT_FIELDS = new Set([12, 14, 15, 17, 19, 20, 22,
+23, 25, 26, 28, 29, 31, 32])` y `BPM_FIELD = 2`. Eran una **COPIA del struct**:
+si un miembro nuevo fuera `int` y nadie lo anadiera a la lista, el espejo lo
+escribia con `Float32Array` y el motor leia el patron de bits de IEEE (un 2.0
+como `0x40000000`). Sin excepcion, sin aviso, el mando se movia y no sonaba. La
+misma copia estaba en `localMorphZRouteTest.mjs` y, con otra forma, en
+`neuronik_wasm_parity.mjs`.
+
+### Que hay ahora
+
+- `GlobalParamsLayout.h` tiene **una** tabla, `GlobalParamField { offset, kind }`,
+  y de ella salen los TRES exports: los offsets enteros, la cola renumerada y la
+  clase de cada campo (`neuronikGlobalParamsFieldKinds`, nuevo). `scalarFieldCount()`
+  cuenta `kScalarFields`, que es la MISMA tabla que empieza el constructor: el
+  corte del segundo export ya no puede separarse del layout.
+- `public/worklet/gpMirror.js` (nuevo) tiene la traduccion, y el worklet, los dos
+  tests de node y vitest la **importan**. Por eso el worklet ya no tiene dos
+  listas: tiene una llamada.
+- `WasmLayoutOrderTest` afirma los 14 enteros uno a uno, que no haya ninguno mas
+  y que el unico `double` siga siendo el bpm.
+
+### Lo que NO se ha hecho, y por que
+
+El `.wasm` de este commit **incluye tambien el trabajo sin commitear del otro
+hilo** en `NeuronikEngine.cpp` (empujar la modulacion a los huecos) y en
+`FxCatalogue.h`, porque se compilo con el arbol tal y como estaba. La alternativa
+—no versionarlo— dejaba el worklet llamando a un export que el binario del
+repositorio no tiene, o sea el arbol roto para quien lo clone. Cuando el otro
+hilo cierre lo suyo, el proximo `build_wasm.bat` lo recoge; el hash de aqui
+(`cd9da3240243`) solo sirve para el diagnostico del aviso de `neuronik:layout`.
+
+### Verificado
+
+- `NEURONiK_WasmLayoutOrderTest` OK, con los tres checks nuevos de clase.
+- **Control negativo** en las tres capas: `lfo1.syncMode` puesto a float rompe el
+  test nativo (`campo 14: vale 0, deberia ser 1` + "no hay campos enteros mas
+  alla"), y en el modulo `writeGpField` escribiendo los enteros como float deja
+  `1105199104` (= `0x41C00000`, el patron de bits de 28.0) donde deberia haber un
+  28.
+- `neuronik_wasm_parity.mjs`: `[layout] OK` y paridad **bit-exacta en los 9 casos**.
+  `localMorphZRouteTest.mjs`: 19 `[ok]`, 0 `[FAIL]`. `workletMirrorLayoutTest.mjs`:
+  3/3.
+- vitest **471** con 466 en verde. Los 5 rojos son de otro hilo: esta reescribiendo
+  `WebUI/src/ui/envelopeViews.js` y ha borrado `WebUI/src/ui/envelopeCurve.js`
+  (ficheros que este commit no toca), y las pruebas de la ficha ENVOLVENTES no
+  montan mientras tanto.
+
+> Canon: un numero de campo NO es solo un indice, es un indice **y una clase**.
+> Los dos son hechos del struct de C++, asi que los dos los publica quien tiene
+> el struct. Una lista de "estos son enteros" escrita en JS es una copia, y las
+> copias se quedan viejas en silencio.
+
+> Canon: si un modulo tiene un `if` sobre una lista escrita a mano para poder
+> distinguir un caso, esa lista deberia ser un parametro que venga de la fuente.
+> Y si además ese modulo se registra al importarse y no exporta nada, su
+> logica no es testeable: es momento de partirlo en dos.

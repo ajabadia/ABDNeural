@@ -15,8 +15,8 @@
     Event layout: Runtime::Event is standard-layout, 24 bytes:
       [0]i32 type  [1]i32 channel  [2]i32 note  [3]i32 value14
       [4]f32 value [5]i32 sampleOffset
-    GlobalParams: JS never hardcodes offsets. TWO exports publish the order
-    (both built from the same globalParamsLayout(), in
+    GlobalParams: JS never hardcodes offsets. THREE exports publish the layout
+    (all built from the same globalParamsLayout(), in
     GlobalParamsLayout.h, so they cannot disagree):
       - neuronikGlobalParamsLayout: the WHOLE layout, and the numbering
         the page writes by — the 22 scalars, the 4x3 modulation matrix and
@@ -26,7 +26,11 @@
         bus), renumbered from zero, for a caller that wants the matrix and
         the bus without the globals in front. It is a VIEW of the tail of
         the layout above, NOT a continuation: appending it to the full
-        layout would duplicate the matrix and the bus.
+        layout would duplicate the matrix and the bus;
+      - neuronikGlobalParamsFieldKinds: the CLASS of each field in that
+        same order (0 float, 1 int, 2 double). The offset says WHERE to
+        write; this says WITH WHICH VIEW, and that is also a fact about the
+        struct, so it does not belong in a hand-written list in JS.
     ADSR de la voz: el POD VoiceEnvelopeWire (8 floats) en su propio canal,
     con el mismo patron (voiceEnvelopeSize/Layout + setVoiceEnvelope).
 
@@ -236,7 +240,8 @@ WASM_EXPORT int neuronikGlobalParamsLayout (int* outOffsets, int maxFields)
     {
         const int n = count < maxFields ? count : maxFields;
         for (int i = 0; i < n; ++i)
-            outOffsets[i] = static_cast<int> (layout[static_cast<std::size_t> (i)]);
+            outOffsets[i] = static_cast<int> (
+                layout[static_cast<std::size_t> (i)].offset);
         return n;
     }
 
@@ -490,11 +495,47 @@ WASM_EXPORT int neuronikModMatrixLayout (int* outOffsets, int maxFields)
     {
         const int n = total < maxFields ? total : maxFields;
         for (int i = 0; i < n; ++i)
-            outOffsets[i] = static_cast<int> (layout[first + static_cast<std::size_t> (i)]);
+            outOffsets[i] = static_cast<int> (
+                layout[first + static_cast<std::size_t> (i)].offset);
         return n;
     }
 
     return total;
+}
+
+/**
+ * DE QUE CLASE SE ESCRIBE CADA CAMPO del layout, en el MISMO orden y con
+ * la MISMA numeracion que `neuronikGlobalParamsLayout` (0 = float, 1 = int,
+ * 2 = double).
+ *
+ * Es el otro medio del espejo: el offset dice DONDE, esta tabla dice CON QUE
+ * VISTA. Los dos salen de `globalParamsLayout()` (una sola tabla en
+ * `GlobalParamsLayout.h`), asi que no pueden separarse.
+ *
+ * POR QUE LO PUBLICA EL PUENTE y no lo escribe el worklet: la lista que
+ * tenia alli (`INT_FIELDS`, `BPM_FIELD`) era una COPIA del struct. Un
+ * miembro nuevo que fuera `int` se escribia con `Float32Array` y el motor
+ * leia el patron de bits de IEEE -- un valor entero como 2.0 se leia como
+ * 0x40000000. Sin excepcion, sin aviso: el mando se movia y no sonaba.
+ *
+ * Mismo contrato que los otros dos: con `outKinds == nullptr` contesta
+ * cuantos campos hay.
+ */
+WASM_EXPORT int neuronikGlobalParamsFieldKinds (int* outKinds, int maxFields)
+{
+    const auto layout = globalParamsLayout();
+    const auto count = static_cast<int> (layout.size());
+
+    if (outKinds != nullptr)
+    {
+        const int n = count < maxFields ? count : maxFields;
+        for (int i = 0; i < n; ++i)
+            outKinds[i] = static_cast<int> (
+                layout[static_cast<std::size_t> (i)].kind);
+        return n;
+    }
+
+    return count;
 }
 
 WASM_EXPORT void neuronikAllNotesOff()

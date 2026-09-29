@@ -54,6 +54,11 @@ const asUrl = (...segments) => `file://${path.join(...segments).split(path.sep).
 
 const { createParameterStore } = await import(asUrl(webuiRoot, 'src/contracts/paramStore.js'));
 const { gpFieldsFromState } = await import(asUrl(webuiRoot, 'src/wasm/audioParams.js'));
+// El MISMO modulo que usa el worklet (`public/worklet/gpMirror.js`): offset
+// y clase, las dos mitades del espejo publicadas por el puente. Este test
+// no reimplementa la traduccion para poder comprobarla, la usa.
+const { readGpLayout, writeGpField } =
+  await import(asUrl(webuiRoot, 'public/worklet/gpMirror.js'));
 const { SCREEN_PARAMETER_IDS } = await import(asUrl(webuiRoot, 'src/contracts/screens.js'));
 
 const wasmBinary = fs.readFileSync(wasmPath);
@@ -115,44 +120,18 @@ check(store2.seedLocalMorphZRoute() === false,
 const gpSize = Module._neuronikGlobalParamsSize();
 const gpPtr = Module._malloc(gpSize);
 
-const fieldCount = Module._neuronikGlobalParamsLayout(0, 0);
-const layoutPtr = Module._malloc(4 * fieldCount);
-Module._neuronikGlobalParamsLayout(layoutPtr, fieldCount);
-
-// UNA sola tabla, la del layout COMPLETO y con los indices que escribe la
-// pagina: 0..21 escalares, 22..33 matriz, 34.. el bus.
-//
-// ANTES se concatenaba con `neuronikModMatrixLayout` porque aquel solo
-// publicaba los doce de la matriz y asi quedaba el conjunto. Ahora
-// `neuronikModMatrixLayout` es la COLA de esta, renumerada desde cero
-// (la matriz y el bus), y concatenarla duplicaba justo eso: la tabla
-// llegaba con 94 entradas para un layout de 58, y el indice 58
-// apuntaba a la matriz otra vez. Es lo mismo que se hizo en el worklet.
-const byteOffsets = Array.from(
-    Module.HEAP32.subarray(layoutPtr >> 2, (layoutPtr >> 2) + fieldCount));
-
-Module._free(layoutPtr);
-
-// Misma disciplina que el worklet: bpm es f64 y los choice/int se escriben enteros.
-const BPM_FIELD = 2;
-const INT_FIELDS = new Set([12, 14, 15, 17, 19, 20, 22, 23, 25, 26, 28, 29, 31, 32]);
+// El layout y la clase de cada campo, del puente y por el modulo del worklet.
+const layout = readGpLayout(Module);
+const byteOffsets = layout.byteOffsets;
 
 const mirror = new ArrayBuffer(gpSize);
-const f32 = new Float32Array(mirror);
-const f64 = new Float64Array(mirror);
-const i32 = new Int32Array(mirror);
+const vistas = {
+    f32: new Float32Array(mirror),
+    f64: new Float64Array(mirror),
+    i32: new Int32Array(mirror),
+};
 
-function writeField(fieldIndex, value)
-{
-    const byteOffset = byteOffsets[fieldIndex];
-    if (byteOffset === undefined) return;
-
-    if (fieldIndex === BPM_FIELD) { f64[byteOffset / 8] = Number(value); return; }
-
-    const offset = byteOffset / 4;
-    if (INT_FIELDS.has(fieldIndex)) i32[offset] = Math.round(Number(value));
-    else f32[offset] = Number(value);
-}
+const writeField = (fieldIndex, value) => writeGpField(layout, fieldIndex, value, vistas);
 
 const fields = gpFieldsFromState(parameters);
 
@@ -164,6 +143,9 @@ const fields = gpFieldsFromState(parameters);
 const fueraDelLayout = fields
     .map(([fieldIndex]) => fieldIndex)
     .filter((fieldIndex) => fieldIndex >= byteOffsets.length);
+
+check(layout.fieldCount === Module._neuronikGlobalParamsLayout(0, 0),
+      `el puente publica ${layout.fieldCount} campos con offset y con clase`);
 
 check(fueraDelLayout.length === 0,
       `los ${fields.length} campos que escribe la pagina estan en el layout del motor`

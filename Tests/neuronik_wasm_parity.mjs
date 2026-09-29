@@ -67,6 +67,15 @@ const ULP_BUDGET = { A_neuronik_default: 0, B_neurotik_default: 0, C_fx_panico: 
 const jsPath = path.resolve(process.cwd(), jsPathArg);
 const jsonPath = path.resolve(process.cwd(), jsonPathArg ?? 'build-wasm/parity-native.json');
 
+// El MISMO modulo que usa el worklet: la traduccion indice -> offset + clase,
+// con las dos mitades publicadas por el puente. Este test no la
+// reimplementa para poder comprobarla, la usa.
+const asUrl = (...segments) => `file://${path.join(...segments).split(path.sep).join('/')}`;
+const thisDir = path.dirname(fileURLToPath(import.meta.url));
+const { readGpLayout } = await import(
+  asUrl(thisDir, '..', 'WebUI', 'public', 'worklet', 'gpMirror.js'));
+
+
 const wasmBinary = await readFile(jsPath.replace(/\.js$/, '.wasm'));
 const reference = JSON.parse(await readFile(jsonPath, 'utf8'));
 
@@ -160,6 +169,14 @@ Module._neuronikGlobalParamsLayout(layoutPtr, layoutSize);
 
 const MOD_MATRIX_FIELD = 22;   // primera ruta de la matriz en el layout
 
+// De que clase se escribe cada campo, LO DICE EL PUENTE. Antes de esto esta
+// seccion decia que lfo.waveform y modMatrix.source son enteros porque sus
+// NOMBRES lo decian, y un nombre del struct es una copia que se puede
+// quedar vieja sin decir nada.
+const fieldKinds = readGpLayout(Module).fieldKinds;
+const isInt = (i) => fieldKinds[i] === 1;      // 1 = Int32
+const isDouble = (i) => fieldKinds[i] === 2;   // 2 = Float64 (el bpm)
+
 // LA RELACION ENTRE LOS DOS EXPORTS, comprobada y no supuesta. Este test
 // ya no concatenaba la cola porque duplicaba la matriz y el bus, pero
 // entonces nadie comprobaba QUE es esa cola, y "lo que publica el segundo
@@ -221,6 +238,7 @@ function writeParams(p) {
 
   const setF32 = (i, v) => { heapF32[(gpPtr + off(i)) >> 2] = v; };
   const setI32 = (i, v) => { heap32[(gpPtr + off(i)) >> 2] = v; };
+  const setByKind = (i, v) => (isInt(i) ? setI32(i, v) : setF32(i, v));
 
   // Orden documentado en NeuronikWasmBridge.cpp (globalParamsLayout):
   // 0 masterLevel, 1 saturationAmt, 2 bpm, 3 delayTime, 4 delayFB,
@@ -228,18 +246,20 @@ function writeParams(p) {
   // 10 reverbWidth, 11 reverbMix, 12-16 lfo1, 17-21 lfo2, luego modMatrix
   // (12 campos, desde MOD_MATRIX_FIELD) y despues el bus de cada hueco.
   setF32(0, p.masterLevel); setF32(1, p.saturationAmt); setF64At(gpPtr + off(2), p.bpm);
+  if (!isDouble(2))
+    console.error('[layout] AVISO: el campo 2 (bpm) ya no es el unico double');
   setF32(3, p.delayTime);   setF32(4, p.delayFB);
   setF32(5, p.chorusRate);  setF32(6, p.chorusDepth); setF32(7, p.chorusMix);
   setF32(8, p.reverbSize);  setF32(9, p.reverbDamping); setF32(10, p.reverbWidth); setF32(11, p.reverbMix);
   for (const [idx, lfo] of [[12, p.lfo1], [17, p.lfo2]]) {
-    setI32(idx + 0, lfo.waveform); setF32(idx + 1, lfo.rateHz);
-    setI32(idx + 2, lfo.syncMode); setI32(idx + 3, lfo.rhythmicDivision);
+    setByKind(idx + 0, lfo.waveform); setF32(idx + 1, lfo.rateHz);
+    setByKind(idx + 2, lfo.syncMode); setByKind(idx + 3, lfo.rhythmicDivision);
     setF32(idx + 4, lfo.depth);
   }
   for (let r = 0; r < 4; ++r) {
-    heap32[(gpPtr + off(MOD_MATRIX_FIELD + r * 3 + 0)) >> 2] = p.modMatrix[r].source;
-    heap32[(gpPtr + off(MOD_MATRIX_FIELD + r * 3 + 1)) >> 2] = p.modMatrix[r].destination;
-    heapF32[(gpPtr + off(MOD_MATRIX_FIELD + r * 3 + 2)) >> 2] = p.modMatrix[r].amount;
+    setByKind(MOD_MATRIX_FIELD + r * 3 + 0, p.modMatrix[r].source);
+    setByKind(MOD_MATRIX_FIELD + r * 3 + 1, p.modMatrix[r].destination);
+    setF32(MOD_MATRIX_FIELD + r * 3 + 2, p.modMatrix[r].amount);
   }
   Module._neuronikSetGlobalParams(gpPtr, gpSize);
 }
