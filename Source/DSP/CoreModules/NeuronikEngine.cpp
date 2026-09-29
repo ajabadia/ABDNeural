@@ -197,8 +197,8 @@ constexpr ModDestinationDescriptor kModDestinations[kNumModDestinations] =
     { Kind::envAdd, 7, &IVoice::modEnvFltSustain, nullptr, {} },   // 15  Flt Sustain  --  aditiva
     { Kind::envAdd, 7, &IVoice::modEnvFltRelease, nullptr, {} },   // 16  Flt Release  --  aditiva
     { {}, Kind::globalFxAdd, -1, nullptr, nullptr, 0 * kFxBusParams + 0 },   // 17  Saturation  --  el DRIVE del hueco 1 (2026-09-29)
-    { {}, Kind::globalAdd, -1, nullptr, &GlobalParams::delayTime },   // 18  Delay Time  --  FX del bus
-    { {}, Kind::globalAdd, -1, nullptr, &GlobalParams::delayFB },   // 19  Delay FB  --  FX del bus
+    { {}, Kind::globalFxAdd, -1, nullptr, nullptr, 2 * kFxBusParams + 0 },   // 18  Delay Time  --  el TIME del hueco 3 (2026-09-29)
+    { {}, Kind::globalFxAdd, -1, nullptr, nullptr, 2 * kFxBusParams + 1 },   // 19  Delay FB  --  la REALIMENTACION del hueco 3 (2026-09-29)
     { {}, Kind::voiceAdd, -1, &IVoice::modParity, nullptr },   // 20  Odd/Even Bal
     { {}, Kind::voiceAdd, -1, &IVoice::modShift, nullptr },   // 21  Spectral Shift
     { {}, Kind::voiceAdd, -1, &IVoice::modRolloff, nullptr },   // 22  Harm Roll-off
@@ -387,10 +387,23 @@ static_assert (modDestinationLabelIs (17, "Saturation")    && kModDestinations[1
                                                           && kModDestinations[17].busParam == 0 * kFxBusParams + 0
                                                           && kModDestinations[17].add.global == nullptr,
                "destino 17: Saturacion es el drive del hueco 1, no de voz");
-static_assert (modDestinationLabelIs (18, "Delay Time")    && kModDestinations[18].add.global == &GlobalParams::delayTime,
-               "destino 18: Delay Time es un parametro global (FX)");
-static_assert (modDestinationLabelIs (19, "Delay FB")      && kModDestinations[19].add.global == &GlobalParams::delayFB,
-               "destino 19: Delay FB es un parametro global (FX)");
+// Los destinos 18 y 19 modulaban `GlobalParams::delayTime` y `delayFB`, los dos
+// mandos PLANOS del retardo. Con los cuatro huecos han migrado al bus, el motor
+// ya no los mira, asi que escribir en esos dos campos fue exactamente el fallo que
+// el destino 17 tenia: una ruta que suma a un sitio del que nadie lee, que se ve
+// como "la matriz no hace nada" y no como un error. Ahora apuntan a los dos
+// primeros mandos del hueco 3, que es donde vive el retardo. Los tres
+// los tres destinos del bus se comprueban igual que el 17, uno a uno: son el mismo
+// mecanismo y la misma pregunta, y el hueco 3 se cuenta desde cero (0 = el
+// primero) para que un hueco que se mueva lo note el aserto.
+static_assert (modDestinationLabelIs (18, "Delay Time")    && kModDestinations[18].add.kind == Kind::globalFxAdd
+                                                          && kModDestinations[18].busParam == 2 * kFxBusParams + 0
+                                                          && kModDestinations[18].add.global == nullptr,
+               "destino 18: Delay Time es el time del hueco 3, no de voz");
+static_assert (modDestinationLabelIs (19, "Delay FB")      && kModDestinations[19].add.kind == Kind::globalFxAdd
+                                                          && kModDestinations[19].busParam == 2 * kFxBusParams + 1
+                                                          && kModDestinations[19].add.global == nullptr,
+               "destino 19: Delay FB es la realimentacion del hueco 3, no de voz");
 static_assert (modDestinationLabelIs (20, "Odd/Even Bal")  && kModDestinations[20].add.voice == &IVoice::modParity,
                "destino 20: Odd/Even Bal");
 static_assert (modDestinationLabelIs (21, "Spectral Shift")&& kModDestinations[21].add.voice == &IVoice::modShift,
@@ -496,6 +509,14 @@ void NeuronikEngine::applyModulation()
         }
         else if (descriptor.add.kind == ModRule::Kind::globalAdd)
         {
+            // Desde 2026-09-29 NINGUNA fila usa esta rama: los destinos 18 y 19
+            // (los dos unicos que la usaban) migraron al bus con el 17, porque
+            // los cuatro huecos se rellenan desde `p.fx[slot]`. Se queda el
+            // mecanismo entero --es el modo de mover un campo de `GlobalParams`
+            // que no es un mando de bus-- y no se quita, para que el proximo
+            // mando global que aparezca (el volumen maestro, un envio) tenga el
+            // camino hecho en vez de un Kind nuevo. Con cero filas usandolo, un
+            // error aqui no se ve, asi que conviene saber que esta ahi.
             currentGlobalParams.* (descriptor.add.global) += rawMod * units.scale;
         }
         else if (descriptor.add.kind == ModRule::Kind::globalFxAdd)
@@ -512,6 +533,41 @@ void NeuronikEngine::applyModulation()
                     += rawMod * units.scale;
         }
     }
+
+    // ── LO QUE SE ESCRIBE ARRIBA, HAY QUE EMPUJARLO A LOS HUECOS ────────────
+    //
+    // Este bloque se GUARDABA ENTERO sin hacer nada audible, y no era un problema
+    // de la tabla sino del ORDEN. Por bloque de host:
+    //
+    //   1. updateParameters()             -> currentGlobalParams = pendingGlobalParams,
+    //                                        y fx.updateFromGlobalParams() empuja los
+    //                                        mandos a los huecos.
+    //   2. renderVoicesWithControlRate()  -> applyModulation(), que ESCRIBE en
+    //                                        currentGlobalParams (este bloque de ahi).
+    //   3. applyGlobalFX()                -> fx.process(), que renderiza con lo que
+    //                                        se empujó en el paso 1.
+    //
+    // O sea: la matriz escribía en `currentGlobalParams`, y ese struct no vuelve a
+    // empujarse hasta el bloque siguiente, donde `currentGlobalParams =
+    // pendingGlobalParams` lo pisa entero. Los destinos `globalAdd` (18 Delay
+    // Time, 19 Delay FB) y `globalFxAdd` (17, el drive del hueco 1) sumaban a un
+    // struct que nadie leía: se podían SELECCIONAR, la página los ofrecía como
+    // ruta válida, el contrato compartido declaraba su parameterId, y el botón
+    // de saturación no se movía. Nada rompía y nada sonaba, que es la clase de
+    // fallo más incómoda que hay.
+    //
+    // POR QUÉ VA AQUÍ Y NO EN applyGlobalFX(). Va aquí porque este es el ÚNICO
+    // sitio que sabe que ha escrito en `currentGlobalParams`, y porque la
+    // escritura es POR TRAMO DE CONTROL (kControlBlockSize, 64 muestras): con la
+    // rejilla de control el empuje va al ritmo del LFO, que es justo lo que se
+    // quiere de una modulación.
+    //
+    // Y POR QUÉ SE EMPUJA LA CADENA ENTERA y no solo los mandos que la matriz
+    // tocó. `updateFromGlobalParams` es una docena de escrituras sin creación ni
+    // destrucción (ver su cabecera), y una versión "solo lo que la matriz tocó"
+    // sería una SEGUNDA lista que hay que mantener al día con la tabla de reglas
+    // de arriba. Ese segundo sitio es exactamente donde se olvidaría un mando.
+    fx.updateFromGlobalParams (currentGlobalParams);
 }
 
 void NeuronikEngine::updateParameters()

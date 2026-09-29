@@ -75,11 +75,23 @@ export const CONTRACT_TO_GP_FIELD = {
   mod4Destination: 32,
   mod4Amount: 33,
 
-  // El BUS DEL HUECO 1 (2026-09-29), que empieza en el field 34: los cuatro
-  // mandos, luego la ganancia y la mezcla; y a partir del 40 el hueco 2, que
-  // todavia NO esta migrado y por eso no se escribe desde aqui. Los numeros
-  // salen del orden que publica `neuronikGlobalParamsLayout`, y ese orden es
-  // `params[0..bus-1], gain, mix` por hueco — el mismo que en el puente.
+  // El BUS DEL HUECO 1 (2026-09-29), que empieza en el field 34: los DOCE
+  // mandos, luego la ganancia (46) y la mezcla (47); y a partir del 48 el hueco
+  // 2, que esta pagina todavia NO mapea. Los numeros salen del orden que publica
+  // `neuronikGlobalParamsLayout`, y ese orden es `params[0..bus-1], gain, mix`
+  // por hueco — el mismo que en el puente.
+  //
+  // EL ANCHO DEL BUS SON DOCE desde 2026-09-29, no cuatro: los cuatro huecos
+  // publican el bus entero porque el mando que el host automatiza tiene que ser
+  // el mismo para cualquier efecto, y porque es la forma que tiene ABDEep. Los
+  // ids planos de mas arriba (coro, retardo, reverb) se quedan donde estan, con
+  // el field que les toca, por dos razones: son indices publicados y borrarlos
+  // correria lo de detras; y `PresetMigrationFx.cpp` los lee al abrir un preset
+  // viejo. PERO EL MOTOR YA NO LOS MIRA (los cuatro huecos se rellenan por su
+  // bus), asi que en esta ruta --la pagina FUERA del plugin-- esos once knobs
+  // mueven el espejo y no suenan. El contrato los marca `notRouted` y la pagina
+  // los pinta como divergentes, que es la verdad. llevarlos al bus (con el
+  // viaje de unidades que hace falta) es el siguiente paso.
   //
   // Y ESE ORDEN ESTA FIJADO, no es una convencion: `NEURONiK_WasmLayoutOrderTest`
   // (Tests/WasmLayoutOrderTest.cpp) confronta estos numeros con los `offsetof`
@@ -98,8 +110,16 @@ export const CONTRACT_TO_GP_FIELD = {
   fx1Param2: 35,
   fx1Param3: 36,
   fx1Param4: 37,
-  fx1Gain: 38,
-  fx1Mix: 39,
+  fx1Param5: 38,
+  fx1Param6: 39,
+  fx1Param7: 40,
+  fx1Param8: 41,
+  fx1Param9: 42,
+  fx1Param10: 43,
+  fx1Param11: 44,
+  fx1Param12: 45,
+  fx1Gain: 46,
+  fx1Mix: 47,
 };
 
 /** El campo mas alto que escribe esta pagina. */

@@ -46,11 +46,44 @@ struct FxCatalogArtifacts
 /**
     Escribe el catalogo en `directory`.
 
+    NO ESCRIBE NADA SI EL CATALOGO ESTA INCOMPLETO. Es decir: si los motores de
+    `fxDefaultCatalogue()` y las identidades de `fxNeuronikIdentities()` no
+    miden lo mismo, esta funcion falla y deja los ficheros que hubiera como
+    estaban. La razon esta en la cabecera del `.cpp`: antes de este guard, un
+    desajuste entre las dos tablas devolvia `true` y escribia un catalogo de una
+    sola fila (bypass) que la WebUI se comia sin quejarse.
+
+    Por lo demas, escribe a temporal y renombra: un fallo a mitad no puede
+    dejar un `fx-catalog.generated.json` a medias, que es un modulo de efectos
+    entero que no se puede pintar.
+
     @param directory  la carpeta de salida (`WebUI/generated`)
     @param error      el motivo si fallo; vacio si salio bien
     @returns          true si los dos ficheros quedaron escritos
 */
 bool writeFxCatalogArtifacts (const std::string& directory, std::string& error);
+
+/**
+    Si el catalogo esta COMPLETO, sin escribir nada.
+
+    Expuesto aparte, y no solo como paso interno de la escritura, porque la
+    pregunta "se puede generar el catalogo?" tiene respuestas utiles sin
+    escribir: es lo que puede preguntar una toolchain antes de compilar, o un
+    test que quiera caer con la fila donde las dos tablas dejan de cubrirse en
+    vez de con un JSON de una fila.
+
+    OJO CON LO QUE PROMETE EL MENSAJE: dice DONDE dejan de cubrirse las dos
+    tablas, y no a que motor le falta el renglon. No se puede decir, y no por
+    falta de trabajo: los nombres de contrato y los tecnicos difieren a proposito
+    ("Stereo Chorus" / "chorus", "Shelf Filter" / "Shelf EQ"), y las dos tablas
+    van en el mismo orden, asi que en cuanto falta una fila todas las posiciones
+    posteriores se desplazan y cualquier acusacion senalaria al equivocado. El
+    `.cpp` explica el intento y por que se descarto.
+
+    @param error  el motivo si esta incompleto, con la fila donde falla; vacio si lo esta
+    @returns      true si esta completo
+*/
+bool fxCatalogIsPaired (std::string& error);
 
 /** El catalogo como JSON, en memoria. Es lo que escribe el fichero `.json`. */
 std::string fxCatalogAsJson();

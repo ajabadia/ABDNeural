@@ -78,17 +78,28 @@ describe('sections / cobertura del contrato', () => {
       .map((descriptor) => descriptor.id)
       .filter((id) => !covered.has(id));
 
-    // VACIA, y el propio test lo dice: hasta el 2026-09-29 esto era la
-    // lista de los CINCO del bus del hueco 1 que estaban sin celda. Ya no estan:
-    // el modulo del hueco esta montado (`fx1Type` y `fx1Gain` viven en la
-    // cabecera de su `.fx-module`, y `fx1Param2..4` en su rejilla de mandos, con
-    // las que el efecto declare y escondidas las demas).
+    // VACIA para todo lo que NO es el bus, y eso es lo que este test sigue
+    // vigilando: hasta el 2026-09-29 esto era la lista de los cinco del bus del
+    // hueco 1 que estaban sin celda, y ya no estan (el modulo del hueco esta
+    // montado: `fx1Type` y `fx1Gain` en la cabecera de su `.fx-module`, y
+    // `fx1Param2..4` en su rejilla).
     //
-    // Y NO SE BORRA EL TEST: sigue siendo la unica cuenta que dice "el APVTS
-    // entero esta cableado". Un `fx2Param1` que se cuele sin celda sale aqui
-    // nombrados, no desaparecen en un recuento que nadie mira.
-    const pendingSlotModule = [];
-    expect(missing).toEqual(pendingSlotModule);
+    // LOS 53 DEL BUS QUE LA PAGINA TODAVIA NO PINTA se cuentan aparte, y la
+    // APVTS los publica desde 2026-09-29 (los cuatro huecos con doce mandos cada
+    // uno) sin que la pagina tenga celda para ellos. Se separan por REGLA (los
+    // ids del bus seangen con el prefijo del hueco) y no con una lista escrita,
+    // porque una lista de 53 se queda vieja en el primer hueco que se pinte y
+    // ademas deja pasar el id nuevo sin que nadie lo mire. Con dos
+    // comprobaciones no se pierde nada: un id que NO sea del bus y no tenga
+    // celda sale en la primera, y el recuento de los del bus se fija en la
+    // segunda, asi que en cuanto la pagina pinte uno hay que venir aqui.
+    const esIdDelBus = (id) => /^fx[1-4](Type|Gain|Mix|Param[0-9]+)$/.test(id);
+    const pendientesDelBus = PARAMETERS
+      .map((descriptor) => descriptor.id)
+      .filter((id) => !covered.has(id) && esIdDelBus(id));
+
+    expect(missing.filter((id) => !esIdDelBus(id))).toEqual([]);
+    expect(pendientesDelBus.length).toBe(53);
   });
 
   it('lleva los 11 ids que el selftest del host comprueba', () => {

@@ -365,11 +365,18 @@ void NEURONiKProcessor::parameterChanged(const juce::String& parameterID, float 
     if (parameterID == IDs::midiChannel)
         allNotesOffRequested.store(true, std::memory_order_relaxed);
 
-    // --- El TIPO del hueco 1 (2026-09-29) ----------------------------------
+    // --- El TIPO de un hueco (2026-09-29) -----------------------------------
     // `FxSlot::setType` CREA y DESTRUYE la instancia del efecto, asi que no
     // puede correr en el hilo de audio (que es donde `updateFromGlobalParams`
     // empuja los mandos). Este es el sitio: el hilo de mensajes, que es donde
     // ya se cambia el motor entero unas lineas mas abajo.
+    //
+    // LOS CUATRO HUECOS, y de que hueco es lo dice el propio id
+    // (`fxBusSlotOfTypeId`), no cuatro `if` con cuatro numeros escritos: con
+    // el layout compuyendo los ids, un `if` por hueco es un sitio mas donde el
+    // hueco 3 puede recibir el tipo del 2. Y con `setSlotType` el hueco se
+    // reescribe entero despues del cambio, que es lo que hace que al poner un
+    // efecto nuevo no se pierdan los mandos que el panel ya tenia.
     //
     // Y HAY UNA DEUDA IGUAL QUE LA DEL INTERCAMBIO DE MOTOR, que se anota aqui
     // para no venderla como cosa hecha: este `engine` se puede estar usando en
@@ -377,12 +384,16 @@ void NEURONiKProcessor::parameterChanged(const juce::String& parameterID, float 
     // de motor ya lo hacia, y con el puntero entero), pero el `setType` de un
     // hueco encima es un caso mas. Arreglarlo de verdad es un mutex o una
     // suspension de audio que cubra AMBAS cosas, y eso es un cambio aparte.
-    if (parameterID == IDs::fx1Type && engine != nullptr)
     {
-        NEURONiK::DSP::GlobalParams bus;
-        fillGlobalParams (bus);
-        engine->setFxSlotType (0, static_cast<int> (newValue), bus.fx[0]);
-        return;
+        const int slot = fxBusSlotOfTypeId (parameterID);
+
+        if (slot >= 0 && engine != nullptr)
+        {
+            NEURONiK::DSP::GlobalParams bus;
+            fillGlobalParams (bus);
+            engine->setFxSlotType (slot, static_cast<int> (newValue), bus.fx[slot]);
+            return;
+        }
     }
 
     if (parameterID == IDs::engineType)
@@ -503,19 +514,33 @@ void NEURONiKProcessor::fillGlobalParams(NEURONiK::DSP::GlobalParams& gParams)
     gParams.masterLevel = apvts.getRawParameterValue(IDs::masterLevel)->load();
     gParams.bpm = apvts.getRawParameterValue(IDs::masterBPM)->load();
 
-    // El BUS del hueco 1 (2026-09-29). Los mandos van NORMALIZADOS porque el
-    // hueco habla normalizado (`FxSlot::setParameter`), que es donde esta el
-    // sesgo de la fila. Los huecos 2, 3 y 4 los mapean los mandos planos de mas
-    // abajo, y se migran igual que este uno.
-    gParams.fx[0].mix  = apvts.getRawParameterValue(IDs::fx1Mix)->load();
-    gParams.fx[0].gain = apvts.getRawParameterValue(IDs::fx1Gain)->load();
-    gParams.fx[0].params[0] = apvts.getRawParameterValue(IDs::fx1Param1)->load();
-    gParams.fx[0].params[1] = apvts.getRawParameterValue(IDs::fx1Param2)->load();
-    gParams.fx[0].params[2] = apvts.getRawParameterValue(IDs::fx1Param3)->load();
-    gParams.fx[0].params[3] = apvts.getRawParameterValue(IDs::fx1Param4)->load();
+    // El BUS DE LOS CUATRO HUECOS (2026-09-29). Los mandos van NORMALIZADOS
+    // porque el hueco habla normalizado (`FxSlot::setParameter`), que es donde
+    // esta el sesgo de la fila: el parametro del APVTS no puede llevar unidades
+    // fisicas porque el rango depende de que efecto este puesto, y el hueco lo
+    // cambia el usuario en caliente.
+    //
+    // Los ids los compone el layout (`fxBusParamId`/`fxBusFieldId`), asi que
+    // aqui no hay ni un literal: un id escrito a mano que el layout no declare
+    // daria `getRawParameterValue() == nullptr` y el bus entero de ese hueco
+    // se quedaria en el valor de C++ sin decir nada.
+    for (int slot = 0; slot < NEURONiK::DSP::kFxBusSlots; ++slot)
+    {
+        NEURONiK::DSP::FxSlotParams& bus = gParams.fx[slot];
 
-    // Effects: the full parameter set is forwarded, not just the mixes, so the
-    // rate/depth and size/damping/width controls actually reach the DSP.
+        bus.mix  = apvts.getRawParameterValue (fxBusFieldId (slot, "Mix"))->load();
+        bus.gain = apvts.getRawParameterValue (fxBusFieldId (slot, "Gain"))->load();
+
+        for (int i = 0; i < NEURONiK::DSP::kFxBusParams; ++i)
+            bus.params[i] = apvts.getRawParameterValue (fxBusParamId (slot, i))->load();
+    }
+
+    // LOS MANDOS PLANOS DE ABAJO SIGUEN LLENANDOSE, y el motor ya no los mira:
+    // los leen los cuatro huecos por su bus. No se borran porque son indices
+    // publicados del espejo del hilo de audio (`WebUI/src/wasm/audioParams.js`),
+    // y quitar un campo de en medio correria todos los de detras. Los que los
+    // lleva al bus de su hueco es `PresetMigrationFx.cpp`, al abrir un preset
+    // viejo; ver `Source/DSP/FxSlots.h`.
     gParams.chorusRate = apvts.getRawParameterValue(IDs::fxChorusRate)->load();
     gParams.chorusDepth = apvts.getRawParameterValue(IDs::fxChorusDepth)->load();
     gParams.chorusMix = apvts.getRawParameterValue(IDs::fxChorusMix)->load();

@@ -151,8 +151,11 @@ void NeurotikEngine::applyModulation()
             // indice vaparecido con el destino 17 de la tabla de NEURONiK
             // (ModRule::Kind::globalFxAdd, hueco 0, mando 0).
             case 17: currentGlobalParams.fx[0].params[0] += rawMod; break;
-            case 18: currentGlobalParams.delayTime += rawMod; break; 
-            case 19: currentGlobalParams.delayFB += rawMod; break;
+            // El 18 y el 19 son los dos primeros mandos del hueco 3 (el retardo),
+            // igual que el destino 17 es el primero del hueco 1: los mandos
+            // planos que se modulaban antes ya no los mira nadie.
+            case 18: currentGlobalParams.fx[2].params[0] += rawMod; break;
+            case 19: currentGlobalParams.fx[2].params[1] += rawMod; break;
             case 20: for (auto& v : voices) v->modParity += rawMod; break;
             case 21: for (auto& v : voices) v->modShift += rawMod; break; 
             case 22: for (auto& v : voices) v->modRolloff += rawMod; break;

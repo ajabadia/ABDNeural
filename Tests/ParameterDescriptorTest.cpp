@@ -28,10 +28,11 @@ namespace
     // FASE 11.3: + morphZ2/morphZ3 (los z de las capas 1 y 2) = 74.
     // 2026-09-26: - filterEnvAmount (la ruta ENV 2 -> Filter Cutoff de la matriz
     // es LA profundidad; el knob era la misma profundidad dos veces) = 73.
-    // 2026-09-29: el hueco 1 del rack de efectos sustituye al mando suelto
-    // `fxSaturation` por su bus: - 1 + 7 (tipo, ganancia, mezcla y cuatro
-    // mandos) = 79.
-    constexpr int EXPECTED_PARAMETER_COUNT = 79;
+    // 2026-09-29: los CUATRO huecos del rack de efectos publican su bus entero
+    // (tipo, ganancia, mezcla y doce mandos = 15 por hueco). El hueco 1 ya lo
+    // hacia con 7 (que ocupaba cuatro de los doce); los otros tres anaden 45:
+    // 79 - 7 + 60 = 132.
+    constexpr int EXPECTED_PARAMETER_COUNT = 132;
     // Audited against the real references in Source/, not against an assumption:
     // see the DSP_PARAMETERS.md section "Estado de implementación DSP".
     // FASE 10: 65 historicos + oscExciteBow + morphZ = 67.
@@ -45,9 +46,14 @@ namespace
     // PUESTO, no del cableado: en cuanto el selector de tipo cambie de efecto,
     // se oyen. Marcarlos como UI-only dira "nadie los lee" cuando el motor si
     // los lee, y ese descriptor es el que dice que hay modulo o no lo hay.
-    constexpr int EXPECTED_IMPLEMENTED_COUNT = 74;
+    // 2026-09-29: los once mandos planos de los efectos (coro, retardo y reverb)
+    // pasan a `notRouted` al migrar los cuatro huecos al bus: el motor ya no los
+    // mira. Siguen en el layout, pero lo que son es lo que se declara.
+    // Los 53 parametros del bus (60 - 7 del hueco 1) si los implementa el motor,
+    // y los once planos dejan de hacerlo: 74 - 7 + 60 - 11 = 116.
+    constexpr int EXPECTED_IMPLEMENTED_COUNT = 116;
     constexpr int EXPECTED_UI_ONLY_COUNT = 4;
-    constexpr int EXPECTED_NOT_ROUTED_COUNT = 1;
+    constexpr int EXPECTED_NOT_ROUTED_COUNT = 12;     // 1 + 11 mandos planos
 
     int failures = 0;
 
@@ -289,8 +295,19 @@ int main()
         check (freeze->dspStatus == ParameterDspStatus::uiOnly,
                "freezeFilter is flagged as a panel action");
 
-    if (const auto* mix = requireDescriptor (IDs::fxChorusMix))
-        check (mix->engines == ParameterEngine::both, "fxChorusMix is shared by both engines");
+    // El hueco 2 (coro) es el que dos motores comparten, y desde 2026-09-29 lo
+    // comparte por su BUS: `fx2Mix` es lo que llega a los dos motores, y el mando
+    // plano que lo hacia (`fxChorusMix`) ya no llega a ninguno.
+    if (const auto* mix = requireDescriptor (fxBusFieldId (1, "Mix")))
+        check (mix->engines == ParameterEngine::both, "FX 2 Mix is shared by both engines");
+
+    if (const auto* chorusMixPlano = requireDescriptor (IDs::fxChorusMix))
+    {
+        check (chorusMixPlano->engines == ParameterEngine::none,
+               "el mando plano del coro ya no lo lee ningun motor");
+        check (chorusMixPlano->dspStatus == ParameterDspStatus::notRouted,
+               "y el contrato lo declara como no cableado, no como implementado");
+    }
 
     // Connected by the 2026-09-16 wiring pass: channel filtering, velocity
     // shaping, MIDI thru, tempo sync and the effect parameters that previously
@@ -331,17 +348,41 @@ int main()
         check (sync2->dspStatus == ParameterDspStatus::implemented,
                "lfo2RhythmicDivision is now routed to the LFO");
 
+    // El sync se resuelve en el host, pero su destino (los segundos de retardo)
+    // los lleva el hueco 3 por su bus, asi que el parametro plano ya no lo
+    // cablea nadie: `notRouted` y sin motor. Los que convierten division+bpm en
+    // segundos son el host al migrar el preset (`PresetMigrationFx.cpp`).
     if (const auto* delaySync = requireDescriptor (IDs::fxDelaySync))
-        check (delaySync->engines == ParameterEngine::host,
-               "fxDelaySync is resolved host side into delay seconds");
+    {
+        check (delaySync->dspStatus == ParameterDspStatus::notRouted,
+               "fxDelaySync ya no llega al motor (lo usa el host al migrar el preset)");
+        check (delaySync->engines == ParameterEngine::none,
+               "y sin motor, que es lo que significa no estar cableado");
+        check (! delaySync->dspNote.isEmpty(),
+               "y el panel tiene un motivo que ensenar cuando se pasa por encima");
+    }
 
-    if (const auto* chorusRate = requireDescriptor (IDs::fxChorusRate))
+    // Los dos mandos que llegaron al coro y a la reverb siguen llegando, pero por
+    // el bus de su hueco: el 1 del hueco 2 es el rate del coro y el 1 del hueco 4
+    // es el size de la reverb. Son los mismos dos numeros que antes, con el
+    // mismo normalizado de fila, y ahora con un id que el host puede automatizar.
+    if (const auto* chorusRate = requireDescriptor (fxBusParamId (1, 0)))
         check (chorusRate->dspStatus == ParameterDspStatus::implemented,
-               "fxChorusRate now reaches the chorus");
+               "FX 2 Param 1 reaches the chorus (the bus replaced fxChorusRate)");
 
-    if (const auto* reverbSize = requireDescriptor (IDs::fxReverbSize))
+    if (const auto* reverbSize = requireDescriptor (fxBusParamId (3, 0)))
         check (reverbSize->dspStatus == ParameterDspStatus::implemented,
-               "fxReverbSize now reaches the reverb");
+               "FX 4 Param 1 reaches the reverb (the bus replaced fxReverbSize)");
+
+    // Y EL TIPO, que es lo que hace que todo lo demas tenga sentido: sin el, los
+    // doce mandos de un hueco serian doce numeros sin fila que los lea.
+    if (const auto* type = requireDescriptor (fxBusFieldId (3, "Type")))
+    {
+        check (type->kind == ParameterKind::choice, "FX 4 Type is a choice parameter");
+        check (type->choices.size() == 9, "el desplegable ofrece bypass y las ocho filas");
+        check (type->defaultChoiceIndex == NEURONiK::DSP::fxDefaultTypeForSlot (3),
+               "FX 4 Type arranca con el efecto de serie del hueco 4");
+    }
 
     if (const auto* unison = requireDescriptor (IDs::unisonEnabled))
         check (unison->dspStatus == ParameterDspStatus::notRouted,

@@ -85,17 +85,27 @@ int main()
     const Expected expected[] = {
         { "chorus",      10, "chorus",     true  },
         { "delay",       13, "delay",      true  },
-        { "reverb",       1, "reverb",     false },
-        { "saturation",  50, "distortion", false },
-        { "schroeder",   22, "reverb",     false },
+        { "reverb",      57, "reverb",     true  },
+        { "saturation",  58, "distortion", true  },
+        { "schroeder",   59, "reverb",     true  },
         { "bbd",         36, "chorus",     true  },
+        { "shelf",       60, "filter",     true  },
+        { "phaser",       9, "modulation", true  },
     };
 
     const int count = fxNeuronikCatalogueSize();
-    checkEquals (static_cast<int> (sizeof (expected) / sizeof (expected[0])), count,
-                 "el catalogo tiene las filas que el test espera");
+    const int esperado = static_cast<int> (sizeof (expected) / sizeof (expected[0]));
+    checkEquals (esperado, count, "el catalogo tiene las filas que el test espera");
 
-    for (int i = 0; i < count; ++i)
+    // Y el bucle se queda en lo que este test sabe mirar. Antes iba a `count` a
+    // pelo: al sixth motor --o al septimo, o al que sea-- se salia de la tabla
+    // `expected` y se caia accessing un `const char*` de la nada. Un test que
+    // se cae no dice nada, y ademas tapa el fallo de verdad, que es que
+    // faltaba una fila. Asi que el desajuste se ve como un `[FAIL]` y el resto
+    // del test sigue dando su resultado.
+    const int comprobables = esperado < count ? esperado : count;
+
+    for (int i = 0; i < comprobables; ++i)
     {
         const auto entry = fxNeuronikEffectAt (i + 1);
 
@@ -129,9 +139,9 @@ int main()
     // --- 3. Los ids son UNICOS y ninguno es el 0 ---------------------------
     // Un id repetido haria que dos motores pintaran el mismo numero, que es
     // justo el descuido que el contrato compartido ya documenta una vez (la
-    // lista de nombres de ABDEep). Con seis filas se comprueba aqui y no se
+    // lista de nombres de ABDEep). Con ocho filas se comprueba aqui y no se
     // deja a un test de la pagina.
-    for (int i = 0; i < count; ++i)
+    for (int i = 0; i < comprobables; ++i)
     {
         const auto a = fxNeuronikEffectAt (i + 1);
 
@@ -199,10 +209,12 @@ int main()
     }
 
     // --- 6. Las reservas estan declaradas como reservas -------------------
-    // Tres de los seis motores no tienen fila en el contrato compartido todavia
-    // (ver `FxCatalogue.h`). El numero va aqui a proposito: si aparece un motor
-    // nuevo, este test cae y obliga a decidir si es una fila o una reserva, en
-    // vez de que el numero se instale solo.
+    // Hoy las ocho filas tienen su motor en el contrato compartido, asi que no
+    // queda ninguna reserva: las que habia (el 1, el 50 y el 22) se rellenaron
+    // al entrar el 57, el 58 y el 59, y despues el 60 y el 9. El numero sigue
+    // aqui a proposito y sigue siendo cero a proposito: si aparece un motor
+    // nuevo sin fila en el contrato, este test cae y obliga a decidir si es una
+    // fila o una reserva, en vez de que el numero se instale solo.
     int aligned = 0;
     int reserved = 0;
 
@@ -219,8 +231,8 @@ int main()
             ++reserved;
     }
 
-    checkEquals (aligned, 3, "tres motores alineados con el contrato compartido");
-    checkEquals (reserved, 3, "tres ids reservados (sin fila todavia)");
+    checkEquals (aligned, 8, "los ocho motores alineados con el contrato compartido");
+    checkEquals (reserved, 0, "ningun id reservado (sin fila todavia)");
 
     std::printf ("\n%d alineados, %d reservados, bus de %d mandos\n", aligned, reserved, widest);
 

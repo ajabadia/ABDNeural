@@ -26,9 +26,18 @@
     efecto de cada hueco, ese `setType` vivira en el hilo de mensajes, que es
     donde puede.
 
-    LA MEZCLA DE CADA HUECO, que es la parte con mas criterio y la mas medida.
-    El slot mezcla SIEMPRE igual: `seca·(1 − mix) + mojado·mix·ganancia`. Los
-    cuatro efectos que venia aquí NO mezclaban asi:
+    LOS CUATRO HUECOS, Y UN SOLO CAMINO. Antes de 2026-09-29 el hueco 1 se
+    rellenaba por el BUS (`p.fx[0]`) y los otros tres por sus mandos planos, con
+    una traduccion distinta para cada uno. Desde ese dia los cuatro leen
+    `p.fx[slot]` y la traduccion es una sola: el bus va NORMALIZADO y lo
+    entrega tal cual. Lo que se lee de abajo no es como rellena hoy el motor, es
+    POR QUE los defaults del hueco son los que son (ver
+    `FxCatalogue.h::fxDefaultSlotParam`), que es la unica parte de la cadena que
+    no sale de la fila.
+
+    LA MEZCLA, que es la parte con mas criterio y la mas medida. El slot mezcla
+    SIEMPRE igual: `seca·(1 − mix) + mojado·mix·ganancia`. Los cuatro efectos que
+    venia aquí NO mezclaban asi:
 
       - la saturacion no mezclaba: `out = sat(in)`. Con `mix = 1` el slot hace
         exactamente eso, asi que va en INSERTO. Y con el mando a cero el slot
@@ -86,6 +95,23 @@ class FxSlots
 {
 public:
     //--- Que efecto va en que hueco ----------------------------------------
+    // El tipo lo elige el USUARIO (es el parametro `fxNType` del APVTS) y se
+    // queda apuntado aqui, no solo puesto en el hueco.
+    //
+    // POR QUE HACE FALTA APUNTARLO, y no es que el `prepare` lo pise. `prepare`
+    // es lo que hace `prepareToPlay`, que el host llama cuando cambia la tasa de
+    // muestreo, cuando abre una ventana o cuando carga un estado: sin este
+    // `types_`, un `prepare` devolvia los cuatro huecos a la cadena por defecto
+    // y el efecto que el usuario habia elegido se iba sin decir nada. El sintoma
+    // es el peor de los possibles --suena bien hasta que tocas algo-- y por eso
+    // el tipo se guarda en el unico sitio que sobrevive al `prepare`.
+    FxSlots() noexcept
+    {
+        for (int i = 0; i < kFxBusSlots; ++i)
+            types_[i] = typeForSlot (i);
+    }
+
+    //--- Que efecto va en que hueco ----------------------------------------
     // Los indices son los del CATALOGO + 1, porque el 0 es bypass en
     // `fxEffectAt`. El orden es el de la cadena de antes: saturacion, coro,
     // retardo, reverberacion.
@@ -105,7 +131,7 @@ public:
     }
 
     //==============================================================================
-    /** Prepara los cuatro huecos y monta la cadena por defecto. */
+    /** Prepara los cuatro huecos y vuelve a poner el tipo que tuvieran. */
     void prepare (double sampleRate, int maxBlockSize) noexcept
     {
         const int numSlots = static_cast<int> (abd::dsp::kFxNumSlots);
@@ -115,14 +141,13 @@ public:
         engine_.setMode (abd::dsp::FxMode::Insert);
         engine_.prepare (sampleRate, 2, maxBlockSize);
 
-        // Los tipos se fijan AQUI y no se vuelven a tocar (ver la nota de la
-        // cabecera: `setType` crea y destruye, y esto corre en el hilo de
-        // mensajes pero `updateFromGlobalParams` no). El `setType` de vuelta
-        // despues del `prepare` del motor es lo que hace que el hueco conserve
-        // el efecto: `prepare` recrea las instancias con el tipo que hubiera, y
-        // en este caso es 0.
+        // El `setType` de vuelta, DESPUES del `prepare` del motor, es lo que hace
+        // que el hueco conserve el efecto: `prepare` recrea las instancias con
+        // el tipo que hubiera, y en un hueco recien nacido ese tipo es 0. Se
+        // reaplica el de `types_`, que el usuario fija con `setSlotType` y que
+        // desde 2026-09-29 no se pierde al cambiar la tasa.
         for (int i = 0; i < numSlots; ++i)
-            engine_.getSlot (i).setType (typeForSlot (i));
+            engine_.getSlot (i).setType (types_[i]);
     }
 
     //==============================================================================
@@ -135,48 +160,34 @@ public:
     */
     void updateFromGlobalParams (const GlobalParams& p) noexcept
     {
-        //--- 0. Saturacion: el PRIMERO con BUS PROPIO (2026-09-29) ----------
-        // A diferencia de los otros tres, este hueco ya no se despinta de los
-        // doce mandos planos: lee `p.fx[kSlotSaturation]`, que son el bus del
-        // hueco (mandos normalizados 0..1, ganancia y mezcla). Los mandos van
-        // NORMALIZADOS, asi que aqui no hay unidades fisicas que escribir: el
-        // viaje sesgo <-> fisico lo hizo el APVTS al publicar el parametro, y
-        // `setParameter` habla normalizado.
+        //--- LOS CUATRO, POR EL MISMO CAMINO (2026-09-29) ---------------------
+        // Antes el hueco 1 venia por el bus y los otros tres por sus mandos
+        // planos, cada uno con su traduccion. Ahora los cuatro leen `p.fx[slot]`
+        // y no hay traduccion: el bus va NORMALIZADO, que es como habla
+        // `setParameter`, y el sesgo lo aplica la fila. El viaje sesgo <->
+        // fisico ocurre en los dos sitios que son dueños de las unidades (el
+        // APVTS al publicar el parametro, y la migracion de presets al abrir
+        // uno viejo), y no aqui, que ya no tiene unidades fisicas que escribir.
         //
-        // LO QUE CAMBIA DE SONIDO, y es a proposito (el resto no):
+        // LO QUE HA CAMBIADO DE SONIDO, y es a proposito en los tres casos:
         //
-        //   - Antes un solo mando hacia las dos cosas: `saturationAmt` era a la
-        //     vez el `drive` (1 + 4*amt) y la mezcla (`mix = 1` en cuanto
-        //     amt > 0, o sea INSERTO). Ahora hay dos mandos: `drive` y `mix`.
-        //   - El bypass por `mix = 0` se conserva entero, y sigue devolviendo la
-        //     seca BIT A BIT (`in*(1-0) + mojado*0`), que es lo que hacia la
-        //     puerta `drive > 1.001` del envoltorio viejo.
-        //   - Con el bus, cambiar el TIPO del hueco ya no esta prohibido por el
-        //     hilo de audio: `setType` lo llama el procesador desde el hilo de
-        //     mensajes, y aqui solo llegan mandos. Ver `setSlotType()`.
-        updateSlotFromBus (kSlotSaturation, p.fx[kSlotSaturation]);
-
-        //--- 1. Coro: el `mix` del hueco ES el `chorusMix` de antes ----------
-        setPhysical (kSlotChorus, 0, p.chorusRate);
-        setPhysical (kSlotChorus, 1, p.chorusDepth);
-        engine_.getSlot (kSlotChorus).setMix (p.chorusMix);
-
-        //--- 2. Retardo: paralelo al 50 %, sin mando de mezcla propio --------
-        // El tiempo se recorta al tope del motor (2 s) dentro del adaptador, que
-        // es el mismo tope que ponia `delay.prepare (sampleRate, sampleRate*2)`.
-        setPhysical (kSlotDelay, 0, p.delayTime);
-        setPhysical (kSlotDelay, 1, dsp::jlimit (0.0f, 0.95f, p.delayFB));
-        engine_.getSlot (kSlotDelay).setMix (0.5f);
-
-        //--- 3. Reverberacion: el `levels` de la fila es el mando de mezcla ---
-        // Sin este mando la reverb no cabe en un solo `mix`, asi que la fila
-        // declara su nivel mojado como parametro (`levels`) y el `mix` del hueco
-        // se queda en la mitad. Con el mando a cero, `mix = 0`: la seca intacta.
-        setPhysical (kSlotReverb, 0, p.reverbSize);
-        setPhysical (kSlotReverb, 1, p.reverbDamping);
-        setPhysical (kSlotReverb, 2, p.reverbWidth);
-        setPhysical (kSlotReverb, 3, p.reverbMix);
-        engine_.getSlot (kSlotReverb).setMix (p.reverbMix > 0.0f ? 0.5f : 0.0f);
+        //   - La saturacion ya no es el unico hueco con dos mandos donde antes
+        //     habia uno: el drive y la mezcla se separaron en 2026-09-29, y el
+        //     bypass por `mix = 0` se conservo entero (devuelve la seca BIT A
+        //     BIT, `in*(1-0) + mojado*0`, que es la puerta `drive > 1.001` del
+        //     envoltorio viejo).
+        //   - El retardo deja de estar clavado al 50 % y la reverberacion deja
+        //     de decidir su mezcla con `reverbMix > 0`: los dos son el `mix` del
+        //     hueco, y con el a cero los dos hacen el bypass bit a bit, que es
+        //     justo lo que hacia el envoltorio viejo (el retardo no, que
+        //     antes no tenia forma de apagarse; el cambio esta medido y
+        //     aceptado en `FxSlotsTest`).
+        //   - Cambiar el TIPO de un hueco ya no esta prohibido por el hilo de
+        //     audio en ninguno de los cuatro: `setType` lo llama el procesador
+        //     desde el hilo de mensajes, y aqui solo llegan mandos. Ver
+        //     `setSlotType()`.
+        for (int i = 0; i < kFxBusSlots; ++i)
+            updateSlotFromBus (i, p.fx[i]);
     }
 
     //==============================================================================
@@ -202,7 +213,19 @@ public:
             return;
 
         engine_.getSlot (slot).setType (type);
+
+        // Se guarda el indice TAL COMO LLEGO, incluso si no vale: un tipo
+        // fuera de catalogo deja el hueco en bypass (es lo que hace `setType`),
+        // y guardarlo tal cual deja que el `prepare` vuelva a dejarlo en bypass
+        // en vez de resucitar el efecto que el hueco tenia antes del error.
+        types_[slot] = type;
         updateSlotFromBus (slot, bus);
+    }
+
+    /** El tipo que tiene puesto un hueco: el indice del catalogo, 0 = bypass. */
+    int getSlotType (int slot) const noexcept
+    {
+        return (slot >= 0 && slot < kFxBusSlots) ? types_[slot] : 0;
     }
 
     /** Escribe un hueco desde su bus. Lo usan `setSlotType` y `updateFromGlobalParams`. */
@@ -235,22 +258,15 @@ public:
     const abd::dsp::FxEngine& engine() const noexcept { return engine_; }
 
 private:
-    /** Pone un mando de una fila pasandole su valor FISICO, que es como lo
-        llevan los doce de `GlobalParams`. La fila decide el sesgo y el tope. */
-    void setPhysical (int slot, int param, float physical) noexcept
-    {
-        abd::dsp::FxSlot& fx = engine_.getSlot (slot);
-        const abd::dsp::FxEffectInfo* info = fx.getEffectInfo();
-        if (info == nullptr || info->params == nullptr)
-            return;   // hueco en bypass: el mando se guarda solo, sin motor
-
-        if (param < 0 || param >= info->numParams)
-            return;
-
-        fx.setParameter (param, abd::dsp::fxNormalise (info->params[param], physical));
-    }
-
+    // NO HAY `setPhysical` anymore, y no se ha movido a otro sitio: el paso de
+    // unidades fisicas a normalizadas lo hacen los dos sitios que son duenos de
+    // las unidades, que son el APVTS (al publicar el parametro) y
+    // `PresetMigrationFx.cpp` (al abrir un preset viejo). Dejar una tercera
+    // copia aqui seria un camino mas por el que un mando puede entrar, y este
+    // es el fichero donde se nota: el motor no sabria cual de los dos mando.
     abd::dsp::FxEngine engine_;
+
+    int types_[kFxBusSlots] {};   ///< el tipo pedido, para que `prepare` no lo pierda
 };
 
 } // namespace NEURONiK::DSP

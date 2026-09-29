@@ -53,19 +53,29 @@ namespace Parity = NEURONiK::Tests::Parity;
 int passed = 0;
 int failed = 0;
 
-void check (bool condition, const char* name)
+// El nombre es un `juce::String` porque desde 2026-09-29 hay comprobaciones que
+// lo componen con el numero del hueco ("el hueco 3 lleva su tipo"): un
+// `const char*` obligaria a concatenar en el sitio de la asercion, que es
+// justo donde se equivoca uno sin que se note.
+void check (bool condition, const juce::String& name)
 {
-    if (condition) { ++passed; std::printf ("  [PASS] %s\n", name); }
-    else           { ++failed; std::printf ("  [FAIL] %s\n", name); }
+    if (condition) { ++passed; std::printf ("  [PASS] %s\n", name.toRawUTF8()); }
+    else           { ++failed; std::printf ("  [FAIL] %s\n", name.toRawUTF8()); }
 }
 
 constexpr int kBlocks = 6;
 
-/** Un PARAM del arbol de preset, como los que escribe PresetManager. */
-juce::ValueTree param (const char* id, double value)
+/** Un PARAM del arbol de preset, como los que escribe PresetManager.
+
+    El id es un `juce::String` y no un `const char*` porque desde 2026-09-29 la
+    mitad de los ids que hay que escribir aqui los COMPOSE el layout
+    (`fxBusFieldId`, `fxBusParamId`), y un helper de `const char*` obligaria a
+    convertirlos en todos los sitios. Un `IDs::` sigue cabiendo: `juce::String`
+    se construye sola de un literal. */
+juce::ValueTree param (const juce::String& id, double value)
 {
     juce::ValueTree child ("PARAM");
-    child.setProperty ("id", juce::String (id), nullptr);
+    child.setProperty ("id", id, nullptr);
     child.setProperty ("value", value, nullptr);
     return child;
 }
@@ -137,17 +147,17 @@ bool near (double a, double b, double tolerance = 1e-6)
     return std::fabs (a - b) <= tolerance;
 }
 
-double readParam (const juce::ValueTree& state, const char* id, double fallback = 0.0)
+double readParam (const juce::ValueTree& state, const juce::String& id, double fallback = 0.0)
 {
     return (double) state.getChildWithProperty ("id", id).getProperty ("value", fallback);
 }
 
-bool hasParam (const juce::ValueTree& state, const char* id)
+bool hasParam (const juce::ValueTree& state, const juce::String& id)
 {
     return state.getChildWithProperty ("id", id).isValid();
 }
 
-void setParam (juce::ValueTree& state, const char* id, double value)
+void setParam (juce::ValueTree& state, const juce::String& id, double value)
 {
     state.getChildWithProperty ("id", id).setProperty ("value", value, nullptr);
 }
@@ -450,26 +460,48 @@ int main()
 
         const int written = Serialization::migrateFlatFxToSlotBus (legacy, processor);
 
-        // CON EL LAYOUT DE HOY SOLO SE MIGRARIA EL HUECO 1. Los otros tres
-        //(ids planos, todos) tienen que seguir en el arbol: sus huecos los
-        // manejan todavia con mandos planos, y borrarlos dejaria esos tres
-        // huecos mudos al abrir un preset viejo. Esta es la asercion que
-        // documenta que la tabla de doce filas tiene puerta de verdad.
+        // LOS DOCE IDS PLANOS SIGUEN EN EL ARBOL, y no porque su hueco los
+        // maneje todavia (desde 2026-09-29 los cuatro huecos van por el bus)
+        // sino porque esta migracion SOLO ESCRIBE: no borra nada. El que limpia
+        // es el paso de ids que no estan en el layout, y estos si estan. La
+        // asercion sigue valiendo por lo que dice: un preset viejo abre con sus
+        // doce mandos, y ademas con el bus de los cuatro huecos ya escrito.
         check (hasParam (legacy, kLegacySaturation),
                "el id viejo de la saturacion NO se borra aqui (lo borra el limpiado)");
         check (hasParam (legacy, State::IDs::fxChorusMix),
-               "el coro no se toca: su hueco aun lo maneja con mandos planos");
+               "los ids planos siguen en el arbol: esta migracion no borra, escribe");
         check (hasParam (legacy, State::IDs::fxDelayTime),
-               "el retardo no se toca: su hueco aun lo maneja con mandos planos");
+               "el retardo sigue en el arbol, y con el bus de su hueco al lado");
         check (hasParam (legacy, State::IDs::fxReverbSize),
-               "la reverb no se toca: su hueco aun lo maneja con mandos planos");
+               "la reverb sigue en el arbol, y con el bus de su hueco al lado");
 
-        // Y el hueco 1, que si se migra, escribe sus cuatro ids de bus.
-        check (written == 4, "el hueco 1 escribe sus cuatro ids del bus");
+        // Y AHORA LOS CUATRO HUECOS SE MIGRAN (2026-09-29), porque los cuatro
+        // declaran su `fxNType` en el layout y la puerta de cada fila son
+        // exactamente los ids que el layout publica. El recuento sale de las
+        // filas: 4 + 5 + 5 + 7 = 21 (el hueco 1 solo tiene un mando, el coro y el
+        // retardo dos, y la reverb cuatro).
+        check (written == 21, "los cuatro huecos escriben su bus: 4 + 5 + 5 + 7 = 21 ids");
         check (hasParam (legacy, State::IDs::fx1Type), "el bus del hueco 1 lleva su tipo");
         check (hasParam (legacy, State::IDs::fx1Gain), "el bus del hueco 1 lleva su ganancia");
         check (hasParam (legacy, State::IDs::fx1Mix), "el bus del hueco 1 lleva su mezcla");
         check (hasParam (legacy, State::IDs::fx1Param1), "el bus del hueco 1 lleva su mando 1");
+
+        // Y los otros tres, que es lo nuevo: sin esto un preset viejo abriria
+        // con los huecos 2, 3 y 4 en silencio, porque el motor ya no mira sus
+        // mandos planos.
+        for (int slot = 1; slot < 4; ++slot)
+        {
+            const juce::String nodo = juce::String (slot + 1);
+
+            check (hasParam (legacy, State::fxBusFieldId (slot, "Type")),
+                   "el hueco " + nodo + " lleva su tipo en el bus");
+            check (hasParam (legacy, State::fxBusFieldId (slot, "Mix")),
+                   "el hueco " + nodo + " lleva su mezcla en el bus");
+            check (hasParam (legacy, State::fxBusFieldId (slot, "Gain")),
+                   "el hueco " + nodo + " lleva su ganancia en el bus");
+            check (hasParam (legacy, State::fxBusParamId (slot, 0)),
+                   "el hueco " + nodo + " lleva su primer mando en el bus");
+        }
 
         // LA CONVERSION, Y AQUI ESTA EL CONTROL NEGATIVO DE VERDAD.
         //
@@ -537,22 +569,42 @@ int main()
 
         const int second = Serialization::migrateFlatFxToSlotBus (once, processor);
 
-        check (first == 4, "la primera migracion escribe los cuatro ids");
+        check (first == 21, "la primera migracion escribe los 21 ids de los cuatro huecos");
         check (second == 0, "la segunda migracion no escribe NADA (es idempotente)");
         check (near (readParam (once, State::IDs::fx1Type), 1.0),
                "el efecto que el usuario eligio no lo pisa una segunda migracion");
     }
 
     // --- UN PRESET NUEVO NO SE TOCA ---------------------------------------
+    //
+    // Y AQUI LA PUERTA ES POR HUECO, no global: la marca de "ya migrado" es el
+    // `fxNType` de ESE hueco, asi que un preset que llega con el hueco 1 en el
+    // bus y los otros tres sin el (o sea, guardado con la version de antes de la
+    // migracion) NO se toca en el 1 y si se completa en los otros tres. Antes de
+    // 2026-09-29, con un solo hueco migrado, "ya esta en el bus" queria decir
+    // exactamente lo mismo que hoy quiere decir por hueco.
     {
-        auto fresh = juce::ValueTree ("STATE");
-        fresh.appendChild (param (State::IDs::fx1Type, 2.0), nullptr);
-        fresh.appendChild (param (State::IDs::fx1Mix, 0.7), nullptr);
-        const int written = Serialization::migrateFlatFxToSlotBus (fresh, processor);
+        auto aMedias = juce::ValueTree ("STATE");
+        aMedias.appendChild (param (State::IDs::fx1Type, 2.0), nullptr);
+        aMedias.appendChild (param (State::IDs::fx1Mix, 0.7), nullptr);
+        const int escritos = Serialization::migrateFlatFxToSlotBus (aMedias, processor);
 
-        check (written == 0, "un preset que ya esta en el bus no se escribe");
-        check (near (readParam (fresh, State::IDs::fx1Mix), 0.7),
+        check (escritos == 17, "un preset a medias solo completa los huecos que faltan (17 ids)");
+        check (near (readParam (aMedias, State::IDs::fx1Mix), 0.7),
                "la mezcla de un preset nuevo se queda como estaba");
+        check (hasParam (aMedias, State::fxBusFieldId (3, "Type")),
+               "y el hueco 4, que venia con mandos planos, recibe su tipo");
+
+        // Con los cuatro tipos puestos, no se escribe NADA. Es la comprobacion
+        // que evita que una segunda migracion (un preset que pasa dos veces por
+        // el gestor) pise lo que el usuario haya elegido.
+        auto entero = juce::ValueTree ("STATE");
+        for (int slot = 0; slot < 4; ++slot)
+            entero.appendChild (param (State::fxBusFieldId (slot, "Type"), 1.0), nullptr);
+        entero.appendChild (param (State::IDs::fx1Mix, 0.7), nullptr);
+
+        check (Serialization::migrateFlatFxToSlotBus (entero, processor) == 0,
+               "un preset que ya esta en el bus de los cuatro huecos no se escribe");
     }
 
     // --- LA LISTA CONGELADA DE LOS DOCE -----------------------------------

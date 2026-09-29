@@ -19,6 +19,7 @@
  */
 
 import { SECTION_PARAMETER_IDS, SECTION_VISUALS } from './sections.js';
+import { PARAMETERS } from './parameters.js';
 
 /** Ids de la pestaña GENERAL del panel nativo (mirador del contrato del host). */
 export const GENERAL_PARAMETER_IDS = [
@@ -48,16 +49,33 @@ export const VISUAL_PARAMETER_IDS = [
  * a la pagina: el knob se quedaria quieto en pantalla mientras el motor ya habia
  * cambiado.
  *
- * VACIA DESDE EL 2026-09-29, cuando los cinco ids del modulo del hueco 1
- * (`fx1Type`, `fx1Gain` y `fx1Param2..4`) pasaron a la ficha de EFECTOS y de ahi
- * al `.fx-module` de su cajon.
+ * DESDE EL 2026-09-29 SON LOS SESENTA DEL BUS: los cuatro huecos publican su
+ * bus entero (tipo, ganancia, mezcla y doce mandos), y la pagina solo tiene
+ * celda para el hueco 1. Los otros tres huecos (y los mandos 5..12 del hueco 1)
+ * son ids que el store POSEE y todavia no PINTA, que es exactamente lo que esta
+ * lista es.
  *
- * LA LISTA NO SE BORRA: se deja a proposito, y vacia, porque es la que AVISA. Un
- * id del bus que vuelva a caerse (un hueco nuevo, o un `fx2Param1` que se cuele
- * sin celda) hace que esta lista vuelva a tener algo, y `screens.test.js` se
- * pone rojo sin que nadie tenga que acordarse de que la lista existe.
+ * LOS QUE LA PAGINA YA PINTA NO ESTAN, y no por limpieza: el hueco 1 esta en
+ * `SECTION_PARAMETER_IDS` (su modulo esta en la ficha de efectos), y un id en
+ * las dos listas esta dos veces en `SCREEN_PARAMETER_IDS`, que es lo que
+ * `screens.test.js` prohibe.
+ *
+ * Y SE CALCULA DEL CONTRATO, no se escribe. Setenta y dos ids del bus en una
+ * lista a mano son setenta y dos sitios donde un hueco nuevo se queda fuera sin
+ * que nada lo diga --y lo que pasaria es que el store descartaria su mensaje y el
+ * knob se moveria en el host sin que la pagina se enterase, que es el fallo que
+ * esta lista existe para tapar--. El prefijo del hueco es lo unico que los
+ * distingue (`fx1Type`, `fx4Param12`), asi que la regla basta.
+ *
+ * LO QUE ESTA LISTA NO DICE, y hay que decirlo porque se confunde con lo de
+ * arriba: POSEER no es PINTAR. Un id de aqui no tiene celda todavia, y por eso
+ * `sections.test.js` los cuenta aparte. La lista no es "lo que la pagina
+ * enseña": es "lo que la pagina no puede ignorar".
  */
-export const SLOT_MODULE_PARAMETER_IDS = [];
+export const SLOT_MODULE_PARAMETER_IDS = PARAMETERS
+  .map((parameter) => parameter.id)
+  .filter((id) => /^fx[1-4](Type|Gain|Mix|Param[0-9]+)$/.test(id)
+                 && !SECTION_PARAMETER_IDS.includes(id));
 
 /**
  * Todos los ids que posee el store: los del lienzo, en orden de lectura, MÁS los

@@ -92,8 +92,9 @@ constexpr int kBusBlock = NEURONiK::DSP::kFxBusParams + 2;           // params +
 // vive, y las dos mitades --el puente y la pagina-- se comprueban contra el.
 constexpr int kPageFx1Param1 = 34;
 constexpr int kPageFx1Param4 = 37;
-constexpr int kPageFx1Gain = 38;
-constexpr int kPageFx1Mix = 39;
+constexpr int kPageFx1Param12 = 45;   // el ultimo de los doce (2026-09-29)
+constexpr int kPageFx1Gain = 46;
+constexpr int kPageFx1Mix = 47;
 
 } // namespace
 
@@ -155,6 +156,7 @@ int main()
     // ── 5) Los numeros que publicita la pagina ─────────────────────────────
     checkField (layout, kPageFx1Param1, offsetof (GP, fx[0].params[0]), "la pagina: fx1Param1");
     checkField (layout, kPageFx1Param4, offsetof (GP, fx[0].params[3]), "la pagina: fx1Param4");
+    checkField (layout, kPageFx1Param12, offsetof (GP, fx[0].params[11]), "la pagina: fx1Param12");
     checkField (layout, kPageFx1Gain, offsetof (GP, fx[0].gain), "la pagina: fx1Gain");
     checkField (layout, kPageFx1Mix, offsetof (GP, fx[0].mix), "la pagina: fx1Mix");
 
@@ -202,6 +204,65 @@ int main()
     check (layout.size() - scalarFieldCount()
                == static_cast<std::size_t> (kExpectedModMatrix + kBusBlock * NEURONiK::DSP::kFxBusSlots),
            "el segundo export publica la matriz Y el bus, no solo la matriz");
+    // ── 8) LA FIRMA DEL LAYOUT: que se mueva con lo que dice depender ─────
+
+    // Por que estos checks y no solo un valor fijo: una firma que no depende
+    // de lo que dice depender es un numero pegado a mano, que es exactamente
+    // la copia del struct que esta sesion ha estado quitando. Se le da el
+    // layout PERTURBADO y se exige que la firma cambie; si no cambia, el
+    // aviso de la pagina no miraria nada.
+    const auto fingerprint = globalParamsLayoutFingerprint();
+
+    check (fingerprint == layoutFingerprintOf (layout),
+           "la firma sale de la tabla, no de un numero escrito al lado");
+
+    // Un campo mas. El caso del que mas se habla: el `.wasm` viejo que
+    // publica menos de los que la pagina escribe.
+    {
+        auto perturbation = layout;
+        perturbation.push_back (layout.front ());
+
+        check (layoutFingerprintOf (perturbation) != fingerprint,
+               "un campo mas cambia la firma");
+    }
+
+    // Una clase cambiada. Ni la cuenta ni el total de bytes se mueven, asi
+    // que es el cambio que un `paramsFieldCount` no podria ver nunca: el
+    // motor leeria el patron de bits de IEEE donde deberia leer un entero.
+    {
+        auto perturbation = layout;
+
+        for (auto& field : perturbation)
+            if (field.kind == GlobalParamFieldKind::Int32)
+            {
+                field.kind = GlobalParamFieldKind::Float32;
+                break;
+            }
+
+        check (layoutFingerprintOf (perturbation) != fingerprint,
+               "un campo que pasa de entero a float cambia la firma (misma cuenta, mismos bytes: esto no lo ve el recuento)");
+    }
+
+    // Un offset movido un byte. El caso del `.wasm` con el orden cambiado:
+    // publica los mismos 58 campos y la pagina escribe en el hueco de al
+    // lado, sin que nada se note.
+    {
+        auto perturbation = layout;
+        perturbation.front ().offset += 4;
+
+        check (layoutFingerprintOf (perturbation) != fingerprint,
+               "un offset movido 4 bytes cambia la firma (misma cuenta, misma clase: esto tampoco lo ve el recuento)");
+    }
+
+    // Y que sea ESTABLE: dos cuentas seguidas del mismo layout tienen que
+    // dar lo mismo, o el aviso de la pagina saltaria sin motivo.
+    check (globalParamsLayoutFingerprint() == fingerprint,
+           "la firma es estable entre llamadas (si no, el aviso latiria solo)");
+
+    std::printf ("  fingerprint 0x%08x sobre %d campos\n",
+                  static_cast<unsigned int> (fingerprint),
+                  static_cast<int> (layout.size()));
+
     std::printf ("\n%s (%d fallos)\n", gFailures == 0 ? "RESULT: OK" : "RESULT: FALLOS", gFailures);
     return gFailures == 0 ? 0 : 1;
 }

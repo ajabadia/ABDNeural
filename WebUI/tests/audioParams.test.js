@@ -43,25 +43,32 @@ const CXX_DEFAULTS = {
 };
 
 describe('CONTRACT_TO_GP_FIELD', () => {
-  it('cubre exactamente los 38 campos contract-reachables (sin bpm)', () => {
-    // 33 del bus global y la matriz, + 5 del hueco 1 (sus cuatro mandos, la
-    // ganancia y la mezcla). El sexto parametro del hueco, `fx1Type`, NO se
-    // cuenta: elige el efecto y lo decide el hilo de mensajes, no viaja por el
+  it('cubre exactamente los 46 campos contract-reachables (sin bpm)', () => {
+    // 33 del bus global y la matriz, + 13 del hueco 1 (sus DOCE mandos, la
+    // ganancia y la mezcla). El decimocuarto parametro del hueco, `fx1Type`, NO
+    // se cuenta: elige el efecto y lo decide el hilo de mensajes, no viaja por el
     // espejo del hilo de audio.
-    expect(Object.keys (CONTRACT_TO_GP_FIELD).length).toBe (38);
+    //
+    // EL ANCHO DEL BUS SON DOCE desde 2026-09-29 (el del motor), y no cuatro: un
+    // bus mas corto que el motor truncaria el ultimo mando en silencio, y uno mas
+    // largo dejaria huecos. El `fx1Gain` de abajo es el que comprueba que el
+    // cambio de ancho no movio la ganancia: con cuatro parametros ocupaba el 38,
+    // y con doce tiene que ocupa el 46.
+    expect(Object.keys (CONTRACT_TO_GP_FIELD).length).toBe (46);
     expect(Object.values (CONTRACT_TO_GP_FIELD)).not.toContain (2); // bpm f64 slot
   });
 
   it('el hueco 1 empieza en el field 34 y va mandos, ganancia y mezcla', () => {
     // El orden lo publica `neuronikGlobalParamsLayout`: tras los 34 campos
-    // escalares (22 + 12 de la matriz) vienen `params[0..3]`, `gain` y `mix`
+    // escalares (22 + 12 de la matriz) vienen `params[0..11]`, `gain` y `mix`
     // del hueco 0, y despues el hueco 1 entero. Estos numeros son el ABI: si
     // el puente cambia el orden, el motor web escribe el mando equivocado sin
     // quejarse, y esta es la asercion que lo dice.
     expect(CONTRACT_TO_GP_FIELD.fx1Param1).toBe (34);
     expect(CONTRACT_TO_GP_FIELD.fx1Param4).toBe (37);
-    expect(CONTRACT_TO_GP_FIELD.fx1Gain).toBe (38);
-    expect(CONTRACT_TO_GP_FIELD.fx1Mix).toBe (39);
+    expect(CONTRACT_TO_GP_FIELD.fx1Param12).toBe (45);
+    expect(CONTRACT_TO_GP_FIELD.fx1Gain).toBe (46);
+    expect(CONTRACT_TO_GP_FIELD.fx1Mix).toBe (47);
     // El TIPO no viaja: no esta en el mapa, y esa ausencia es deliberada.
     expect(CONTRACT_TO_GP_FIELD.fx1Type).toBeUndefined();
   });
@@ -99,17 +106,27 @@ describe('la cuenta del espejo: gpIdsBeyondFieldCount', () => {
   // el 39, o sea los seis del bus. El 34 sale de llamar
   // `neuronikModMatrixLayout(0, 0)` sobre ESE binario, no de este codigo.
   it('con el .wasm de 34 campos se queda fuera JUSTO el bus del hueco 1', () => {
+    // Desde 2026-09-29 el bus del hueco 1 son CATORCE ids (doce mandos, ganancia
+    // y mezcla), y no seis: el ancho del bus es el del motor.
+    // La lista sale ORDENADA por texto (`gpIdsBeyondFieldCount` llama a `sort`),
+    // asi que `fx1Param10` va entre `fx1Param1` y `fx1Param2`. No es un detalle:
+    // esta lista se compara con una escrita a mano, asi que el orden es parte de
+    // lo que el test comprueba.
     expect(gpIdsBeyondFieldCount (34)).toEqual ([
-      'fx1Gain', 'fx1Mix', 'fx1Param1', 'fx1Param2', 'fx1Param3', 'fx1Param4',
+      'fx1Gain', 'fx1Mix',
+      'fx1Param1', 'fx1Param10', 'fx1Param11', 'fx1Param12',
+      'fx1Param2', 'fx1Param3', 'fx1Param4', 'fx1Param5', 'fx1Param6',
+      'fx1Param7', 'fx1Param8', 'fx1Param9',
     ]);
   });
 
-  it('con el tramo entero publicado (40 campos) no queda nada fuera', () => {
-    // 22 + 12 + 6 = 40: la cuenta que daria el puente con el bus
-    // publicandolo entero. Cuando el .wasm se recompile, esta lista
-    // tiene que quedar VACIA, y es la comprobacion de que lo hizo.
-    expect(highestGpField ()).toBe (39);
-    expect(gpIdsBeyondFieldCount (40)).toEqual ([]);
+  it('con el tramo entero publicado (48 campos) no queda nada fuera', () => {
+    // 22 + 12 + 14 = 48: la cuenta que daria el puente con el bloque del hueco 1
+    // publicado entero. Cuando el .wasm se recompile, esta lista tiene que quedar
+    // VACIA, y es la comprobacion de que lo hizo. Los tres huecos que quedan
+    // (50..90) no los mapea esta pagina todavia.
+    expect(highestGpField ()).toBe (47);
+    expect(gpIdsBeyondFieldCount (48)).toEqual ([]);
   });
 
   it('sin respuesta del motor (NaN) no inventa campos fuera', () => {
@@ -164,9 +181,9 @@ describe('gpFieldsFromState', () => {
     expect (fields.length).toBe (1);
   });
 
-  it('defaultGpFields entrega los 38 campos con los defaults del contrato', () => {
+  it('defaultGpFields entrega los 46 campos con los defaults del contrato', () => {
     const fields = defaultGpFields();
-    expect (fields.length).toBe (38);
+    expect (fields.length).toBe (46);
 
     const byField = new Map (fields);
     expect (byField.get (0)).toBeCloseTo (CXX_DEFAULTS.masterLevel, 4);
@@ -183,7 +200,8 @@ describe('gpFieldsFromState', () => {
     // 0.5. Para los MANDOS del hueco no se nota, porque su rango es 0..1 y
     // fisico y normalizado coinciden; para la ganancia si, y por eso el bus
     // mezcla las dos cosas y el test tiene que distinguirlas.
-    for (const contractId of ['fx1Param1', 'fx1Param2', 'fx1Param3', 'fx1Param4', 'fx1Gain', 'fx1Mix'])
+    for (const contractId of ['fx1Param1', 'fx1Param2', 'fx1Param3', 'fx1Param4',
+                              'fx1Param12', 'fx1Gain', 'fx1Mix'])
     {
       const descriptor = getDescriptor (contractId);
 

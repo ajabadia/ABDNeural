@@ -35,20 +35,39 @@ struct ModRoute {
 
 /**
  * @brief Cuantos huecos tiene el rack y cuantos mandos caben en cada uno.
- * @details El ancho lo fija el CATALOGO DEL PRODUCTO (el mayor numero de mandos
- *          que pide cualquiera de sus efectos), no el maximo que el motor
- *          compartido ACEPTA (`abd::dsp::kFxMaxParams`, que son 12 y estan ahi
- *          para los productos que monten los 48 motores de ABDEep). Con un
- *          catalogo que pide 4, un bus de 12 serian ocho parametros muertos por
- *          hueco en cada preset y en el contrato de la pagina.
+ * @details El ancho es el del MOTOR (`abd::dsp::kFxMaxParams`, 12) y hasta
+ *          2026-09-29 fue el del CATALOGO DE ESTE PRODUCTO (4, el mayor numero
+ *          de mandos que pedia cualquiera de sus seis efectos). El cambio es
+ *          deliberado y el motivo es el mismo que hace que el bus exista: con el
+ *          TIPO expuesto en el APVTS, el hueco 2 deja de ser "el coro" y pasa a
+ *          ser "el hueco 2, con lo que le pongas". Un bus del ancho de la fila
+ *          mas ancha que hay hoy es un bus que trunca en silencio el dia que
+ *          entre una fila de cinco, y el sintoma --el hueco sonando raro, sin
+ *          error-- es el que el propio `FxCatalogue.h` describe.
  *
- *          Los dos numeros se comprueban contra el catalogo en tiempo de
- *          compilacion: `Source/DSP/FxCatalogue.h` los confronta con la tabla
- *          real, asi que un motor nuevo mas ancho rompe la compilacion y no
- *          painta un hueco con los knobs cortados.
+ *          LO QUE SE PAGA, y hay que decirlo porque el numero anterior estaba
+ *          escrito precisamente para evitarlo: ocho knobs por hueco que la
+ *          fila de ese hueco no lee, y ocho numeros mas por hueco en cada
+ *          preset y en el espejo del hilo de audio. Se acepta porque el mando
+ *          que el host automatiza tiene que ser el mismo para cualquier efecto
+ *          (con el rango de la fila, el skew con el sesgo), y porque es la
+ *          forma que tiene ABDEep, donde el bus tambien es de doce.
+ *
+ *          `fxWidestParamCount()` (FxCatalogue.h) sigue diciendo cuanto pide el
+ *          catalogo de verdad: es el numero que se imprime y el que la pagina
+ *          ensea, y ya no es el que decide el ancho.
  */
 inline constexpr int kFxBusSlots = 4;   //!< == abd::dsp::kFxNumSlots
-inline constexpr int kFxBusParams = 4;  //!< el mas ancho del catalogo de NEURONiK
+inline constexpr int kFxBusParams = 12; //!< == abd::dsp::kFxMaxParams
+
+// El ancho del motor y el del bus tienen que ser EL MISMO numero, y no porque
+// un `static_assert` no pueda mirar los dos (los dos son `constexpr`): porque
+// `FxSlotParams` se inicializa con doce `0.5f` escritos a mano, y un bus mas
+// ancho que ellos se rellenaria de CERO en los knobs de mas, que es el peor
+// default posible (un preset nuevo con un knob clavado en 0). Si algun dia hay
+// doce y tres, este aserto es el que lo dice.
+static_assert (kFxBusParams == 12,
+               "el inicializador de `FxSlotParams::params` esta escrito para 12");
 
 /**
  * @brief Un HUECO del rack de efectos: lo que el hilo de audio necesita de el.
@@ -70,7 +89,9 @@ inline constexpr int kFxBusParams = 4;  //!< el mas ancho del catalogo de NEURON
  */
 struct FxSlotParams
 {
-    float params[kFxBusParams] = { 0.5f, 0.5f, 0.5f, 0.5f };  //!< normalizado 0..1
+    float params[kFxBusParams] = { 0.5f, 0.5f, 0.5f, 0.5f,   //!< normalizado 0..1
+                                   0.5f, 0.5f, 0.5f, 0.5f,
+                                   0.5f, 0.5f, 0.5f, 0.5f };
     float gain = 1.0f;                                         //!< salida del hueco
     float mix  = 0.0f;                                         //!< mezcla mojado/seco
 };
@@ -113,9 +134,14 @@ struct GlobalParams {
     // se migra sin sacar `saturationAmt` de su sitio: se apaga su ultimo uso (que
     // era el destino 17 de la matriz) y el bus entra por detras.
     //
-    // Los huecos 2, 3 y 4 los manejan TODAVIA los mandos planos de antes
-    // (chorusRate, delayTime, reverbSize...): la migracion va hueco a hueco y
-    // este es el primero. Ver `Source/DSP/FxSlots.h`.
+    // LOS MANDOS PLANOS DE ARRIBA SIGUEN ESTANDO, y el motor ya no los mira
+    // (desde 2026-09-29 los leen los cuatro huecos por el bus). No se borran
+    // por las dos razones que pone este mismo comentario: `chorusRate`,
+    // `delayTime` y `reverbSize` son indices publicados del espejo y quitarlos
+    // correria todo lo que hay detras. Un preset guardado los trae y la pagina
+    // los escribe; lo que ya no tienen es destino, y `PresetMigrationFx.cpp` es
+    // quien los lleva al bus de su hueco al abrir un preset viejo. Ver
+    // `Source/DSP/FxSlots.h`.
     FxSlotParams fx[kFxBusSlots];
 };
 

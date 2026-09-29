@@ -29,17 +29,19 @@ describe('controls / tipo por descriptor', () => {
   it('reparte el contrato en monos de la familia compartida', () => {
     const kinds = PARAMETERS.map((descriptor) => kindForControl(descriptor));
 
-    // 79 del contrato (2026-09-29: el bus del hueco 1 sustituye al mando suelto
-    // `fxSaturation`) = 54 knobs + 5 toggles + 20 choices. Entre los knobs hay
-    // 49 celdas del reparto + masterLevel (baseline: el host lo monta como range
-    // nativo, pero SU TIPO es float/knob) + los tres MORPH-Z (FASE 10 y los dos
-    // de las capas, 11.3) + los cinco knobs del bus (fx1Mix, fx1Gain y los
-    // cuatro mandos, uno de los cuales es la celda que sustituye al viejo
-    // `fxSaturation`, y los otros tres son del modulo del hueco, que todavia no
-    // esta montado pero ya son parte del contrato).
-    expect(kinds.filter((kind) => kind === KINDS.knob)).toHaveLength(54);
+    // 132 del contrato = 104 knobs + 5 toggles + 23 choices.
+    //
+    // De los 79 que habia antes (2026-09-29: el bus del hueco 1 sustituyo al
+    // mando suelto `fxSaturation`) a estos 132 hay 53 parametros mas: los tres
+    // desplegables de tipo de los huecos 2, 3 y 4 (+3 choices) y los cincuenta
+    // knobs de la ganancia, la mezcla y los doce mandos de los cuatro huecos.
+    // El bus es del ancho del motor, asi que cada hueco publica doce mandos
+    // aunque la fila que tenga puesta use tres o cuatro: son ids del CONTRATO
+    // (el host los publica y la pagina los posee), no celdas, y por eso el
+    // reparto por tipo los cuenta igual.
+    expect(kinds.filter((kind) => kind === KINDS.knob)).toHaveLength(104);
     expect(kinds.filter((kind) => kind === KINDS.toggle)).toHaveLength(5);
-    expect(kinds.filter((kind) => kind === KINDS.choice)).toHaveLength(20);
+    expect(kinds.filter((kind) => kind === KINDS.choice)).toHaveLength(23);
   });
 
   it('un float es un knob compartido con su dial', () => {

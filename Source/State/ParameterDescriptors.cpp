@@ -247,15 +247,30 @@ juce::StringArray getNotRoutedParameterIds()
     // Read nowhere outside createParameterLayout(): moving them has no audible
     // effect today. Verified against NEURONiKProcessor and the UI sources.
     //
-    // The single survivor is deliberate, not an oversight:
+    // unisonEnabled is deliberate, not an oversight:
     //   unisonEnabled   its control was removed from the panel because the engine
     //                   never read it. Gating unison on it was rejected: the default
     //                   is off, so every existing preset would have gone silent.
     //                   The parameter stays so those presets keep loading unchanged.
     // harmMix was removed from the layout instead: keeping a dead parameter "for
     // compatibility" only pays off when it is read somewhere, and it never was.
+    //
+    // LOS ONCE MANDOS PLANOS DE LOS EFECTOS (2026-09-29) son el segundo grupo, y
+    // son otra cosa: no siempre fueron muertos, se volvieron al migrar los cuatro
+    // huecos al bus. Antes de eso, `FxSlots::updateFromGlobalParams` los leia a
+    // mano; ahora los cuatro leen `p.fx[slot]` y no los mira nadie. Se quedan en
+    // el layout (un preset viejo los trae y borrarlos haria que se perdieran al
+    // guardar, y son indices publicados del espejo del hilo de audio) y se
+    // declaran `notRouted` porque es lo que son: la pagina los marca como "el
+    // motor no consume este parametro" en vez de dejar un knob que no suena, y
+    // `PresetMigrationFx.cpp` es quien los lleva al bus de su hueco al abrir un
+    // preset viejo.
     return {
-        IDs::unisonEnabled
+        IDs::unisonEnabled,
+
+        IDs::fxDelayTime,      IDs::fxDelayFeedback, IDs::fxDelaySync, IDs::fxDelayDivision,
+        IDs::fxChorusRate,     IDs::fxChorusDepth,   IDs::fxChorusMix,
+        IDs::fxReverbSize,     IDs::fxReverbDamping, IDs::fxReverbWidth, IDs::fxReverbMix
     };
 }
 
@@ -274,18 +289,24 @@ std::vector<ParameterEngine> getEngineChoiceCoverage()
 
 ParameterEngine engineCoverageFor (const juce::String& id)
 {
-    // Resolved by the processor rather than by an engine: the channel filter and the
-    // velocity curve run on the incoming MIDI buffer, the delay sync is turned into
-    // seconds there, and MIDI thru is applied to the outgoing buffer.
-    if (id == IDs::midiChannel
-        || id == IDs::velocityCurve
-        || id == IDs::midiThru
-        || id == IDs::fxDelaySync
-        || id == IDs::fxDelayDivision)
-        return ParameterEngine::host;
-
+    // PRIMERO EL ESTADO, y el orden es la parte importante: un id que el motor
+    // no lee no puede tener motor, ni siquiera "el host". `fxDelaySync` y
+    // `fxDelayDivision` son el caso que obliga a ponerlo asi: los resuelve el
+    // procesador para convertirlos en segundos de retardo, y ese retardo
+    // (2026-09-29) lo lee el bus del hueco 3, no el campo plano que ellos
+    // alimentaban. Declararlos `host` mientras su estado dice `notRouted`
+    // rompe el invariante que el test comprueba ("implementado <-> con motor"),
+    // y de los dos uno tendria que mentir.
     if (dspStatusFor (id) != ParameterDspStatus::implemented)
         return ParameterEngine::none;
+
+    // Resolved by the processor rather than by an engine: the channel filter and the
+    // velocity curve run on the incoming MIDI buffer, and MIDI thru is applied to
+    // the outgoing buffer.
+    if (id == IDs::midiChannel
+        || id == IDs::velocityCurve
+        || id == IDs::midiThru)
+        return ParameterEngine::host;
 
     // Only assigned inside the Neuronik branch of synchronizeEngineParameters().
     if (id == IDs::oscInharmonicity
@@ -321,8 +342,16 @@ juce::String dspNoteFor (const juce::String& id)
     if (id == IDs::lfo1SyncMode || id == IDs::lfo1RhythmicDivision
         || id == IDs::lfo2SyncMode || id == IDs::lfo2RhythmicDivision)
         return "Tempo sync applied to the LFO through GlobalParams";
-    if (id == IDs::fxDelaySync || id == IDs::fxDelayDivision)
-        return "Resolved into delay seconds by the processor when sync is on";
+    if (id == IDs::fxChorusRate || id == IDs::fxChorusDepth || id == IDs::fxChorusMix)
+        return "El hueco 2 ya no lee este mando: lo lee su bus (FX 2 Param 1..2 y FX 2 Mix). Al abrir un preset viejo se copia aqui.";
+
+    if (id == IDs::fxDelayTime || id == IDs::fxDelayFeedback || id == IDs::fxDelaySync || id == IDs::fxDelayDivision)
+        return "El hueco 3 ya no lee este mando: lo lee su bus (FX 3 Param 1..2 y FX 3 Mix). El sync lo resuelve el host al migrar el preset, que es donde se usa.";
+
+    if (id == IDs::fxReverbSize || id == IDs::fxReverbDamping
+        || id == IDs::fxReverbWidth || id == IDs::fxReverbMix)
+        return "El hueco 4 ya no lee este mando: lo lee su bus (FX 4 Param 1..4 y FX 4 Mix). Al abrir un preset viejo se copia aqui.";
+
     if (id == IDs::unisonEnabled)
         return "Retired from the panel: nothing reads it, unison amount comes from detune and spread";
     if (id == IDs::randomStrength)
@@ -335,9 +364,17 @@ juce::String dspNoteFor (const juce::String& id)
 
 juce::String dspNoteForUnroutedId (const juce::String& id)
 {
-    // There are no unrouted IDs today: harmMix (2026-09-16) and oscPitchCoarse (2026-09-19)
-    // were retired from IDs:: instead of being kept as promises, so the list is empty and
-    // any id reaching this function is a new divergence that needs its own note here.
+    // OJO: esta NO es la nota que ve el panel. La del panel es `dspNoteFor`, que
+    // va en el descriptor; esta es la que se escribe en el bloque
+    // `unroutedParameters` del export, que es OTRA lista (los ids declarados en
+    // `IDs::` que no estan en el layout). Hoy esa lista esta vacia, asi que
+    // cualquier id que llegue aqui es una divergencia NUEVA y necesita su nota
+    // aqui, no en la otra funcion: las dos estan en verde con listas distintas y
+    // confundirlas es escribir el texto en la que nadie lee.
+    //
+    // harmMix (2026-09-16) y oscPitchCoarse (2026-09-19) se retiraron de `IDs::`
+    // en vez de quedarse como promesas, y por eso esta lista tiene que estar
+    // mirando en cada build.
     juce::ignoreUnused (id);
     return {};
 }
@@ -356,9 +393,13 @@ juce::String parameterGroupFor (const juce::String& id)
     if (id.startsWith ("lfo2")) return "lfo2";
     if (id.startsWith ("mod"))  return "modMatrix";
 
-    if (id.startsWith ("fx1") || id.startsWith ("fxDelay")) return "fx";
-    if (id.startsWith ("fxChorus"))                                  return "chorus";
-    if (id.startsWith ("fxReverb"))                                  return "reverb";
+    // El grupo de un hueco es el MISMO para los cuatro, y el prefijo es lo unico
+    // que los distingue: `fx1Type` y `fx4Param12` son la misma fila del rack. La
+    // comprobacion va sobre el numero del hueco y no con cuatro `startsWith`, que
+    // serian cuatro listas que se olvidan una cuando se anade un hueco.
+    if (id.startsWith ("fx1") || id.startsWith ("fx2")
+        || id.startsWith ("fx3") || id.startsWith ("fx4"))           return "fx";
+    if (id.startsWith ("fxDelay"))                                  return "fx";
 
     if (id.startsWith ("env"))    return "envelope";
     if (id.startsWith ("filter")) return "filter";

@@ -76,6 +76,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <vector>
 
 namespace {
@@ -451,6 +452,59 @@ void setSlot1ToLegacySaturation (NEURONiK::DSP::GlobalParams& p, float amount)
     p.fx[0].gain = 1.0f;
 }
 
+//==============================================================================
+/**
+    Los CUATRO huecos por el bus, con el valor que les daba cada mando plano.
+
+    ES EL HERMANO DE `setSlot1ToLegacySaturation` y existe por la misma razon: la
+    cadena CONGELADA de este fichero lee `chorusRate`, `delayTime`, `reverbSize`...
+    y desde 2026-09-29 el motor no los mira. Sin este helper, la comparacion
+    mediria "una de las dos cadenas no hace nada" --el hueco nuevo en silencio y
+    el viejo sonando-- y no "las dos suenan igual". Los mandos planos se quedan
+    puestos a proposito: son los que lee la referencia.
+
+    Y AQUI NO HAY NUMEROS ESCRITOS: el viaje es fisico -> normalizado con la
+    fila (`fxNormalise`), el mismo que hacen el APVTS y la migracion de presets.
+    Un numero escrito aqui seria una cuarta copia del rango del coro y del
+    retardo, y la unica que nadie searches cuando la fila cambie de sesgo.
+*/
+void setBusFromLegacyParams (NEURONiK::DSP::GlobalParams& p)
+{
+    using namespace NEURONiK::DSP;
+
+    // El hueco 0 tiene su propio helper, con la ley historica del drive
+    // (`1 + 4*amount`), que es la del envoltorio viejo y no la de la fila.
+    setSlot1ToLegacySaturation (p, p.saturationAmt);
+
+    const auto normalise = [] (int slot, int param, float physical)
+    {
+        const auto* row = fxNeuronikDefaultRow (slot);
+        return row != nullptr ? abd::dsp::fxNormalise (row->params[param], physical) : 0.5f;
+    };
+
+    //--- 1. Coro: el `mix` del hueco ES el `chorusMix` de antes ---------------
+    p.fx[1].params[0] = normalise (1, 0, p.chorusRate);
+    p.fx[1].params[1] = normalise (1, 1, p.chorusDepth);
+    p.fx[1].gain = 1.0f;
+    p.fx[1].mix  = p.chorusMix;
+
+    //--- 2. Retardo: el tiempo recortado al tope del motor, como antes -------
+    p.fx[2].params[0] = normalise (2, 0, dsp::jlimit (0.0f, 2.0f, p.delayTime));
+    p.fx[2].params[1] = normalise (2, 1, dsp::jlimit (0.0f, 0.95f, p.delayFB));
+    p.fx[2].gain = 1.0f;
+    p.fx[2].mix  = 0.5f;   // el punto de la recta que eligio la migracion
+
+    //--- 3. Reverberacion: el `levels` de la fila es el nivel mojado ---------
+    p.fx[3].params[0] = normalise (3, 0, p.reverbSize);
+    p.fx[3].params[1] = normalise (3, 1, p.reverbDamping);
+    p.fx[3].params[2] = normalise (3, 2, p.reverbWidth);
+    p.fx[3].params[3] = normalise (3, 3, p.reverbMix);
+    p.fx[3].gain = 1.0f;
+    p.fx[3].mix  = p.reverbMix > 0.0f ? 0.5f : 0.0f;
+}
+
+//==============================================================================
+/** El reparto de la cadena con el guion de parametros dado. */
 void testStageByStage (const NEURONiK::DSP::GlobalParams& base)
 {
     struct Case { const char* name; int stage; float tolerance; bool wholeBuffer; };
@@ -473,6 +527,9 @@ void testStageByStage (const NEURONiK::DSP::GlobalParams& base)
         if (c.stage == 3)
             p.reverbMix = 0.0f;
 
+        // El motor lee el bus; la referencia congelada, los mandos planos.
+        setBusFromLegacyParams (p);
+
         const StageResult r = compareStages (p, c.stage, c.wholeBuffer);
 
         std::printf ("  %s\n", c.name);
@@ -494,6 +551,7 @@ void testIntendedChanges (const NEURONiK::DSP::GlobalParams& base)
     {
         NEURONiK::DSP::GlobalParams p = base;
         p.delayTime = 0.3f; p.delayFB = 0.4f;
+        setBusFromLegacyParams (p);
         const StageResult r = compareStages (p, 2);
         std::printf ("  retardo: mojado y seco en paralelo al 50 %%\n");
         report ("diferencia maxima", r.maxDiff);
@@ -505,6 +563,7 @@ void testIntendedChanges (const NEURONiK::DSP::GlobalParams& base)
     {
         NEURONiK::DSP::GlobalParams p = base;
         p.reverbMix = 0.5f;
+        setBusFromLegacyParams (p);
         const StageResult r = compareStages (p, 3);
         std::printf ("  reverb: el mando mueve el nivel mojado, el hueco mezcla al 50 %%\n");
         report ("diferencia maxima", r.maxDiff);
@@ -537,17 +596,255 @@ void testSlotPatch (const NEURONiK::DSP::GlobalParams& p)
                      fx.engine().getSlot (i).getGain());
     }
 
-    // El hueco 1 ya no sale de un mando suelto: su mezcla es la del BUS, que es
-    // lo que se le pone en `setSlot1ToLegacySaturation`. Con el mando a cero la
-    // mezcla es 0 y el hueco devuelve la seca bit a bit, que es el mismo bypass
-    // de antes (la puerta `drive > 1.001` del envoltorio viejo).
-    check (fx.engine().getSlot (0).getMix() == p.fx[0].mix,
-           "la saturacion va en insercion, y a bypass con el bus a cero");
-    check (fx.engine().getSlot (1).getMix() == p.chorusMix,
-           "el chorusMix de antes es el mix del hueco, sin cambio");
-    check (fx.engine().getSlot (2).getMix() == 0.5f, "el retardo va en paralelo al 50 %");
-    check (fx.engine().getSlot (3).getMix() == (p.reverbMix > 0.0f ? 0.5f : 0.0f),
-           "la reverb va en paralelo al 50 %, y a bypass con el mando a cero");
+    // Los CUATROS salen del BUS, sin manos planos por el medio: con la mezcla a
+    // cero el hueco devuelve la seca bit a bit, que es el mismo bypass que hacia
+    // el envoltorio viejo (la puerta `drive > 1.001`).
+    for (int slot = 0; slot < NEURONiK::DSP::kFxBusSlots; ++slot)
+    {
+        check (fx.engine().getSlot (slot).getMix() == p.fx[slot].mix,
+               "la mezcla del hueco sale de su bus");
+        check (fx.engine().getSlot (slot).getGain() == p.fx[slot].gain,
+               "la ganancia del hueco sale de su bus");
+    }
+
+    check (fx.engine().getSlot (0).getMix() == 0.0f,
+           "el hueco 1 arranca en bypass, como antes (drive 2, mezcla 0)");
+    check (fx.engine().getSlot (1).getMix() == 0.0f,
+           "el coro arranca en silencio, como antes (chorusMix a cero)");
+    check (fx.engine().getSlot (2).getMix() == 0.5f,
+           "el retardo arranca en paralelo al 50 %, como antes");
+    check (fx.engine().getSlot (3).getMix() == 0.0f,
+           "la reverb arranca en silencio, como antes (reverbMix a cero)");
+}
+
+//==============================================================================
+/**
+    EL PRESET NUEVO: los defaults del APVTS son los de la cadena de antes.
+
+    Es la comprobacion que hace que exponer el bus no sea cambiar el sonido de
+    una instalacion nueva. Se comparan DOS SCRIPTS DE PARAMETROS y no dos
+    audios: el primero sale de los mandos planos de siempre y el segundo de
+    `fxDefaultSlotParam`/`fxDefaultSlotMix` (lo que declara el APVTS). Si un
+    default se aparta del mando plano que reemplaza, los dos numeros ya no son
+    el mismo y el preset nuevo suena distinto al abrirlo.
+*/
+void testDefaultBusIsTheOldChain()
+{
+    NEURONiK::DSP::GlobalParams deLosMandosPlanos;
+    setBusFromLegacyParams (deLosMandosPlanos);
+
+    NEURONiK::DSP::GlobalParams delLayout;
+
+    for (int slot = 0; slot < NEURONiK::DSP::kFxBusSlots; ++slot)
+    {
+        delLayout.fx[slot].gain = 1.0f;
+        delLayout.fx[slot].mix  = NEURONiK::DSP::fxDefaultSlotMix (slot);
+
+        for (int i = 0; i < NEURONiK::DSP::kFxBusParams; ++i)
+            delLayout.fx[slot].params[i] = NEURONiK::DSP::fxDefaultSlotParam (slot, i);
+    }
+
+    //--- 1. Los huecos 2, 3 y 4, mando a mando, SIN TOLERANCIA --------------
+    // Son los tres en los que el mando del bus y el mando plano son LA MISMA
+    // cantidad (Hz, segundos, milisegundos de realimentacion), y por eso se
+    // pueden comparar numero a numero: si un default se aparta, el preset nuevo
+    // suena distinto al abrirlo.
+    //
+    // EL HUECO 1 NO SE COMPARA, y no es una excepcion poreczera: `fx1Param1` es
+    // el DRIVE (1..8) y el mando plano era `saturationAmt` (0..1, donde 0 es
+    // "sin saturacion"). El default viejo era 0, o sea silencio, y el de la
+    // fila es drive 2. Son dos preguntas distintas --"cuanto satura" y "cuanto
+    // empuja"-- y la unica que se puede comparar es la mezcla, que es la que
+    // decidia el silencio. El sonido lo mide el punto 2, y sale a cero
+    // diferencias: con la mezcla a cero los dos son la seca intacta.
+    for (int slot = 1; slot < NEURONiK::DSP::kFxBusSlots; ++slot)
+    {
+        for (int i = 0; i < NEURONiK::DSP::kFxBusParams; ++i)
+        {
+            const float a = delLayout.fx[slot].params[i];
+            const float b = deLosMandosPlanos.fx[slot].params[i];
+
+            if (a != b)
+                std::printf("    hueco %d mando %2d: layout %.9f, mando plano %.9f\n",
+                            slot + 1, i + 1, a, b);
+
+            check (a == b, "el default del APVTS es el del mando plano que sustituye");
+        }
+
+        check (delLayout.fx[slot].mix == deLosMandosPlanos.fx[slot].mix,
+               "la mezcla por defecto del hueco es la de antes");
+    }
+
+    check (delLayout.fx[0].mix == deLosMandosPlanos.fx[0].mix && delLayout.fx[0].mix == 0.0f,
+           "el hueco 1 sigue arrancando en silencio, que es lo que hacia `saturationAmt` a cero");
+    check (delLayout.fx[0].params[0] == NEURONiK::DSP::fxDefaultSlotParam (0, 0),
+           "y su drive arranca en el default de la fila, no en el 0 del mando viejo");
+
+    //--- 2. Y el audio, que es lo que oye el usuario ------------------------
+    const auto render = [] (const NEURONiK::DSP::GlobalParams& p)
+    {
+        NEURONiK::DSP::FxSlots fx;
+        fx.prepare (kSampleRate, kBlock);
+        dsp::AudioBuffer<float> buf (2, kBlock);
+        std::vector<float> out;
+        out.reserve ((std::size_t) kNumSamples * 2);
+
+        for (int blk = 0; blk < kNumBlocks; ++blk)
+        {
+            fx.updateFromGlobalParams (p);
+
+            for (int c = 0; c < 2; ++c)
+                for (int s = 0; s < kBlock; ++s)
+                    buf.setSample (c, s, 0.3f * std::sin (2.0f * 3.14159265f *
+                                (110.0f + 40.0f * c) * ((float) (blk * kBlock + s) / (float) kSampleRate)));
+
+            fx.process (buf, kBlock);
+
+            for (int c = 0; c < 2; ++c)
+                for (int s = 0; s < kBlock; ++s)
+                    out.push_back (buf.getSample (c, s));
+        }
+
+        return out;
+    };
+
+    const auto a = render (deLosMandosPlanos);
+    const auto b = render (delLayout);
+
+    std::size_t diffs = 0;
+    for (std::size_t i = 0; i < a.size() && i < b.size(); ++i)
+        if (a[i] != b[i]) ++diffs;
+
+    std::printf("   preset nuevo: %zu muestras de %zu\n", diffs, a.size());
+    check (diffs == 0, "un preset nuevo suena BIT A BIT como antes de exponer el bus");
+}
+
+//==============================================================================
+/** Los doce mandos del hueco, y el tipo que sobrevive a un `prepare`. */
+void testTwelveKnobsAndType()
+{
+    NEURONiK::DSP::GlobalParams p;
+    setBusFromLegacyParams (p);
+
+    //--- 1. EL BUS LLEVA DOCE Y LA FILA LEE LOS SUYOS ------------------------
+    // El bus es de doce para cualquier efecto (el host automatiza un mando, no
+    // un efecto) y la fila declara cuantos de esos doce son suyos. Los doce
+    // valores se quedan en el bus aunque la fila no los lea, que es lo que hace
+    // que cambiar de tipo no tire el trabajo de ajustarlos.
+    for (int slot = 0; slot < NEURONiK::DSP::kFxBusSlots; ++slot)
+        for (int i = 0; i < NEURONiK::DSP::kFxBusParams; ++i)
+            p.fx[slot].params[i] = (float) (i + 1) / (float) NEURONiK::DSP::kFxBusParams;
+
+    NEURONiK::DSP::FxSlots fx;
+    fx.prepare (kSampleRate, kBlock);
+    fx.updateFromGlobalParams (p);
+
+    int entregados = 0, pedidos = 0;
+
+    for (int slot = 0; slot < NEURONiK::DSP::kFxBusSlots; ++slot)
+    {
+        const auto* info = fx.engine().getSlot (slot).getEffectInfo();
+        const int numParams = info != nullptr ? info->numParams : 0;
+        pedidos += numParams;
+
+        std::printf("    hueco %d: %-12s usa %d de los doce\n",
+                    slot + 1, info != nullptr ? info->name : "?", numParams);
+
+        for (int i = 0; i < numParams; ++i)
+            if (fx.engine().getSlot (slot).getParameter (i) == p.fx[slot].params[i])
+                ++entregados;
+    }
+
+    check (entregados == pedidos && pedidos > 0,
+           "cada hueco entrega a su fila exactamente los mandos que la fila declara");
+    check (NEURONiK::DSP::kFxBusParams == 12,
+           "el bus es de doce, el ancho que el motor acepta");
+
+    //--- 2. Y EL DOCE LE LLEGA A LA FILA, que es lo que no se ve --------------
+    // El mando 2 del retardo es la realimentacion, y con ella a tope la cola no
+    // se acaba nunca de verdad: es la unica forma de mirar si el numero llego al
+    // motor o si se quedo en el bus. Se mide la cola DESPUES de cortar la
+    // entrada, con los dos extremos de ese mando.
+    const auto cola = [] (float feedback)
+    {
+        NEURONiK::DSP::GlobalParams q;
+        setBusFromLegacyParams (q);
+
+        const auto* row = NEURONiK::DSP::fxNeuronikDefaultRow (2);
+        q.fx[2].params[1] = abd::dsp::fxNormalise (row->params[1], feedback);
+        q.fx[2].mix = 0.5f;
+
+        NEURONiK::DSP::FxSlots cadena;
+        cadena.prepare (kSampleRate, kBlock);
+        dsp::AudioBuffer<float> buf (2, 512);
+        float suma = 0.0f;
+
+        for (int blk = 0; blk < kNumBlocks + 72; ++blk)   // 0.5 s de silencio al final
+        {
+            cadena.updateFromGlobalParams (q);
+
+            for (int c = 0; c < 2; ++c)
+                for (int s = 0; s < 512; ++s)
+                    buf.setSample (c, s, blk < kNumBlocks
+                        ? 0.3f * std::sin (2.0f * 3.14159265f * 220.0f *
+                                            ((float) (blk * 512 + s) / (float) kSampleRate))
+                        : 0.0f);
+
+            cadena.process (buf, 512);
+
+            if (blk >= kNumBlocks)
+                for (int c = 0; c < 2; ++c)
+                    for (int s = 0; s < 512; ++s)
+                        suma += buf.getSample (c, s) * buf.getSample (c, s);
+        }
+
+        return suma;
+    };
+
+    const float colaAlTope = cola (0.95f);
+    const float colaACero  = cola (0.0f);
+
+    // Medido 7.652e+03 contra 3.240e+02, o sea 23.6 veces. El umbral es 8, no
+    // 100: lo que separa "llego al motor" de "no llego" es un factor de miles
+    // (sin realimentacion la cola se apaga en un par de bloques), y un umbral
+    // mas alto que la medicion seria un test que solo puede fallar.
+    std::printf("    cola con fb 0.95: %.3e   con fb 0: %.3e   (x%.1f)\n",
+                 colaAlTope, colaACero, colaAlTope / colaACero);
+    check (colaAlTope > colaACero * 8.0f,
+           "el mando 2 del hueco llega a la fila: la realimentacion al tope alarga la cola");
+
+    //--- 3. EL TIPO SOBREVIVE A UN `prepare` --------------------------------
+    // `prepareToPlay` llama a `prepare` cuando cambia la tasa, cuando se abre una
+    // ventana o cuando carga un estado. Sin(types_) el hueco volvia a la cadena
+    // por defecto en cualquiera de los tres casos, sin decir nada.
+    NEURONiK::DSP::FxSlots tipos;
+    tipos.prepare (kSampleRate, kBlock);
+
+    const int phaser = 8;   // la octava fila del catalogo (0 es bypass)
+
+    for (int slot = 0; slot < NEURONiK::DSP::kFxBusSlots; ++slot)
+    {
+        NEURONiK::DSP::FxSlotParams bus;
+        bus.mix = 0.7f;
+        bus.gain = 0.8f;
+        tipos.setSlotType (slot, phaser, bus);
+
+        check (tipos.getSlotType (slot) == phaser, "el hueco recuerda el tipo que le han puesto");
+        check (tipos.engine().getSlot (slot).getMix() == 0.7f,
+               "y los mandos del bus tambien sobreviven al cambio de tipo");
+    }
+
+    tipos.prepare (kSampleRate * 0.5, kBlock);   // el `prepareToPlay` de un cambio de tasa
+
+    for (int slot = 0; slot < NEURONiK::DSP::kFxBusSlots; ++slot)
+    {
+        const auto* info = tipos.engine().getSlot (slot).getEffectInfo();
+
+        check (info != nullptr && std::strcmp (info->name, "phaser") == 0,
+               "el `prepare` NO devuelve el hueco a la cadena por defecto");
+        check (tipos.engine().getSlot (slot).getMix() == 0.7f,
+               "y el `prepare` tampoco tira los mandos");
+    }
 }
 
 //==============================================================================
@@ -639,6 +936,7 @@ void testFiniteTail (const NEURONiK::DSP::GlobalParams& base)
     p.chorusMix = 0.6f;
     p.reverbMix = 0.6f;
     setSlot1ToLegacySaturation (p, 0.5f);
+    setBusFromLegacyParams (p);
 
     NEURONiK::DSP::FxSlots fx;
     fx.prepare (kSampleRate, 512);
@@ -676,20 +974,27 @@ int main()
     std::printf ("NEURONiK — cadena global sobre el sistema de huecos\n\n");
 
     NEURONiK::DSP::GlobalParams base;   // los valores por defecto del plugin
+    setBusFromLegacyParams (base);      // ...y el bus que el APVTS declara
 
     std::printf ("  1. El mapeo de los doce mandos a los huecos\n");
     testSlotPatch (base);
 
-    std::printf ("\n  2. Las etapas que tienen que seguir sonando IGUALES\n");
+    std::printf ("\n  2. El preset nuevo: los defaults son los de la cadena de antes\n");
+    testDefaultBusIsTheOldChain();
+
+    std::printf ("\n  3. Los doce mandos, y el tipo que sobrevive al `prepare`\n");
+    testTwelveKnobsAndType();
+
+    std::printf ("\n  4. Las etapas que tienen que seguir sonando IGUALES\n");
     testStageByStage (base);
 
     testIntendedChanges (base);
 
-    std::printf ("\n  3. Determinismo y troceado\n");
+    std::printf ("\n  5. Determinismo y troceado\n");
     testDeterminism (base);
     testBlockSizeIndependence (base);
 
-    std::printf ("\n  4. Cola finita\n");
+    std::printf ("\n  6. Cola finita\n");
     testFiniteTail (base);
 
     if (gFailures != 0)

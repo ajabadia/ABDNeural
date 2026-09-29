@@ -179,10 +179,25 @@ describe('los ids de la pagina contra el contrato generado', () => {
       ['MATRIX_ROUTE_IDS', MATRIX_ROUTE_IDS],
     ]);
 
+    // LAS COLECCIONES DERIVADAS no pasan por el escaner de fuentes, y no por
+    // convenience: sus ids no estan escritos en ningun sitio (salen de un filtro
+    // sobre el contrato), asi que no hay literal que escanear. Lo que se les
+    // comprueba es lo contrario y mas fuerte --que sean exactamente las que la
+    // regla dice-- en `screens.test.js`, que compara la lista con el contrato.
+    // Dejarlas aqui sin excepcion las haria fallar por una razon que no es la
+    // suya, que es la forma de que un test de verdad se acostumbre a fallar.
+    // `SCREEN_PARAMETER_IDS` entra aqui por lo mismo que la anterior: se compone
+    // de las otras dos, asi que sus ids tambien son derivados.
+    const derivadas = new Set(['SLOT_MODULE_PARAMETER_IDS', 'SCREEN_PARAMETER_IDS']);
+
     for (const [nombre, ids] of exportadas) {
       for (const id of ids) {
         expect(getDescriptor(id), `${nombre} trae "${id}", que no esta en el contrato`)
           .not.toBeNull();
+
+        if (derivadas.has(nombre))
+          continue;
+
         // Y que el escaner tambien lo ha visto: si una coleccion se declara
         // con una sintaxis que ningun patron reconoce, sale aqui y no antes.
         expect(porId.has(id), `${nombre}: "${id}" no lo encuentra el escaner de fuentes`)

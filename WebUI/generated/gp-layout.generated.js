@@ -6,21 +6,13 @@
 // exportador, alla porque la calcula el puente. Por eso el aviso
 // significa algo: si no cuadran, el binario y la pagina son de
 // compilaciones distintas.
-//
-// SE GENERA CON EL ANCHO DE BUS DE HEAD (kFxBusParams = 4, 58 campos),
-// que es el del `.wasm` versionado en public/worklet. El arbol de
-// trabajo tiene un ancho mayor sin commitear, del otro hilo; cuando se
-// commitee, hay que volver a correr NEURONiK_LayoutExport y a
-// recompilar el `.wasm` en el MISMO commit, o la pagina dira que el
-// binario no es el suyo cuando los dos estan bien y lo que se ha
-// movido es el numero de aqui.
 /**
  * La firma del layout de GlobalParams contra el que se escribio esta pagina.
  * @type {number}
  */
-export const GP_LAYOUT_FINGERPRINT = 3309892877;
+export const GP_LAYOUT_FINGERPRINT = 85413466;
 
 /** Cuantos campos del espejo publica el motor de esta compilacion.
  * @type {number}
  */
-export const GP_LAYOUT_FIELD_COUNT = 58;
+export const GP_LAYOUT_FIELD_COUNT = 90;

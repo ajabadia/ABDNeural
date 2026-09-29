@@ -13,6 +13,8 @@
  * what is under test is the state machine and the wire shapes, not Web Audio.
  */
 
+import { GP_LAYOUT_FINGERPRINT } from '../generated/gp-layout.generated.js';
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -154,20 +156,24 @@ describe('audio engine / browser lifecycle', () => {
   it('el motor corto avisa de los mandos que NO le llegan, por su id', async () => {
     // EL CASO REAL DE HOY: el .wasm de public/worklet es anterior al
     // layout que publica el bus, asi que publica 34 campos y la pagina
-    // escribe hasta el 39. Sin esto, los seis mandos del hueco se
-    // mueven en la pagina y no suenan, sin un solo aviso.
+    // escribe hasta el 47. Sin esto, los catorce mandos del hueco se
+    // mueven en la pagina y no suenan, sin un solo aviso. (Los catorce y no
+    // seis: desde 2026-09-29 el bus es del ancho del motor.)
     installFakeWebAudio();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const starting = startAudioEngine();
 
     await vi.waitFor(() => expect(lastNode).not.toBeNull());
-    lastNode.port.emit({ type: 'neuronik:ready', paramsFieldCount: 34 });
+    lastNode.port.emit({ type: 'neuronik:ready', paramsFieldCount: 34, layoutFingerprint: GP_LAYOUT_FINGERPRINT });
     await starting;
 
     expect(audioEngineState.paramsFieldCount).toBe(34);
     expect(audioEngineState.unreachableFieldIds).toEqual([
-      'fx1Gain', 'fx1Mix', 'fx1Param1', 'fx1Param2', 'fx1Param3', 'fx1Param4',
+      'fx1Gain', 'fx1Mix',
+      'fx1Param1', 'fx1Param10', 'fx1Param11', 'fx1Param12',
+      'fx1Param2', 'fx1Param3', 'fx1Param4', 'fx1Param5', 'fx1Param6',
+      'fx1Param7', 'fx1Param8', 'fx1Param9',
     ]);
     // El aviso NOMBRA los ids: el numero de campo no dice nada a quien
     // tiene que arreglarlo, y lo que hay que arreglar es el `.wasm`.
@@ -175,9 +181,13 @@ describe('audio engine / browser lifecycle', () => {
     expect(String(warn.mock.calls[0][0])).toContain('fx1Param1');
     expect(String(warn.mock.calls[0][0])).toContain('34');
 
-    // Y con el tramo entero publicado, la lista se vacia y nadie avisa.
+    // Y con el tramo entero publicado, la lista se vacia y nadie avisa. El
+    // tramo es 48 = 22 escalares + 12 de la matriz + los 14 del bloque del hueco
+    // 1 (los doce mandos, la ganancia y la mezcla), que es lo que esta pagina
+    // escribe hoy: los otros tres huecos (48..90) no los mapea todavia.
     warn.mockClear();
-    lastNode.port.emit({ type: 'neuronik:layout', paramsFieldCount: 40 });
+    lastNode.port.emit({ type: 'neuronik:layout', paramsFieldCount: 48,
+      layoutFingerprint: GP_LAYOUT_FINGERPRINT });
 
     expect(audioEngineState.unreachableFieldIds).toEqual([]);
     expect(warn).not.toHaveBeenCalled();
@@ -185,6 +195,78 @@ describe('audio engine / browser lifecycle', () => {
     warn.mockRestore();
   });
 
+  it('el binario ajeno se ve ANTES del primer push, no despues', async () => {
+    // La cuenta de campos ya avisaba de los mandos que el motor no publica.
+    // Lo que NO podia ver es el binario que publica los 58 campos correctos
+    // pero en otro sitio: ahi la pagina escribe en el miembro de al lado y
+    // los dos lados cuentan 58, asi que el recuento dice que todo esta bien.
+    // La firma se compara en el arranque, que es cuando todavia no se ha
+    // perdido nada.
+    installFakeWebAudio();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const starting = startAudioEngine();
+
+    await vi.waitFor(() => expect(lastNode).not.toBeNull());
+    lastNode.port.emit({
+      type: 'neuronik:ready',
+      paramsFieldCount: 40,
+      layoutFingerprint: 0x12345678,
+    });
+    await starting;
+
+    expect(audioEngineState.layoutMismatch).not.toBeNull();
+    expect(audioEngineState.layoutMismatch.got).toBe(0x12345678);
+    expect(audioEngineState.layoutMismatch.expected).toBe(GP_LAYOUT_FINGERPRINT);
+    // Y el aviso dice LAS DOS firmas, que es lo que permite arreglarlo:
+    // sin el numero del binario no hay forma de saber cual de los dos esta
+    // viejo.
+    expect(String(warn.mock.calls[0][0])).toContain('12345678');
+    expect(String(warn.mock.calls[0][0]))
+      .toContain((GP_LAYOUT_FINGERPRINT >>> 0).toString(16));
+
+    warn.mockRestore();
+  });
+
+  it('con la firma buena NO hay aviso, y el aviso anterior se retira', async () => {
+    installFakeWebAudio();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const starting = startAudioEngine();
+
+    await vi.waitFor(() => expect(lastNode).not.toBeNull());
+    lastNode.port.emit({
+      type: 'neuronik:ready',
+      paramsFieldCount: 40,
+      layoutFingerprint: GP_LAYOUT_FINGERPRINT,
+    });
+    await starting;
+
+    expect(audioEngineState.layoutMismatch).toBeNull();
+    expect(warn).not.toHaveBeenCalled();
+
+    warn.mockRestore();
+  });
+
+  it('un binario SIN la firma avisa como lo que es: no se puede comprobar', async () => {
+    // Distinguir 'no coincide' de 'no se puede saber' importa: el primer
+    // caso se arregla regenerando la firma, el segundo recomprimando el
+    // binario. Con un 0 de relleno los dos dirian lo mismo.
+    installFakeWebAudio();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const starting = startAudioEngine();
+
+    await vi.waitFor(() => expect(lastNode).not.toBeNull());
+    lastNode.port.emit({ type: 'neuronik:ready', paramsFieldCount: 40 });
+    await starting;
+
+    expect(audioEngineState.layoutMismatch).not.toBeNull();
+    expect(audioEngineState.layoutMismatch.got).toBeNull();
+    expect(String(warn.mock.calls[0][0])).toContain('no publica la firma');
+
+    warn.mockRestore();
+  });
   it('devuelve el remover: tras el apagado el canal ya no avisa', async () => {
     // El canal es estado de modulo y sobrevive al documento; quien se suscribe
     // es quien lo devuelve (ver el apagado de pagina en src/app.js).

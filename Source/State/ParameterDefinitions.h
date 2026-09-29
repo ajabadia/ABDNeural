@@ -82,16 +82,24 @@ namespace IDs {
     static constexpr const char* filterSustain   = "filterSustain";
     static constexpr const char* filterRelease   = "filterRelease";
 
-    // FX: el BUS POR HUECO. El hueco 1 (saturacion) es el primero migrado
-    // (2026-09-29): `fxSaturation` dejo de existir y en su lugar estan el tipo
-    // del hueco, su ganancia, su mezcla y sus cuatro mandos. Los huecos 2, 3 y 4
-    // los manejan TODAVIA los mandos planos de mas abajo; la migracion va hueco
-    // a hueco. Ver `Source/DSP/FxSlots.h` y `Source/DSP/FxCatalogue.h`.
+    // FX: el BUS POR HUECO. Los CUATRO huecos lo tienen (2026-09-29): el tipo
+    // del hueco, su ganancia, su mezcla y sus doce mandos. Los ids del hueco 1
+    // son los unicos escritos aqui, porque son los unicos que otro fichero cita
+    // de texto (`ModDestinationTable.h`); los de los otros tres se COMPONEN con
+    // `fxBusFieldId`/`fxBusParamId` mas abajo, que es lo que evita tener
+    // sesenta literales que se pueden separar del layout sin que nada lo note.
+    // Ver `Source/DSP/FxSlots.h` y `Source/DSP/FxCatalogue.h`.
     //
     // El prefijo `fx1` (y no `fxSlot1`) es el que usa el panel para encadenar:
-    // `fx1Type`, `fx1Param1`..`fx1Param4`. Un hueco con id fijo y mandos
+    // `fx1Type`, `fx1Param1`..`fx1Param12`. Un hueco con id fijo y mandos
     // numerados es lo unico que el APVTS, un preset y la matriz pueden hablar
     // sin saber que efecto hay puesto.
+    // Del hueco 1, y SOLO del hueco 1: el layout compone los cuatro con
+    // `fxBusFieldId`/`fxBusParamId` y aqui solo hacen falta los que otro
+    // fichero cita de texto, que es la tabla de destinos de modulacion
+    // (`ModDestinationTable.h`, el destino 17). Los doce mandos del hueco 1 se
+    // declaran igual; esta lista no es la fuente, es el sitio donde se mira el
+    // destino 17, y por eso se queda con los cuatro que existen como literales.
     static constexpr const char* fx1Type    = "fx1Type";
     static constexpr const char* fx1Gain    = "fx1Gain";
     static constexpr const char* fx1Mix     = "fx1Mix";
@@ -239,6 +247,26 @@ inline juce::String fxBusFieldId (int slot, const char* field)
     return juce::String (buffer);
 }
 
+/** Que hueco es ESTE id de tipo (`fx1Type`...), o -1 si no es un id de tipo.
+
+    Lo usa `parameterChanged` para no escribir cuatro `if`: el id lo compone
+    el layout y el numero de hueco sale de ahi, no de una tabla escrita al lado
+    que se pueda quedar vieja (que es lo que paso con el unico `if` que habia,
+    que atendia el hueco 1 y solo el hueco 1).
+
+    Devolver -1 en vez de un hueco de mentira es lo que deja que el resto de
+    `parameterChanged` siga atendiendo los demas parametros: si esto devolviera
+    0 para "no lo conozco", un `fxChorusRate` acabaria en el hueco 1.
+*/
+inline int fxBusSlotOfTypeId (const juce::String& parameterId)
+{
+    for (int slot = 0; slot < NEURONiK::DSP::kFxBusSlots; ++slot)
+        if (parameterId == fxBusFieldId (slot, "Type"))
+            return slot;
+
+    return -1;
+}
+
 // Los cuatro ids del hueco 1, comprobados UNO POR UNO y sin macro. La macro
 // que habia aqui metia mas logica de la que la cuenta daba: tenia ramas
 // y solo una se ejercitaba, y la que no se ejercita es justo la que compone
@@ -268,6 +296,29 @@ static_assert ([&] { char b[32] {};
                       b[n] = '\0';
                       return modDestinationTextIs (b, "fx1Param1"); }(),
                "el compositor de ids del bus no compone `fx1Param1`");
+
+// Los tres ids que el layout NUEVO compone y que los dos anteriores no
+// tocaban: el hueco 2 (la rama de una cifra del numero del hueco, que hasta
+// aqui solo se habia probado con el 1), el hueco 10 (la de dos cifras, que con
+// cuatro huecos es una rama que NADIE ejecuta y que se ejecuta el dia que
+// haya diez huecos: sin este aserto nadie sabria si compone `fx1` o `fx10`),
+// y el mando 12 (el ultimo de los doce, y el unico que pasa por la rama de dos
+// cifras del numero del mando).
+static_assert ([&] { char b[32] {}; composeFxBusId (b, 1, "Type", 4);
+                      return modDestinationTextIs (b, "fx2Type"); }(),
+               "el compositor de ids del bus no compone `fx2Type`");
+
+static_assert ([&] { char b[32] {}; composeFxBusId (b, 9, "Type", 4);
+                      return modDestinationTextIs (b, "fx10Type"); }(),
+               "el compositor de ids del bus no compone `fx10Type` (la rama de dos cifras)");
+
+static_assert ([&] { char b[32] {};
+                      int n = composeFxBusId (b, 0, "Param", 5);
+                      b[n - 1] = '1';
+                      b[n++] = '2';
+                      b[n] = '\0';
+                      return modDestinationTextIs (b, "fx1Param12"); }(),
+               "el compositor de ids del bus no compone `fx1Param12`");
 
 /**
  * @brief Cada `parameterId` de la tabla es exactamente el `IDs::` que le toca.
@@ -413,66 +464,77 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::resonatorRolloff, "Harmonic Roll-off", juce::NormalisableRange<float>(0.1f, 4.0f, 0.0f, 0.5f), 1.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::resonatorParity, "Odd/Even Balance", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::resonatorShift, "Spectral Shift", juce::NormalisableRange<float>(0.5f, 2.0f, 0.0f, 0.5f), 1.0f));
-    // --- EL BUS DEL HUECO 1 (2026-09-29) -----------------------------------
+    // --- EL BUS DE LOS CUATRO HUECOS (2026-09-29) --------------------------
     // Que efectos hay y como se llaman sale del CATALOGO (`FxCatalogue.h`), no
     // de una lista escrita aqui: con dos copias, el desplegable del host y el
     // modulo siempre se separan, y el que se olvide de actualizar es el que no
     // da error. La lista del desplegable es el `displayName` del motor.
-    juce::StringArray fx1Types { "Bypass" };
+    //
+    // LA MISMA LISTA PARA LOS CUATRO, y no cuatro desplegables con la misma
+    // lista: el indice es el indice del catalogo, y el hueco elige el suyo con
+    // el default. Cuatro listas serian cuatro sitios donde se puede olvidar uno
+    // y que sus indices dejen de hablar de lo mismo.
+    juce::StringArray fxTypes { "Bypass" };
 
     for (int i = 1; i <= NEURONiK::DSP::fxNeuronikCatalogueSize(); ++i)
     {
         const auto entry = NEURONiK::DSP::fxNeuronikEffectAt (i);
 
         if (entry.effect != nullptr)
-            fx1Types.add (juce::String (entry.effect->displayName));
+            fxTypes.add (juce::String (entry.effect->displayName));
     }
 
-    // El default de `fx1Type` es el efecto que va de serie en el hueco 1, leido
-    // de la MISMA tabla que usa el motor al preparar (`fxDefaultTypeForSlot`).
-    // Si los dos tuvieran numeros distintos, un preset nuevo sonaria distinto
-    // de lo que acaba de guardar el host, y no habria ningun error.
-    const int fx1DefaultType = NEURONiK::DSP::fxDefaultTypeForSlot (0);
-    const auto fx1Default = NEURONiK::DSP::fxNeuronikEffectAt (fx1DefaultType);
+    // Un hueco es un tipo, una ganancia, una mezcla y doce mandos. Los CUATRO
+    // huecos son esa misma frase con otro numero delante, asi que se escribe una
+    // vez y se recorre: sesenta `push_back` escritos son sesenta sitios donde el
+    // hueco 3 puede acabar con trece mandos y el 4 con once, y el que se
+    // equivoque no da error, da un hueco con un knob de mas.
+    for (int slot = 0; slot < NEURONiK::DSP::kFxBusSlots; ++slot)
+    {
+        const juce::String etiqueta { "FX " + juce::String (slot + 1) };
 
-    // El indice 0 es bypass y el resto va en el MISMO orden que el catalogo,
-    // porque `typeForSlot`/`setSlotType` hablan ese indice. Elegir por indice y
-    // no por nombre es lo que deja que el hueco cambie de efecto sin que el
-    // APVTS tenga que saber nombres.
-    params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::fx1Type, "FX 1 Type", fx1Types, fx1DefaultType));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::fx1Gain, "FX 1 Gain", juce::NormalisableRange<float>(0.0f, 2.0f), 1.0f));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::fx1Mix, "FX 1 Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
+        // El indice 0 es bypass y el resto va en el MISMO orden que el catalogo,
+        // porque `typeForSlot`/`setSlotType` hablan ese indice. Elegir por indice
+        // y no por nombre es lo que deja que el hueco cambie de efecto sin que el
+        // APVTS tenga que saber nombres.
+        //
+        // Y el default sale de `fxDefaultTypeForSlot`, la MISMA tabla que usa el
+        // motor al preparar. Si los dos tuvieran numeros distintos, un preset
+        // nuevo sonaria distinto de lo que acaba de guardar el host, y no habria
+        // ningun error.
+        params.push_back(std::make_unique<juce::AudioParameterChoice>(
+            fxBusFieldId (slot, "Type"), etiqueta + " Type", fxTypes,
+            NEURONiK::DSP::fxDefaultTypeForSlot (slot)));
 
-    // Los cuatro mandos del hueco van NORMALIZADOS 0..1, y no en las unidades
-    // fisicas del efecto, y no por gusto: el RANGO depende de que efecto este
-    // puesto, y el hueco lo cambia el usuario en caliente. Un parametro del
-    // APVTS tiene un rango fijo para siempre (un preset lo guarda, el host lo
-    // automatiza), asi que publicar "Drive 1..8" seria mentir para los otros
-    // cinco efectos del catalogo. El hueco habla normalizado
-    // (`FxSlot::setParameter` toma 0..1) y el sesgo lo aplica la fila. El panel
-    // web, que SI sabe que efecto hay puesto, pone la etiqueta y las unidades
-    // leyendo el catalogo exportado.
-    //
-    // El default del primer mando sale del MOTOR (el valor por defecto de ESA
-    // fila, ya normalizado), no de un numero escrito: escrito a mano seria el
-    // mismo numero en dos sitios, y el dia que la fila cambiara su default el
-    // parametro se quedaria en el viejo sin decir nada. Los otros tres son 0.5
-    // a proposito —ningun motor del catalogo los usa— y no el default de otra
-    // fila, que seria inventar un valor para un mando que no existe.
-    const float fx1Default0 = fx1Default.effect != nullptr && fx1Default.effect->params != nullptr
-                                  ? abd::dsp::fxNormalise (fx1Default.effect->params[0],
-                                                           fx1Default.effect->params[0].defaultValue)
-                                  : 0.5f;
-
-    static const char* const fx1ParamIds[] = {
-        IDs::fx1Param1, IDs::fx1Param2, IDs::fx1Param3, IDs::fx1Param4
-    };
-    const float fx1ParamDefaults[] = { fx1Default0, 0.5f, 0.5f, 0.5f };
-
-    for (int i = 0; i < NEURONiK::DSP::kFxBusParams; ++i)
         params.push_back(std::make_unique<juce::AudioParameterFloat>(
-            fx1ParamIds[i], "FX 1 Param " + juce::String (i + 1),
-            juce::NormalisableRange<float>(0.0f, 1.0f), fx1ParamDefaults[i]));
+            fxBusFieldId (slot, "Gain"), etiqueta + " Gain",
+            juce::NormalisableRange<float>(0.0f, 2.0f), 1.0f));
+
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            fxBusFieldId (slot, "Mix"), etiqueta + " Mix",
+            juce::NormalisableRange<float>(0.0f, 1.0f),
+            NEURONiK::DSP::fxDefaultSlotMix (slot)));
+
+        // Los doce mandos del hueco van NORMALIZADOS 0..1, y no en las unidades
+        // fisicas del efecto, y no por gusto: el RANGO depende de que efecto
+        // este puesto, y el hueco lo cambia el usuario en caliente. Un parametro
+        // del APVTS tiene un rango fijo para siempre (un preset lo guarda, el
+        // host lo automatiza), asi que publicar "Drive 1..8" seria mentir para
+        // los otros siete efectos del catalogo. El hueco habla normalizado
+        // (`FxSlot::setParameter` toma 0..1) y el sesgo lo aplica la fila. El
+        // panel web, que SI sabe que efecto hay puesto, pone la etiqueta y las
+        // unidades leyendo el catalogo exportado.
+        //
+        // El default sale del PRODUCTO, de `fxDefaultSlotParam`, que es la
+        // cadena de siempre (ver alli por que no sale de la fila). Los mandos
+        // que la fila del hueco no usa se quedan en 0.5, que es lo que pone
+        // `FxSlotParams` y no un extremo.
+        for (int i = 0; i < NEURONiK::DSP::kFxBusParams; ++i)
+            params.push_back(std::make_unique<juce::AudioParameterFloat>(
+                fxBusParamId (slot, i), etiqueta + " Param " + juce::String (i + 1),
+                juce::NormalisableRange<float>(0.0f, 1.0f),
+                NEURONiK::DSP::fxDefaultSlotParam (slot, i)));
+    }
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::fxDelayTime, "Delay Time", juce::NormalisableRange<float>(0.01f, 2.0f, 0.0f, 0.5f), 0.3f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::fxDelayFeedback, "Delay FB", juce::NormalisableRange<float>(0.0f, 0.95f), 0.4f));
