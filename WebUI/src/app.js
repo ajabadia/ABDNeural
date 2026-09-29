@@ -322,10 +322,11 @@ if (root) {
   // del synth. Conduce los parámetros REALES vía store (pushParameter 'end':
   // gesto de hardware). Su SITIO (entre cabecera y bandas) lo fija el panel:
   // ver lcdSlot en createPanel (panel.js) — aqui se crea ANTES para pasarlo.
-  const lcdTop = createLcdTop({
-    store,
-    engineType: () => store.getState().parameters.engineType ?? 0,
-  });
+  // Sin `engineType`: el LCD lo lee del store, que es quien lo tiene. La
+  // lambda que se le pasaba antes no se llamaba nunca --solo decidia si
+  // leerlo--, asi que era una forma de no decidir aqui lo que se decide
+  // ahi, y por eso funcionaba por la razon equivocada.
+  const lcdTop = createLcdTop({ store });
 
   lcdMenuFirma = lcdTop.menuSignature();
 

@@ -171,21 +171,25 @@ export function buildMenuTree(engineType = 0, efecto = filaDelHuecoUno()) {
  * @param {object} options
  * @param {object} options.store  el store de la página (getState/pushParameter):
  *   las mismas manos que el panel — el LCD conduce los parámetros REALES.
- * @param {() => number} [options.engineType]  engineType ACTUAL (el árbol
- *   depende de él); sin ella, Neuronik. El EFECTO del hueco 1 no se pasa:
- *   se lee del propio store, que es quien lo tiene.
+ *   El motor y el efecto del hueco 1 NO se pasan: se leen del store, que es
+ *   quien los tiene. Antes llevaba un `engineType` que no leia --solo
+ *   decidia SI leerlo del store-- y por eso podia devolver un arbol
+ *   equivocado sin que nadie lo notara: funcionaba por la razon
+ *   equivocada, que es la que no se nota hasta que hace falta.
  * @returns {{ element: HTMLElement, panel: object, paint: Function, rebuild:
  *   Function, destroy: Function }}
  */
-export function createLcdTop({ store, engineType = null }) {
+export function createLcdTop({ store }) {
   const element = document.createElement('div');
   element.className = 'lcd-top';
 
   const parameters = () => store.getState().parameters;
   const controlOf = (paramId) => describeControl(paramId);
-  const engineNow = () => (typeof engineType === 'function'
-    ? Math.round(parameters().engineType ?? 0)
-    : 0);
+  // El motor, del store y siempre. Antes `engineType` llegaba como una
+  // lambda que NUNCA se llamaba: decidia unicamente si leerlo del store o
+  // devolver 0 a secas. Un parámetro que no se lee no es un parámetro
+  // opcional, es una forma de no decidir en el sitio donde se decide.
+  const engineNow = () => Math.round (parameters().engineType ?? 0);
   // El efecto PUESTO en el hueco 1, para que los nombres del menu vayan con el.
   // Del estado y no de un argumento: la ficha es quien lo cambia, y el menu
   // tiene que enterarse sin que nadie le avise.

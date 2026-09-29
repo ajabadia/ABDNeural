@@ -199,6 +199,33 @@ describe('lcdTop / la rama EFFECTOS se DERIVA del efecto puesto', () => {
     expect(nombres(undefined)).toContain('SAT DRIVE');
   });
 
+  it('el motor sale del STORE, sin parametro que lo sustituya', () => {
+    // El parametro que se elimino no lo leia NUNCA: solo decidia si leer el
+    // motor del store o devolver 0 a secas. Sin el, el motor salia SIEMPRE
+    // 0, y con el, salia bien solo si quien lo pasaba se acordaba de que
+    // no hacia falta. Un enganche que funciona cuando se usa bien y se
+    // rompe cuando se usa como esta previsto.
+    //
+    // Este test no pasa NADA: solo un store con el motor puesto en
+    // Neurotik. Si el `?:` volviera, aqui caeria en la rama de 0 y el
+    // arbol seria el de Neuronik con el store en Neurotik.
+    const store = makeStore();
+    store.state.parameters.engineType = 1;
+
+    const view = createLcdTop({ store });
+
+    const conOtro = makeStore();
+    conOtro.state.parameters.engineType = 0;
+    const ref = createLcdTop({ store: conOtro });
+
+    // Las firmas tienen que DISTINGUIR los dos motores. Si no distinguen,
+    // el parametro habria vuelto sin que nada lo notara.
+    expect(view.menuSignature()).not.toBe(ref.menuSignature());
+
+    view.destroy();
+    ref.destroy();
+  });
+
   it('createLcdTop lee el efecto del STORE, y el menu se rehace al vuelo', () => {
     const store = makeStore({ parameters: { ...defaultNormalizedState(SCREEN_PARAMETER_IDS), fx1Type: puesto(1) } });
     const view = createLcdTop({ store });
@@ -225,12 +252,12 @@ describe('lcdTop / la rama EFFECTOS se DERIVA del efecto puesto', () => {
     // contemplase mas cosas, el LCD reconstruiria su menu sin motivo; si
     // contemplase menos, se quedaria con el arbol viejo cuando el efecto
     // cambiase. Los dos son fallos de este encargo.
-    // El motor se lee del STORE: el `engineType` que se le pasa solo decide
-    // SI se lee (sin el, el motor sale siempre 0), asi que el motor se
-    // cambia cambiando el store, que es quien lo tiene. Es exactamente
-    // el enganche que pone app.js.
+    // El motor se lee del STORE, y solo del store. Antes se le pasaba una
+    // lambda que nunca se llamaba y que solo decidia SI leerlo: un
+    // parametro que no se lee, que es peor que no tenerlo porque parece
+    // que el motor se pasa desde fuera cuando en realidad sale de aqui.
     const store = makeStore();
-    const view = createLcdTop({ store, engineType: () => store.getState().parameters.engineType ?? 0 });
+    const view = createLcdTop({ store });
 
     const inicial = view.menuSignature();
 
@@ -530,14 +557,17 @@ describe('lcdTop / la pantalla', () => {
 
   it('rebuild() rehace el panel con el árbol del motor activo (mismo elemento)', () => {
     const store = makeStore();
-    let engine = 0;
-    const view = createLcdTop({ store, engineType: () => engine });
+    const view = createLcdTop({ store });
     const host = makeHost();
     host.append(view.element);
 
     const firstPad = view.panel.buttons;
 
-    engine = 1;
+    // El motor se cambia en el STORE, no en una variable que se le pasaba
+    // al LCD. Antes este test movia `engine` y la lambda lo leia, asi que
+    // pasaba sin que nadie se preguntara de donde salia el motor de
+    // verdad.
+    store.state.parameters.engineType = 1;
     view.rebuild();
 
     // Nueva composición (botones nuevos) dentro del MISMO elemento, y el árbol
