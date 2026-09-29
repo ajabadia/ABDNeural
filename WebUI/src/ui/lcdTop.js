@@ -27,7 +27,71 @@
 
 import { createLcdPanel } from '@abdsynths/shared/components';
 import { describeControl } from '../contracts/parameters.js';
-import { displayText, realFromNormalized } from '../contracts/paramValue.js';
+import { choiceIndexFromNormalized, displayText, realFromNormalized } from '../contracts/paramValue.js';
+// El CATALOGO del bus, el mismo que lee el cajon de efectos. Es un fichero
+// GENERADO y versionado, y traerlo aqui es lo que permite que el nombre del
+// mando diga el efecto que hay PUESTO y no el que habia cuando se escribio
+// el arbol. Importarlo por el `generated/` y no por el contrato de
+// ABDSharedAssets es lo mismo que hace `ui/fxModules.js`: el build tiene que
+// funcionar en un clon sin el repositorio hermano al lado.
+import { FX_CATALOG } from '../../generated/fx-catalog.generated.js';
+
+/**
+ * EL NOMBRE DE LOS MANDOS DEL HUECO 1 VIENE DEL ESTADO, no de una lista escrita
+ * =========================================================================
+ * `fx1Param1` es "el parametro 1 del efecto PUESTO": el drive de una saturacion,
+ * el rate de un chorus, el decay de un Schroeder. Un arbol que lo llamara
+ * SATURATION estaria mintiendo en cuanto la ficha cambiara el efecto, y uno que
+ * lo llamara FX 1 P1 no diria nada. Los dos eran Menu ESTATICO, que es lo unico
+ * que se puede escribir sin mirar el estado, asi que la entrada de la ronda
+ * anterior quedo en FX 1 P1 con un comentario explicando por que no podia decir
+ * mas. Esta es la parte que hacia falta: el arbol se deriva de la fila del
+ * catalogo, y si el hueco no lleva saturacion el nombre cambia con el.
+ */
+const FX1_TYPE = 'fx1Type';
+
+/** La fila del catalogo que hay puesta en el hueco 1 (0 = bypass). */
+function filaDelHuecoUno (normalized) {
+  const control = describeControl(FX1_TYPE);
+  const index = normalized === undefined
+    ? (control?.defaultValue ?? 0)
+    : choiceIndexFromNormalized(control, normalized);
+
+  return FX_CATALOG.effects[index] ?? FX_CATALOG.effects[0];
+}
+
+/**
+ * Tres letras del efecto. El LCD es de 16 caracteres justos y el nombre
+ * entero mas el valor no caben ("SATURATION DRIVE" ocupa la pantalla
+ * sola); con tres letras sigue siendo inequivoco ("SAT DRIVE", "CHO RATE",
+ * "JUN WEAR") porque las tres letras ya dicen cual es.
+ */
+const tresLetras = (nombre) =>
+  String(nombre ?? '').trim().split(/\s+/)[0].slice(0, 3).toUpperCase();
+
+/**
+ * Los mandos que DECLARA el efecto puesto, con SU nombre.
+ *
+ * CUANTOS SON, LOS DICE EL CATALOGO y no el hueco: un hueco publica cuatro
+ * posiciones y una fila declara las que usa (la saturacion declara UNA y las
+ * otras tres quedan sin nombre porque no hacen nada). Es la misma regla que
+ * aplica el cajon, y por eso el menu no puede llevar un numero fijo de entradas.
+ */
+function mandosDelHueco (efecto) {
+  const declarados = efecto?.params ?? [];
+
+  return declarados.map((param, index) => ({
+    label: `${tresLetras(efecto.displayName)} ${String(param.name).toUpperCase()}`,
+    paramId: `fx1Param${index + 1}`,
+  }));
+}
+
+/** Los tres mandos planos que el hueco NO se llevo, y que siguen vivos. */
+const MANDOS_FLATOS = [
+  { label: 'CHORUS MIX', paramId: 'fxChorusMix' },
+  { label: 'DELAY TIME', paramId: 'fxDelayTime' },
+  { label: 'REVERB MIX', paramId: 'fxReverbMix' },
+];
 
 /** Rama RESONATOR según engineType (0 = Neuronik con morph, 1 = Neurotik). */
 const RESONATOR_NEURONIK = [
@@ -73,7 +137,7 @@ const MIDI_CC_BASE = [
  * El árbol del synth, dependiente del engineType — la regla del LcdMenuManager
  * original, ahora contra el contrato de esta página.
  */
-export function buildMenuTree(engineType = 0) {
+export function buildMenuTree(engineType = 0, efecto = filaDelHuecoUno()) {
   const isNeuronik = engineType === 0;
 
   return [
@@ -91,27 +155,14 @@ export function buildMenuTree(engineType = 0) {
       // "ENV AMOUNT" era filterEnvAmount (retirado 2026-09-26): la profundidad
       // de la ruta ENV 2 -> Filter Cutoff es el amount de la MATRIZ.
     ] },
-    { label: 'EFFECTS', sub: [
-      // SATURATION apuntaba a `fxSaturation`, que la migracion del hueco 1
-      // RETIRO: ese mando suelto lo sustituyo el drive del bus, que es
-      // `fx[0].params[0]`, o sea `fx1Param1` (el destino 17 de la matriz
-      // conduce justo ese id, y el contrato de ABDSharedAssets lo dice). Con
-      // el id viejo el knob no estaba muerto del todo: lo estaba en silencio,
-      // porque el store ignora un id que no posee y la llamada se come sin
-      // ruido.
-      //
-      // Y POR QUE EL NOMBRE NO PUEDE QUEDARSE en SATURATION: `fx1Param1` es el
-      // parametro 1 del efecto PUESTO, y el parametro 1 de la saturacion es el
-      // drive mientras que el de un chorus es su rate (lo dice el catalogo:
-      // `params[0].name`). Este arbol es ESTATICO --solo depende del
-      // engineType--, asi que un nombre aqui seria mentira en cuanto la ficha
-      // cambie el efecto. Los nombres de verdad, uno por efecto, viven en el
-      // `.fx-module` del cajon, que los lee del catalogo.
-      { label: 'FX 1 P1', paramId: 'fx1Param1' },
-      { label: 'CHORUS MIX', paramId: 'fxChorusMix' },
-      { label: 'DELAY TIME', paramId: 'fxDelayTime' },
-      { label: 'REVERB MIX', paramId: 'fxReverbMix' },
-    ] },
+    // EFFECTOS: los mandos del hueco 1 con el nombre del efecto PUESTO (arriba,
+    // `mandosDelHueco`), y debajo los tres mandos planos que el hueco no se
+    // llevo y que siguen vivos en el layout.
+    //
+    // NOTA PARA QUIEN AÑADA UN ID AQUI: los del hueco se COMPONEN
+    // (`fx1Param${n}`), asi que el escaner de ids por fuente no los ve. Los
+    // comprueba `contractIds.test.js`, que recorre el arbol de verdad.
+    { label: 'EFFECTS', sub: [...mandosDelHueco(efecto), ...MANDOS_FLATOS] },
     { label: 'MIDI CONTROL', sub: isNeuronik ? MIDI_CC_NEURONIK : MIDI_CC_BASE },
   ];
 }
@@ -121,7 +172,8 @@ export function buildMenuTree(engineType = 0) {
  * @param {object} options.store  el store de la página (getState/pushParameter):
  *   las mismas manos que el panel — el LCD conduce los parámetros REALES.
  * @param {() => number} [options.engineType]  engineType ACTUAL (el árbol
- *   depende de él); sin ella, Neuronik.
+ *   depende de él); sin ella, Neuronik. El EFECTO del hueco 1 no se pasa:
+ *   se lee del propio store, que es quien lo tiene.
  * @returns {{ element: HTMLElement, panel: object, paint: Function, rebuild:
  *   Function, destroy: Function }}
  */
@@ -134,6 +186,10 @@ export function createLcdTop({ store, engineType = null }) {
   const engineNow = () => (typeof engineType === 'function'
     ? Math.round(parameters().engineType ?? 0)
     : 0);
+  // El efecto PUESTO en el hueco 1, para que los nombres del menu vayan con el.
+  // Del estado y no de un argumento: la ficha es quien lo cambia, y el menu
+  // tiene que enterarse sin que nadie le avise.
+  const efectoNow = () => filaDelHuecoUno(parameters()[FX1_TYPE]);
 
   // Paso del D-pad por parámetro: la regla del original (discretos = 1/(n-1),
   // continuos 0.01 — el hold-repeat del panel da la aceleración).
@@ -244,7 +300,7 @@ export function createLcdTop({ store, engineType = null }) {
   };
 
   let panel = createLcdPanel(element, {
-    menu: buildMenuTree(engineNow()),
+    menu: buildMenuTree(engineNow(), efectoNow()),
     hooks: hooksRef,
     lines: 2,
     widthChars: 16,
@@ -264,7 +320,20 @@ export function createLcdTop({ store, engineType = null }) {
     showParameterPreview,
 
     /**
-     * El árbol depende del engineType: un cambio de motor reconstruye el menú.
+     * FIRMA DEL ÁRBOL: todo lo de lo que depende el menú, en una
+     * cadena. El árbol se deriva del motor y del efecto del hueco 1, así
+     * que eso es lo único que hay que mirar para saber si el menú sigue
+     * siendo el mismo.
+     *
+     * POR QUÉ UNA CADENA y no un árbol: comparar menús es comparar
+     * objetos recién hechos, que nunca son los mismos, y el que llama
+     * (app.js) no tiene que saber CÓMO se deriva el nombre de un mando. Le
+     * basta con guardar esto y reconstruir cuando cambie.
+     */
+    menuSignature: () => `${engineNow()}#${efectoNow().id}`,
+    /**
+     * El árbol depende del engineType Y del efecto puesto en el hueco 1: un
+     * cambio de cualquiera de los dos reconstruye el menú.
      * La máquina es pura y el panel no expone swap de árbol: recrear la
      * composición en el MISMO elemento (barata: pantalla + 6 botones) con los
      * mismos closures por referencia.
@@ -274,7 +343,7 @@ export function createLcdTop({ store, engineType = null }) {
       element.textContent = '';
 
       panel = createLcdPanel(element, {
-        menu: buildMenuTree(engineNow()),
+        menu: buildMenuTree(engineNow(), efectoNow()),
         hooks: hooksRef,
         lines: 2,
         widthChars: 16,

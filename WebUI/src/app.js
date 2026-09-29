@@ -262,7 +262,11 @@ let engineSnapshot = { status: 'idle', error: null, sampleRate: 0, voices: 0 };
 // antes de que el bloque de montaje llegue a su linea — si vive solo ahi, el
 // frame revienta un TDZ (medido en consola: modRings is not defined).
 let modRings = null;
-let lcdEngineIndex = -1;
+// Lo único que puede obligar al LCD a rehacer su ÁRBOL. La firma la lee
+// del propio lcdTop en vez de compararla aquí, para que app.js no tenga que
+// saber de qué depende el menú; se toma al crear, no antes, para que el
+// primer paint no destruya y rehaga un árbol recién construido.
+let lcdMenuFirma = null;
 
 // La vista del pad XY (ficha MODELOS) queda a mano para el feed del worklet:
 // en standalone (sin bridge) es el meter del worklet quien pinta su anillo z
@@ -305,6 +309,8 @@ if (root) {
     store,
     engineType: () => store.getState().parameters.engineType ?? 0,
   });
+
+  lcdMenuFirma = lcdTop.menuSignature();
 
   // PREVIEW en el LCD de CUALQUIER edit de usuario (celdas, pad, aro, knobs de
   // cajon): el mismo gesto de hardware del original — giras y el LCD ensena el
@@ -552,11 +558,15 @@ if (root) {
     panel.paint(state);
 
     // LCD superior: el reposo/EDIT se repinta con el snapshot (preset cargado,
-    // edit nativo...) y el árbol se reconstruye si cambió el engineType.
-    const engineIndex = Math.round(state.parameters.engineType ?? 0);
+    // edit nativo...) y el árbol se RECONSTRUYE en cuanto cambia algo de lo
+    // que depende: el motor, o el efecto puesto en el hueco 1, que es lo que
+    // da nombre a los mandos de la rama EFFECTOS. Poner un chorus en la ficha
+    // renombra de SAT DRIVE a CHO RATE sin que nadie avise al LCD, y aquí
+    // no hace falta saber cómo se deriva ese nombre para enterarse.
+    const lcdFirma = lcdTop.menuSignature();
 
-    if (engineIndex !== lcdEngineIndex) {
-      lcdEngineIndex = engineIndex;
+    if (lcdFirma !== lcdMenuFirma) {
+      lcdMenuFirma = lcdFirma;
       lcdTop.rebuild();
     }
     lcdTop.paint();

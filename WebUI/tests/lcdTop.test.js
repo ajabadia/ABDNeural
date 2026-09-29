@@ -9,6 +9,9 @@
  *     contrato, clamp 0..1, push en fase 'end' — un gesto de hardware);
  *   - el reposo muestra preset/estado y un edit nativo se ve en EDIT;
  *   - rebuild() cambia el árbol cuando cambia el motor;
+ *   - la rama EFFECTOS se DERIVA del estado: los nombres y el número de
+ *     mandos del hueco 1 los pone el efecto que hay PUESTO, y el árbol se
+ *     rehace cuando ese efecto cambia;
  *   - y que CADA id del árbol exista en el contrato generado, que es la
  *     cuenta que faltaba cuando un id retirado dejó un knob muerto en
  *     silencio.
@@ -19,8 +22,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { createLcdPanel } from '@abdsynths/shared/components';
 
 import { buildMenuTree, createLcdTop } from '../src/ui/lcdTop.js';
+import { FX_CATALOG } from '../generated/fx-catalog.generated.js';
 import { describeControl, defaultNormalizedState, getDescriptor } from '../src/contracts/parameters.js';
 import { SCREEN_PARAMETER_IDS } from '../src/contracts/screens.js';
+import { normalizedFromChoiceIndex } from '../src/contracts/paramValue.js';
 
 function makeHost() {
   const host = document.createElement('div');
@@ -111,15 +116,141 @@ describe('lcdTop / el árbol del synth (LcdMenuManager migrado)', () => {
     // llamaba SATURATION conduce ahora `fx1Param1`, que es el drive del
     // bus del hueco 1 (`fx[0].params[0]`) y el id que usa tambien el destino
     // 17 de la matriz. Se mira el id y NO la etiqueta a proposito: el nombre
-    // es el de un parametro cuyo sentido depende del efecto puesto, y esa
-    // es justo la parte que este arbol, por ser estatico, no puede
-    // prometer.
+    // es el de un parametro cuyo sentido depende del efecto PUESTO, y ese
+    // nombre lo deriva ahora la rama EFFECTOS (los tests de abajo). Aqui
+    // lo que se comprueba es el cable: que la entrada apunte al hueco 1.
     const effects = buildMenuTree(0).find((item) => item.label === 'EFFECTS');
     const ids = effects.sub.map((item) => item.paramId);
 
     expect(ids).toContain('fx1Param1');
     expect(ids).not.toContain('fxSaturation');
   });
+
+
+describe('lcdTop / la rama EFFECTOS se DERIVA del efecto puesto', () => {
+  const fila = (displayName) => FX_CATALOG.effects.find((effect) => effect.displayName === displayName);
+  const rama = (efecto) => buildMenuTree(0, efecto).find((item) => item.label === 'EFFECTS').sub;
+  const nombres = (efecto) => rama(efecto).map((item) => item.label);
+  const delHueco = (efecto) => rama(efecto).filter((item) => item.paramId.startsWith('fx1Param'));
+
+  // El normalizado del `choice` para dejar un efecto PUESTO en el hueco.
+  const puesto = (indice) => normalizedFromChoiceIndex(describeControl('fx1Type'), indice);
+
+  // Lo que el LCD PINTA al entrar en la rama: la maquina navega hasta ella y
+  // la abre. Es la unica forma de mirar el menu de verdad, sin colarse en
+  // el arbol que el modulo acaba de fabricar.
+  const textoDeEfectos = (view) => {
+    const machine = view.panel.machine;
+
+    machine.onMenuPress();                          // -> navigation (GLOBAL)
+    machine.onArrow('right');                      // RESONATOR
+    machine.onArrow('right');                      // FILTER
+    machine.onArrow('right');                      // EFFECTS
+    machine.onOkPress();                            // abre la rama
+    view.paint();                                  // y la pantalla se entera
+
+    return [...view.element.querySelectorAll('.abd-lcd__line')]
+      .map((el) => el.textContent).join(' | ');
+  };
+
+  it('el nombre del mando cambia con el efecto: SAT DRIVE con saturacion, CHO RATE con chorus', () => {
+    // EL ENCARGO: si el hueco 1 no lleva saturacion, el nombre del mando
+    // cambia con el efecto puesto. `fx1Param1` es el parametro 1 de lo que
+    // haya en el bus, asi que un nombre fijo seria mentira en cuanto la
+    // ficha cambiase de efecto: por eso el arbol se deriva de la fila del
+    // catalogo (displayName + params[].name).
+    const sat = nombres(fila('Saturation'));
+    const chorus = nombres(fila('Chorus'));
+    const reverb = nombres(fila('Reverb'));
+
+    expect(sat).toContain('SAT DRIVE');
+    expect(chorus).toContain('CHO RATE');
+    expect(chorus).toContain('CHO DEPTH');
+    expect(reverb).toContain('REV SIZE');
+
+    // Y el nombre viejo desaparece: no hay dos verdades en la misma rama.
+    expect(chorus).not.toContain('SAT DRIVE');
+    expect(reverb).not.toContain('SAT DRIVE');
+
+    // Los tres mandos planos que el hueco no se llevo siguen ahi.
+    expect(sat).toEqual(expect.arrayContaining(['CHORUS MIX', 'DELAY TIME', 'REVERB MIX']));
+  });
+
+  it('los mandos del hueco son los que DECLARA el efecto, no cuatro fijos', () => {
+    // Un hueco publica cuatro posiciones para cualquier efecto (el bus no
+    // sabe cuantos pondra el que le pongas) y quien lo dice es la fila. La
+    // saturacion declara UN mando y el resto no existe; la reverb declara
+    // CUATRO. Con cuatro entradas fijas, tres serian knobs muertos.
+    expect(delHueco(fila('Saturation')).map((item) => item.paramId)).toEqual(['fx1Param1']);
+    expect(delHueco(fila('Chorus')).map((item) => item.paramId)).toEqual(['fx1Param1', 'fx1Param2']);
+    expect(delHueco(fila('Reverb')).map((item) => item.paramId))
+      .toEqual(['fx1Param1', 'fx1Param2', 'fx1Param3', 'fx1Param4']);
+
+    // El bypass no declara ninguno: la rama se queda con los tres planos,
+    // sin inventar un mando del hueco que no existe.
+    expect(rama(fila('Bypass')).map((item) => item.paramId))
+      .toEqual(['fxChorusMix', 'fxDelayTime', 'fxReverbMix']);
+  });
+
+  it('sin efecto en el store se usa el default DEL CONTRATO (saturacion), no el bypass', () => {
+    // El id ausente del snapshot no es "sin efecto": el hueco 1 arranca en
+    // saturacion (`fx1Type` con defaultValue 4) y el menu tiene que arrancar
+    // en SAT DRIVE. Es el mismo razonamiento que el cajon de efectos.
+    expect(nombres(undefined)).toContain('SAT DRIVE');
+  });
+
+  it('createLcdTop lee el efecto del STORE, y el menu se rehace al vuelo', () => {
+    const store = makeStore({ parameters: { ...defaultNormalizedState(SCREEN_PARAMETER_IDS), fx1Type: puesto(1) } });
+    const view = createLcdTop({ store });
+    makeHost().append(view.element);
+
+    expect(textoDeEfectos(view)).toContain('CHO RATE');
+
+    // La ficha cambia el efecto: el menu se rehace solo, sin que nadie le
+    // avise (esto es lo que hace app.js comparando menuSignature()).
+    store.state.parameters.fx1Type = puesto(4);
+    view.rebuild();
+    view.paint();
+
+    const tras = textoDeEfectos(view);
+
+    expect(tras).toContain('SAT DRIVE');
+    expect(tras).not.toContain('CHO RATE');
+
+    view.destroy();
+  });
+
+  it('menuSignature() depende SOLO del motor y del efecto puesto', () => {
+    // La firma es lo que decide si el arbol hay que rehacerlo (app.js). Si
+    // contemplase mas cosas, el LCD reconstruiria su menu sin motivo; si
+    // contemplase menos, se quedaria con el arbol viejo cuando el efecto
+    // cambiase. Los dos son fallos de este encargo.
+    // El motor se lee del STORE: el `engineType` que se le pasa solo decide
+    // SI se lee (sin el, el motor sale siempre 0), asi que el motor se
+    // cambia cambiando el store, que es quien lo tiene. Es exactamente
+    // el enganche que pone app.js.
+    const store = makeStore();
+    const view = createLcdTop({ store, engineType: () => store.getState().parameters.engineType ?? 0 });
+
+    const inicial = view.menuSignature();
+
+    store.state.parameters.engineType = 1;
+    expect(view.menuSignature()).not.toBe(inicial);
+
+    const conNeurotik = view.menuSignature();
+
+    // Mandos que no son del menu: la firma no se mueve.
+    store.state.parameters.masterBPM = 0.7;
+    store.state.parameters.filterCutoff = 0.33;
+    expect(view.menuSignature()).toBe(conNeurotik);
+
+    // El efecto del hueco 1, si.
+    store.state.parameters.fx1Type = puesto(3);
+    expect(view.menuSignature()).not.toBe(conNeurotik);
+
+    view.destroy();
+  });
+});
 
 describe('lcdTop / showParameterPreview (el LCD ensena lo que giras)', () => {
   it('un edit de usuario (id, normalizado) pinta label + valor del contrato en transitorio', () => {
