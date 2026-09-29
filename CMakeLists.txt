@@ -803,6 +803,26 @@ target_include_directories(NEURONiK_FxCatalogueTest PRIVATE
 
 add_test(NAME NEURONiK_FxCatalogueTest COMMAND NEURONiK_FxCatalogueTest)
 
+
+# EL ORDEN DEL LAYOUT DE GlobalParams (2026-09-29). Es un ABI: la pagina
+# escribe el espejo por INDICE de campo, asi que un orden equivocado no rompe
+# nada --escribe en el campo de al lado-- y la unica manera de verlo es un
+# test. No reconstruye el wasm a proposito: el artefacto esta VERSIONADO, y
+# regenerarlo aqui se llevaria por delante cualquier cambio en vuelo del DSP
+# de otra sesion. El layout se mira en su lugar de origen
+# (`Source/Wasm/GlobalParamsLayout.h`), que es donde viven los bucles.
+add_executable(NEURONiK_WasmLayoutOrderTest
+    Tests/WasmLayoutOrderTest.cpp
+)
+
+target_include_directories(NEURONiK_WasmLayoutOrderTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Wasm"
+)
+
+add_test(NAME NEURONiK_WasmLayoutOrderTest COMMAND NEURONiK_WasmLayoutOrderTest)
+
 # Regenerates WebUI/generated/fx-catalog.generated.{json,js}
 add_executable(NEURONiK_FxExport
     Tests/FxCatalogExportTool.cpp

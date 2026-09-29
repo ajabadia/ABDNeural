@@ -81,6 +81,16 @@ export const CONTRACT_TO_GP_FIELD = {
   // salen del orden que publica `neuronikGlobalParamsLayout`, y ese orden es
   // `params[0..bus-1], gain, mix` por hueco — el mismo que en el puente.
   //
+  // Y ESE ORDEN ESTA FIJADO, no es una convencion: `NEURONiK_WasmLayoutOrderTest`
+  // (Tests/WasmLayoutOrderTest.cpp) confronta estos numeros con los `offsetof`
+  // que construye el puente. Hasta el 2026-09-29 los bucles del puente ponian
+  // todos los params de todos los huecos y despues todas las ganancias y
+  // mezclas, con lo que el 38 y el 39 de aqui eran los dos primeros mandos del
+  // hueco 2: la ganancia y la mezcla del hueco 1 no llegaban a nada y ningun
+  // knob se quejaba. Los params si cuadraban, porque los del hueco 1 van los
+  // primeros en las dos formas, que es por eso que el fallo estaba donde no se
+  // miraba. Si ese test se pone rojo, el que hay que arreglar es el puente.
+  //
   // `fx1Type` NO APARECE, y no es un olvido: el tipo de un hueco lo decide el
   // hilo de mensajes (crea y destruye la instancia del efecto) y no viaja por
   // el espejo del hilo de audio. Es el unico parametro del bus que no se mapea.

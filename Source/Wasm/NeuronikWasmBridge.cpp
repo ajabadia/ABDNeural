@@ -35,6 +35,7 @@
 #include "../DSP/DspTypes.h"
 #include "../DSP/CoreModules/NeuronikEngine.h"
 #include "../DSP/CoreModules/NeurotikEngine.h"
+#include "GlobalParamsLayout.h"
 
 #include <cmath>
 #include <cstddef>
@@ -214,45 +215,10 @@ WASM_EXPORT void neuronikLoadModel (int slot, int engineType, const float* data,
  */
 WASM_EXPORT int neuronikGlobalParamsLayout (int* outOffsets, int maxFields)
 {
-    using GP = NEURONiK::DSP::GlobalParams;
-
-    // Los campos ESCALARES van en una tabla porque son pocos y estan unstable
-    // (no cambian); los del BUS se anaden despues, con dos bucles, porque son
-    // 4 huecos x 6 y una lista de 24 `offsetof` escrita a mano son 24 numeros
-    // que se pueden desincronizar del struct sin que nada lo note. Los bucles
-    // salen de los MISMOS `kFxBusSlots`/`kFxBusParams` que usa el motor.
-    const std::size_t scalarOffsets[] = {
-        offsetof (GP, masterLevel), offsetof (GP, saturationAmt), offsetof (GP, bpm),
-        offsetof (GP, delayTime),   offsetof (GP, delayFB),
-        offsetof (GP, chorusRate),  offsetof (GP, chorusDepth),   offsetof (GP, chorusMix),
-        offsetof (GP, reverbSize),  offsetof (GP, reverbDamping),
-        offsetof (GP, reverbWidth), offsetof (GP, reverbMix),
-        offsetof (GP, lfo1.waveform), offsetof (GP, lfo1.rateHz),
-        offsetof (GP, lfo1.syncMode), offsetof (GP, lfo1.rhythmicDivision),
-        offsetof (GP, lfo1.depth),
-        offsetof (GP, lfo2.waveform), offsetof (GP, lfo2.rateHz),
-        offsetof (GP, lfo2.syncMode), offsetof (GP, lfo2.rhythmicDivision),
-        offsetof (GP, lfo2.depth),
-    };
-
-    std::vector<std::size_t> layout (std::begin (scalarOffsets), std::end (scalarOffsets));
-
-    for (int i = 0; i < 4; ++i)
-    {
-        layout.push_back (offsetof (GP, modMatrix[i].source));
-        layout.push_back (offsetof (GP, modMatrix[i].destination));
-        layout.push_back (offsetof (GP, modMatrix[i].amount));
-    }
-
-    for (int slot = 0; slot < NEURONiK::DSP::kFxBusSlots; ++slot)
-        for (int p = 0; p < NEURONiK::DSP::kFxBusParams; ++p)
-            layout.push_back (offsetof (GP, fx[slot].params[p]));
-
-    for (int slot = 0; slot < NEURONiK::DSP::kFxBusSlots; ++slot)
-    {
-        layout.push_back (offsetof (GP, fx[slot].gain));
-        layout.push_back (offsetof (GP, fx[slot].mix));
-    }
+    // El orden lo dice `globalParamsLayout` (arriba), y lo comparten los dos
+    // exports de layout: duplicar los bucles aqui era la forma de que uno de
+    // los dos acabara mintiendo sobre el ABI sin que se notara.
+    const auto layout = globalParamsLayout();
 
     const auto count = static_cast<int> (layout.size());
 
@@ -479,47 +445,46 @@ WASM_EXPORT void neuronikSetVoiceEnvelope (const void* pod, int byteSize)
             wire.filterAttackMs, wire.filterDecayMs, wire.filterSustain, wire.filterReleaseMs);
 }
 
-/** modMatrix field offsets appended after the base layout (returns count). */
+/**
+ * EL TRAMO QUE VA DETRAS DE LOS ESCALARES: la matriz de modulacion y el bus de
+ * los huecos, con la numeracion desde cero (returns count).
+ *
+ * Es el MISMO tramo, con los MISMOS indices y en el MISMO orden, que
+ * `neuronikGlobalParamsLayout` publica a partir del campo
+ * `scalarFieldCount()`. Los dos leen el mismo constructor, asi que no pueden
+ * discrepar; quien lo necesite en bloque, sin los escalares delante, usa este.
+ */
 WASM_EXPORT int neuronikModMatrixLayout (int* outOffsets, int maxFields)
 {
-    using GP = NEURONiK::DSP::GlobalParams;
+    // EL TRAMO QUE VA DETRAS DE LOS ESCALARES: la matriz (4 rutas x 3 campos) y
+    // el bus de los huecos.
+    //
+    // Antes publicaba SOLO los doce de la matriz y se comia los del bus, que
+    // estaban recogidos en un vector que no se usaba para nada: `total` se
+    // calculaba y lo que se devolvia era `count`, o sea la mitad. Publicar la
+    // mitad sin avisar es PEOR que no publicar, porque el que lo llama ve un
+    // numero que parece completo y le faltan los mandos del bus.
+    //
+    // El corte lo pone `scalarFieldCount()`, que CUENTA los escalares de la
+    // tabla: anadir un escalar nuevo a una de las dos listas y no a la otra
+    // dejaba a este export.publicando desde el campo equivocado, en silencio.
+    //
+    // Los indices que publica son los MISMOS, y en el MISMO orden, que los de
+    // `neuronikGlobalParamsLayout` a partir de ahi: este es ese mismo tramo, con
+    // su numeracion desde cero. Los dos salen del constructor de arriba.
+    const std::size_t first = scalarFieldCount();
+    const auto& layout = globalParamsLayout();
+    const auto total = static_cast<int> (layout.size() - first);
 
-    const std::size_t offsets[] = {
-        offsetof (GP, modMatrix[0].source),     offsetof (GP, modMatrix[0].destination), offsetof (GP, modMatrix[0].amount),
-        offsetof (GP, modMatrix[1].source),     offsetof (GP, modMatrix[1].destination), offsetof (GP, modMatrix[1].amount),
-        offsetof (GP, modMatrix[2].source),     offsetof (GP, modMatrix[2].destination), offsetof (GP, modMatrix[2].amount),
-        offsetof (GP, modMatrix[3].source),     offsetof (GP, modMatrix[3].destination), offsetof (GP, modMatrix[3].amount),
-    };
-
-    // El bus, hueco a hueco y mando a mando. Se escribe con dos bucles y no con
-    // una lista escrita a mano porque una lista de 24 `offsetof` es 24 numeros
-    // que se pueden desincronizar del struct sin que nada lo note: el codigo
-    // sale de los MISMOS `kFxBusSlots`/`kFxBusParams` que usa el motor.
-    std::vector<std::size_t> fxOffsets;
-    for (int slot = 0; slot < NEURONiK::DSP::kFxBusSlots; ++slot)
-        for (int p = 0; p < NEURONiK::DSP::kFxBusParams; ++p)
-            fxOffsets.push_back (offsetof (GP, fx[slot].params[p]));
-
-    for (int slot = 0; slot < NEURONiK::DSP::kFxBusSlots; ++slot)
-    {
-        fxOffsets.push_back (offsetof (GP, fx[slot].gain));
-        fxOffsets.push_back (offsetof (GP, fx[slot].mix));
-    }
-
-    // El `count` que se devuelve son los campos de una fila (0..33) mas los del
-    // bus, y la pagina los recorre por indice. Ver `CONTRACT_TO_GP_FIELD`.
-    static const std::size_t scalars = sizeof (offsets) / sizeof (offsets[0]);
-    const int total = static_cast<int> (scalars + fxOffsets.size());
-
-    const int count = (int) (sizeof (offsets) / sizeof (offsets[0]));
     if (outOffsets != nullptr)
     {
-        const int n = count < maxFields ? count : maxFields;
+        const int n = total < maxFields ? total : maxFields;
         for (int i = 0; i < n; ++i)
-            outOffsets[i] = (int) offsets[i];
+            outOffsets[i] = static_cast<int> (layout[first + static_cast<std::size_t> (i)]);
         return n;
     }
-    return count;
+
+    return total;
 }
 
 WASM_EXPORT void neuronikAllNotesOff()
