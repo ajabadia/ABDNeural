@@ -15,11 +15,18 @@
 # arbol que alimenta el layout esta limpio": ahi arbol == commit y da igual
 # en que orden se compilen.
 #
-# QUE RECOMPILA, EN QUE ORDEN. Primero la firma (nativo, segundos) y luego
-# el `.wasm` (emscripten, minutos). build_wasm.bat ya hace el resto: paridad
-# contra nativo, smoke, sincronizacion a public/worklet y el guard por hash.
+# QUE RECOMPILA: UN SOLO PASO. build_wasm.bat, y nada mas. El paso que
+# generaba la firma aqui --NEURONiK_LayoutExport en nativo, con su propio
+# manejo de fallos-- se ha ido a build_wasm.bat, que ya regenera la tabla antes
+# de compilar y comprueba al final que el binario y la tabla cuadran. Aqui eran
+# DOS pasos que podian quedar a medias: si este vigilante generaba la firma y el
+# build fallaba tres minutos despues, la tabla se quedaba regenerada y el
+# `.wasm` viejo, que es exactamente el desajuste que se daba por cerrado.
 #
-set -uo pipefail
+# Los dos compilanadores siguen siendo dos --la firma en nativo, el binario con
+# emscripten-- pero ahora los manda el MISMO comando, en la misma pasada y sobre
+# el mismo arbol. Ver el paso 3 y el cierre de build_wasm.bat.
+
 cd "$(dirname "$0")"
 
 POLL="${1:-30}"
@@ -68,32 +75,24 @@ while true; do
     say "commit $HEAD_SHORT detectado y arbol quieto. A recompilar."
     say "    $(git log -1 --format='%s')"
 
-    # --- 1. la firma, desde el mismo arbol -------------------------------
-    say "[1/3] NEURONiK_LayoutExport -> WebUI/generated/gp-layout.generated.js"
-    if ! cmake --build build-reference --config Release --target NEURONiK_LayoutExport >>"$LOG" 2>&1; then
-      say "    FALLO al compilar el exportador. Sigo esperando."
-      sleep "$POLL"
-      heartbeat
-      continue
-    fi
-    if ! ./build-reference/Release/NEURONiK_LayoutExport.exe WebUI/generated >>"$LOG" 2>&1; then
-      say "    FALLO al generar la firma. Sigo esperando."
-      sleep "$POLL"
-      heartbeat
-      continue
-    fi
-    say "    $(grep -o 'LAYOUT_FINGERPRINT = [0-9]*' WebUI/generated/gp-layout.generated.js)"
-    say "    $(grep -o 'LAYOUT_FIELD_COUNT = [0-9]*' WebUI/generated/gp-layout.generated.js)"
-
-    # --- 2. el binario ---------------------------------------------------
-    say "[2/3] build_wasm.bat (emscripten; puede tardar minutos)"
-    if ! cmd //c build_wasm.bat nopause >>"$LOG" 2>&1; then
+    # --- 1. el binario ---------------------------------------------------
+    # El ".\\" NO es cosmetico: desde Git Bash, `cmd //c build_wasm.bat` no
+    # encuentra el fichero --MSYS desactiva la busqueda del directorio actual--
+    # y falla al instante con "no se reconoce como un comando", que el vigilante
+    # leia como un fallo del build. Comprobado: con ".\\" arranca. El vigilante
+    # esta pensado para Git Bash, de ahi el prefijo.
+    if ! cmd //c ".\build_wasm.bat" nopause >>"$LOG" 2>&1; then
       say "    FALLO build_wasm.bat. Ver wasm-last-run.log y $LOG"
       exit 1
     fi
 
-    # --- 3. que los dos hablen del mismo layout ---------------------------
-    say "[3/3] comprobando el binario servido contra la pagina"
+    # --- 2. que los dos hablen del mismo layout ---------------------------
+    #(build_wasm.bat YA ejecuta este mismo test como su ultimo guard, asi que
+    #  si el paso 1 ha salido bien, este no puede fallar. Se queda por dos cosas
+    #  que el build no da: la salida del test en el log del vigilante, que es lo
+    #  que se lee al volver, y el aviso de "commit y artefactos juntos" de abajo,
+    #  que es la parte accionable cuando los dos ya cuadran. Cuesta dos segundos.)
+    say "[2/2] comprobando el binario servido contra la pagina"
     if node Tests/wasmLayoutFingerprintTest.mjs 2>&1 | tee -a "$LOG"; then
       say "LISTO: el .wasm y la pagina hablan del mismo layout."
       say "      La pagina ya no avisara. Commit y artefactos juntos:"
