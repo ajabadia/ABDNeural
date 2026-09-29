@@ -17,6 +17,8 @@
       [4]f32 value [5]i32 sampleOffset
     GlobalParams: JS never hardcodes offsets — call globalParamsLayout()
     once and write fields by the returned offsets.
+    ADSR de la voz: el POD VoiceEnvelopeWire (8 floats) en su propio canal,
+    con el mismo patron (voiceEnvelopeSize/Layout + setVoiceEnvelope).
 
   ==============================================================================
 */
@@ -34,7 +36,9 @@
 #include "../DSP/CoreModules/NeuronikEngine.h"
 #include "../DSP/CoreModules/NeurotikEngine.h"
 
+#include <cmath>
 #include <cstddef>
+#include <vector>
 #include <cstring>
 #include <memory>
 
@@ -53,6 +57,31 @@ namespace
         double sampleRate = 48000.0;
         int blockSize = 128;
     };
+
+    /** El ADSR de la voz en el HIELO: el POD que JS rellena, en el mismo
+        estilo que GlobalParams pero para el canal de VoiceParams. Son ocho
+        floats en MILISEGUNDOS (los dos sustains en 0..1) y NO el struct
+        `AdditiveVoice::Params` / `NeurotikVoice::Params`: esos dos structs son
+        distintos entre si (el neurotik no tiene envolvente de filtro) y
+        cambiar uno no puede cambiar el ABI de la frontera. El POD es la
+        interseccion de los dos, mas estable que cualquiera de ellos; el
+        read-modify-write de cada campo lo hace el motor (setVoiceEnvelope). */
+    struct VoiceEnvelopeWire
+    {
+        float ampAttackMs;
+        float ampDecayMs;
+        float ampSustain;
+        float ampReleaseMs;
+        float filterAttackMs;
+        float filterDecayMs;
+        float filterSustain;
+        float filterReleaseMs;
+    };
+
+    static_assert(std::is_standard_layout<VoiceEnvelopeWire>::value,
+                  "The ADSR POD must cross the WASM boundary as raw bytes");
+    static_assert(sizeof(VoiceEnvelopeWire) == 32,
+                  "Eight floats: the JS mirror allocates exactly this");
 
     EngineInstance& instance()
     {
@@ -172,14 +201,27 @@ WASM_EXPORT void neuronikLoadModel (int slot, int engineType, const float* data,
  * (masterLevel, saturationAmt, bpm, delayTime, delayFB, chorusRate,
  * chorusDepth, chorusMix, reverbSize, reverbDamping, reverbWidth, reverbMix,
  * lfo1.waveform, lfo1.rateHz, lfo1.syncMode, lfo1.rhythmicDivision,
- * lfo1.depth, lfo2.<same five>, modMatrix[r].{source,destination,amount} r=0..3).
+ * lfo1.depth, lfo2.<same five>, modMatrix[r].{source,destination,amount} r=0..3,
+ * fx[s].{params[0..3], gain, mix} for s=0..kFxBusSlots-1).
  * Returns the number of fields written.
+ *
+ * EL BUS DE EFECTOS VA AL FINAL, Y POR ESO NO ROMPE NADA. Este array es un ABI:
+ * la pagina escribe el espejo por INDICES (`WebUI/src/wasm/audioParams.js`), no
+ * por offset, asi que cualquier campo nuevo tiene que ir detras para no
+ * desplazarlos. `saturationAmt` sigue en el sitio 1 aunque ya no lo maneje nadie
+ * (el hueco 1 tiene bus desde 2026-09-29): sacarlo de ahi cambio lo que la
+ * pagina escribe en el 1 sin que ningun aviso lo dijera.
  */
 WASM_EXPORT int neuronikGlobalParamsLayout (int* outOffsets, int maxFields)
 {
     using GP = NEURONiK::DSP::GlobalParams;
 
-    const std::size_t offsets[] = {
+    // Los campos ESCALARES van en una tabla porque son pocos y estan unstable
+    // (no cambian); los del BUS se anaden despues, con dos bucles, porque son
+    // 4 huecos x 6 y una lista de 24 `offsetof` escrita a mano son 24 numeros
+    // que se pueden desincronizar del struct sin que nada lo note. Los bucles
+    // salen de los MISMOS `kFxBusSlots`/`kFxBusParams` que usa el motor.
+    const std::size_t scalarOffsets[] = {
         offsetof (GP, masterLevel), offsetof (GP, saturationAmt), offsetof (GP, bpm),
         offsetof (GP, delayTime),   offsetof (GP, delayFB),
         offsetof (GP, chorusRate),  offsetof (GP, chorusDepth),   offsetof (GP, chorusMix),
@@ -193,14 +235,35 @@ WASM_EXPORT int neuronikGlobalParamsLayout (int* outOffsets, int maxFields)
         offsetof (GP, lfo2.depth),
     };
 
-    const int count = (int) (sizeof (offsets) / sizeof (offsets[0]));
+    std::vector<std::size_t> layout (std::begin (scalarOffsets), std::end (scalarOffsets));
+
+    for (int i = 0; i < 4; ++i)
+    {
+        layout.push_back (offsetof (GP, modMatrix[i].source));
+        layout.push_back (offsetof (GP, modMatrix[i].destination));
+        layout.push_back (offsetof (GP, modMatrix[i].amount));
+    }
+
+    for (int slot = 0; slot < NEURONiK::DSP::kFxBusSlots; ++slot)
+        for (int p = 0; p < NEURONiK::DSP::kFxBusParams; ++p)
+            layout.push_back (offsetof (GP, fx[slot].params[p]));
+
+    for (int slot = 0; slot < NEURONiK::DSP::kFxBusSlots; ++slot)
+    {
+        layout.push_back (offsetof (GP, fx[slot].gain));
+        layout.push_back (offsetof (GP, fx[slot].mix));
+    }
+
+    const auto count = static_cast<int> (layout.size());
+
     if (outOffsets != nullptr)
     {
         const int n = count < maxFields ? count : maxFields;
         for (int i = 0; i < n; ++i)
-            outOffsets[i] = (int) offsets[i];
+            outOffsets[i] = static_cast<int> (layout[static_cast<std::size_t> (i)]);
         return n;
     }
+
     return count;
 }
 
@@ -326,6 +389,96 @@ WASM_EXPORT void neuronikSetVoiceLayerMorph (float layerGain2, float layerGain3)
         static_cast<NEURONiK::DSP::NeuronikEngine*> (inst.engine.get())->setVoiceLayerMorph (g2, g3);
 }
 
+/** ============================================================================
+ *  ADSR DE LA VOZ (canal `neuronik:voice` del worklet, 2026-09-28).
+ *
+ *  Por que existe: el navegador no tiene APVTS. Los knobs de envolvente de la
+ *  pagina (envAttack..filterRelease) son VoiceParams, no GlobalParams, asi que
+ *  hasta ahora NO habia por donde llegaran al motor local: vivian en los
+ *  defaults de C++ y la ENV 2 era indistinguible de la ENV 1. Aqui se cruzan
+ *  los ocho tramos, con el mismo diseno que el canal de GlobalParams — el
+ *  espejo vive en JS, que pregunta el tamano y el layout y escribe por indice,
+ *  y el puente lo convierte en el read-modify-write del motor.
+ *
+ *  El camino NO es `setVoiceParams` (reemplaza el struct entero y borraria el
+ *  morph que la pagina ya cruzo): es `setVoiceEnvelope`, que solo toca los ocho.
+ * ========================================================================= */
+
+/** Byte size JS must allocate for the ADSR mirror (8 floats). */
+WASM_EXPORT int neuronikVoiceEnvelopeSize()
+{
+    return (int) sizeof (VoiceEnvelopeWire);
+}
+
+/** Field offsets of the ADSR POD, in the documented order (amp attack,
+ *  decay, sustain, release; then the four of the filter envelope), all in
+ *  MILLISECONDS except the two sustains. Same contract as
+ *  neuronikGlobalParamsLayout: called with out==0 it answers how many fields
+ *  there are, so JS never hardcodes an offset. */
+WASM_EXPORT int neuronikVoiceEnvelopeLayout (int* outOffsets, int maxFields)
+{
+    const std::size_t offsets[] = {
+        offsetof (VoiceEnvelopeWire, ampAttackMs),
+        offsetof (VoiceEnvelopeWire, ampDecayMs),
+        offsetof (VoiceEnvelopeWire, ampSustain),
+        offsetof (VoiceEnvelopeWire, ampReleaseMs),
+        offsetof (VoiceEnvelopeWire, filterAttackMs),
+        offsetof (VoiceEnvelopeWire, filterDecayMs),
+        offsetof (VoiceEnvelopeWire, filterSustain),
+        offsetof (VoiceEnvelopeWire, filterReleaseMs),
+    };
+
+    const int count = (int) (sizeof (offsets) / sizeof (offsets[0]));
+    if (outOffsets != nullptr)
+    {
+        const int n = count < maxFields ? count : maxFields;
+        for (int i = 0; i < n; ++i)
+            outOffsets[i] = (int) offsets[i];
+        return n;
+    }
+    return count;
+}
+
+/** Push one ADSR snapshot (8 floats, see the layout above) to the ACTIVE
+ *  engine. A snapshot with a non-finite field (NaN travels through
+ *  structuredClone, and the mirror is a plain ArrayBuffer) is DROPPED whole:
+ *  the page always sends all eight, so the next good snapshot re-applies
+ *  everything and a single NaN cannot freeze the envelope at a bogus time.
+ *  Clamping is the envelope's (`Envelope::setParameters`: >= 0.1 ms, sustain
+ *  0..1), same as on the native path. */
+WASM_EXPORT void neuronikSetVoiceEnvelope (const void* pod, int byteSize)
+{
+    if (pod == nullptr || byteSize != (int) sizeof (VoiceEnvelopeWire))
+        return;
+
+    VoiceEnvelopeWire wire;
+    std::memcpy (&wire, pod, sizeof (wire));
+
+    const float fields[] = {
+        wire.ampAttackMs, wire.ampDecayMs, wire.ampSustain, wire.ampReleaseMs,
+        wire.filterAttackMs, wire.filterDecayMs, wire.filterSustain, wire.filterReleaseMs,
+    };
+    for (float value : fields)
+        if (!std::isfinite (value))
+            return;
+
+    auto& inst = instance();
+    if (inst.engine == nullptr)
+        return;
+
+    // El cast a motor concreto es el de los otros canales de voz (setMorphZ,
+    // setVoiceLayerMorph): setVoiceEnvelope vive en BaseEngine, no en la
+    // interfaz, asi que el motor ACTIVO decide que de los ocho campos son suyos.
+    if (inst.engine->getType() == NEURONiK::DSP::ISynthesisEngine::Type::Neurotik)
+        static_cast<NEURONiK::DSP::NeurotikEngine*> (inst.engine.get())->setVoiceEnvelope (
+            wire.ampAttackMs, wire.ampDecayMs, wire.ampSustain, wire.ampReleaseMs,
+            wire.filterAttackMs, wire.filterDecayMs, wire.filterSustain, wire.filterReleaseMs);
+    else
+        static_cast<NEURONiK::DSP::NeuronikEngine*> (inst.engine.get())->setVoiceEnvelope (
+            wire.ampAttackMs, wire.ampDecayMs, wire.ampSustain, wire.ampReleaseMs,
+            wire.filterAttackMs, wire.filterDecayMs, wire.filterSustain, wire.filterReleaseMs);
+}
+
 /** modMatrix field offsets appended after the base layout (returns count). */
 WASM_EXPORT int neuronikModMatrixLayout (int* outOffsets, int maxFields)
 {
@@ -337,6 +490,26 @@ WASM_EXPORT int neuronikModMatrixLayout (int* outOffsets, int maxFields)
         offsetof (GP, modMatrix[2].source),     offsetof (GP, modMatrix[2].destination), offsetof (GP, modMatrix[2].amount),
         offsetof (GP, modMatrix[3].source),     offsetof (GP, modMatrix[3].destination), offsetof (GP, modMatrix[3].amount),
     };
+
+    // El bus, hueco a hueco y mando a mando. Se escribe con dos bucles y no con
+    // una lista escrita a mano porque una lista de 24 `offsetof` es 24 numeros
+    // que se pueden desincronizar del struct sin que nada lo note: el codigo
+    // sale de los MISMOS `kFxBusSlots`/`kFxBusParams` que usa el motor.
+    std::vector<std::size_t> fxOffsets;
+    for (int slot = 0; slot < NEURONiK::DSP::kFxBusSlots; ++slot)
+        for (int p = 0; p < NEURONiK::DSP::kFxBusParams; ++p)
+            fxOffsets.push_back (offsetof (GP, fx[slot].params[p]));
+
+    for (int slot = 0; slot < NEURONiK::DSP::kFxBusSlots; ++slot)
+    {
+        fxOffsets.push_back (offsetof (GP, fx[slot].gain));
+        fxOffsets.push_back (offsetof (GP, fx[slot].mix));
+    }
+
+    // El `count` que se devuelve son los campos de una fila (0..33) mas los del
+    // bus, y la pagina los recorre por indice. Ver `CONTRACT_TO_GP_FIELD`.
+    static const std::size_t scalars = sizeof (offsets) / sizeof (offsets[0]);
+    const int total = static_cast<int> (scalars + fxOffsets.size());
 
     const int count = (int) (sizeof (offsets) / sizeof (offsets[0]));
     if (outOffsets != nullptr)

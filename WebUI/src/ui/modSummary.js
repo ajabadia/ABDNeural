@@ -83,6 +83,7 @@ export function createModSummary({ controls, onTelemetry = null }) {
     // primera pista del grid de la fila es la suya (5px), como en el cajon.
     const envLevel = document.createElement('span');
       envLevel.className = 'drawer-slot__env-level';
+      envLevel.dataset.envelope = '-1';
       envLevel.dataset.live = 'false';
       row.prepend(envLevel);
 
@@ -120,6 +121,14 @@ export function createModSummary({ controls, onTelemetry = null }) {
       const envLevel = row.querySelector('.drawer-slot__env-level');
       const envelope = optionIndex === ENV1_SOURCE ? 0 : optionIndex === ENV2_SOURCE ? 1 : -1;
 
+      // La ETIQUETA de la envolvente, igual que la escribe el cajon (la pieza es
+      // la misma en los dos sitios). Sin ella esta barra llega al arnés sin
+      // distinguir ENV 1 de ENV 2: el selector la parte por fila y por
+      // envolvente, asi que una copia sin etiqueta se empareja con la que
+      // toque y la gemelidad mide elazar en vez de pintura. Se vio en la
+      // bancada con la fila de ENV 2: los dos niveles eran 0.700 y 0.700, y la
+      // direccion fallaba igual.
+      envLevel.dataset.envelope = String(envelope);
       envLevel.dataset.live = String(envelope >= 0);
 
       if (envelope >= 0) {

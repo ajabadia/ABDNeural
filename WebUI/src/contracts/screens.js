@@ -39,8 +39,25 @@ export const VISUAL_PARAMETER_IDS = [
 ].filter((id) => !SECTION_PARAMETER_IDS.includes(id));
 
 /**
- * Todos los ids que posee el store: los 70 del lienzo, en orden de lectura, MÁS los
- * que solo viven en una vista.
+ * Los ids que el store POSEYE pero que todavia no tienen celda: los cinco del
+ * bus del hueco 1 que no son la mezcla ni el drive (`fx1Type`, `fx1Gain` y
+ * `fx1Param2..4`).
+ *
+ * POSEEDOS Y NO PINTADOS SON COSAS DISTINTAS, y confundirlas rompe el store en
+ * silencio. Un id fuera de `SCREEN_PARAMETER_IDS` es un id que el store ignora
+ * cuando llega del host (la regla de abajo), asi que un id del bus que no
+ * estuviera aqui haria que mover el selector de efecto en el host no le
+ * llegara a la pagina: el knob se quedaria quieto en pantalla
+ * mientras el motor ya habia cambiado.  Estar en la lista no dice que se pinte: `sections.js`
+ * es quien dice eso, y ahi estos cinco no estan.
+ */
+export const SLOT_MODULE_PARAMETER_IDS = [
+  'fx1Type', 'fx1Gain', 'fx1Param2', 'fx1Param3', 'fx1Param4',
+];
+
+/**
+ * Todos los ids que posee el store: los del lienzo, en orden de lectura, MÁS los
+ * que solo viven en una vista y los del modulo del hueco.
  *
  * Los dos importan por lo MISMO, y es una regla del store, no un detalle: ignora
  * los mensajes nativos de un id que no tiene (`entry.id in parameters`), así que un
@@ -49,7 +66,11 @@ export const VISUAL_PARAMETER_IDS = [
  * Con morphX/morphY fuera de esta lista, el pad dibujaba una esquina que el motor
  * ya no tenía: la divergencia salió en vivo, con el banco CZ101 cargado.
  */
-export const SCREEN_PARAMETER_IDS = [...SECTION_PARAMETER_IDS, ...VISUAL_PARAMETER_IDS];
+export const SCREEN_PARAMETER_IDS = [
+  ...SECTION_PARAMETER_IDS,
+  ...VISUAL_PARAMETER_IDS,
+  ...SLOT_MODULE_PARAMETER_IDS,
+];
 
 /** Valor del atributo `data-tab` de la franja de teclado. */
 export const KEYS_TAB = 'keys';

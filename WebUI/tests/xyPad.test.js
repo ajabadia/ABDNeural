@@ -19,7 +19,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createVisual } from '../src/ui/visuals.js';
-import { createXyPad } from '../src/ui/xyPad.js';
+import { CORNER_KEYBOARD_HINT, createXyPad } from '../src/ui/xyPad.js';
 
 import { MOD_DESTINATIONS } from '../generated/parameters.generated.js';
 
@@ -275,6 +275,18 @@ describe('xyPad / wiring de morphX-morphY', () => {
     expect(view.element.querySelector('[data-corner="tl"]').dataset.divergent).toBe('false');
     expect(view.element.querySelector('[data-corner="br"]').dataset.divergent).toBe('false');
 
+    // La PISTA DE TECLADO va en el tooltip de las dos variantes (la cargada y la
+    // divergente): el `title` es lo unico que se ve sin abrir el cajon, y sin el
+    // teclado el unico sitio donde estaba documentado era un <details> plegado.
+    // El texto viene de la constante compartida, no de una copia: por eso la
+    // asercion la compara contra ella y no contra la cadena.
+    const normalCorner = view.element.querySelector('[data-corner="tl"]');
+    expect(normalCorner.title).toContain(CORNER_KEYBOARD_HINT);
+    expect(divergentCorner.title).toContain(CORNER_KEYBOARD_HINT);
+    // Y solo en las esquinas ABIERTAS: la vacia no tiene span, asi que no tiene
+    // tooltip que mentir (arriba, `tr` es null).
+    expect(view.element.querySelector('[data-corner="tr"]')).toBeNull();
+
     // Sin modelos (modo local, snapshot sin modelsState): sin esquinas.
     paintModels(null);
     expect(view.element.querySelector('.abd-xypad__corner')).toBeNull();
@@ -412,6 +424,9 @@ describe('xyPad / las dos vistas de MODELOS (mudanza al centro, 8.3)', () => {
     expect(items[3].textContent).toContain('Esquinas A–D:');
     // La verdad vigente: la esquina ya NO salta el pad — abre este cajón.
     expect(items[3].textContent).toContain('abre el cajón de MODELOS');
+    // Y la MISMA pista de teclado que ahora lleva el tooltip de la esquina: las
+    // dos superficies dicen lo mismo porque leen la misma constante.
+    expect(items[3].textContent).toContain(CORNER_KEYBOARD_HINT);
 
     // Abrir es un gesto del usuario (nativo): el contenido esta ahi.
     help.open = true;
@@ -420,6 +435,35 @@ describe('xyPad / las dos vistas de MODELOS (mudanza al centro, 8.3)', () => {
     // La ayuda muere con la vista (mismo vaciado que las ranuras).
     view.destroy();
     expect(view.element.querySelector('details.model-help')).toBeNull();
+  });
+
+  it('la pista de teclado de la esquina se escribe UNA vez en el codigo', () => {
+    // Las aserciones de arriba prueban que los dos sitios la MUESTRAN; esta
+    // prueba que no haya dos verdades. Sin ella, alguien puede dejar de usar la
+    // constante y escribir 'Enter/Space' a mano en el tooltip (o repetirla en un
+    // comentario): todo seguiría en verde y la palabra quedaría duplicada, que es
+    // justo el defecto que se pidió evitar.
+    const literal = 'Enter/Space';   // fijada aqui, NO derivada: si la constante
+                                     // cambia de palabras, este test falla y hay
+                                     // que revisar los dos textos a proposito.
+    const pad = read('../src/ui/xyPad.js');
+    const visuals = read('../src/ui/visuals.js');
+
+    expect(CORNER_KEYBOARD_HINT).toBe(literal);
+
+    // UNA vez en los dos modulos: la declaración. Los dos usos la interpolan
+    // (los titles de paintCorners y el item de la ayuda), y los comentarios que
+    // la mencionan dicen "CORNER_KEYBOARD_HINT" en vez de repetir las palabras.
+    const occurrences = (pad + visuals).split(literal).length - 1;
+    expect(occurrences, `'${literal}' aparece ${occurrences} veces; debe aparecer 1`).toBe(1);
+
+    // Y que los dos consumidores la TOMEN de verdad: los DOS titles de esquina
+    // (cargada y divergente) y el item de la ayuda. Interpolarla cuenta como un
+    // uso; escribirla entre comillas, no (y eso es justo lo de arriba).
+    const uses = (text) => text.split('${CORNER_KEYBOARD_HINT}').length - 1;
+
+    expect(uses(pad), 'los dos titles de esquina interpolan la constante').toBe(2);
+    expect(uses(visuals), 'el item de la ayuda interpola la constante').toBe(1);
   });
 });
 

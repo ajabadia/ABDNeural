@@ -24,7 +24,9 @@
  *     cada corrida: con el motor arrancado el medidor, el anillo y el LCD se
  *     mueven con el reloj del `AudioContext` y la foto seria distinta cada vez.
  *     Cada test recibe un contexto limpio, asi que tampoco hay memoria local de
- *     una prueba anterior ni tema recordado.
+ *     una prueba anterior ni tema recordado. (El UNICO bloque que se sale de esto
+ *     es el de las agujas, al final del fichero, que captura con el motor
+ *     arrancado y explica como se hace determinista.)
  *   - LA LISTA DE FICHAS SALE DEL CONTRATO (`SECTIONS`), no de una lista escrita
  *     a mano: una ficha nueva nace con su referencia que falta (y el test
  *     falla diciendo que la ha creado, que es el aviso de "miralo antes de
@@ -55,6 +57,8 @@
 import { expect, test } from '@playwright/test';
 
 import { CANVAS, SECTIONS } from '../src/contracts/sections.js';
+import { ensureAudioClock } from './support/audioClock.js';
+import { PROBE_URL } from './support/probePage.js';
 
 /** La ficha del lienzo con ese id (el `data-section-id` que pinta ui/panel.js). */
 const cardOf = (page, sectionId) => page.locator(`[data-section-id="${sectionId}"]`);
@@ -114,5 +118,105 @@ test.describe('NEURONiK Visual Regression - el lienzo', () => {
     await page.locator('.abd-theme-switcher__btn', { hasText: 'Light' }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await expect(page).toHaveScreenshot('lienzo-tema-claro.png', { animations: 'disabled' });
+  });
+});
+
+/**
+ * LAS AGUJAS SOSTENIDAS (needle-probe): el unico bloque de esta suite que
+ * necesita AUDIO, y por eso rompe la regla de "sin audio, con estado de fabrica"
+ * de arriba. Se sostiene porque lo que se captura esta ASENTADO:
+ *
+ *   - las dos envolventes con sustains pushed por la pagina (0.8 la de amp, 0.2
+ *     la de filtro) y las dos vistas repintadas con ESE MISMO estado, asi que
+ *     cada aguja tiene que caer en la altura del sustain de su propia curva —una
+ *     foto a media convergencia no diria nada;
+ *   - el `d` de la aguja sale de `envelopeNeedlePath`, que escribe la Y con
+ *     `toFixed(2)`: en el sustain los ultimos bits del float no llegan al
+ *     pixel, asi que la foto es estable entre corridas;
+ *   - la DOBLE lectura antes de disparar (dos muestras consecutivas iguales a dos
+ *     decimales) no deja que una referencia se genere con la envolvente todavia
+ *     moviendose;
+ *   - se fotografian los DOS elementos de las vistas, no la pagina entera: el
+ *     texto del estado lleva los Hz del dispositivo de audio (44100 en un
+ *     portatil, 48000 en la bancada) y haria la referencia dependiente de la
+ *     maquina.
+ *
+ * `needleProbe.spec.js` afirma lo mismo en numero (amp > 0.6, filtro < 0.4): alli
+ * la asercion es que el VALOR llegue al motor, aqui lo que se fija es que se
+ * PINTE en su sitio. Las dos hacen falta: un motor correcto con la aguja mal
+ * escalada sale verde en el otro.
+ */
+test.describe('NEURONiK Visual Regression - las agujas (needle-probe)', () => {
+  let pageErrors = [];
+
+  test.beforeEach(async ({ page }) => {
+    pageErrors = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+
+    await page.goto(PROBE_URL);
+    await page.waitForFunction(() => window.__probeReady === true);
+  });
+
+  test.afterEach(() => {
+    // Mismo motivo que en el lienzo: una pagina con errores puede haber dejado
+    // las vistas a medias, y la foto de eso REGENERARIA la referencia.
+    expect(pageErrors, 'la pagina no debe lanzar errores').toEqual([]);
+  });
+
+  test('las cuatro agujas, SOSTENIDAS en el sustain de su curva', async ({ page }) => {
+    const attempts = await ensureAudioClock(page);
+
+    test.skip(!attempts, 'el reloj de audio de Chromium no avanza en este entorno (sin salida de audio)');
+
+    await page.locator('#start').click();
+    await expect(page.locator('#status')).toHaveAttribute('data-status', 'ready', { timeout: 20_000 });
+
+    // El ADSR primero (el motor lo toma en el bloque siguiente) y la nota
+    // despues: al revés, la foto seria de una nota sonada con los defaults.
+    await page.locator('#voice-adsr').click();
+    await page.locator('#note-on').click();
+
+    const readNeedles = () => page.evaluate(() => window.__needles());
+    // Los valores EXACTOS que define la foto, con un margen de 0.03 (la
+    // exponencial se acerca al sustain por debajo y el `d` se redondea a dos
+    // decimales): no es solo "visible", es "en la altura que la pagina pidio",
+    // que es lo que hace que la referencia signifique algo.
+    const settled = (needles) => Object.values(needles).every((needle) => needle.visible)
+      && Math.abs(needles.canvasAmp.level - 0.8) < 0.03
+      && Math.abs(needles.canvasFilter.level - 0.2) < 0.03;
+
+    await expect.poll(() => readNeedles().then(settled), { timeout: 20_000, intervals: [200, 400, 800] })
+      .toBe(true);
+
+    // DOS MUESTRAS CONSECUTIVAS IGUALES antes de disparar. Un `waitForTimeout`
+    // fijo aqui no vale: el poll de arriba sale en cuanto el sustain esta dentro
+    // del margen, y la envolvente puede converge un frame mas tarde (la
+    // referencia se regeneraba con 0.81/0.24 en vez de 0.80/0.20). Se comparan a
+    // dos decimales porque es lo que acaba en el `d` de la aguja.
+    let previous = null;
+    const quiet = async () => {
+      const levels = await page.evaluate(() => Object.fromEntries(
+        Object.entries(window.__needles()).map(([name, n]) => [name, n.level.toFixed(2)])));
+
+      const same = previous !== null && JSON.stringify(levels) === JSON.stringify(previous);
+      previous = levels;
+      return same;
+    };
+
+    await expect.poll(quiet, { timeout: 20_000, intervals: [300, 500] })
+      .toBe(true);
+
+    // `maxDiffPixels: 0`, MAS ESTRICTO que el de la config (20): al contrario que
+    // el resto de la suite, aqui el estado de la foto no depende del instante en
+    // que se dispara sino del valor al que converge la envolvente, y ese valor
+    // entra en el `d` con `toFixed(2)`. Medido: dos corridas seguidas dan 0 pixeles
+    // de diferencia con el motor de verdad sonando, y con la foto a media
+    // convergencia la referencia se generaba con 0.81/0.24 (un fallo rojo del
+    // guard de dos muestras, no del motor). Si algun dia esto se pone rojo de
+    // forma intermitente, la causa es el reloj de audio, no la pintura.
+    await expect(page.locator('.env-curves'))
+      .toHaveScreenshot('aguja-curvas.png', { animations: 'disabled', maxDiffPixels: 0 });
+    await expect(page.locator('.env-blocks'))
+      .toHaveScreenshot('aguja-bloques.png', { animations: 'disabled', maxDiffPixels: 0 });
   });
 });

@@ -45,7 +45,9 @@ const std::vector<RandomizeTarget>& getRandomizeTargets()
         { IDs::filterRes,         0.00f,    0.60f, FreezeGroup::filter },
 
         // --- FX: congelado de filtro a proposito (no tienen boton propio) -----
-        { IDs::fxSaturation,      0.00f, 0.40f, FreezeGroup::filter },
+        // El drive del hueco 1. Se aleatoriza en NORMALIZADO, que es como lo
+        // habla el hueco; el rango 0..0.4 es el que tenia el mando viejo.
+        { IDs::fx1Param1,          0.00f, 0.40f, FreezeGroup::filter },
         { IDs::fxChorusMix,       0.00f, 0.50f, FreezeGroup::filter },
         { IDs::fxReverbMix,       0.00f, 0.40f, FreezeGroup::filter },
 

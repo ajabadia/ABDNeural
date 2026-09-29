@@ -356,7 +356,7 @@ juce::String parameterGroupFor (const juce::String& id)
     if (id.startsWith ("lfo2")) return "lfo2";
     if (id.startsWith ("mod"))  return "modMatrix";
 
-    if (id.startsWith ("fxSaturation") || id.startsWith ("fxDelay")) return "fx";
+    if (id.startsWith ("fx1") || id.startsWith ("fxDelay")) return "fx";
     if (id.startsWith ("fxChorus"))                                  return "chorus";
     if (id.startsWith ("fxReverb"))                                  return "reverb";
 

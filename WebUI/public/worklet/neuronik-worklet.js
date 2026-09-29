@@ -25,6 +25,16 @@
  *  15 lfo1.rhythmicDivision          16 lfo1.depth
  *  17..21 lfo2.* (same order)
  *  22..33 modMatrix[r].{source,destination,amount} r=0..3
+ *
+ * ADSR (canal `neuronik:voice`, 2026-09-28) — el layout de
+ * NeuronikWasmBridge.cpp::neuronikVoiceEnvelopeLayout(). Son VoiceParams, no
+ * GlobalParams: hasta este canal los knobs de envolvente de la pagina no
+ * llegaban al motor local y las dos envolventes vivian en los defaults de C++.
+ *
+ *   0 ampAttack 1 ampDecay 2 ampSustain 3 ampRelease
+ *   4 filterAttack 5 filterDecay 6 filterSustain 7 filterRelease
+ *     (tiempos en MILISEGUNDOS — el contrato los da en segundos, como el
+ *      APVTS del plugin, y el multiply por 1000 lo hace la pagina)
  */
 
 import createModule from './neuronik_dsp.js';
@@ -110,6 +120,7 @@ class NeuronikProcessor extends AudioWorkletProcessor {
         sampleRate: this.sampleRate,
         globalParamsSize: this.gpSize,
         paramsFieldCount: this.paramsFieldCount,
+        voiceEnvelopeSize: this.veSize,
       });
       console.log('[worklet-dbg] initialize COMPLETO (ready posteado)');
     } catch (error) {
@@ -167,6 +178,30 @@ class NeuronikProcessor extends AudioWorkletProcessor {
     this.envView = Module.HEAPF32.subarray (this.envPtr >> 2, (this.envPtr >> 2) + 2);
     this.gpF64 = new Float64Array (this.gpMirror);
 
+    // ESPEJO DEL ADSR (canal `neuronik:voice`): ocho floats, layout del POD
+    // VoiceEnvelopeWire del puente. Es un POD TODO FLOAT (el puente lo static_assert'ea
+    // a 32 bytes, sin relleno), asi que no hace falta ni vista f64 ni set de campos
+    // enteros como en el espejo de GlobalParams: el offset de layout, dividido por
+    // cuatro, ES el indice del Float32Array.
+    this.veSize = Module._neuronikVoiceEnvelopeSize();
+    this.vePtr = Module._malloc (this.veSize);
+
+    const veFields = Module._neuronikVoiceEnvelopeLayout (0, 0);
+    const vePtr = Module._malloc (4 * veFields);
+    Module._neuronikVoiceEnvelopeLayout (vePtr, veFields);
+    this.veFieldByteOffsets = Array.from (
+      Module.HEAP32.subarray (vePtr >> 2, (vePtr >> 2) + veFields));
+    Module._free (vePtr);
+
+    this.veMirror = new Float32Array (this.veSize / 4);
+    // El espejo arranca VACIO y NO se manda al arrancar: el motor ya nace con
+    // los defaults de su struct (10/100/0.7/500 ms en las dos envolventes) y
+    // un push de ceros los congelaria en silencio hasta que llegase la pagina.
+    // La pagina manda el snapshot completo del contrato en cuanto el worklet
+    // esta listo, y `veDirty` es lo que hace legitimo re-aplicarlo tras un
+    // cambio de motor (que reconstruye el motor con sus defaults otra vez).
+    this.veDirty = false;
+
     this.leftView = null;
     this.rightView = null;
   }
@@ -176,6 +211,16 @@ class NeuronikProcessor extends AudioWorkletProcessor {
     const Module = this.module;
     Module.HEAPU8.set (new Uint8Array (this.gpMirror), this.gpPtr);
     Module._neuronikSetGlobalParams (this.gpPtr, this.gpSize);
+  }
+
+  /** Write one ADSR field by layout index and push the whole mirror. */
+  applyVeMirror() {
+    if (!this.veDirty) return;
+
+    const Module = this.module;
+    // El POD son ocho floats contiguos: el heap y el espejo comparten indices.
+    Module.HEAPF32.set (this.veMirror, this.vePtr >> 2);
+    Module._neuronikSetVoiceEnvelope (this.vePtr, this.veSize);
   }
 
   /** Write one GlobalParams field by layout index (handles the f64 bpm slot). */
@@ -311,6 +356,12 @@ class NeuronikProcessor extends AudioWorkletProcessor {
         if (this.ready) {
           this.module._neuronikSetEngine (message.index ?? 0);
           this.engineType = message.index ?? 0;
+
+          // El motor nuevo nace con los defaults de SU struct: hay que devolverle
+          // el ADSR que la pagina ya habia enviado, igual que los modelos y el
+          // morph. Solo si la pagina lo mando alguna vez (si no, el motor acaba
+          // de nacer bien y el reenvio no harian mas que pisar sus defaults).
+          this.applyVeMirror();
         }
         break;
  }
@@ -332,6 +383,27 @@ class NeuronikProcessor extends AudioWorkletProcessor {
               Math.min (1, Math.max (0, fin (message.z2))),
               Math.min (1, Math.max (0, fin (message.z3))));
         }
+        break;
+      }
+
+      case 'neuronik:voice': {
+        // ADSR de la voz (los ocho knobs de envolvente de la pagina). Snapshot
+        // COMPLETO en cada envio —la pagina manda siempre los ocho—, asi que el
+        // espejo se puede re-aplicar entero tras un cambio de motor sin
+        // acordarse de que campos habian cambiado.
+        // fields: [[fieldIndex, realMs | nivel 0..1], ...] (mapeo en la pagina)
+        if (!this.ready) return;
+
+        for (const [fieldIndex, value] of message.fields ?? []) {
+          const byteOffset = this.veFieldByteOffsets[fieldIndex];
+          if (byteOffset === undefined) continue;
+          // POD TODO FLOAT: el indice de layout es el indice del Float32Array.
+          const slot = byteOffset / 4;
+          if (Number.isInteger (slot)) this.veMirror[slot] = Number (value);
+        }
+
+        this.veDirty = true;
+        this.applyVeMirror();
         break;
       }
 

@@ -37,10 +37,15 @@ describe('WebUI entry contract', () => {
 
   it('keeps masterLevel as the baseline parameter the host selftest drives', () => {
     expect(app).toContain("BASELINE_PARAMETER_ID = 'masterLevel'");
-    // The input itself is a native range input (see buildBaselineControl).
-    expect(panel).toContain("slider.type = 'range'");
-    expect(panel).toContain('slider.min = \'0\'');
-    expect(panel).toContain('slider.max = \'1\'');
+    // 2026-09-28: el control base es un KNOB del paquete compartido, no un
+    // `<input type=range>`. Lo que el arnés necesita no es el mueble sino el
+    // ANCLA (`data-baseline-control`) y el PUENTE (`baselineControl.value`): con
+    // el selector viejo ("el primer input[type=range]") el arnes habria pasado a
+    // apuntar a la rueda de modulacion del teclado, en silencio.
+    expect(panel).toContain('wrapper.dataset.baselineControl = control.id;');
+    expect(panel).toContain('wrapper.baselineControl = {');
+    // El ancla se escribe en la CELDA (elemento estable), no en el dial del knob.
+    expect(panel).toContain('cell--baseline');
   });
 
   it('mounts the panel BEFORE announcing the page to the host', () => {
@@ -155,7 +160,11 @@ describe('WebUI entry contract', () => {
   it('la matriz de modulacion se edita en el cajon y no en la rejilla del lienzo', () => {
     // El panel monta las celdas de una ficha de cajon DENTRO del cajon (y el lienzo
     // se queda con el resumen): si alguien devuelve la matriz al lienzo, cae aqui.
-    expect(panel).toContain("import { createDrawer } from '@abdsynths/shared/components'");
+    // El import del paquete compartido: `createDrawer` mas `Knob` (el control
+    // base es un Knob desde 2026-09-28), asi que se ancla en el uso y no en la
+    // forma exacta de la linea de import.
+    expect(panel).toContain("from '@abdsynths/shared/components'");
+    expect(panel).toContain('createDrawer');
     expect(panel).toContain('const drawer = section.drawer ? drawerFor(section, context) : null;');
     expect(panel).toContain('(slotOf?.get(control.id) ?? body).append(cell.element);');
     expect(panel).toContain('context.drawers.set(section.id, drawer);');
@@ -233,12 +242,30 @@ describe('WebUI entry contract', () => {
     expect(app).toContain('if (!isAudioEngineReady()) return;');
     expect(app).toContain('pushParamsToWorklet(state.parameters)');
     expect(app).toContain('pushEngineToWorklet(index)');
+    // El ADSR va en la MISMA funcion y NO dentro de pushParamsToWorklet: son
+    // VoiceParams y su canal es `neuronik:voice`. Sin esta linea el motor local
+    // seguia con los defaults de C++ y los ocho knobs de envolvente no se oian
+    // en el navegador (fue una limitacion de la pagina de needle-probe).
+    // Regex y no toContain: una linea COMENTADA con la misma llamada pasaria
+    // el `toContain` y dejaria el test sin usefulness.
+    expect(app).toMatch(/^\s*pushVoiceToWorklet\(state\.parameters\);$/m);
   });
 
   it('feeds controls normalised values and pushes normalised edits back', () => {
-    expect(app).toContain('parameterStore.handleChange(id, Number(slider.value))');
-    expect(app).toContain("parameterStore.handleGesture(id, 'begin')");
-    expect(app).toContain("parameterStore.handleGesture(id, 'end')");
+    // El control base ya no se cablea en app.js (era su propio bloque con el
+    // `<input>` nativo): lo construye buildBaselineControl con los handlers del
+    // PANEL, el mismo camino que cualquier otro control continuo. Se comprueba el
+    // DESTINO del cableado mas que su forma, que es la del paquete compartido.
+    // El gesto pasa por `applyValue` ANTES de empujarse: sin eso el puente que
+    // lee el arnés se queda en el ultimo `paint` y contradice al dial (lo cazó
+    // el smoke E2E del master). Regex y no `toContain`, por lo mismo que arriba:
+    // una linea comentada con la llamada pasaria la asercion.
+    expect(panel).toMatch(
+      /onChange: \(value\) => \{\s*applyValue\(value\);\s*handlers\?\.onChange\?\.\(control\.id, value\);\s*\}/,
+    );
+    expect(panel).toContain("onDragStart: () => handlers?.onGesture?.(control.id, 'begin')");
+    expect(panel).toContain("onDragEnd: () => handlers?.onGesture?.(control.id, 'end')");
+    expect(app).not.toContain('function bindBaseline');
   });
 
   it('drives the wheels from the host MIDI view (host-driven feedback)', () => {
@@ -273,6 +300,48 @@ describe('WebUI entry contract', () => {
   it('paints the shared tintable background on the page root', () => {
     expect(html).toContain('<body class="abd-theme-bg">');
     expect(app).toContain("'@abdsynths/shared/styles/components/backgrounds.css'");
+  });
+});
+
+// EL APAGADO de la pagina. Los canales son estado de MODULO (viven mas alla del
+// documento): sin devolverlos, WebView2 —que vuelve a navegar la pagina cada vez
+// que se abre el editor— acumula una `paint` vieja por apertura. El `pagehide`
+// es el enganche; lo que se protege aqui es que NO se pueda suscribir sin pasar
+// por el registro, que es la parte que se rompe en silencio (una suscripcion
+// nueva sin envolver compila igual y no hace nada).
+describe('el apagado de pagina (el circuito del unsubscribe)', () => {
+  const app = read('../src/app.js');
+
+  // Una llamada a un canal: los `onWorklet*` / `onAudioEngineChange` se importan
+  // pelados, y del store solo se usan los tres metodos con remover. Las
+  // PROPIEDADES (`onTelemetry: store.onTelemetry`) no son llamadas y no cuentan.
+  const channelCall = /(?<![\w.])(?:onWorklet[A-Za-z]+|onAudioEngineChange)\s*\(|store\.(?:onUserEdit|onTelemetry|subscribe)\s*\(/g;
+
+  it('se engancha al ciclo de vida de la pagina con pagehide, no beforeunload', () => {
+    expect(app).toContain("window.addEventListener('pagehide'");
+    // Un SOLO enganche de pagina, y no `beforeunload` (que el navegador puede
+    // suprimir y WebView2 no garantiza al navegar). La razon vive en el fuente,
+    // asi que aqui se mira el enganche, no la prosa.
+    expect(app).not.toContain("addEventListener('beforeunload'");
+    expect((app.match(/window\.addEventListener\(/g) ?? []).length).toBe(1);
+    // La pagina que vuelve de la CACHE (bfcache) sigue viva: apagarla la dejaria
+    // muda al regresar.
+    expect(app).toContain('if (event.persisted) return;');
+    expect(app).toContain('teardownPage();');
+  });
+
+  it('toda suscripcion de la pagina pasa por el registro del apagado', () => {
+    const calls = (app.match(channelCall) ?? []).length;
+    // Uno menos: la propia declaracion de la funcion.
+    const tracked = (app.match(/subscribeForPage\(/g) ?? []).length - 1;
+
+    expect(calls).toBeGreaterThan(0);
+    expect(tracked).toBe(calls);
+  });
+
+  it('cada canal cierra de verdad: el registro solo guarda funciones', () => {
+    expect(app).toContain("if (typeof unsubscribe === 'function') pageSubscriptions.push(unsubscribe);");
+    expect(app).toContain('pageSubscriptions.splice(0)');
   });
 });
 

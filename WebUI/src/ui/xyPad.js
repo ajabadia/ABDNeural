@@ -54,6 +54,24 @@ const LAYER_IDS = ['morphZ2', 'morphZ3'];
 const Z_STEP = 0.01;
 const Z_PAGE = 0.1;
 
+/**
+ * La pista de teclado del gesto de ESQUINA, en UNA SOLA FUENTE: la usan el
+ * `title` de las cuatro esquinas (paintCorners, mas abajo) y la ayuda
+ * contextual del cajon de MODELOS (`ui/visuals.js`, item 'Esquinas A-D').
+ *
+ * Antes la llevaba solo la ayuda, es decir que solo se leia donde NO hace
+ * falta: el tooltip sale encima de la esquina, que es justo donde el usuario
+ * ya esta mirando y sin tener que abrir un cajon. Por eso vive aqui y no ahi:
+ * el gesto (y su teclado) es de ESTE modulo, que es quien despacha el clic y el
+ * keydown; la ayuda solo lo documenta.
+ *
+ * Es el texto, no el comportamiento: quien despacha es el `keydown` delegado
+ * de mas abajo (`Enter`/`Space` sobre una esquina con foco), y ese no se puede
+ * deducir de una constante — por eso el test comprueba que la pista aparece en
+ * los dos sitios en vez de fiarse de que la constante no se puede mentir.
+ */
+export const CORNER_KEYBOARD_HINT = 'Enter/Space';
+
 /** aro SVG: track + hit (trazo ancho invisible) + fill con dash por pathLength */
 function ringSvg() {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -75,9 +93,10 @@ function ringSvg() {
  *   empuja una edición al store (`pushParameter`): la fábrica la inyecta para
  *   que el panel siga sin saber qué dibuja cada vista.
  * @param {(slot: number) => void} [options.onCornerClick]
- *   clic (o Enter/Space con foco) sobre una esquina CARGADA: abre el cajón de
- *   MODELOS en esa ranura — el gesto inverso a IR A LA RUTA. Lo ejecuta el
- *   panel vía openDrawerRoute; aquí solo viaja el slot (0..3).
+ *   clic (o las teclas de CORNER_KEYBOARD_HINT con foco) sobre una esquina
+ *   CARGADA: abre el cajón de MODELOS en esa ranura — el gesto inverso a IR A
+ *   LA RUTA. Lo ejecuta el panel vía openDrawerRoute; aquí solo viaja el slot
+ *   (0..3).
  * @returns {{ element: HTMLElement, pad: object, paint: Function, destroy: Function }}
  *   `pad` es la instancia compartida (handle de inspección para tests).
  */
@@ -286,7 +305,8 @@ export function createXyPad({ onEdit = null, onTelemetry = null, onCornerClick =
   });
 
   // Accesible gratis: la esquina abrible se declara botón en paintCorners
-  // (role + tabindex); Enter/Space con foco pasan por la misma puerta.
+  // (role + tabindex); las teclas de CORNER_KEYBOARD_HINT con foco pasan por
+  // la misma puerta.
   padSurface.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
 
@@ -340,8 +360,8 @@ export function createXyPad({ onEdit = null, onTelemetry = null, onCornerClick =
         corner.setAttribute('role', 'button');
         corner.tabIndex = 0;
         corner.title = entry.divergent
-          ? `"${corner.textContent}": el motor no ha podido cargar el fichero (¿movido o borrado?) · Clic: abrir MODELOS`
-          : `Abrir MODELOS: ranura ${MODEL_SLOT_LABELS[index]} "${corner.textContent}"`;
+          ? `"${corner.textContent}": el motor no ha podido cargar el fichero (¿movido o borrado?) · Clic: abrir MODELOS · ${CORNER_KEYBOARD_HINT}`
+          : `Abrir MODELOS: ranura ${MODEL_SLOT_LABELS[index]} "${corner.textContent}" · ${CORNER_KEYBOARD_HINT}`;
       } else {
         delete corner.dataset.clickable;
         corner.removeAttribute('role');

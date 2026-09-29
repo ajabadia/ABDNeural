@@ -40,6 +40,14 @@ public:
     void setMorph (float morphX, float morphY) override;
     void setMorphZ (float morphZ) override;
     void setVoiceLayerMorph (float layerGain2, float layerGain3) override;
+
+    /** ADSR de la voz neurotik (ms; sustain en 0..1). Solo los cuatro tramos de
+        la ENV de AMP: este motor no tiene envolvente de filtro
+        (`getFilterEnvelopeLevel` es 0 fijo), asi que los otros cuatro del
+        canal se ignoran — el puente WASM los conserva en su espejo y los
+        reenvia cuando se vuelve a NEURONiK. */
+    void setVoiceEnvelope (float attack, float decay, float sustain, float release,
+                           float fAttack, float fDecay, float fSustain, float fRelease) override;
     void loadModel(const NEURONiK::Common::SpectralModel& model, int slot) override;
 
     void setGlobalParams(const GlobalParams& p) override { pendingGlobalParams = p; }

@@ -28,6 +28,8 @@ import { fileURLToPath } from 'node:url';
 
 import { expect, test } from '@playwright/test';
 
+import { ensureAudioClock } from './support/audioClock.js';
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 /** Un modelo REAL del banco CZ101 (el mismo que carga el smoke a mano). */
@@ -66,54 +68,89 @@ async function openDrawer(page, sectionId) {
   await page.locator(`[data-drawer-trigger="${sectionId}"]`).click();
 }
 
-/**
- * Espera a que el reloj del servicio de audio avance, sondeando con contextos de usar
- * y tirar (medido: el primero tarda ~4 s y puede quedarse clavado para siempre).
- * @returns {Promise<number>} intentos consumidos; 0 = este entorno no procesa audio.
- */
-async function ensureAudioClock(page, attempts = 24) {
-  return page.evaluate(async (tries) => {
-    for (let attempt = 1; attempt <= tries; attempt += 1) {
-      const context = new AudioContext();
-
-      await context.resume().catch(() => {});
-
-      const before = context.currentTime;
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      const advanced = context.currentTime - before;
-
-      await context.close();
-
-      if (advanced > 0) return attempt;
-    }
-
-    return 0;
-  }, attempts);
-}
-
 /** SOUND ON y espera al badge del motor listo. */
 async function startLocalEngine(page) {
   await page.locator('.audio-start').click();
   await expect(page.locator('.audio-mode__detail')).toHaveText(/· ON · [\d.]+ kHz/);
 }
 
-/** El arco de modulacion del anillo del pad: `start` = dashoffset, `span` = dasharray. */
-async function sampleRing(page, ms = 2000) {
-  const samples = [];
-  const deadline = Date.now() + ms;
-
-  while (Date.now() < deadline) {
-    samples.push(await page.evaluate(() => {
+/**
+ * El arco de modulacion del anillo del pad: `start` = dashoffset, `span` = dasharray.
+ *
+ * El muestreo va DENTRO de la pagina, con `requestAnimationFrame`, y por dos
+ * razones. La primera es el coste: antes cada muestra era un `page.evaluate`
+ * desde Node, y bajo carga (el E2E roda en paralelo con los otros dos specs y con
+ * el resto de ctest) el viaje de ida y vuelta ya no cabia en los 100 ms de
+ * espera, asi que en 1,5 s entraban cuatro o cinco muestras en vez de quince.
+ *
+ * La segunda, y la que motivó el arreglo: la ventana era de RELOJ DE PARED
+ * (`Date.now() + ms`) mientras que lo que se mueve —el LFO del motor— corre en
+ * el reloj del AudioContext. La asercion decia de facto "en 1,5 s de pared hay
+ * mas de cuatro estados distintos", que no es lo que queremos medir: queremos
+ * "el anillo se mueve". Con la maquina cargada la ventana se le acababa al
+ * LFO, no al anillo, y la prueba caia sin motivo real. Ahora la ventana es una
+ * CONDICION con un techo generoso como red de seguridad.
+ */
+/**
+ * Muestrea el arco hasta que aparecen `want` estados DISTINTOS (o se agota el
+ * techo). Devuelve una muestra por estado: lo que se compara al final.
+ *
+ * El lector del arco va DENTRO de cada `evaluate` a proposito: la funcion se
+ * serializa y no puede cerrar sobre nada de este modulo.
+ *
+ * Que devuelva menos de `want` es información, no un fallo mudo: el mensaje de
+ * la aserción lo dice ("solo N estados en T s"), y con eso se distingue "el
+ * anillo no se mueve" de "el entorno no rinde".
+ */
+async function sampleRingUntil(page, want = 8, budgetMs = 20000) {
+  const states = await page.evaluate(async ({ objetivo, techo }) => {
+    const read = () => {
       const arc = document.querySelector('.zring-mod');
       const span = Number((arc?.getAttribute('stroke-dasharray') ?? '0').split(' ')[0] ?? 0);
 
       return { start: Number(arc?.getAttribute('stroke-dashoffset') ?? 0), span };
-    }));
+    };
 
-    await page.waitForTimeout(100);
-  }
+    const vistos = new Map();
+    const t0 = performance.now();
 
-  return samples;
+    while (performance.now() - t0 < techo) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+
+      const muestra = read();
+      vistos.set(`${muestra.start}|${muestra.span}`, muestra);
+
+      if (vistos.size >= objetivo) break;
+    }
+
+    return [...vistos.values()];
+  }, { objetivo: want, techo: budgetMs });
+
+  return { states, enough: states.length };
+}
+
+/**
+ * Muestrea el arco durante un numero FIJO de frames de dibujo, para comprobar
+ * que NO se mueve. Aqui la cuenta de frames es lo que da determinismo: si la
+ * maquina va lenta, cada frame tarda mas y la muestra dura mas de reloj de
+ * pared —que es lo correcto para "el anillo sigue quieto"—, pero siempre se
+ * miran los mismos 90 frames en vez de "los que quepan en 1,5 s".
+ */
+async function sampleRingFrames(page, frames = 90) {
+  return page.evaluate(async (ticks) => {
+    const muestras = [];
+
+    for (let i = 0; i < ticks; i += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+
+      const arc = document.querySelector('.zring-mod');
+      const span = Number((arc?.getAttribute('stroke-dasharray') ?? '0').split(' ')[0] ?? 0);
+
+      muestras.push({ start: Number(arc?.getAttribute('stroke-dashoffset') ?? 0), span });
+    }
+
+    return muestras;
+  }, frames);
 }
 
 /** El pad del lienzo (el unico `.xy-pad` montado: el del cajon solo existe al abrirlo). */
@@ -174,12 +211,16 @@ test('el anillo del pad BAILA con la ruta sembrada (LFO 2 -> Morph Z)', async ({
 
   await startLocalEngine(page);
 
-  const samples = await sampleRing(page, 2000);
+  const { states: samples } = await sampleRingUntil(page, 12);
   const spans = samples.map((sample) => sample.span);
   const distinct = new Set(samples.map((sample) => `${sample.start}|${sample.span}`));
 
   // Baila: el arco cambia de un frame a otro (meter ~85 ms) y se abre de verdad.
-  expect(distinct.size).toBeGreaterThan(4);
+  // El mensaje lleva la cuenta para que un fallo diga si el anillo no se movio
+  // o si el entorno no dio los frames.
+  expect(distinct.size,
+    `el arco solo dio ${distinct.size} estado(s) distinto(s) en el techo de muestreo`)
+    .toBeGreaterThan(4);
   expect(Math.max(...spans)).toBeGreaterThan(20);
 
   // Y muestra las DOS semiondas: horario nace en la base (offset 0), antihorario
@@ -356,7 +397,7 @@ test('el conmutador de la ruta del pad apaga y cambia el LFO (y el anillo respon
   await expect(source).toBeDisabled();
   await expect.poll(filaEnMotor).toEqual([[28, 0], [29, 0], [30, 0]]);
 
-  const quieto = await sampleRing(page, 1500);
+  const quieto = await sampleRingFrames(page, 90);
 
   expect(new Set(quieto.map((sample) => `${sample.start}|${sample.span}`)).size).toBe(1);
   expect(Math.max(...quieto.map((sample) => sample.span))).toBe(0);
@@ -370,9 +411,11 @@ test('el conmutador de la ruta del pad apaga y cambia el LFO (y el anillo respon
   await expect(page.getByRole('button', { name: /3 LFO 2 → Morph Z 1\.00/ })).toBeVisible();
   await expect.poll(filaEnMotor).toEqual([[28, 2], [29, 28], [30, 1]]);
 
-  const bailando = await sampleRing(page, 2000);
+  const { states: bailando } = await sampleRingUntil(page, 12);
 
-  expect(new Set(bailando.map((sample) => `${sample.start}|${sample.span}`)).size).toBeGreaterThan(4);
+  expect(new Set(bailando.map((sample) => `${sample.start}|${sample.span}`)).size,
+    `el anillo solo dio ${bailando.length} estado(s) distinto(s): la ruta no esta moviendo el arco`)
+    .toBeGreaterThan(4);
 
   // ELEGIR OTRO LFO: la MISMA fila pasa a LFO 1 (indice 1 de la tabla) y el motor
   // lo recibe; el anillo sigue bailando porque la ruta sigue viva.
@@ -381,9 +424,11 @@ test('el conmutador de la ruta del pad apaga y cambia el LFO (y el anillo respon
   await expect(page.getByRole('button', { name: /3 LFO 1 → Morph Z 1\.00/ })).toBeVisible();
   await expect.poll(filaEnMotor).toEqual([[28, 1], [29, 28], [30, 1]]);
 
-  const conLfo1 = await sampleRing(page, 1500);
+  const { states: conLfo1 } = await sampleRingUntil(page, 8);
 
-  expect(new Set(conLfo1.map((sample) => `${sample.start}|${sample.span}`)).size).toBeGreaterThan(2);
+  expect(new Set(conLfo1.map((sample) => `${sample.start}|${sample.span}`)).size,
+    `tras cambiar a LFO 1 el anillo solo dio ${conLfo1.length} estado(s) distinto(s)`)
+    .toBeGreaterThan(2);
 
   // Y volver a LFO 2 deja la pagina como estaba (el valor inicial de la siembra).
   await source.selectOption('LFO 2');
@@ -556,3 +601,102 @@ test('arrastrar el pad mueve morphX/morphY', async ({ page }) => {
   await expect(pad.locator('[role="slider"]').first()).toHaveAttribute('aria-valuetext', /X \d+% \/ Y \d+%/);
 });
 
+test('el knob del master se mueve con el dedo Y el puente del arnés lee lo que se ve', async ({ page }) => {
+  // El control base es un Knob del paquete compartido (un `div[role=slider]` sin
+  // input dentro) desde 2026-09-28, y el arnés del selftest lo maneja por el
+  // puente `baselineControl.{value,setFromSnapshot}` de la celda que lleva el
+  // ancla. Por eso esto vive en el smoke y no en vitest: hace falta un GESTO de
+  // verdad sobre el dial, y un dial no se puede tocar desde jsdom.
+  //
+  // Lo que se fija es la mitad que se rompio: el puente se actualizaba solo con
+  // el `paint`, asi que tras un arrastre el store iba a 0.55, el dial marcaba
+  // 0.55 y el puente seguia en el ULTIMO pintado — el arnes leeria un valor que
+  // la pagina ya no mostraba. El puente y la pagina tienen que decir lo mismo.
+  const cell = page.locator('[data-baseline-control]');
+  const dial = cell.locator('[role="slider"]');
+
+  await expect(cell).toHaveAttribute('data-baseline-control', 'masterLevel');
+  const antes = await cell.evaluate((el) => el.baselineControl.value);
+  const box = await dial.boundingBox();
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 34, box.y + box.height / 2 - 30, { steps: 6 });
+  await page.mouse.up();
+
+  // El ESTADO NATIVO se movio de verdad (no un setValue programatico del arnés):
+  // el gesto cruza la frontera en un `neuronik:params`, igual que haria un dedo.
+  await expect
+    .poll(async () => page.evaluate(() => {
+      const messages = (window.__neuronikSent ?? []).filter((m) => m?.type === 'neuronik:params');
+      return Number(messages.at(-1)?.masterLevel ?? NaN);
+    }))
+    .not.toBe(antes);
+
+  // Y las TRES lecturas de la pagina coinciden: el valor accesible del dial, el
+  // readout y el puente del arnés. Si el puente se queda atras, la direccion
+  // NATIVO->JS empuja un valor que la pagina ya no muestra.
+  const visto = await cell.evaluate((el) => ({
+    puente: el.baselineControl.value,
+    dial: Number(el.querySelector('[role="slider"]').getAttribute('aria-valuenow')),
+    readout: el.querySelector('[data-parameter-readout]').textContent,
+  }));
+
+  expect(visto.dial, 'el dial debe mostrar el valor del gesto').toBeCloseTo(visto.puente, 5);
+  expect(visto.puente, 'el puente debe decir lo mismo que el dial').toBeCloseTo(visto.dial, 5);
+  expect(visto.readout, 'el readout debe acompañar al gesto').toBe(`${Math.round(visto.dial * 100)}%`);
+});
+
+test('la ayuda de gestos cabe en la cabecera sin empujar nada y su lista se lee', async ({ page }) => {
+  // La ayuda de gestos vive en la cabecera, que tiene ALTO FIJO: cualquier
+  // fila nueva se nota. Se midio el fallo dos veces antes de fijar esto — el
+  // resumen caia en una fila implicita (y=44..52 con la cabecera en 0..35) y, al
+  // meterlo en la fila 3, la linea de contrato bajaba 10 px. Ahora comparte
+  // celda con ella, cada una a su extremo.
+  const box = (locator) => locator.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return { x: Math.round(r.x), top: Math.round(r.top), bottom: Math.round(r.bottom), right: Math.round(r.right) };
+  });
+
+  const help = page.locator('details.gesture-help');
+  const contract = page.locator('.contract-line');
+
+  await expect(help, 'la ayuda tiene que estar en la pagina, no solo en el codigo').toHaveCount(1);
+  expect(await help.evaluate((el) => el.open), 'nace plegada').toBe(false);
+
+  const helpBox = await box(help);
+  const contractBox = await box(contract);
+
+  // Misma banda, sin pisarse. OJO: la referencia es la linea de contrato y NO
+  // la caja de la cabecera, que se queda corta con esa fila ya antes de existir
+  // la ayuda (medido: cabecera 5..35, linea de contrato 33..41).
+  expect(Math.abs(helpBox.top - contractBox.top), 'la ayuda deberia ir en la misma banda que la linea de contrato')
+    .toBeLessThanOrEqual(2);
+  expect(helpBox.right, 'la ayuda invade la linea de contrato').toBeLessThanOrEqual(contractBox.x);
+
+  // Y lo que dice: los gestos del boton redondo, que es lo que no estaba
+  // documentado en ninguna parte antes de esto.
+  await help.locator('summary').click();
+  const items = await help.locator('li').allTextContents();
+  const text = items.join(' | ');
+
+  expect(items.length, 'la ayuda deberia listar los gestos de la pagina').toBeGreaterThanOrEqual(4);
+  expect(text).toContain('doble clic');
+  expect(text).toContain('Shift');
+  expect(text).toContain('flechas');
+  // Y el popover se lee entero: dentro de la ventana, con fondo (si fuese
+  // transparente, las bandas de debajo se transparentarian a traves del texto).
+  const list = help.locator('ul');
+  const listBox = await box(list);
+  const styles = await list.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { position: style.position, zIndex: style.zIndex, background: style.backgroundColor };
+  });
+
+  expect(listBox.top, 'la lista cae por debajo del resumen').toBeGreaterThanOrEqual(helpBox.bottom - 1);
+  expect(listBox.x, 'la lista se sale por la izquierda').toBeGreaterThanOrEqual(0);
+  expect(listBox.bottom, 'la lista se sale por abajo').toBeLessThanOrEqual(page.viewportSize().height);
+  expect(styles.position).toBe('absolute');
+  expect(Number(styles.zIndex)).toBeGreaterThan(0);
+  expect(styles.background).not.toBe('rgba(0, 0, 0, 0)');
+});

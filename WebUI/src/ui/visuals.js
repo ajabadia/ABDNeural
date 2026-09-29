@@ -24,7 +24,7 @@ import { createEnvelopeBlocks, createEnvelopeCurves } from './envelopeViews.js';
 import { createSpectral } from './spectral.js';
 import { createModelSlots } from './modelSlots.js';
 import { createModSummary } from './modSummary.js';
-import { createXyPad } from './xyPad.js';
+import { createXyPad, CORNER_KEYBOARD_HINT } from './xyPad.js';
 
 import { MOD_DESTINATIONS } from '../../generated/parameters.generated.js';
 
@@ -191,8 +191,11 @@ export function createVisual(visualId, controls, options = {}) {
       ['Aro (teclado)', 'flechas = ±1% · RePag/AvPag = ±10% · Inicio/Fin = 0/100% (con foco en el aro)'],
       // La verdad de HOY: el clic en una esquina CARGADA abre este cajón en SU
       // ranura (ui/xyPad.js, onCornerClick); el fondo del pad sigue siendo la
-      // superficie absoluta de siempre.
-      ['Esquinas A–D', 'pulsar una ranura cargada abre el cajón de MODELOS en esa ranura (Enter/Space con foco)'],
+      // superficie absoluta de siempre. La pista de teclado es la MISMA
+      // constante que se pinta en el title de las cuatro esquinas
+      // (CORNER_KEYBOARD_HINT): el texto vive una vez, en el modulo que
+      // despacha el gesto, y la ayuda lo referencia.
+      ['Esquinas A–D', `pulsar una ranura cargada abre el cajón de MODELOS en esa ranura (${CORNER_KEYBOARD_HINT} con foco)`],
     ];
 
     for (const [term, description] of helpItems) {

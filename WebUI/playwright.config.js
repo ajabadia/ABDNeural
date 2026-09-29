@@ -12,6 +12,16 @@ import { defineConfig, devices } from '@playwright/test';
 const E2E_PORT = Number(process.env.NEURONIK_E2E_PORT ?? 5236);
 
 /**
+ * El puerto del servidor de DEV que sirve `needle-probe/`, por el MISMO motivo
+ * que el de arriba (`NEURONIK_E2E_PORT` para el preview de `dist`): los tests
+ * de ctest corren en paralelo y cada uno levanta su par de servidores. Antes
+ * este puerto estaba escrito a pelo en el `webServer` y en la URL de los specs,
+ * de modo que dos tests que necesitaran la pagina de la aguja no podian
+ * coexistir; ahora ambos lo leen de aqui (`NEURONIK_E2E_PROBE_PORT`).
+ */
+const PROBE_PORT = Number(process.env.NEURONIK_E2E_PROBE_PORT ?? 5237);
+
+/**
  * E2E de navegador REAL para la WebUI (Chromium de verdad, no jsdom).
  *
  * Para qué: el vitest prueba la pagina contra el DOM simulado y los tests de node
@@ -100,8 +110,8 @@ export default defineConfig({
     // plugin) y necesita los fuentes sueltos (src/ al descubierto, sin build).
     // Puerto propio por la misma razon que E2E_PORT: ctest -j6.
     {
-      command: 'npx vite --port 5237 --strictPort',
-      url: 'http://localhost:5237/needle-probe/',
+      command: `npx vite --port ${PROBE_PORT} --strictPort`,
+      url: `http://localhost:${PROBE_PORT}/needle-probe/`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },

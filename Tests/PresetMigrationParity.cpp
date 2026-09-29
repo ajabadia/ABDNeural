@@ -40,6 +40,7 @@
 #include <vector>
 
 #include "Serialization/PresetMigration.h"
+#include "Serialization/PresetMigrationFx.h"
 #include "State/ParameterDefinitions.h"
 #include "State/ModMatrixFromState.h"
 #include "ParityHarness.h"
@@ -67,6 +68,103 @@ juce::ValueTree param (const char* id, double value)
     child.setProperty ("id", juce::String (id), nullptr);
     child.setProperty ("value", value, nullptr);
     return child;
+}
+
+// --- La MIGRACION DEL BUS, que necesita un processor con el layout real ----
+// `migrateFlatFxToSlotBus` decide que filas aplicar mirando QUE IDS DECLARA EL
+// PLUGIN (la puerta), asi que el test necesita un AudioProcessor de verdad con
+// el layout de verdad. No se puede pasar un nullptr ni una lista inventada: con
+// una lista inventada la puerta no significaria nada y el test estaria
+// comprobando una migracion que el producto no ejecuta.
+//
+// El layout sale de `createParameterLayout()`, el MISMO que usa el plugin, asi
+// que el test no puede quedarse viejo solo: si anaden `fx2Type` al layout, esta
+// fila del coro se arma sola y el test lo ve.
+class LayoutProbe : public juce::AudioProcessor
+{
+public:
+    LayoutProbe()
+        : juce::AudioProcessor (BusesProperties()
+                                    .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
+                                    .withInput ("Input", juce::AudioChannelSet::stereo(), true))
+    {
+        apvts_ = std::make_unique<juce::AudioProcessorValueTreeState> (
+            *this, nullptr, juce::Identifier ("NEURONiK_MigrationFxProbe"),
+            State::createParameterLayout());
+    }
+
+    // Los cuatro puros que JUCE deja al plugin. `getStateInformation` y
+    // `setStateInformation` NO se escriben a mano: este probe existe solo para
+    // que la migracion pueda preguntar al PROCESSOR por su layout real, y un
+    // guardado aqui no solo no hace falta, sino que daria al test un segundo
+    // sitio donde leer y ocultar una regresion.
+    const juce::String getName() const override { return "NEURONiK MigrationFx Probe"; }
+    double getTailLengthSeconds() const override { return 0.0; }
+    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    void getStateInformation (juce::MemoryBlock&) override {}
+    void setStateInformation (const void*, int) override {}
+
+    // El resto de puros de JUCE, que no tienen nada que ver con la migracion y
+    // se contestan con la respuesta honesta: este probe no habla MIDI, no trae
+    // programas y no tiene editor. Poner aqui un "0" o un "1" de convenience
+    // seria mentir sobre el probe para que compile.
+    bool acceptsMidi() const override { return false; }
+    bool producesMidi() const override { return false; }
+    bool isMidiEffect() const override { return false; }
+    bool hasEditor() const override { return false; }
+    int getNumPrograms() override { return 0; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram (int) override {}
+    const juce::String getProgramName (int) override { return {}; }
+    void changeProgramName (int, const juce::String&) override {}
+
+    void prepareToPlay (double, int) override {}
+    void releaseResources() override {}
+    void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override {}
+    bool isBusesLayoutSupported (const BusesLayout&) const override { return true; }
+
+private:
+    std::unique_ptr<juce::AudioProcessorValueTreeState> apvts_;
+};
+
+/** El id viejo de la saturacion, que ya no esta en el layout. Vive aqui y no
+    en `State::IDs::` porque ALLI no puede estar: un id que el plugin ya no
+    declara no pertenece a la lista de ids que declara. */
+constexpr const char* kLegacySaturation = "fxSaturation";
+
+bool near (double a, double b, double tolerance = 1e-6)
+{
+    return std::fabs (a - b) <= tolerance;
+}
+
+double readParam (const juce::ValueTree& state, const char* id, double fallback = 0.0)
+{
+    return (double) state.getChildWithProperty ("id", id).getProperty ("value", fallback);
+}
+
+bool hasParam (const juce::ValueTree& state, const char* id)
+{
+    return state.getChildWithProperty ("id", id).isValid();
+}
+
+void setParam (juce::ValueTree& state, const char* id, double value)
+{
+    state.getChildWithProperty ("id", id).setProperty ("value", value, nullptr);
+}
+
+/** La fila que el motor dara en el hueco 1, y de ella su PRIMER mando: el
+    drive. Se pide al CATALOGO y no a la clase del efecto a proposito, por dos
+    razones. La primera es que el test no debe saber en que header vive cada
+    motor: si anaden un efecto nuevo, el include aqui se queda viejo y el
+    test no compila, cuando lo que tiene que comprobar --que el drive migrado
+    coincide con el drive de la fila-- no ha cambiado. La segunda es mas
+    importante: el CATALOGO es lo unico que ve la migracion, asi que comparar
+    contra el catalogo es comparar contra la misma fuente de verdad. Contra la
+    clase, el test podria dar verde con una fila que el motor nunca usa. */
+const abd::dsp::FxParamSpec& saturationDriveSpec() noexcept
+{
+    return NEURONiK::DSP::fxNeuronikEffectAt (NEURONiK::DSP::fxDefaultTypeForSlot (0))
+                .effect->params[0];
 }
 
 /**
@@ -185,6 +283,12 @@ void reportFirstDifference (const std::vector<float>& a, const std::vector<float
 int main()
 {
     std::printf ("=== Paridad de la migracion de presets: el audio no puede cambiar ===\n");
+
+    // El probe del layout, que la migracion del bus usa como PUERTA. Se crea
+    // una vez y vive toda la.main: el constructor monta el APVTS real, que es
+    // lo que decide que ids existen.
+    LayoutProbe processor;
+    const auto processorIds = Serialization::currentParameterIds (processor);
 
     // ── LA TRADUCCION, EN ABSOLUTO ────────────────────────────────────────
     // Lo de mas abajo de esta linea compara el preset migrado CONTRA el que no
@@ -319,6 +423,154 @@ int main()
     for (float sample : samplesBefore)
         peak = std::max (peak, std::fabs (sample));
     check (peak > 0.01f, "el preset rendido tiene audio (la comparacion mira algo)");
+
+    // ==========================================================================
+    // LA MIGRACION DE LOS DOCE IDS PLANOS AL BUS DEL HUECO
+    // ==========================================================================
+    std::printf ("\n--- Los doce ids planos -> el bus por hueco ---\n");
+
+    {
+        // Un preset ANTERIOR al rack: los doce ids planos, con la saturacion a
+        // media pista. Los otros van en sus defaults, que es lo que traia un
+        // preset de la epoca.
+        auto legacy = juce::ValueTree ("STATE");
+        legacy.appendChild (param (kLegacySaturation, 0.5), nullptr);
+        legacy.appendChild (param (State::IDs::fxChorusRate, 0.3), nullptr);
+        legacy.appendChild (param (State::IDs::fxChorusDepth, 0.2), nullptr);
+        legacy.appendChild (param (State::IDs::fxChorusMix, 0.4), nullptr);
+        legacy.appendChild (param (State::IDs::fxDelayTime, 0.5), nullptr);
+        legacy.appendChild (param (State::IDs::fxDelayFeedback, 0.4), nullptr);
+        legacy.appendChild (param (State::IDs::fxDelaySync, 0.0), nullptr);
+        legacy.appendChild (param (State::IDs::fxDelayDivision, 2.0), nullptr);
+        legacy.appendChild (param (State::IDs::fxReverbSize, 0.5), nullptr);
+        legacy.appendChild (param (State::IDs::fxReverbDamping, 0.5), nullptr);
+        legacy.appendChild (param (State::IDs::fxReverbWidth, 1.0), nullptr);
+        legacy.appendChild (param (State::IDs::fxReverbMix, 0.0), nullptr);
+        legacy.appendChild (param (State::IDs::masterBPM, 120.0), nullptr);
+
+        const int written = Serialization::migrateFlatFxToSlotBus (legacy, processor);
+
+        // CON EL LAYOUT DE HOY SOLO SE MIGRARIA EL HUECO 1. Los otros tres
+        //(ids planos, todos) tienen que seguir en el arbol: sus huecos los
+        // manejan todavia con mandos planos, y borrarlos dejaria esos tres
+        // huecos mudos al abrir un preset viejo. Esta es la asercion que
+        // documenta que la tabla de doce filas tiene puerta de verdad.
+        check (hasParam (legacy, kLegacySaturation),
+               "el id viejo de la saturacion NO se borra aqui (lo borra el limpiado)");
+        check (hasParam (legacy, State::IDs::fxChorusMix),
+               "el coro no se toca: su hueco aun lo maneja con mandos planos");
+        check (hasParam (legacy, State::IDs::fxDelayTime),
+               "el retardo no se toca: su hueco aun lo maneja con mandos planos");
+        check (hasParam (legacy, State::IDs::fxReverbSize),
+               "la reverb no se toca: su hueco aun lo maneja con mandos planos");
+
+        // Y el hueco 1, que si se migra, escribe sus cuatro ids de bus.
+        check (written == 4, "el hueco 1 escribe sus cuatro ids del bus");
+        check (hasParam (legacy, State::IDs::fx1Type), "el bus del hueco 1 lleva su tipo");
+        check (hasParam (legacy, State::IDs::fx1Gain), "el bus del hueco 1 lleva su ganancia");
+        check (hasParam (legacy, State::IDs::fx1Mix), "el bus del hueco 1 lleva su mezcla");
+        check (hasParam (legacy, State::IDs::fx1Param1), "el bus del hueco 1 lleva su mando 1");
+
+        // LA CONVERSION, Y AQUI ESTA EL CONTROL NEGATIVO DE VERDAD.
+        //
+        // Un preset guarda el NORMALIZADO del APVTS viejo y el bus guarda el
+        // normalizado de la FILA, y no son el mismo numero. Si la migracion
+        // copiara el valor, el drive seria 0.5; con el viaje correcto, 0.5 de
+        // amount son 3.0 de drive fisico (`1 + 4*0.5`), y la fila lo normaliza
+        // con su sesgo 0.5 sobre el rango 1..8.
+        const float expectedDrive = abd::dsp::fxNormalise (saturationDriveSpec(),
+                                                           1.0f + 4.0f * 0.5f);
+
+        check (near (readParam (legacy, State::IDs::fx1Param1), expectedDrive),
+               "el mando 1 del bus es el DRIVE normalizado, no el amount copiado");
+
+        // Y la asercion que la de arriba no puede ver: si el valor migrado
+        // fuera un 0.5 (la copia) en vez del 0.449..., esta comparacion
+        // tambien fallaria, pero al reves: esta mira que el numero se ha
+        // MOVIDO de sitio, que es el sintoma real de una copia.
+        check (! near (readParam (legacy, State::IDs::fx1Param1), 0.5f),
+               "el mando migrado NO es una copia del valor guardado");
+
+        // La mezcla: el envoltorio viejo era INSERTO en cuanto el amount era
+        // > 0, asi que amount 0.5 tiene que dar mix 1.
+        check (near (readParam (legacy, State::IDs::fx1Mix), 1.0f),
+               "amount > 0 migra a la mezcla en inserto (mix = 1)");
+
+        // La ganancia, que el preset viejo no tenia: a unidad, explicito.
+        check (near (readParam (legacy, State::IDs::fx1Gain), 1.0f),
+               "la ganancia del hueco se escribe a unidad");
+
+        // El tipo sale de la MISMA tabla que el motor. Si se escribiera otro
+        // numero, el preset migrado abriria con el drive de la saturacion sobre
+        // la fila de otro efecto.
+        check (near (readParam (legacy, State::IDs::fx1Type),
+                     (double) NEURONiK::DSP::fxDefaultTypeForSlot (0)),
+               "el tipo del hueco sale de fxDefaultTypeForSlot, la misma tabla del motor");
+    }
+
+    // --- EL BYPASS: amount 0 tiene que dar la seca, no un drive bajito -------
+    {
+        auto off = juce::ValueTree ("STATE");
+        off.appendChild (param (kLegacySaturation, 0.0), nullptr);
+        Serialization::migrateFlatFxToSlotBus (off, processor);
+
+        check (near (readParam (off, State::IDs::fx1Mix), 0.0f),
+               "amount 0 migra a la mezcla a cero (el bypass que devolvia la seca)");
+
+        // Y el drive sigue siendo 1.0 (que es el `1 + 4*0`), no 0. La fila lo
+        // normaliza al 0 de su rango, que es lo que hacia la puerta
+        // `drive > 1.001` del envoltorio viejo.
+        const float expectedOff = abd::dsp::fxNormalise (saturationDriveSpec(), 1.0f);
+        check (near (readParam (off, State::IDs::fx1Param1), expectedOff),
+               "amount 0 deja el drive en 1.0, el minimo de la fila");
+    }
+
+    // --- IDEMPOTENCIA: migrar dos veces no puede pisar lo que el usuario eligio
+    {
+        auto once = juce::ValueTree ("STATE");
+        once.appendChild (param (kLegacySaturation, 0.5), nullptr);
+        const int first = Serialization::migrateFlatFxToSlotBus (once, processor);
+
+        // El usuario cambia de efecto DESDE el host, que es lo que hace
+        // `parameterChanged` -> `setFxSlotType`.
+        setParam (once, State::IDs::fx1Type, 1.0f);
+
+        const int second = Serialization::migrateFlatFxToSlotBus (once, processor);
+
+        check (first == 4, "la primera migracion escribe los cuatro ids");
+        check (second == 0, "la segunda migracion no escribe NADA (es idempotente)");
+        check (near (readParam (once, State::IDs::fx1Type), 1.0),
+               "el efecto que el usuario eligio no lo pisa una segunda migracion");
+    }
+
+    // --- UN PRESET NUEVO NO SE TOCA ---------------------------------------
+    {
+        auto fresh = juce::ValueTree ("STATE");
+        fresh.appendChild (param (State::IDs::fx1Type, 2.0), nullptr);
+        fresh.appendChild (param (State::IDs::fx1Mix, 0.7), nullptr);
+        const int written = Serialization::migrateFlatFxToSlotBus (fresh, processor);
+
+        check (written == 0, "un preset que ya esta en el bus no se escribe");
+        check (near (readParam (fresh, State::IDs::fx1Mix), 0.7),
+               "la mezcla de un preset nuevo se queda como estaba");
+    }
+
+    // --- LA LISTA CONGELADA DE LOS DOCE -----------------------------------
+    {
+        const auto retired = Serialization::retiredFlatFxParameterIds();
+        check (retired.size() == 12, "la lista congelada de ids planos tiene doce");
+
+        // Los doce tienen que ser REALES: o un id que existe en el layout, o
+        // uno que la migracion viene a sustituir. Un nombre inventado aqui
+        // haria que un preset con ese id perdiera el mando en silencio.
+        int found = 0;
+        for (const auto& id : retired)
+            if (processorIds.contains (id))
+                ++found;
+
+        check (found == 11,
+               "once de los doce ids siguen vivos en el layout (solo `fxSaturation` se retiro)");
+    }
 
     std::printf ("\n=== %d pasan, %d fallan ===\n", passed, failed);
     return failed == 0 ? 0 : 1;

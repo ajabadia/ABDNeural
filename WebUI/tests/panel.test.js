@@ -200,47 +200,98 @@ describe('panel / fila del LCD superior', () => {
 });
 
 describe('panel / contrato del selftest del host', () => {
-  it('el PRIMER input[type=range] del documento es masterLevel', () => {
+  it('el control base se encuentra por su ANCLA, no por ser el primero', () => {
     const panel = mountPanel();
     const state = makeState();
 
     panel.paint(state);
 
-    const slider = document.querySelector('input[type=range]');
+    // 2026-09-28: el control base es un Knob (un `div[role=slider]` sin input
+    // dentro), asi que ya NO se localiza por "el primer input[type=range] del
+    // documento": ese selector era un accidental que con el knob habria pasado
+    // a apuntar a la rueda de modulacion del teclado. El ancla es explicita.
+    const cell = document.querySelector('[data-baseline-control]');
 
-    expect(slider).not.toBeNull();
-    expect(slider.id).toBe('masterLevel');
-    expect(slider.dataset.parameterId).toBe('masterLevel');
-    // El cable lleva normalizado 0..1 y el fader muestra exactamente eso
-    // (masterLevel es 0..1 sin skew, así que las dos escalas coinciden).
-    expect(Number(slider.value)).toBeCloseTo(state.parameters.masterLevel, 5);
+    expect(cell).not.toBeNull();
+    expect(cell.dataset.baselineControl).toBe('masterLevel');
+    expect(cell.dataset.parameterId).toBe('masterLevel');
+    // El knob de verdad: el dial con role=slider, y el cable que el arnés usa
+    // para leer y escribir (sin input, no habria `.value`).
+    expect(cell.querySelector('[role="slider"]')).not.toBeNull();
+    // El cable lleva normalizado 0..1 (masterLevel es 0..1 sin skew, asi que las
+    // dos escalas coinciden).
+    expect(cell.baselineControl.value).toBeCloseTo(state.parameters.masterLevel, 5);
   });
 
-  it('el fader va ANTES que las ruedas del teclado (el host lee el primero)', () => {
+  it('la ayuda de gestos vive en la CABECERA y no se come el primer control', () => {
+    const panel = mountPanel();
+    panel.paint(makeState());
+
+    // En la cabecera, plegada: es lo unico que se ve sin abrir un cajon, que
+    // era el problema de la ayuda que hay dentro del cajon de MODELOS.
+    const help = panel.element.querySelector('header.panel-header details.gesture-help');
+    expect(help).not.toBeNull();
+    expect(help.open).toBe(false);
+    expect(help.querySelectorAll('li').length).toBeGreaterThanOrEqual(4);
+
+    // Y el contrato del host sigue intacto: el control base se encuentra por su
+    // ANCLA. Esto protege el INVARIANTE, no el orden de montaje (moviendo la
+    // ayuda de sitio la asercion sigue en verde, porque la ayuda no tiene
+    // ningun input: comprobalo). Con el ancla por nombre, el orden ya no
+    // importa — que es la mitad del motivo por el que el selector por
+    // posicion era fragil.
+    expect(document.querySelector('[data-baseline-control]').dataset.parameterId)
+      .toBe('masterLevel');
+    expect(help.querySelectorAll('input')).toHaveLength(0);
+  });
+
+  it('el ancla del control base no depende del orden del documento', () => {
     mountPanel();
 
-    // El teclado compartido monta sus ruedas (range) dentro de #keys-root DESPUÉS
-    // del panel; aquí se simula ese montaje para fijar el orden del documento.
+    // El teclado compartido monta sus ruedas (range) dentro de #keys-root. Con el
+    // knob, el master ya no es un range, asi que la propiedad que hay que
+    // comprobar ya no es "va antes que las ruedas" sino "el ancla nombra al
+    // master aunque las ruedas se monten antes": que es justo lo que hacia
+    // fragil el selector por posicion.
     const wheel = document.createElement('input');
     wheel.type = 'range';
     wheel.className = 'kbd-wheel-slider';
-    document.querySelector('#keys-root').append(wheel);
+    document.querySelector('#keys-root').prepend(wheel);
 
-    const ranges = [...document.querySelectorAll('input[type=range]')];
-
-    expect(ranges).toHaveLength(2);
-    expect(ranges[0].dataset.parameterId).toBe('masterLevel');
+    expect(document.querySelector('input[type=range]')).toBe(wheel);
+    expect(document.querySelector('[data-baseline-control]').dataset.parameterId)
+      .toBe('masterLevel');
   });
 
-  it('pinta un snapshot nativo sobre el fader (NATIVO -> JS)', () => {
+  it('pinta un snapshot nativo sobre el knob del control base (NATIVO -> JS)', () => {
     const panel = mountPanel();
     const state = makeState();
 
     panel.paint({ ...state, parameters: { ...state.parameters, masterLevel: 0.25 } });
 
-    expect(Number(document.querySelector('input[type=range]').value)).toBeCloseTo(0.25, 5);
+    const cell = document.querySelector('[data-baseline-control]');
+
+    expect(cell.baselineControl.value).toBeCloseTo(0.25, 5);
+    expect(cell.querySelector('[role="slider"]').getAttribute('aria-valuenow'))
+      .toBe('0.25');
     expect(document.querySelector('[data-parameter-readout="masterLevel"]').textContent)
       .toContain('25%');
+  });
+
+  it('escribir el puente del control base llega al store (JS -> NATIVO)', () => {
+    // El otro lado del contrato: lo que hace el arnés al escribir 0.75 tiene que
+    // recorrer el camino de verdad —el store— y no solo repintar el dial. Sin
+    // esta asercion, un puente que solo pintara pasaria NATIVO->JS y fallaria
+    // JS->NATIVO dentro de WebView2, minutos despues y sin rastro en el
+    // navegador.
+    const pushed = [];
+    const panel = mountPanel({ onChange: (id, value) => pushed.push([id, value]) });
+
+    panel.paint(makeState());
+
+    document.querySelector('[data-baseline-control]').baselineControl.value = 0.75;
+
+    expect(pushed).toContainEqual(['masterLevel', 0.75]);
   });
 
   it('el <code> del pie es JSON con todos los ids de GENERAL como números', () => {
@@ -297,14 +348,20 @@ describe('panel / lienzo único', () => {
     }
   });
 
-  it('los 71 parámetros tienen su celda, exactamente una vez', () => {
+  it('los 72 parámetros tienen su celda, exactamente una vez', () => {
     mountPanel();
 
     const ids = [...document.querySelectorAll('[data-parameter-id]')]
       .map((cell) => cell.dataset.parameterId);
 
-    expect(ids).toHaveLength(71);
-    expect(new Set(ids).size).toBe(71);
+    // 72 y no 71 desde 2026-09-29: el hueco 1 del rack de efectos aporta dos
+    // celdas (el drive y la mezcla) donde el mando suelto `fxSaturation`
+    // ocupaba una. Los otros cinco parametros del bus NO tienen celda todavia
+    // —son del modulo del hueco, que no esta montado— y por eso el `toEqual`
+    // contra `SECTION_PARAMETER_IDS` (no contra el contrato entero) sigue siendo
+    // la asercion que de verdad dice "cada celda pintada esta en el reparto".
+    expect(ids).toHaveLength(72);
+    expect(new Set(ids).size).toBe(72);
     expect(ids.sort()).toEqual([...SECTION_PARAMETER_IDS].sort());
   });
 
@@ -340,14 +397,14 @@ describe('panel / lienzo único', () => {
     }
   });
 
-  it('usa la familia compartida: 47 floats, 5 toggles y 19 desplegables', () => {
+  it('usa la familia compartida: 48 floats, 5 toggles y 19 desplegables', () => {
     mountPanel();
 
     const countOf = (selector) => document.querySelectorAll(selector).length;
 
     // 47 floats menos masterLevel, que es el fader nativo del host: es el ÚNICO
     // control que no sale de la familia compartida (contrato de 8.1 paso 2c).
-    expect(countOf('.cell--knob')).toBe(46);
+    expect(countOf('.cell--knob')).toBe(47);
     expect(countOf('.cell--baseline')).toBe(1);
     expect(countOf('.cell--toggle')).toBe(5);
     // 19 choices: 13 desplegables + 5 segmentados (motor, syncs, ondas LED) +
@@ -355,8 +412,13 @@ describe('panel / lienzo único', () => {
     // celdas). Familia COMPARTIDA: si alguien construye uno inline, esto cae.
     expect(countOf('.cell--choice .abd-select__field')).toBe(13);   // 16: dos ondas (LED) + midiChannel (NumberBox)
     expect(countOf('.cell--choice .abd-segmented__group')).toBe(5);   // 3 del lienzo (motor, syncs) + las dos ondas LED de los cajones
+    // El total son las CELDAS pintadas, y desde 2026-09-29 son 72: el hueco 1
+    // del rack de efectos aporta dos (el drive y la mezcla) donde el mando
+    // suelto `fxSaturation` ocupaba una. Los otros cinco ids del bus NO se
+    // cuentan aqui a proposito: son del modulo del hueco, que no esta montado,
+    // y no son celdas todavia.
     expect(countOf('.cell--knob') + countOf('.cell--baseline')
-      + countOf('.cell--toggle') + countOf('.cell--choice')).toBe(71);
+      + countOf('.cell--toggle') + countOf('.cell--choice')).toBe(72);
   });
 
   it('el gating por motor se reevalua con cada snapshot sin reescribir el valor', () => {
@@ -414,7 +476,9 @@ describe('panel / lienzo único', () => {
 
     const dials = document.querySelectorAll('.cell--knob .abd-knob__dial[role="slider"]');
 
-    expect(dials).toHaveLength(45);   // 46 menos masterBPM (NumberBox)
+    // 47 menos masterBPM (NumberBox). El hueco 1 del rack sumo una celda de
+    // knob mas (el drive), y su mezcla tambien, que es la que cuenta aqui.
+    expect(dials).toHaveLength(46);
 
     for (const dial of dials) expect(dial.tabIndex).toBe(0);
   });
@@ -1314,6 +1378,55 @@ describe('panel / vista de la ficha ENVOLVENTES (dos curvas + rutas)', () => {
     emitTelemetry({ spectral: new Array(64).fill(0), envelopes: [] });
   });
 
+  it('las dos copias de cada barra llevan la MISMA etiqueta de envolvente', () => {
+    // El arnés empareja la barra del cajon con la del RESUMEN por FILA y por
+    // ENVOLVENTE. Si una copia no escribe la etiqueta, la pareja no se puede
+    // formar y la direccion AGUJA dice "gemelas DIVERGENTES" con los dos
+    // niveles IGUALES: en la bancada la fila de ENV 2 marcaba 0.700 y 0.700 y
+    // fallaba, porque el resumen llegaba sin `data-envelope` y el parse lo
+    // convertia en 0 (ENV 1) al cruzarlo con la etiqueta 1 (ENV 2) del cajon.
+    // En el plugin pasaba por suerte: la unica fila viva era la de ENV 1.
+    //
+    // Aqui se fija la ETIQUETA de las dos copias, fila por fila, con las dos
+    // envolventes vivas a la vez (las defaults del contrato: ENV 1 en la ruta 1,
+    // ENV 2 en la ruta 2) y con una fila mudada despues, que es donde se
+    // desincronizarian si el reparto ENV 1 -> 0 / ENV 2 -> 1 se separara entre
+    // las dos vistas.
+    const panel = mountPanel();
+    const state = makeState();
+    const summaryBar = (slot) => document
+      .querySelector(`.mod-summary__row[data-slot="${slot}"] .drawer-slot__env-level`);
+    const drawerBar = (slot) => document
+      .querySelector(`.drawer-slot[data-slot="${slot}"] .drawer-slot__env-level`);
+
+    panel.paint(state);
+
+    // Las dos envuelven a la vez: la pareja se tiene que poder formar con
+    // etiqueta 0 (ENV 1) y con etiqueta 1 (ENV 2). Una fila sin fuente ENV
+    // lleva -1 en las dos copias (no se empareja con nadie, y no por azar).
+    for (const slot of ['1', '2', '3', '4']) {
+      expect(summaryBar(slot).dataset.envelope,
+        `la fila ${slot} del resumen debe llevar la misma etiqueta que la del cajon`)
+        .toBe(drawerBar(slot).dataset.envelope);
+    }
+
+    expect(summaryBar('1').dataset.envelope).toBe('0');   // ENV 1 -> amplitud
+    expect(summaryBar('2').dataset.envelope).toBe('1');   // ENV 2 -> filtro
+    expect(summaryBar('3').dataset.envelope).toBe('-1');  // sin fuente ENV
+
+    // Y con la mudanza: ENV 2 pasa de la ruta 2 a la ruta 4 y la ruta 2 queda
+    // sin fuente. Las dos copias se mueven JUNTAS.
+    panel.paint({
+      ...state,
+      parameters: { ...state.parameters, mod2Source: 0, mod4Source: 1.0 },
+    });
+
+    expect(summaryBar('4').dataset.envelope).toBe('1');
+    expect(drawerBar('4').dataset.envelope).toBe('1');
+    expect(summaryBar('2').dataset.envelope).toBe('-1');
+    expect(drawerBar('2').dataset.envelope).toBe('-1');
+  });
+
   it('el opener llega TARDE (setRouteOpener) y un paint no lo desconecta', () => {
     const panel = mountPanel();
     const state = makeState();
@@ -1861,7 +1974,12 @@ describe('panel / recorrido E2E de los cuatro cajones con EDIT', () => {
   // recorrido de usuario (EDIT -> cajon -> editar) tiene que vivir aqui.
   // DISENO 9.x: ENVOLVENTES entra como quinto (sus ocho ADSR viven en el cajon,
   // un bloque por envolvente).
-  const EDITABLE_DRAWERS = ['lfo', 'envelopes', 'models', 'modMatrix', 'globalFull'];
+  // El INVENTARIO, en el orden en que las fichas salen del lienzo: los cajones
+  // con trigger EDIT se montan en el recorrido de lectura. GLOBAL & MASTER subio
+  // a la banda del motor (2026-09-28, al lado de la LFO), asi que su posicion en
+  // esta lista no es decorativa: si alguien la moviera sin mover la ficha, la
+  // asercion de orden cae.
+  const EDITABLE_DRAWERS = ['lfo', 'globalFull', 'modMatrix', 'envelopes', 'models'];
 
   it('inventario: exactamente los cuatro cajones con trigger EDIT', () => {
     mountPanel();
@@ -2065,6 +2183,27 @@ describe('panel / VOLVER A LA RUTA (el retorno fresco de ENVOLVENTES)', () => {
     expect(envelopes.body.querySelector('.env-block__back')).toBeNull();
   });
 
+  it('un salto con retorno SIN cajon abierto que cerrar tambien vuelve', () => {
+    // Los tests de arriba saltan con ENVOLVENTES ABIERTO, asi que el bucle que
+    // cierra los demas cajones tiene algo que cerrar. Este cubre la otra mitad:
+    // el retorno depende del GESTO (que el salto pida volver), no de que hubiera
+    // por casualidad un cajon abierto que el bucle recorriera.
+    const panel = mountPanel();
+    const envelopes = panel.drawers.get('envelopes');
+    const matrix = panel.drawers.get('modMatrix');
+
+    panel.paint(makeState());
+
+    for (const drawer of panel.drawers.values()) expect(drawer.isOpen()).toBe(false);
+
+    expect(panel.openDrawerRoute('modMatrix', 2, { returnTo: 'envelopes' })).toBe(true);
+    expect(matrix.isOpen()).toBe(true);
+
+    matrix.close();
+    expect(envelopes.isOpen()).toBe(true);
+    expect(envelopes.body.querySelector('.env-block__back')).not.toBeNull();
+  });
+
   it('tras IR A LA RUTA y volver, reabre el MISMO slot mientras siga fresco', () => {
     const panel = mountPanel();
     const envelopes = panel.drawers.get('envelopes');
@@ -2193,4 +2332,97 @@ describe('panel / VOLVER A LA RUTA (el retorno fresco de ENVOLVENTES)', () => {
     matrix.close();
     expect(panel.routeBack.target()).toBe(1); // la vuelta lo reancla
   });
+
+  /**
+   * Los CUATRO caminos por los que el usuario abre un cajón por su cuenta, los
+   * cuatro con el mismo destino (GLOBAL & MASTER) para que la cancelación
+   * signifique algo: el retorno pendiente era de ENVOLVENTES.
+   *
+   * Los cuatro pasan por el MISMO hook (`onDrawerOpenedByUser` ->
+   * `cancelRouteReturn` en panel.js), así que la invariante se fija una vez y se
+   * repite por camino: si uno de ellos deja de pasar por el hook —que es lo que
+   * pasaría si alguien abre el cajón desde un sitio nuevo y se olvida de la
+   * línea— el retorno sobrevive y el botón queda colgando, y este test lo dice
+   * por su nombre.
+   *
+   * La lista está COMPLETA por construcción: son las cuatro llamadas a
+   * `context.onDrawerOpenedByUser?.()` que hay en panel.js (EDIT, chip, franja
+   * con clic y franja con teclado). Los demás `drawer.open()` del fichero no
+   * son caminos de usuario y no pueden cancelar nada: el de `openDrawerRoute`
+   * cancela y rearma en la MISMA llamada (salto nuevo), y el de `onDrawerClosed`
+   * reabre el origen DESPUÉS de consumir el retorno. Si alguien añade un
+   * quinto camino de usuario, esta lista es la que hay que tocar primero, y el
+   * comentario de arriba es el que dice por qué.
+   *
+   * El chip y la franja viven en el cuerpo de la FICHA, no en el cajón, y el
+   * clic aquí es sobre el nodo del DOM (no sobre píxeles): la banda puede estar
+   * tapada por el velo de la matriz, que es exactamente como la encuentra el
+   * usuario cuando cierra el cajón y vuelve al lienzo.
+   */
+  const USER_OPEN_PATHS = [
+    ['EDIT de la ficha', '[data-drawer-trigger="globalFull"]'],
+    ['el distintivo (chip) de la ficha', '[data-live-badge="globalFull"]'],
+    ['la franja de GLOBAL & MASTER', '.global-strip'],
+    // La franja tambien se abre con Enter y con Espacio (el mismo keydown que
+    // hace que sea alcanzable sin raton). Es un camino de usuario MAS, con su
+    // propia linea de `onDrawerOpenedByUser` en panel.js: olvidarla deja el
+    // boton VOLVER colgando justo en el camino de teclado, que es el que no se
+    // ve mirando la pantalla.
+    ['la franja con Enter (teclado)', '.global-strip',
+      (el, key) => el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))],
+    ['la franja con Espacio (teclado)', '.global-strip',
+      (el, key) => el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))],
+  ];
+
+  const USER_OPEN_KEYS = [null, null, null, 'Enter', ' '];
+
+  for (const [indice, [nombre, selector, abrir]] of USER_OPEN_PATHS.entries()) {
+    const key = USER_OPEN_KEYS[indice];
+    it(`abrir por ${nombre} cancela el retorno: muere el gesto Y se desmonta el boton`, () => {
+      const panel = mountPanel();
+      const envelopes = panel.drawers.get('envelopes');
+      const matrix = panel.drawers.get('modMatrix');
+
+      panel.paint(makeState());
+      clickEnvRouteJump(panel); // salto con retorno pendiente: ENV 1 -> RUTA 1
+
+      // El botón está COLGADO y el destino vivo: el punto de partida que los
+      // cuatro caminos tienen que desbaratar.
+      expect(panel.routeBack.target()).toBe(1);
+      expect(panel.routeBack.element.isConnected).toBe(true);
+      expect(envelopes.body.querySelector('.env-block__back')).not.toBeNull();
+
+      const opener = document.querySelector(selector);
+      expect(opener, `no encuentro el disparador de ${nombre} (${selector})`).not.toBeNull();
+      // Cada camino tiene su gesto: los de ratón, un clic; los de teclado, el
+      // keydown con SU tecla (Enter y Espacio son el mismo manejador, pero son
+      // dos gestos distintos del usuario y ambos tienen que cancelar).
+      if (abrir) abrir(opener, key);
+      else opener.click();
+
+      // (1) EL RETORNO MUERE: no queda destino fresco, que es lo que la vuelta
+      // leería para reabrir ENVOLVENTES.
+      expect(panel.routeBack.target()).toBeNull();
+
+      // (2) EL BOTON SE DESMONTA: `clear()` lo saca del documento, no lo deja
+      // escondido. `isConnected` lo dice sin depender del cajón.
+      expect(panel.routeBack.element.isConnected).toBe(false);
+      envelopes.open();
+      expect(envelopes.body.querySelector('.env-block__back')).toBeNull();
+      envelopes.close();
+
+      // (3) Y la vuelta que quedaba COBRADA no se ejecuta: cerrar la matriz
+      // (que sigue abierta) no reabre ENVOLVENTES.
+      expect(matrix.isOpen()).toBe(true);
+      expect(envelopes.isOpen()).toBe(false);
+      matrix.close();
+      expect(envelopes.isOpen()).toBe(false);
+
+      // El botón no revive por un paint posterior: no hay gesto que reanclar.
+      panel.paint(makeState());
+      expect(panel.routeBack.target()).toBeNull();
+      envelopes.open();
+      expect(envelopes.body.querySelector('.env-block__back')).toBeNull();
+    });
+  }
 });

@@ -34,6 +34,48 @@ struct ModRoute {
 
 
 /**
+ * @brief Cuantos huecos tiene el rack y cuantos mandos caben en cada uno.
+ * @details El ancho lo fija el CATALOGO DEL PRODUCTO (el mayor numero de mandos
+ *          que pide cualquiera de sus efectos), no el maximo que el motor
+ *          compartido ACEPTA (`abd::dsp::kFxMaxParams`, que son 12 y estan ahi
+ *          para los productos que monten los 48 motores de ABDEep). Con un
+ *          catalogo que pide 4, un bus de 12 serian ocho parametros muertos por
+ *          hueco en cada preset y en el contrato de la pagina.
+ *
+ *          Los dos numeros se comprueban contra el catalogo en tiempo de
+ *          compilacion: `Source/DSP/FxCatalogue.h` los confronta con la tabla
+ *          real, asi que un motor nuevo mas ancho rompe la compilacion y no
+ *          painta un hueco con los knobs cortados.
+ */
+inline constexpr int kFxBusSlots = 4;   //!< == abd::dsp::kFxNumSlots
+inline constexpr int kFxBusParams = 4;  //!< el mas ancho del catalogo de NEURONiK
+
+/**
+ * @brief Un HUECO del rack de efectos: lo que el hilo de audio necesita de el.
+ * @details El TIPO (que efecto va puesto) NO esta aqui a proposito:
+ *          `FxSlot::setType` CREA y DESTRUYE la instancia, y en el hilo de
+ *          audio no puede haber un `new` (ver `Source/DSP/FxSlots.h`). El tipo
+ *          vive en el hilo de mensajes, en el procesador, y llega al hueco por
+ *          ahi.
+ *
+ *          Los mandos van NORMALIZADOS 0..1, que es lo que habla un panel; la
+ *          fila del catalogo decide el sesgo y las unidades fisicas, y ese viaje
+ *          ocurre una sola vez, al empujarlos al hueco.
+ *
+ * POR QUE UN BUS FIJO Y NO UNA TABLA DE TAMANO VARIABLE. El hueco tiene un
+ * numero fijo de mandos porque el APVTS tambien: son parametros con id, que un
+ * preset puede guardar, una matriz puede modular y un host puede automatizar. Y
+ * porque el motor ya lo es: `FxSlot` habla `setParameter(index, valor)` con un
+ * `kFxMaxParams` fijo.
+ */
+struct FxSlotParams
+{
+    float params[kFxBusParams] = { 0.5f, 0.5f, 0.5f, 0.5f };  //!< normalizado 0..1
+    float gain = 1.0f;                                         //!< salida del hueco
+    float mix  = 0.0f;                                         //!< mezcla mojado/seco
+};
+
+/**
  * Common structures for engine parameters. Plain data only: the host fills it
  * and hands it to the engine (ISynthesisEngine::setGlobalParams / the Runtime
  * facade), which owns the real-time safe handoff.
@@ -60,6 +102,21 @@ struct GlobalParams {
     } lfo1, lfo2;
 
     ModRoute modMatrix[4];
+
+    // El RACK de efectos, al FINAL y sin reordenar nada de lo de arriba. Este
+    // struct tiene un ABI publico: `neuronikGlobalParamsLayout` publica el
+    // `offsetof` de cada campo y la pagina escribe el espejo por esos indices
+    // (`WebUI/src/wasm/audioParams.js`, 0..33). Anadir al final es SEGURO —los
+    // indices viejos no se mueven y el espejo se dimensiona solo con
+    // `neuronikGlobalParamsSize`—, mientras que quitar o reordenar un campo
+    // cambia lo que la pagina escribe sin que nadie lo note. Por eso el hueco 1
+    // se migra sin sacar `saturationAmt` de su sitio: se apaga su ultimo uso (que
+    // era el destino 17 de la matriz) y el bus entra por detras.
+    //
+    // Los huecos 2, 3 y 4 los manejan TODAVIA los mandos planos de antes
+    // (chorusRate, delayTime, reverbSize...): la migracion va hueco a hueco y
+    // este es el primero. Ver `Source/DSP/FxSlots.h`.
+    FxSlotParams fx[kFxBusSlots];
 };
 
 } // namespace NEURONiK::DSP

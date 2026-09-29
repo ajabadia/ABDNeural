@@ -28,10 +28,12 @@ import { choiceIndexFromNormalized, displayText, realFromNormalized } from '../c
 // Los defaults del contrato generado (linea defaultNormalized de cada
 // parametro): la referencia del modo `touched` del distintivo vivo.
 import { defaultNormalizedState, describeControl, toNormalized } from '../contracts/parameters.js';
+import { GEOMETRY } from '../contracts/sections.js';
 import { KEYS_TAB } from '../contracts/screens.js';
 import { createParameterControl } from './controls.js';
+import { createGestureHelp } from './gestureHelp.js';
 // Cajon compartido de la familia (contenido estable: sin re-render al abrir).
-import { createDrawer } from '@abdsynths/shared/components';
+import { createDrawer, Knob } from '@abdsynths/shared/components';
 import { ENV1_SOURCE, ENV2_SOURCE } from './envelopeViews.js';
 // La verdad de "ranura cargada" es LA MISMA que pinta la vista del cajon de
 // MODELOS (displayableName), y los defaults del contrato (touched) son los que
@@ -102,7 +104,7 @@ export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = nu
   // id -> view-model. Lo pide ese mismo distintivo (para leer un `choice` hacen
   // falta sus `options`); el repintado normal va por el array `controls`.
   const controlsById = new Map();
-  let baselineSlider = null;
+  let baselineCell = null;
   let baselineControl = null;
   // Parametros del ULTIMO snapshot: los necesita el repintado por frame de las
   // barras ENV del cajón de la MATRIZ (la decisión de fila vive en el snapshot,
@@ -178,6 +180,37 @@ export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = nu
     routeBack.clear();
   }
 
+  // ESC con un RETORNO de ruta vivo. Cada cajon del mueble compartido engancha
+  // su PROPIO `keydown` de ESC en `document`, y el oyente del cajon que el
+  // panel reabre (ENVOLVENTES) se registro DESPUES del del destino (la
+  // MATRIZ). Con los dos vivos, la misma pulsacion los recorre a los dos: la
+  // matriz se cierra, su onClose reabre ENVOLVENTES al instante, y el oyente
+  // de ENVOLVENTES —que ya lo encuentra abierto— lo vuelve a cerrar DENTRO
+  // del mismo evento. "Cerrar la matriz vuelve a ENVOLVENTES" se come a si
+  // mismo. No se arregla con un microtask (entra tarde, cuando el gesto ya
+  // se ha medido) ni en el mueble compartido (que es otro repositorio).
+  // Aqui se resuelve el ESC en FASE DE CAPTURA, antes que cualquier oyente de
+  // burbuja: el panel cierra el destino y corta el evento, de modo que el
+  // onClose hace su trabajo normal (resalte, consumo unico, reapertura del
+  // origen) sin que ningun oyente posterior exista ya que pueda cerrar lo que
+  // acaba de abrir. Sin retorno vivo no hace nada: cada cajon conserva su ESC.
+  function handleEscapeRouteReturn(event) {
+    if (event.key !== 'Escape' || !routeReturn) return;
+
+    // Con un retorno vivo el unico cajon abierto es el destino del salto: el
+    // de origen se cerro al saltar (y abrirlo a mano ya cancelaba el retorno).
+    let destination = null;
+    for (const [id, drawer] of drawers)
+      if (id !== routeReturn && drawer.isOpen()) { destination = drawer; break; }
+
+    if (!destination) return;
+
+    event.stopImmediatePropagation();
+    destination.close();
+  }
+
+  document.addEventListener('keydown', handleEscapeRouteReturn, true);
+
   const element = document.createElement('section');
   element.className = 'panel';
 
@@ -231,7 +264,14 @@ export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = nu
   const contractLine = document.createElement('p');
   contractLine.className = 'contract-line';
 
-  header.append(title, audioRow, status, contractLine);
+  // La ayuda de GESTOS de la pagina, plegada en la cabecera (ui/gestureHelp.js).
+  // Va AL FINAL a proposito: el primer `input[type=range]` del DOM tiene que
+  // seguir siendo masterLevel, que es el control que conduce el `--selftest` del
+  // host, y la cabecera no se reordena. Plegada solo ocupa su resumen; la lista
+  // es un popover (CSS) porque la cabecera tiene altura fija.
+  const gestureHelp = createGestureHelp();
+
+  header.append(title, audioRow, status, contractLine, gestureHelp.element);
 
   // --- fila del LCD (opcional) ----------------------------------------------
   // El LCD superior del synth: la página lo crea (ui/lcdTop.js) y el panel solo
@@ -276,7 +316,7 @@ export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = nu
         // El usuario abre un cajon por su cuenta: cancela el retorno pendiente.
         onDrawerOpenedByUser: () => { cancelRouteReturn(); },
         onBaseline: (built) => {
-          baselineSlider = built.slider;
+          baselineCell = built.cell;
           baselineControl = built.control;
         },
         // Cierre real de un cajon (✕/velo/ESC): el resalte muere y, si este
@@ -494,12 +534,19 @@ export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = nu
     // fuera del APVTS (`state.models`) y se habilitan según haya host.
     for (const visual of visuals) visual.paint(parameters, state);
 
-    if (baselineSlider && baselineControl) {
+    if (baselineCell && baselineControl) {
       const normalized = parameters[baselineControl.id] ?? 0;
 
-      // Nunca se pelea con el dedo del usuario: mientras el fader tiene el foco,
-      // el valor es suyo.
-      if (document.activeElement !== baselineSlider) baselineSlider.value = String(normalized);
+      // Nunca se pelea con el dedo del usuario: mientras el knob tiene el foco,
+      // el valor es suyo. El foco se mira en el DIAL, no en la celda: la celda es
+      // la que lleva el ancla del contrato y nunca recibe el foco, asi que
+      // mirarla haria que esta guarda no protegiera nada.
+      const dial = baselineCell.querySelector('[role="slider"]');
+      const focused = dial != null ? dial === document.activeElement
+                                   : document.activeElement === baselineCell;
+
+      // Se escribe por el PUENTE, no por `.value`: el knob no es un `<input>`.
+      if (!focused) baselineCell.baselineControl.setFromSnapshot(normalized);
 
       paintReadout(baselineReadouts.get(baselineControl.id), baselineControl, normalized);
     }
@@ -666,6 +713,7 @@ export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = nu
   }
 
   function destroy() {
+    document.removeEventListener('keydown', handleEscapeRouteReturn, true);
     for (const control of controls) control.destroy();
     knobsById.clear();
     for (const visual of visuals) visual.destroy?.();
@@ -719,7 +767,15 @@ export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = nu
     // lo cierro AQUI: no es un cierre de usuario y no tiene nada que limpiar.
     // Al volver, lo reabre el handler de cierre de la matriz.
     for (const [otherId, other] of drawers)
-      if (otherId !== sectionId && other.isOpen()) other.close();    routeReturn = returnTo;
+      if (otherId !== sectionId && other.isOpen()) other.close();
+
+    // El retorno se guarda FUERA del bucle, en su propia línea. Pegado a la
+    // anterior era lo MISMO en ejecución (un `if` sin llaves solo aloja la
+    // sentencia que le sigue, no las demás), pero dos sentencias en una
+    // línea se leen como si la segunda dependiera de la primera, y aquí la
+    // pregunta "¿se guarda el retorno aunque no hubiera cajones abiertos que
+    // cerrar?" solo tiene respuesta visible si están en líneas separadas.
+    routeReturn = returnTo;
 
     if (returnTo) {
       mountRouteBack(returnTo);
@@ -954,15 +1010,16 @@ function buildCard(section, context) {
     : null;
 
   for (const control of section.controls) {
-    // El control BASE del host (masterLevel) sigue siendo un range NATIVO: es la
-    // mitad del contrato de 8.1 paso 2c y el ÚNICO caso donde un control no sale
-    // de la familia compartida. Ocupa la primera celda de su ficha, así que es el
-    // `input[type=range]` que el host encuentra ANTES que las ruedas del teclado.
+    // El control BASE del host (masterLevel) es el UNICO que se salia de la
+    // familia compartida (era un range nativo); desde 2026-09-28 es un Knob como
+    // los demas. Lo que sigue siendo excepcional NO es su mueble sino su
+    // ancla: `data-baseline-control`, que el arnés busca por NOMBRE en vez de
+    // por posicion en el documento.
     if (control.id === context.baselineId) {
-      const built = buildBaselineControl(control, context.readouts);
+      const built = buildBaselineControl(control, context.readouts, context.handlers);
 
       body.append(built.wrapper);
-      context.onBaseline({ slider: built.slider, control });
+      context.onBaseline({ cell: built.cell, control });
       continue;
     }
 
@@ -1327,34 +1384,128 @@ function buildSlotRows(section, host) {
   return rows;
 }
 
-/** Control base: range nativo, normalizado 0..1 en el cable. */
-function buildBaselineControl(control, readouts) {
-  const slider = document.createElement('input');
-  slider.type = 'range';
-  slider.id = control.id;
-  slider.dataset.parameterId = control.id;
-  slider.min = '0';
-  slider.max = '1';
-  slider.step = '0.001';
-
-  const label = document.createElement('label');
-  label.className = 'cell__label';
-  label.htmlFor = control.id;
-  label.textContent = control.label;
-
+/**
+ * Control base: el Knob del paquete compartido, normalizado 0..1 en el cable.
+ *
+ * 2026-09-28: era un `input[type=range]` NATIVO (fader horizontal) y pasa a ser
+ * un Knob, como el resto de los controles continuos. El motivo de fondo no es la
+ * estetica: el fader era un ancla ACCIDENTAL del contrato del selftest —el arnes
+ * lo buscaba con `document.querySelector('input[type=range]')`, o sea "el primer
+ * range del documento"— y ese accidental se rompio en cuanto la pagina monto
+ * otra cosa antes que el (una rueda del teclado). Por eso el ancla pasa a ser
+ * EXPLICITA (`data-baseline-control`), no "el primero que aparezca".
+ *
+ * El knob no trae `<input>` dentro (es un `div[role=slider]`), asi que el arnes
+ * ya no puede leer `.value` ni escribir con el setter de `HTMLInputElement`: para
+ * eso la celda expone un cable de verdad, `setNormalized`, y se maneja por la
+ * API del knob, que es el camino real de un gesto, no por un atajo que solo el
+ * arnes conoce.
+ */
+function buildBaselineControl(control, readouts, handlers) {
   const readout = document.createElement('span');
   readout.className = 'cell__readout';
   readout.dataset.parameterReadout = control.id;
   readouts.set(control.id, readout);
 
-  // El `data-parameter-id` va SOLO en el slider (es el elemento que el host
-  // consulta); en la celda sería un duplicado del mismo id en el documento.
   const wrapper = document.createElement('div');
   wrapper.className = 'cell cell--baseline';
-  wrapper.dataset.controlKind = 'slider';
-  wrapper.append(label, slider, readout);
+  wrapper.dataset.parameterId = control.id;
 
-  return { wrapper, slider };
+  // El ANCLA explicita del contrato del selftest. Va en la CELDA (no en el dial
+  // del knob) porque la celda es lo que sobrevive a un repintado del knob: el
+  // arnes necesita un elemento estable, no uno que el paquete compartido pueda
+  // reconstruir cuando le parezca bien.
+  wrapper.dataset.baselineControl = control.id;
+
+  let normalized = 0;
+
+  const knob = new Knob(wrapper, {
+    size: GEOMETRY.knob,
+    label: control.label,
+    value: 0,
+    format: (value) => displayText(control, realFromNormalized(control, value)),
+    // Un gesto sobre el dial ES la escritura del control base, y pasa por el
+    // MISMO `applyValue` que un pintado o que el arnés: la memoria del puente y
+    // el readout se actualizan aqui tambien. Si solo se empujara al store, el
+    // puente se quedaria en el ULTIMO pintado y el arnés leeria 0.8 con el dial
+    // en 1.0 — un valor que la pagina ya no muestra. `setValue` no hace falta
+    // (el dial acaba de moverse) y, aunque hiciese, el paquete compartido
+    // garantiza que un `setValue` programatico no dispara `onChange`: no hay
+    // eco posible.
+    onChange: (value) => {
+      applyValue(value);
+      handlers?.onChange?.(control.id, value);
+    },
+    onDragStart: () => handlers?.onGesture?.(control.id, 'begin'),
+    onDragEnd: () => handlers?.onGesture?.(control.id, 'end'),
+  });
+
+  wrapper.append(readout);
+
+  // El PUENTE que usa el arnés del selftest (direcciones NATIVO->JS y
+  // JS->NATIVO). Antes no hacía falta nada de esto: el fader era un
+  // `<input>` y el arnés leía `.value` y escribía con el setter de
+  // `HTMLInputElement`. Un knob del paquete compartido no expone ninguna de las
+  // dos cosas, y la alternativa —buscar "el primer input[type=range]"— volvía a
+  // colgar el contrato de un accidental. Este par de métodos es el equivalente
+  // honesto: el arnés mueve el control por SU API, la misma que usa un gesto.
+  //
+  // Va en la celda (el elemento con el ancla), no en el dial del knob, para que
+  // el arnés no dependa de la piel que elija el paquete compartido.
+  wrapper.baselineControl = {
+    get value() { return normalized; },
+
+    // `commit` separa las DOS escrituras que llegan al control base:
+    //
+    //   - `true`  = un gesto o el arnés MOVIENDOLO: se empuja al store, porque
+    //               el estado tiene que cambiar;
+    //   - `false` = el `paint` de un snapshot que YA viene del store: si
+    //               empujara, cada repintado devolveria el valor como si fuera
+    //               un eco del usuario y el arnés veria su propia escritura.
+    //
+    // El caso `false` es la trampa de este puente: sin el, NATIVO->JS followed
+    // de un edit realaria un bucle.
+    set value(next) { writeBaseline(next, true); },
+    setFromSnapshot (next) { writeBaseline(next, false); },
+  };
+
+  /** El unico sitio donde la celda pasa a creer un valor: dial, readout y memoria. */
+  function applyValue (next) {
+    normalized = next;
+    knob.setValue(next);
+    readout.textContent = displayText(control, realFromNormalized(control, next));
+  }
+
+  function writeBaseline (next, commit) {
+    applyValue(next);
+
+    if (commit) {
+      // Mismo camino que un gesto real: `onChange` es lo que empuja al store, y
+      // el gesto se cierra para el commit de undo/automatización. Sin esto,
+      // escribir el valor solo repintaría el dial y el estado nativo se quedaría
+      // viejo — el fallo silencioso más caro de esta pieza.
+      handlers?.onChange?.(control.id, next);
+      handlers?.onGesture?.(control.id, 'end');
+    }
+  }
+
+  return {
+    wrapper,
+    // El arnés (NATIVO->JS y JS->NATIVO) lee y escribe por aqui. Se expone en
+    // la celda y no en el dial porque es la celda la que tiene el ancla.
+    cell: wrapper,
+
+    setNormalized(value) {
+      applyValue(value);
+    },
+
+    getNormalized: () => normalized,
+
+    destroy() {
+      knob.destroy();
+      readout.remove();
+    },
+  };
 }
 
 function paintReadout(readout, control, normalized) {

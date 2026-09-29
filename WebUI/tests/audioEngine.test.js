@@ -26,6 +26,7 @@ import {
   pushMidiToWorklet,
   pushModelsToWorklet,
   pushParamsToWorklet,
+  pushVoiceToWorklet,
   startAudioEngine,
   teardownAudioEngine,
 } from '../src/audio/audioWorkletEngine.js';
@@ -150,6 +151,29 @@ describe('audio engine / browser lifecycle', () => {
     expect(lastNode.options.processorOptions.sampleRate).toBe(48000);
   });
 
+  it('devuelve el remover: tras el apagado el canal ya no avisa', async () => {
+    // El canal es estado de modulo y sobrevive al documento; quien se suscribe
+    // es quien lo devuelve (ver el apagado de pagina en src/app.js).
+    installFakeWebAudio();
+
+    const seen = [];
+    const stop = onAudioEngineChange((state) => seen.push(state.status));
+
+    const starting = startAudioEngine();
+
+    await vi.waitFor(() => expect(lastNode).not.toBeNull());
+    lastNode.port.emit({ type: 'neuronik:ready' });
+    await starting;
+
+    const before = seen.length;
+    expect(before).toBeGreaterThan(0);
+
+    stop();
+    await teardownAudioEngine();   // vuelve a 'idle' y avisa a quien quede colgado
+
+    expect(seen.length).toBe(before);
+  });
+
   it('speaks the worklet message shapes the DSP understands', async () => {
     installFakeWebAudio();
 
@@ -178,6 +202,31 @@ describe('audio engine / browser lifecycle', () => {
 
     expect(panicWorklet()).toBe(true);
     expect(lastNode.port.posted.at(-1)).toEqual({ type: 'neuronik:panic' });
+  });
+
+  it('el ADSR sale por SU canal (neuronik:voice), no dentro de neuronik:params', async () => {
+    installFakeWebAudio();
+
+    const starting = startAudioEngine();
+    await vi.waitFor(() => expect(lastNode).not.toBeNull());
+    lastNode.port.emit({ type: 'neuronik:ready' });
+    await starting;
+
+    // Un id de envolvente movido en la pagina tiene que viajar por el canal
+    // de VoiceParams: dentro de `neuronik:params` no estaria (sus indices son
+    // los de GlobalParams) y el motor local seguiria en los defaults de C++.
+    pushParamsToWorklet({ envSustain: 0.2 });
+    expect(lastNode.port.posted.at(-1).type).toBe('neuronik:params');
+    expect(lastNode.port.posted.at(-1).fields.map(([index]) => index)).not.toContain(2);
+
+    expect(pushVoiceToWorklet({ envSustain: 0.2, filterSustain: 0.9 })).toBe(true);
+    const voice = lastNode.port.posted.at(-1);
+    expect(voice.type).toBe('neuronik:voice');
+    // Snapshot COMPLETO (los ocho), con el sustain tal cual y en ms los tiempos.
+    expect(voice.fields.length).toBe(8);
+    expect(voice.fields.find(([index]) => index === 2)[1]).toBeCloseTo(0.2, 4);
+    expect(voice.fields.find(([index]) => index === 6)[1]).toBeCloseTo(0.9, 4);
+    expect(voice.fields.find(([index]) => index === 0)[1]).toBeCloseTo(10, 3);
   });
 
   it('el meter del worklet alimenta la aguja: envelopes [amp, filter] al suscriptor', async () => {

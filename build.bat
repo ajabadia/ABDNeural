@@ -27,10 +27,15 @@ REM  uso y deja el cajon abierto) y SIN omitidos: la maquinaria de "direccion no
 REM  aplicable" se fue con el piloto (ticket 8.4). Exit code != 0 si alguna
 REM  direccion no se mueve.
 REM
-REM  Al final, :finish imprime el resumen del selftest por direccion con su
-REM  veredicto (lo parsea Scripts\selftest_summary.ps1 desde la ultima corrida
-REM  cerrada del transcript) y la ruta del log, y todo cae tambien en
-REM  build-last-run.log.
+REM  Al final, :finish imprime el resumen del selftest por direccion, con UN
+REM  bloque por superficie —PLUGIN (Standalone) y BANCADA (WebPilotHost)—, cada
+REM  uno con su veredicto, su exit y su transcript: se distinguen porque las dos
+REM  corrian el mismo arnes sobre la misma pagina y sus fallos no se parecen en
+REM  nada (la bancada no escribe en el log del plugin, asi que antes su veredicto
+REM  solo aparecia en linea durante el paso 9 y el resumen final solo pintaba el
+REM  del plugin). La superficie que no se ejecuto en la pasada se dice con su
+REM  motivo, en vez de callar. Todo parsea Scripts\selftest_summary.ps1 y todo
+REM  cae tambien en build-last-run.log.
 REM
 REM  El script siempre termina con PAUSA, incluso si algo falla (build.bat
 REM  nopause la omite para correr automatizado: CI, agentes, una sola pasada).
@@ -52,6 +57,16 @@ set "MM_RELEASE=0"
 set "WITH_SELFTEST=1"
 set "TESTS_ONLY=0"
 set "WITH_WASM=1"
+
+REM ---- Estado de las dos superficies del selftest ----
+REM Se inicializan AQUI, no en el paso 9: cualquier `goto :finish` anterior
+REM (una compilacion que cae, un ctest en rojo) llega al resumen final, y sin
+REM estos valores el bloque de cada superficie saldria con el motivo vacio —
+REM "no se ejecuto ()" en vez de decir por que.
+set "PLUGIN_RAN=0"
+set "PILOT_RAN=0"
+set "PLUGIN_SKIP=la pasada no llego al paso 9 del selftest ^(o se pidio noselftest^)"
+set "PILOT_SKIP=la pasada no llego al paso 9 del selftest ^(o se pidio noselftest^)"
 
 for %%A in (%*) do (
     if /I "%%A"=="--internal-log" (
@@ -108,8 +123,8 @@ if exist "%BUILD_DIR%\CMakeCache.txt" (
 )
 
 echo.
-echo [2/9] Generando el contrato de parametros (WebUI\generated)...
-cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_ParameterExport
+echo [2/9] Generando el contrato de parametros y el catalogo de efectos (WebUI\generated)...
+cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_ParameterExport NEURONiK_FxExport
 if !ERRORLEVEL! neq 0 (
     echo.
     echo [ERROR] Fallo al compilar el exportador del contrato.
@@ -121,6 +136,20 @@ if !ERRORLEVEL! neq 0 (
 if !ERRORLEVEL! neq 0 (
     echo.
     echo [ERROR] Fallo al regenerar WebUI\generated.
+    set "EXIT_CODE=1"
+    goto :finish
+)
+
+REM El catalogo de efectos va en el MISMO paso porque la pagina lo necesita para
+REM pintar un hueco, y es el otro lado de la misma fuente de verdad que el
+REM contrato de parametros: la tabla de efectos del modulo compartido
+REM (DspEffects/FxDefaultCatalogue.h). Es un ejecutable aparte porque ese modulo
+REM es JUCE-free y el exportador no tiene por que dejar de serlo para leer una
+REM tabla de structs.
+"%BUILD_DIR%\Release\NEURONiK_FxExport.exe" WebUI\generated
+if !ERRORLEVEL! neq 0 (
+    echo.
+    echo [ERROR] Fallo al regenerar el catalogo de efectos.
     set "EXIT_CODE=1"
     goto :finish
 )
@@ -298,9 +327,12 @@ REM WebUI y corre el arnes compartido (Source/WebUI/BridgeSelftest.h), cuyo vere
 REM es su codigo de salida. Va PRIMERO y manda. La bancada corre el MISMO arnes sobre
 REM la MISMA pagina, servida desde disco.
 set "PLUGIN_STANDALONE=%BUILD_DIR%\NEURONiK_artefacts\Release\Standalone\NEURONiK.exe"
+set "PILOT_SKIP=el plugin no llego a la bancada"
 if not exist "%PLUGIN_STANDALONE%" (
     echo [AVISO] Standalone del plugin no disponible, selftest del plugin omitido.
     set "EXIT_CODE=1"
+    set "PLUGIN_SKIP=no hay Standalone que ejecutar"
+    set "PILOT_SKIP=el Standalone del plugin no existe"
     goto :finish
 )
 
@@ -309,11 +341,13 @@ REM sin depender del stdout (y ahi es donde lo busca quien depura un FAIL).
 set "NEURONIK_SELFTEST_LOG=%~dp0%BUILD_DIR%\neuronik-selftest.log"
 "%PLUGIN_STANDALONE%" --selftest
 set "PLUGIN_ST=%ERRORLEVEL%"
+set "PLUGIN_RAN=1"
 if not "%PLUGIN_ST%"=="0" (
     echo.
     echo [ERROR] El selftest del plugin fallo: alguna direccion no se movio.
     echo         Detalle: %NEURONIK_SELFTEST_LOG%
     set "EXIT_CODE=1"
+    set "PILOT_SKIP=el selftest del plugin fallo y la pasada se corto ahi"
     goto :finish
 )
 echo [OK] Plugin verificado: ver el resumen por direccion al final de esta pasada.
@@ -327,23 +361,43 @@ if "!HOST_BUILD_FAILED!"=="1" (
     echo [AVISO] La bancada NO recompilo en esta pasada: el enlace borro el exe anterior.
     echo         Selftest omitido para no dar un OK enganoso.
     set "EXIT_CODE=1"
+    set "PILOT_SKIP=la bancada no recompilo en esta pasada"
     goto :finish
 )
 if not exist "%PILOT_HOST%" (
     echo [AVISO] Bancada no disponible, selftest omitido.
+    set "PILOT_SKIP=no hay ejecutable de bancada"
     goto :finish
 )
 if not exist "WebUI\dist\index.html" (
     echo [AVISO] WebUI\dist no existe: sin pagina que cargar no hay E2E ^(y el plugin
     echo         tampoco embebio interfaz^). Selftest de la bancada omitido.
+    set "PILOT_SKIP=no hay pagina en WebUI\dist que cargar"
     goto :finish
 )
 
+REM La bancada escribe su selftest en un log ACUMULATIVO con marca de tiempo, el
+REM MISMO formato que el plugin (politica en Source\WebUI\SelftestLog.h), asi que
+REM el resumen final lo lee igual que al del plugin. Antes era un transcript de
+REM UNA pasada, reescrito desde cero y sin marcas, y por eso el resumen necesitaba
+REM un modo `stdout` aparte: comparar una pasada fallida con la anterior era
+REM imposible porque no quedaba rastro de la anterior.
+REM
+REM NO se borra antes de correr: acumular es el punto. Para empezar de cero hay
+REM que borrar el fichero a mano.
+set "BENCH_TRANSCRIPT=%~dp0%BUILD_DIR%\neuronik-selftest-bancada.log"
+set "NEURONIK_SELFTEST_LOG_BANCADA=%BENCH_TRANSCRIPT%"
+
 "%PILOT_HOST%" --selftest
+REM El exit se lee ANTES de nada: cualquier comando posterior (type, echo) pone
+REM ERRORLEVEL a 0, y leerlo despues hacia que una bancada en FAIL saliera con
+REM exit 0 y la pasada se cerrara en verde.
 set "PILOT_ST=%ERRORLEVEL%"
+set "PILOT_RAN=1"
 if not "%PILOT_ST%"=="0" (
     echo.
-    echo [ERROR] El selftest del bridge fallo: alguna direccion no se movio.
+    echo [ERROR] El selftest de la BANCADA fallo: alguna direccion no se movio.
+    echo         Detalle: %BENCH_TRANSCRIPT% ^(acumulativo: las pasadas anteriores siguen ahi^)
     set "EXIT_CODE=1"
     goto :finish
 )
@@ -363,14 +417,14 @@ echo  Copia de seguridad de builds anteriores: "Versiones compiladas"
 
 :finish
 REM ---- Resumen del selftest: veredicto por direccion + rutas de los logs -----
-REM El transcript del selftest es acumulativo (cada corrida del plugin anhade y
-REM se cierra con una linea "veredicto:"), asi que el resumen lo parsea
-REM Scripts\selftest_summary.ps1 desde la ULTIMA corrida CERRADA: si esta pasada
-REM no llego a renovarla (proceso muerto antes de terminar), el aviso de fecha
-REM lo dice en vez de pintar un OK de otra pasada. Sin log o sin corrida, el
-REM resumen lo dice en vez de callar. La llamada es un proceso hijo del tee:
-REM su stdout lo captura el envoltorio y por eso el resumen tambien queda en
-REM build-last-run.log.
+REM Los DOS transcripts son acumulativos y con marca de tiempo (politica en
+REM Source\WebUI\SelftestLog.h): cada corrida anade lineas y se cierra con una
+REM linea "veredicto:". El resumen parsea Scripts\selftest_summary.ps1 desde la
+REM ULTIMA corrida CERRADA de cada uno: si esta pasada no llego a renovarla
+REM (proceso muerto antes de terminar), el aviso de fecha lo dice en vez de
+REM pintar un OK de otra pasada. Sin log o sin corrida, el resumen lo dice en
+REM vez de callar. La llamada es un proceso hijo del tee: su stdout lo captura el
+REM envoltorio y por eso el resumen tambien queda en build-last-run.log.
 set "SELFTEST_LOG=%NEURONIK_SELFTEST_LOG%"
 if "%SELFTEST_LOG%"=="" set "SELFTEST_LOG=%~dp0%BUILD_DIR%\neuronik-selftest.log"
 
@@ -384,8 +438,18 @@ if "%EXIT_CODE%"=="0" (
 echo =======================================================
 
 if "%WITH_SELFTEST%"=="1" (
-    echo  Resumen del selftest ^(por direccion^):
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Scripts\selftest_summary.ps1" "%SELFTEST_LOG%"
+    echo  Resumen del selftest ^(por direccion, una superficie cada una^):
+    echo.
+    if "%PLUGIN_RAN%"=="1" (
+        powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Scripts\selftest_summary.ps1" "%SELFTEST_LOG%" "PLUGIN ^(Standalone, exit %PLUGIN_ST%^)" log
+    ) else (
+        echo  PLUGIN ^(Standalone^): no se ejecuto ^(%PLUGIN_SKIP%^).
+    )
+    if "%PILOT_RAN%"=="1" (
+        powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Scripts\selftest_summary.ps1" "%BENCH_TRANSCRIPT%" "BANCADA ^(WebPilotHost, exit %PILOT_ST%^)" log
+    ) else (
+        echo  BANCADA ^(WebPilotHost^): no se ejecuto ^(%PILOT_SKIP%^).
+    )
 ) else (
     echo  Selftest omitido en esta pasada ^(noselftest / tests^).
 )

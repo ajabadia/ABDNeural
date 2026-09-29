@@ -33,7 +33,7 @@ const juce::StringArray& MidiMappingManager::getLearnableParams()
         params.add(P::morphY); params.add(P::oscInharmonicity);
         params.add(P::oscRoughness); params.add(P::resonatorParity);
         params.add(P::resonatorShift); params.add(P::resonatorRolloff);
-        params.add(P::fxSaturation);
+        params.add(P::fx1Param1);
         params.add(P::fxChorusMix); params.add(P::fxDelayTime);
         params.add(P::fxReverbMix); params.add(P::fxDelayFeedback);
         params.add(P::oscExciteNoise); params.add(P::excitationColor);
@@ -66,6 +66,8 @@ void MidiMappingManager::setMapping(const juce::String& paramID, int ccNumber)
 
     // 2. Clear any existing mapping for this CC (Conflict resolution)
     ccToIndex[ccNumber].store(paramIdx);
+
+    ++tableVersion;
 }
 
 void MidiMappingManager::setMappingByIndex(int paramIndex, int ccNumber)
@@ -82,6 +84,8 @@ void MidiMappingManager::setMappingByIndex(int paramIndex, int ccNumber)
 
     // 2. Claim the CC for it (conflict resolution).
     ccToIndex[ccNumber].store(paramIndex);
+
+    ++tableVersion;
 }
 
 void MidiMappingManager::clearMapping(const juce::String& paramID)
@@ -92,6 +96,8 @@ void MidiMappingManager::clearMapping(const juce::String& paramID)
     for (int i = 0; i < 128; ++i)
         if (ccToIndex[i].load() == idx)
             ccToIndex[i].store(-1);
+
+    ++tableVersion;
 }
 
 int MidiMappingManager::getCCForParam(const juce::String& paramID) const
@@ -147,7 +153,7 @@ void MidiMappingManager::resetToDefaults()
     setMapping(P::resonatorParity, 16);
     setMapping(P::resonatorShift, 17);
     setMapping(P::resonatorRolloff, 18);
-    setMapping(P::fxSaturation, 91);
+    setMapping(P::fx1Param1, 91);
     setMapping(P::fxChorusMix, 93);
     setMapping(P::fxDelayTime, 94);
     setMapping(P::fxReverbMix, 95);
@@ -157,6 +163,11 @@ void MidiMappingManager::resetToDefaults()
     setMapping(P::excitationColor, 21);
     setMapping(P::impulseMix, 22);
     setMapping(P::resonatorRes, 23);
+
+    // Los quince setMapping de arriba ya movieron la version; este +1 la deja
+    // en un valor propio del reset (comparar igualdad da igual, pero asi el
+    // "cambio" del reset no depende solo de las asignaciones intermedias).
+    ++tableVersion;
 }
 
 void MidiMappingManager::saveToValueTree(juce::ValueTree& v)

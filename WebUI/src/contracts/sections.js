@@ -242,29 +242,6 @@ export const SECTIONS = [
     ],
   },
   {
-    id: 'resonator',
-    title: 'RESONADOR',
-    subtitle: 'Banco de resonadores',
-    span: 2,
-    columns: 2,
-    // El banco modal y su excitacion: resonancia, impulso y arco (FASE 10).
-    ids: ['resonatorRes', 'impulseMix', 'oscExciteBow'],
-  },
-  {
-    id: 'filter',
-    title: 'FILTRO',
-    subtitle: 'Filtro multimodo',
-    // SEPARACION 8.3: la antigua FILTRO & ENVOLVENTE se parte en dos fichas.
-    // BALANCEO 9.3: filterEnvAmount se RETIRO (2026-09-26) — la ruta ENV 2 ->
-    // Filter Cutoff de la matriz es LA profundidad (su amount, bipolar) y el
-    // knob era una segunda profundidad en el mismo camino. Con dos controles,
-    // la ficha se ESTRECHA a 2 carriles y los APILA (una columna, un control
-    // encima de otro); el LFO sube a SU derecha (misma banda del motor).
-    span: 2,
-    columns: 1,
-    ids: ['filterCutoff', 'filterRes'],
-  },
-  {
     // BALANCEO 9.3: la caja LFO SUBE a la banda del motor, a la derecha del
     // FILTRO (que al perder filterEnvAmount se estrecho a 2 carriles apilados).
     // Mismo mueble: frontal 2x2 (rate/depth de cada LFO), cajon con forma,
@@ -305,6 +282,149 @@ export const SECTIONS = [
       'lfo2Waveform',
       'lfo2SyncMode',
       'lfo2RhythmicDivision',
+    ],
+  },
+  {
+    // MUDANZA 2026-09-28: GLOBAL & MASTER SUBE a la banda del motor, a la
+    // derecha de la caja LFO. Antes cerraba el lienzo abajo a la izquierda,
+    // en su propia banda (MATRIZ 8 + global 4). El motivo es que el master
+    // paso a ser un KNOB (antes era un fader horizontal) y un knob suelto en
+    // la esquina de abajo se leia como un afterthought, no como el volumen
+    // general: la caja entera sube con el para que sean la misma cosa.
+    // Patron de la matriz: en el lienzo queda el master visible y EDITAR abre
+    // el cajon con el resto (tempo, MIDI, congelados). RANDOM vive aqui por
+    // ser accion de ESTADO (todo el APVTS, con los freeze como filtro).
+    id: 'globalFull',
+    title: 'GLOBAL & MASTER',
+    subtitle: 'Tempo, MIDI, congelados y aleatorio',
+    // Reparto de carriles tras la subida (la banda del motor tiene que sumar
+    // 12: envelope-curves 6 + resonator 2 + filter 2 NO dan sitio para las
+    // dos fichas de la derecha, asi que la banda del motor es ahora
+    // resonator 2 + filter 2 + lfo 2 + global 4, y envelope-curves se abre su
+    // propia banda con envelopes/models/fx). El master sigue en la primera
+    // celda de su ficha: el control base abre la caja, como siempre.
+    span: 4,
+    columns: 4,
+    action: 'randomize',
+    drawer: {
+      badge: '8 GLOBAL',
+      // 2026-09-27: distintivo VIVO, `mode: 'touched'`: cuantas CELDAS del
+      // cajon se han apartado del default del contrato generado (la linea
+      // `defaultNormalized` del propio APVTS — la misma verdad que usa el
+      // store para sembrar el estado). masterLevel no cuenta: no es celda del
+      // cajon (vive en la ficha, contrato 8.1 2c), y contar lo que no se
+      // edita aqui seria contar dos veces lo mismo. Un id que el snapshot no
+      // traiga cuenta como en default: no se inventa un gesto que no hubo.
+      // `onCard`: identico al de MODELOS — el recuento de celdas tocadas se
+      // lee en la cabecera de la ficha y el gesto lo lleva a su cajon.
+      liveBadge: { mode: 'touched', onCard: true },
+      // Los desplegables del cajon son los MISMO select que pinta el lienzo
+      // cuando su ficha los tiene (misma variable, mismo DOM por id), asi que
+      // no hay estado que sincronizar: es el mismo nodo repartido en dos sitios.
+      trigger: 'EDIT',
+      // Sin `groups`: el cajon apila en una columna (patron global, no el de
+      // rutas de la matriz) TODOS los ids menos el control base: masterLevel
+      // lo pinta buildCard en la ficha (es el `input[type=range]` que consulta
+      // el host, contrato de 8.1 paso 2c) y el cajon no recibe copia.
+    },
+    // masterLevel va PRIMERO: el control base siempre en la primera celda.
+    ids: [
+      'masterLevel',
+      'masterBPM',
+      'velocityCurve',
+      'midiChannel',
+      'midiThru',
+      'randomStrength',
+      'freezeResonator',
+      'freezeFilter',
+      'freezeEnvelopes',
+    ],
+  },
+  {
+    id: 'resonator',
+    title: 'RESONADOR',
+    subtitle: 'Banco de resonadores',
+    span: 2,
+    columns: 2,
+    // El banco modal y su excitacion: resonancia, impulso y arco (FASE 10).
+    ids: ['resonatorRes', 'impulseMix', 'oscExciteBow'],
+  },
+  {
+    id: 'filter',
+    title: 'FILTRO',
+    subtitle: 'Filtro multimodo',
+    // SEPARACION 8.3: la antigua FILTRO & ENVOLVENTE se parte en dos fichas.
+    // BALANCEO 9.3: filterEnvAmount se RETIRO (2026-09-26) — la ruta ENV 2 ->
+    // Filter Cutoff de la matriz es LA profundidad (su amount, bipolar) y el
+    // knob era una segunda profundidad en el mismo camino. Con dos controles,
+    // la ficha se ESTRECHA a 2 carriles y los APILA (una columna, un control
+    // encima de otro); el LFO sube a SU derecha (misma banda del motor).
+    span: 2,
+    columns: 1,
+    ids: ['filterCutoff', 'filterRes'],
+  },
+  {
+    id: 'modMatrix',
+    title: 'MATRIZ DE MODULACIÓN',
+    subtitle: '4 rutas: fuente → destino → cantidad',
+    // TRANSICION 9.3: con el LFO subido a la banda del motor, esta banda queda
+    // matriz + global: la matriz toma los 2 carriles que el LFO dejo libres
+    // (el resumen respira mas ancho). PENDIENTE: el usuario decidira el
+    // reparto final de esta ultima fila mas adelante.
+    span: 8,
+    columns: 8,
+    // Sus 12 celdas viven en el cajón (ver la cabecera): en el lienzo queda el
+    // resumen de las 4 rutas y el botón. `groups` es la agrupación con la que el
+    // cajón las pinta (una fila por ruta) y el test exige que sea, en orden, `ids`.
+    // Banda con GLOBAL & MASTER (la mudanza de MODELOS al centro las deja solas).
+    // El trigger es EDIT con icono: es el PRIMER `data-drawer-trigger` del DOM y
+    // el selftest del host lo usa como ancla del cajón de la matriz.
+    drawer: {
+      badge: '4 RUTAS',
+      // El distintivo es un DATO VIVO, no una constante de la ficha: `liveBadge`
+      // declara de QUE se cuenta —los ids de FUENTE, una ruta por cada uno— y el
+      // panel lo recalcula con cada snapshot y lo escribe con `setHeader` del
+      // mueble compartido (ver ui/panel.js). Una ruta esta ASIGNADA cuando su
+      // fuente no es la primera opcion ("Off"); con los defaults del contrato son
+      // dos (ENV 1 y ENV 2), y el literal '4 RUTAS' no podia decirlo. El literal
+      // queda para lo que si es: el inventario antes del primer paint.
+      liveBadge: {
+        ids: ['mod1Source', 'mod2Source', 'mod3Source', 'mod4Source'],
+        label: 'RUTAS',
+      },
+      trigger: 'EDIT',
+      groups: [
+        ['mod1Source', 'mod1Destination', 'mod1Amount'],
+        ['mod2Source', 'mod2Destination', 'mod2Amount'],
+        ['mod3Source', 'mod3Destination', 'mod3Amount'],
+        ['mod4Source', 'mod4Destination', 'mod4Amount'],
+      ],
+    },
+    visual: 'mod-summary',
+    // EL CONMUTADOR de la ruta local del pad (2026-09-27): sin host el motor
+    // nace con la matriz del contrato y el anillo del pad se queda quieto, asi
+    // que la pagina siembra una ruta (LFO -> Morph Z, ver LOCAL_MORPH_Z_ROUTE
+    // en el store). Con esto el usuario la apaga y cambia de LFO sin entrar al
+    // cajon. Solo MODO LOCAL: con host la matriz es del APVTS y el conmutador se
+    // pinta deshabilitado (lo dice el snapshot, no esta ficha).
+    //
+    // Solo la ETIQUETA se declara aqui: las OPCIONES las publica el store
+    // (`state.localMorphRoute.sources`, sacadas de la tabla de fuentes del
+    // contrato), para que la vista no decida que LFO existe.
+    localRoute: { label: 'RUTA DEL PAD' },
+    ids: [
+      'mod1Source',
+      'mod1Destination',
+      'mod1Amount',
+      'mod2Source',
+      'mod2Destination',
+      'mod2Amount',
+      'mod3Source',
+      'mod3Destination',
+      'mod3Amount',
+      'mod4Source',
+      'mod4Destination',
+      'mod4Amount',
     ],
   },
   {
@@ -404,11 +524,33 @@ export const SECTIONS = [
     title: 'EFECTOS',
     subtitle: 'Saturación · delay · chorus · reverb',
     span: 5,
-    columns: 6,
+    columns: 7,
     // MUDANZA 8.3: pierde un carril, el que gana MODELOS al adelantarse al
-    // centro. Sin cajon: 12 controles en la rejilla 6x2, solo mas estrechos.
+    // centro. Sin cajon: los controles van en la rejilla, solo mas estrechos.
+    //
+    // Y LA REJILLA PASO DE 6 A 7 COLUMNAS CON EL BUS (2026-09-29), y no por
+    // gusto: el hueco 1 aporta dos mandos donde antes habia uno, la ficha se
+    // queda con 13 controles, y en 6 columnas eso son TRES filas. El lienzo es
+    // de alto FIJO (ver CANVAS), asi que una fila de mas no se encoge: se
+    // desborda, y el desborde del lienzo se come la fila de abajo. Con 7 columnas,
+    // 13 controles entran en dos filas (7 + 6) y el alto de la ficha no cambia.
+    // Se paga con celdas mas estrechas, que es el mismo precio que ya pagan las
+    // otras fichas de 5 carriles.
+    //
+    // BUS POR HUECO 1 (2026-09-29): la ficha pinta `fx1Mix` y `fx1Param1` en
+    // lugar del mando suelto `fxSaturation` que ya no existe. Son los dos
+    // mandos que el hueco 1 declara, y solo esos dos: el hueco tiene cuatro
+    // posiciones de bus y `fx1Param2..4` no se pintan porque el efecto que hay
+    // puesto (saturacion) declara UN mando, y pintar cuatro seria tres knobs
+    // que no hacen nada. Cuantos mandos hay los dice el `numParams` de la fila,
+    // que llega en el catalogo exportado (`generated/fx-catalog.generated.js`);
+    // cuando se monte el modulo del hueco, ese es el que decide cuantos.
+    //
+    // `fx1Type` y `fx1Gain` tampoco se pintan todavia: son del modulo del hueco,
+    // no de la ficha. Ver la seccion de preparacion del rack en HANDOFF.md.
     ids: [
-      'fxSaturation',
+      'fx1Mix',
+      'fx1Param1',
       'fxDelayTime',
       'fxDelayFeedback',
       'fxDelaySync',
@@ -420,119 +562,6 @@ export const SECTIONS = [
       'fxReverbDamping',
       'fxReverbWidth',
       'fxReverbMix',
-    ],
-  },
-
-  {
-    id: 'modMatrix',
-    title: 'MATRIZ DE MODULACIÓN',
-    subtitle: '4 rutas: fuente → destino → cantidad',
-    // TRANSICION 9.3: con el LFO subido a la banda del motor, esta banda queda
-    // matriz + global: la matriz toma los 2 carriles que el LFO dejo libres
-    // (el resumen respira mas ancho). PENDIENTE: el usuario decidira el
-    // reparto final de esta ultima fila mas adelante.
-    span: 8,
-    columns: 8,
-    // Sus 12 celdas viven en el cajón (ver la cabecera): en el lienzo queda el
-    // resumen de las 4 rutas y el botón. `groups` es la agrupación con la que el
-    // cajón las pinta (una fila por ruta) y el test exige que sea, en orden, `ids`.
-    // Banda con GLOBAL & MASTER (la mudanza de MODELOS al centro las deja solas).
-    // El trigger es EDIT con icono: es el PRIMER `data-drawer-trigger` del DOM y
-    // el selftest del host lo usa como ancla del cajón de la matriz.
-    drawer: {
-      badge: '4 RUTAS',
-      // El distintivo es un DATO VIVO, no una constante de la ficha: `liveBadge`
-      // declara de QUE se cuenta —los ids de FUENTE, una ruta por cada uno— y el
-      // panel lo recalcula con cada snapshot y lo escribe con `setHeader` del
-      // mueble compartido (ver ui/panel.js). Una ruta esta ASIGNADA cuando su
-      // fuente no es la primera opcion ("Off"); con los defaults del contrato son
-      // dos (ENV 1 y ENV 2), y el literal '4 RUTAS' no podia decirlo. El literal
-      // queda para lo que si es: el inventario antes del primer paint.
-      liveBadge: {
-        ids: ['mod1Source', 'mod2Source', 'mod3Source', 'mod4Source'],
-        label: 'RUTAS',
-      },
-      trigger: 'EDIT',
-      groups: [
-        ['mod1Source', 'mod1Destination', 'mod1Amount'],
-        ['mod2Source', 'mod2Destination', 'mod2Amount'],
-        ['mod3Source', 'mod3Destination', 'mod3Amount'],
-        ['mod4Source', 'mod4Destination', 'mod4Amount'],
-      ],
-    },
-    visual: 'mod-summary',
-    // EL CONMUTADOR de la ruta local del pad (2026-09-27): sin host el motor
-    // nace con la matriz del contrato y el anillo del pad se queda quieto, asi
-    // que la pagina siembra una ruta (LFO -> Morph Z, ver LOCAL_MORPH_Z_ROUTE
-    // en el store). Con esto el usuario la apaga y cambia de LFO sin entrar al
-    // cajon. Solo MODO LOCAL: con host la matriz es del APVTS y el conmutador se
-    // pinta deshabilitado (lo dice el snapshot, no esta ficha).
-    //
-    // Solo la ETIQUETA se declara aqui: las OPCIONES las publica el store
-    // (`state.localMorphRoute.sources`, sacadas de la tabla de fuentes del
-    // contrato), para que la vista no decida que LFO existe.
-    localRoute: { label: 'RUTA DEL PAD' },
-    ids: [
-      'mod1Source',
-      'mod1Destination',
-      'mod1Amount',
-      'mod2Source',
-      'mod2Destination',
-      'mod2Amount',
-      'mod3Source',
-      'mod3Destination',
-      'mod3Amount',
-      'mod4Source',
-      'mod4Destination',
-      'mod4Amount',
-    ],
-  },
-  {
-    // MUDANZA 8.3: GLOBAL & MASTER vive al final del lienzo, abajo a la
-    // izquierda (primera de su banda: cierra la lectura). Patron de la
-    // matriz: en el lienzo queda el master visible y EDITAR abre el cajon
-    // con el resto (tempo, MIDI, congelados). RANDOM vive aqui por ser
-    // accion de ESTADO (todo el APVTS, con los freeze como filtro).
-    id: 'globalFull',
-    title: 'GLOBAL & MASTER',
-    subtitle: 'Tempo, MIDI, congelados y aleatorio',
-    // TRANSICION 9.3: la banda del fondo es MATRIZ (8) + global (4) — el LFO
-    // vive ahora en la banda del motor. El master sigue en la primera celda.
-    span: 4,
-    columns: 4,
-    action: 'randomize',
-    drawer: {
-      badge: '8 GLOBAL',
-      // 2026-09-27: distintivo VIVO, `mode: 'touched'`: cuantas CELDAS del
-      // cajon se han apartado del default del contrato generado (la linea
-      // `defaultNormalized` del propio APVTS — la misma verdad que usa el
-      // store para sembrar el estado). masterLevel no cuenta: no es celda del
-      // cajon (vive en la ficha, contrato 8.1 2c), y contar lo que no se
-      // edita aqui seria contar dos veces lo mismo. Un id que el snapshot no
-      // traiga cuenta como en default: no se inventa un gesto que no hubo.
-      // `onCard`: identico al de MODELOS — el recuento de celdas tocadas se
-      // lee en la cabecera de la ficha y el gesto lo lleva a su cajon.
-      liveBadge: { mode: 'touched', onCard: true },
-      // Los desplegables del cajon son los MISMO select que pinta el lienzo
-      // cuando su ficha los tiene (misma variable, mismo DOM por id), asi que
-      // no hay estado que sincronizar: es el mismo nodo repartido en dos sitios.
-      trigger: 'EDIT',
-      // Sin `groups`: el cajon apila en una columna (patron global, no el de
-      // rutas de la matriz) TODOS los ids menos el control base: masterLevel
-      // lo pinta buildCard en la ficha (es el `input[type=range]` que consulta
-      // el host, contrato de 8.1 paso 2c) y el cajon no recibe copia.
-    },
-    // masterLevel va PRIMERO: el control base siempre en la primera celda.
-    ids: [
-      'masterLevel',
-      'masterBPM',
-      'velocityCurve',
-      'midiChannel',
-      'midiThru',
-      'randomStrength',
-      'freezeResonator',
-      'freezeFilter',
-      'freezeEnvelopes',
     ],
   },
 ];

@@ -63,6 +63,17 @@ public:
     /** Checks if a CC is in conflict. */
     bool hasConflict(int ccNumber) const;
 
+    /** @brief Version de la TABLA (no del APVTS), RT-safe.
+     *
+     *  El learn completado por HARDWARE reescribe la tabla desde el hilo de
+     *  audio y el puente solo publicaba `midiCcState` cuando la pagina lo pedia
+     *  (o al mandar un snapshot): sin este contador, el menu MIDI CONTROL de la
+     *  pagina se quedaba con la tabla vieja despues de un learn de hardware.
+     *  Lo lee el poll del editor (hilo de mensajes) para saber si hay algo
+     *  nuevo que publicar.
+     */
+    int getTableVersion() const noexcept { return tableVersion.load (std::memory_order_acquire); }
+
     /** RT-safe access to the list of learnable parameters. */
     static const juce::StringArray& getLearnableParams();
     static int getParamIndex(const juce::String& paramID);
@@ -73,6 +84,11 @@ private:
     // Real-time safe storage: store the index of the parameter in the modulatable list
     // -1 means no mapping for that CC.
     std::array<std::atomic<int>, 128> ccToIndex;
+
+    // Version de la tabla: la mueve TODO mutador (incluido el learn que
+    // completa el bloque de audio). No se compara nada mas que igualdad, asi
+    // que el numero de incrementos da igual.
+    std::atomic<int> tableVersion { 0 };
 
     void updateInternalMaps();
 };

@@ -42,6 +42,12 @@ public:
     void setMorph (float morphX, float morphY) override;
     void setMorphZ (float morphZ) override;
     void setVoiceLayerMorph (float layerGain2, float layerGain3) override;
+
+    /** Los ocho tramos ADSR (ms; sustains en 0..1) de las DOS envolventes de la
+        voz aditiva: solo toca los ocho campos de pendingVoiceParams, asi que el
+        morph que ya haya cruzado la frontera se conserva. */
+    void setVoiceEnvelope (float attack, float decay, float sustain, float release,
+                           float fAttack, float fDecay, float fSustain, float fRelease) override;
     
     void setGlobalParams(const GlobalParams& p) override { pendingGlobalParams = p; }
 

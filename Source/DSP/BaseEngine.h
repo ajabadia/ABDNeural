@@ -14,10 +14,7 @@
 
 #include "ISynthesisEngine.h"
 #include "IVoice.h"
-#include "Effects/Saturation.h"
-#include "Effects/Delay.h"
-#include "Effects/Chorus.h"
-#include "Effects/Reverb.h"
+#include "FxSlots.h"
 #include "CoreModules/LFO.h"
 #include <vector>
 #include <memory>
@@ -44,6 +41,12 @@ public:
     int getNumActiveVoices() const override;
     void setPolyphony(int numVoices) override;
     void allNotesOff() override;
+
+    /** El tipo de un hueco. Hilo de mensajes; ver `ISynthesisEngine`. */
+    void setFxSlotType (int slot, int type, const FxSlotParams& bus) override
+    {
+        fx.setSlotType (slot, type, bus);
+    }
 
     /** @brief Voces RESERVADAS ahora mismo (las del heap), no las que suenan.
 
@@ -79,6 +82,26 @@ public:
     virtual void setVoiceLayerMorph (float layerGain2, float layerGain3)
     {
         (void) layerGain2; (void) layerGain3;
+    }
+
+    /** Los OCHO tramos ADSR de la voz, en MILISEGUNDOS (los sustains en 0..1):
+        attack/decay/sustain/release de la ENV de AMP y los cuatro de la ENV de
+        FILTRO. Es el canal que usa el worklet del navegador, que no tiene
+        APVTS: en el plugin los ocho los escribe `synchronizeEngineParameters`
+        por `setVoiceParams` (el struct entero), aqui entran por el read-modify-write
+        de `pendingVoiceParams` para no pisar el morph que la pagina ya Cruzo.
+
+        Por eso NO es `setVoiceParams`: ese metodo reemplaza el struct COMPLETO,
+        asi que quien lo usara desde el worklet borraria morphX/Y/Z y los
+        volumenes de las capas 1 y 2 en cada tecla. La base no lo publica (un
+        motor puede no tener envolvente de filtro) y cada motor decide que
+        campos de los ocho son suyos; las unidades las fija el engine, aqui
+        no hay clampeo (lo hace `Envelope::setParameters`). */
+    virtual void setVoiceEnvelope (float attack, float decay, float sustain, float release,
+                                   float fAttack, float fDecay, float fSustain, float fRelease)
+    {
+        (void) attack; (void) decay; (void) sustain; (void) release;
+        (void) fAttack; (void) fDecay; (void) fSustain; (void) fRelease;
     }
 
 protected:
@@ -137,11 +160,10 @@ protected:
         en el acto (si no, nacerian sordas al subir la polifonia en caliente). */
     bool voicesPrepared = false;
 
-    // Shared FX
-    Effects::Saturation saturation;
-    Effects::Delay delay;
-    Effects::Chorus chorus;
-    Effects::Reverb reverb;
+    // Shared FX. Cuatro huecos del motor de slots del modulo compartido, no
+    // cuatro envoltorios: el reparto de efectos, el orden y el mapeo de los
+    // mandos estan en `FxSlots.h`, que es el unico sitio donde se decide.
+    FxSlots fx;
     dsp::LinearSmoothedValue<float> masterLevelSmoother;
 
     // Shared LFOs (semillas distintas: S&H decorrelacionado entre lfo1/lfo2)

@@ -102,6 +102,9 @@ body {
 
 .panel-header .contract-line {
   grid-column: 1 / -1;
+  /* Misma celda que la ayuda de gestos (ui/gestureHelp.js), cada uno a su
+     extremo: comparten fila sin empujarse. Ver alli el por que. */
+  grid-area: 3 / 1 / 4 / -1;
   justify-self: end;
 }
 
@@ -1092,6 +1095,72 @@ button.mod-summary__row:focus-visible {
   font-weight: 600;
 }
 
+/* Ayuda de GESTOS de la cabecera (ui/gestureHelp.js): el mismo <details> que
+   la del cajon, pero en la cabecera, que tiene ALTURA FIJA — asi que la lista
+   no es una fila mas (empujaria el LCD y las bandas, o sea la geometria que
+   miden el arnés y las referencias visuales) sino un POPOVER: absoluto, con
+   fondo solido para que no se transparenten las bandas de debajo, y por encima
+   de ellas. Plegado, solo ocupa su resumen. */
+.gesture-help {
+  position: relative;
+  /* La rejilla de la cabecera es `auto 1fr` y sus cuatro hijos caen en filas
+     propias: titulo+audio (fila 1), status (fila 2) y contract-line (fila 3,
+     ocupando TODO el ancho con `justify-self: end`, o sea con la mitad
+     IZQUIERDA vacia). La ayuda comparte esa MISMA celda —mismo `grid-area`, y
+     cada uno a su extremo— porque cualquier fila nueva se nota: sin esto el
+     resumen caia en una fila implicita (medido, y=44..52 con la cabecera en
+     0..35) y, al meterlo en la fila 3, la linea de contrato bajaba 10 px. */
+  grid-area: 3 / 1 / 4 / -1;
+  justify-self: start;
+  align-self: center;
+  pointer-events: auto;
+  font-size: var(--text-2xs, 8px);
+  color: var(--color-text-dim, #8b98a5);
+  letter-spacing: 0.02em;
+}
+
+.gesture-help summary {
+  cursor: pointer;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  list-style: none;
+}
+
+/* El triangulo nativo del summary dibujaria un marcador en la cabecera; el
+   texto ya dice "GESTOS" y el cursor basta (mismo criterio que el resto de
+   controles, que no dependen del marcador). */
+.gesture-help summary::-webkit-details-marker {
+  display: none;
+}
+
+.gesture-help ul {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  /* Anclado a la IZQUIERDA, que es donde esta el resumen: con `right: 0` la
+     lista se salia del viewport por la izquierda (medido, x=-143 con 265 px de
+     ancho). El E2E lo comprueba, asi que si el resumen cambiara de lado, este
+     `left` seria el siguiente que habria que mover. */
+  left: 0;
+  margin: 6px 0 0;
+  padding: 8px 12px 8px 14px;
+  display: grid;
+  gap: 4px;
+  width: max-content;
+  max-width: 320px;
+  max-height: 240px;
+  overflow-y: auto;
+  text-align: left;
+  background: var(--color-panel, #12181f);
+  border: 1px solid var(--color-panel-border, rgb(0 195 255 / 20%));
+  border-radius: 4px;
+}
+
+.gesture-help strong {
+  color: var(--color-text-main, #f0f7ff);
+  font-weight: 600;
+}
+
 /*
  * Espectral de la ficha MODELOS: los 64 parciales del motor, en vivo por el
  * canal de telemetría (pintura, no estado). Autoiluminado como el LCD: no
@@ -1133,17 +1202,17 @@ button.mod-summary__row:focus-visible {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  /* ALTO CERRADO: 54 = GEOMETRY.lcd del contrato (pantalla/botones 44 + 10 de
-     relleno vertical). El lienzo es de presupuesto FIJO y esta fila se lo
-     descuenta — el test de encaje cuenta el aire restante (≥8). */
+  /* ALTO CERRADO: 54 = GEOMETRY.lcd del contrato (pantalla de 42 + 12 de
+     relleno vertical, 6 arriba y 6 abajo). El lienzo es de presupuesto FIJO y
+     esta fila se lo descuenta — el test de encaje cuenta el aire restante (≥8).
+     El D-pad cabe en la misma caja: dos filas de 14px + 4 de gap = 32 ≤ 42. */
   height: var(--abd-lcd-h, 54px);
   box-sizing: border-box;
-  /* 2026-09-27 (revision del plugin): overflow hidden + centrado. El D-pad
-     mide 68px de caja (3 filas x 20px + 2 gaps de 4) y el chasis manda 54:
-     con align-items:stretch sobresalía 14px por abajo del chasis (medido en
-     Chromium sobre el dist). Centrar y recortar: las DOS filas del D-pad
-     visibles dentro del chasis, la tercera (duplicada del par MENU/OK vs
-     flechas) fuera de vista sin romper el encaje del lienzo. */
+  /* 2026-09-28: overflow hidden pasa de recorte a red de seguridad. Antes (2
+     columnas, ver el D-pad de abajo) la TERCERA fila de botones se salia del
+     chasis y aqui la cortaba a media altura: los ^ y v se veian mutilados
+     (medido en Chromium sobre el dist, botones en y=99..113 con el chasis
+     cerrando en 110). Con la rejilla de 3 columnas ya no sale nada. */
   overflow: hidden;
   padding: 6px 10px;
   background: #151515;
@@ -1172,23 +1241,29 @@ button.mod-summary__row:focus-visible {
 }
 
 .lcd-top .abd-lcd__line {
-  min-height: 1.35em;
-  font-size: var(--text-sm, 11px);
+  min-height: 1.3em;
+  /* 11px, no el token --text-sm (que resuelve a 9px): con 9 la retícula de 16x2
+     dejaba 18px de los 30 de alto utiles vacios y el texto se encogia en la
+     esquina. 2 lineas x 11 x 1.3 = 28.6 de los 30 disponibles (medido tras el
+     cambio: 28.6 de 30), asi que la pantalla se ve llena sin desbordar. */
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.8px;
-  line-height: 1.35;
+  line-height: 1.3;
   white-space: pre;
 }
 
 .lcd-top .abd-lcd-panel__pad {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* 2026-09-28: 3 columnas x 2 filas, la rejilla del paquete compartido
+     (lcdPanel.js con `repeat(3, auto)` de components/lcd.css). El override a 2
+     columnas de 2026-09-27 la convertia en 2x3: 3 filas de 14px + 2 gaps = 51px
+     en los 42px de contenido del chasis, y la tercera (^ v) quedaba cortada.
+     Con 3 columnas son 2x14 + 4 = 32px: los seis botones dentro y 10 de aire.
+     OJO: el orden de DOM es [menu, ok, left, right, up, down], asi que la
+     fila de arriba es MENU/OK/‹ y la de abajo ›/^/v (igual que el paquete). */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
-  /* 2026-09-27: alturas compactas — el D-pad vive en un chasis de 54px; tres
-     filas de ~20px de botón no caben (medido). La fila de flechas queda al
-     mínimo: relleno vertical 2px, alto 16px/fila -> 3x16+2x4 = 56... aún 2 de
-     más; el padding del chasis 6+6 come el resto: 42 de pantalla = 54 - 12.
-     D-pad a 2 filas visibles con overflow del chasis (ver .lcd-top). */
 }
 
 .lcd-top .abd-lcd-panel__btn {

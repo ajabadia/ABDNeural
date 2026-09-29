@@ -4,11 +4,13 @@
  *
  *   1. `#mod-wheel-container .kbd-wheel-slider` exists — that selector is how
  *      the host's selftest reads the mod wheel after injecting CC1 natively;
- *   2. mounting the keyboard does NOT push the masterLevel slider out of first
- *      place: the host reads `document.querySelector('input[type=range]')` and
- *      the wheels are range inputs too. El orden del documento (el fader va en
- *      la ficha GLOBAL, las ruedas en la franja de abajo) es lo que las deja
- *      detrás, y esta es la regresión que lo rompería.
+ *   2. mounting the keyboard does NOT hide the master volume: the host's
+ *      selftest finds it by its own anchor, `[data-baseline-control]`, NOT by
+ *      position. It used to be `document.querySelector('input[type=range]')`,
+ *      which only worked because the master fader happened to be the first
+ *      range in the document and the wheels came after; when the master became
+ *      a Knob (a `div[role=slider]` with no input inside) that selector would
+ *      have silently started pointing at the mod wheel.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -59,14 +61,19 @@ describe('KEYS / shared keyboard', () => {
     expect(modWheelSlider().max).toBe('127');
   });
 
-  it('keeps masterLevel as the FIRST range input of the document', () => {
+  it('keeps masterLevel reachable by its anchor once the keyboard is mounted', () => {
     const { keyboard } = mountPanelWithKeyboard();
 
     expect(keyboard.hasKeybed()).toBe(true);
 
-    const first = document.querySelector('input[type=range]');
+    // The host selftest's selector, verbatim (see Source/WebUI/BridgeSelftest.h:
+    // SelftestPage::baselineControl). It must survive the keyboard mounting its
+    // own range inputs, and it must name the master — the wheels are ranges too.
+    const anchor = document.querySelector('[data-baseline-control]');
 
-    expect(first.id).toBe('masterLevel');
+    expect(anchor).not.toBeNull();
+    expect(anchor.dataset.parameterId).toBe('masterLevel');
+    expect(anchor.querySelector('[role="slider"]')).not.toBeNull();
   });
 
   it('applies the host MIDI view to the wheel without echoing it back', () => {

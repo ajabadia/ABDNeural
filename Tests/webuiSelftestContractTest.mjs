@@ -88,7 +88,7 @@ for (const match of namespaceBlock.matchAll(/inline constexpr const char\*\s+(\w
 // Los valores esperados. Si un anclaje cambia de forma en el C++, este test falla
 // hasta que el cambio se acepte TAMBIEN en la pagina (y en su suite).
 const expectedAnchors = {
-  firstRange: 'input[type=range]',
+  baselineControl: '[data-baseline-control]',
   stateCode: '.panel-footer code',
   keysTab: '[data-tab="keys"]',
   modWheelSlider: '#mod-wheel-container .kbd-wheel-slider',
@@ -142,7 +142,14 @@ pageSources.push(...sharedSources);
  * que tambien lleva el literal).
  */
 const anchorOwners = {
-  firstRange: { files: ['WebUI/src/app.js', 'WebUI/src/ui/panel.js'] },
+  // El control base (masterLevel). Desde 2026-09-28 el ancla es EXPLICITA
+  // (`data-baseline-control`) en vez de "el primer input[type=range] del
+  // documento": el master paso a ser un Knob (un `div[role=slider]` sin input
+  // dentro) y el selector viejo habria pasado a apuntar a la rueda de
+  // modulacion del teclado, con NATIVO->JS y JS->NATIVO probando el control
+  // equivocado en silencio. La pagina escribe el atributo como
+  // `dataset.baselineControl` en la celda (buildBaselineControl).
+  baselineControl: { files: ['WebUI/src/ui/panel.js'], pageForm: 'dataset.baselineControl' },
   stateCode: { files: ['WebUI/src/ui/panel.js'] },
   keysTab: { files: ['WebUI/src/contracts/screens.js'], pageForm: 'data-tab="keys"' },
   modWheelSlider: { files: ['WebUI/src/ui/keyboard.js'] },
@@ -155,7 +162,14 @@ const anchorOwners = {
   openDrawerClass: { files: ['../ABDSharedAssets/components/drawer.js'] },
   visibleBackdropClass: { files: ['../ABDSharedAssets/components/drawer.js'] },
   drawerSlotClass: { files: ['WebUI/src/ui/panel.js'], pageForm: 'drawer-slot' },
-  parameterCellAttribute: { files: ['WebUI/src/ui/panel.js'], pageForm: 'data-parameter-id' },
+  // El arnes LEE el atributo como selector CSS (`[data-parameter-id="..."]`),
+  // pero la pagina lo ESCRIBE con la API de dataset, asi que en su codigo la
+  // cadena que aparece es `dataset.parameterId`. Antes se pineaba la forma CSS
+  // aqui, y.panel.js solo la tenia en un COMENTARIO: el check llevaba anos en
+  // verde sin demostrar que la pagina escribiera el atributo. Con el control
+  // base convertido en Knob (2026-09-28) el comentario desaparecio y el pin
+  // cayo — la senal de que llevaba tiempo midiendo lo que no era.
+  parameterCellAttribute: { files: ['WebUI/src/ui/panel.js'], pageForm: 'dataset.parameterId' },
   // El boton de la accion lo ESCRIBE el panel como `dataset.action`; la accion en si la
   // declara la ficha en `sections.js` (catalogo -> ficha -> boton), asi que ahi se busca
   // el vinculo real: la ficha que pide ESA accion.

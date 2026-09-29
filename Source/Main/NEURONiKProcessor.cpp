@@ -200,7 +200,8 @@ NEURONiKProcessor::NEURONiKProcessor()
     LOAD_PARAM(filterRes);
     LOAD_PARAM(oscInharmonicity);
     LOAD_PARAM(oscRoughness);
-    LOAD_PARAM(fxSaturation);
+    LOAD_PARAM(fx1Mix);
+    LOAD_PARAM(fx1Param1);
     LOAD_PARAM(fxDelayTime);
     LOAD_PARAM(fxDelayFeedback);
     LOAD_PARAM(resonatorParity);
@@ -364,6 +365,26 @@ void NEURONiKProcessor::parameterChanged(const juce::String& parameterID, float 
     if (parameterID == IDs::midiChannel)
         allNotesOffRequested.store(true, std::memory_order_relaxed);
 
+    // --- El TIPO del hueco 1 (2026-09-29) ----------------------------------
+    // `FxSlot::setType` CREA y DESTRUYE la instancia del efecto, asi que no
+    // puede correr en el hilo de audio (que es donde `updateFromGlobalParams`
+    // empuja los mandos). Este es el sitio: el hilo de mensajes, que es donde
+    // ya se cambia el motor entero unas lineas mas abajo.
+    //
+    // Y HAY UNA DEUDA IGUAL QUE LA DEL INTERCAMBIO DE MOTOR, que se anota aqui
+    // para no venderla como cosa hecha: este `engine` se puede estar usando en
+    // `processBlock` mientras aqui se toca. No se ha empeorado (el intercambio
+    // de motor ya lo hacia, y con el puntero entero), pero el `setType` de un
+    // hueco encima es un caso mas. Arreglarlo de verdad es un mutex o una
+    // suspension de audio que cubra AMBAS cosas, y eso es un cambio aparte.
+    if (parameterID == IDs::fx1Type && engine != nullptr)
+    {
+        NEURONiK::DSP::GlobalParams bus;
+        fillGlobalParams (bus);
+        engine->setFxSlotType (0, static_cast<int> (newValue), bus.fx[0]);
+        return;
+    }
+
     if (parameterID == IDs::engineType)
     {
         int type = static_cast<int>(newValue);
@@ -480,8 +501,18 @@ void NEURONiKProcessor::synchronizeEngineParameters()
 void NEURONiKProcessor::fillGlobalParams(NEURONiK::DSP::GlobalParams& gParams)
 {
     gParams.masterLevel = apvts.getRawParameterValue(IDs::masterLevel)->load();
-    gParams.saturationAmt = apvts.getRawParameterValue(IDs::fxSaturation)->load();
     gParams.bpm = apvts.getRawParameterValue(IDs::masterBPM)->load();
+
+    // El BUS del hueco 1 (2026-09-29). Los mandos van NORMALIZADOS porque el
+    // hueco habla normalizado (`FxSlot::setParameter`), que es donde esta el
+    // sesgo de la fila. Los huecos 2, 3 y 4 los mapean los mandos planos de mas
+    // abajo, y se migran igual que este uno.
+    gParams.fx[0].mix  = apvts.getRawParameterValue(IDs::fx1Mix)->load();
+    gParams.fx[0].gain = apvts.getRawParameterValue(IDs::fx1Gain)->load();
+    gParams.fx[0].params[0] = apvts.getRawParameterValue(IDs::fx1Param1)->load();
+    gParams.fx[0].params[1] = apvts.getRawParameterValue(IDs::fx1Param2)->load();
+    gParams.fx[0].params[2] = apvts.getRawParameterValue(IDs::fx1Param3)->load();
+    gParams.fx[0].params[3] = apvts.getRawParameterValue(IDs::fx1Param4)->load();
 
     // Effects: the full parameter set is forwarded, not just the mixes, so the
     // rate/depth and size/damping/width controls actually reach the DSP.
@@ -875,6 +906,44 @@ bool NEURONiKProcessor::getCurrentModel(int slot,
     amplitudes.fill(0.0f);
     frequencyOffsets.fill(0.0f);
     isValid = false;
+    return true;
+}
+
+bool NEURONiKProcessor::clearModelSlot(int slot)
+{
+    // Rango primero y sin excusas: el mismo criterio que loadModel, y con el
+    // nombre en "EMPTY" porque es el que la pagina ya trata como ranura vacia
+    // (localModels.js: name === '' || name === EMPTY_SLOT_NAME -> null).
+    if (slot < 0 || slot >= 4)
+        return false;
+
+    // La MISMA cola que loadModel. El modelo por defecto (todo ceros, frameCount
+    // 1) no lo valida nadie a proposito: Resonator::loadModel lo guarda tal cual,
+    // y una ranura de ceros es una ranura sin timbre, no una con basura de pila
+    // (SpectralModel inicializa sus arrays en el constructor).
+    int start1, block1, start2, block2;
+    commandFifo.prepareToWrite(1, start1, block1, start2, block2);
+
+    const auto write = [this, slot] (int start)
+    {
+        auto& cmd = commandQueue[start];
+        cmd.type = EngineCommand::LoadModel;
+        cmd.slot = slot;
+        cmd.modelData = NEURONiK::Common::SpectralModel();
+        commandFifo.finishedWrite(1);
+    };
+
+    if (block1 > 0)
+        write(start1);
+    else if (block2 > 0)
+        write(start2);
+    // Si la cola esta llena el comando se cae (y se dice: la ranura queda como
+    // estaba) en vez de mentir con un nombre EMPTY que el motor no tiene.
+
+    modelNames[static_cast<size_t> (slot)] = "EMPTY";
+    if (apvts.state.isValid())
+        apvts.state.setProperty("modelPath" + juce::String(slot), "EMPTY", nullptr);
+
     return true;
 }
 

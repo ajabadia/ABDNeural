@@ -20,6 +20,7 @@ import {
   KEYS_TAB,
   KEYS_TAB_SELECTOR,
   SCREEN_PARAMETER_IDS,
+  SLOT_MODULE_PARAMETER_IDS,
   VISUAL_PARAMETER_IDS,
 } from '../src/contracts/screens.js';
 import { SECTION_PARAMETER_IDS } from '../src/contracts/sections.js';
@@ -46,8 +47,17 @@ describe('ids de GENERAL', () => {
 });
 
 describe('SCREEN_PARAMETER_IDS', () => {
-  it('es el reparto del lienzo MÁS los ids que solo viven en una vista, sin duplicados', () => {
-    expect(SCREEN_PARAMETER_IDS).toEqual([...SECTION_PARAMETER_IDS, ...VISUAL_PARAMETER_IDS]);
+  it('es el reparto del lienzo MÁS las vistas MÁS el modulo del hueco, sin duplicados', () => {
+    // Los tres trozos, y el tercero es el bus del hueco 1 (2026-09-29): cinco
+    // ids que el store POSEE y que todavia no tienen celda. Poseer y pintar son
+    // cosas distintas —un id sin dueño lo descarta el store cuando llega del
+    // host, y uno pintado dos veces se mueve dos veces—, asi que son dos
+    // listas y no una.
+    expect(SCREEN_PARAMETER_IDS).toEqual([
+      ...SECTION_PARAMETER_IDS,
+      ...VISUAL_PARAMETER_IDS,
+      ...SLOT_MODULE_PARAMETER_IDS,
+    ]);
     expect(new Set(SCREEN_PARAMETER_IDS).size).toBe(SCREEN_PARAMETER_IDS.length);
   });
 

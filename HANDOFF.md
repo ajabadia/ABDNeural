@@ -5,6 +5,164 @@
 > (**2026-09-16**) y varias quedaron superadas por decisiones posteriores —las marcadas como
 > «histórico» y las que ya tienen entrada propia más abajo—. Estado vigente: la última entrada de
 > este documento y la **Fase 8** de `ROADMAP.md`.
+>
+> El [índice navegable](#índice-navegable) de abajo agrupa las entradas por tema y enlaza las
+> secciones canónicas; sin él, buscar cualquier cosa en este fichero es un `grep`.
+
+## Índice (navegable)
+
+Este fichero es un registro corrido de ~8.000 líneas y 172 entradas: este índice las agrupa por
+tema para no tener que recorrerlo entero. Los enlaces apuntan a los encabezados reales del
+fichero (anclas estándar de Markdown), así que navegan en cualquier visor. Las entradas marcadas
+«histórico» en su propio texto reflejan el arranque de la migración y están superadas por las
+posteriores.
+
+**Regla de lectura:** lo vigente está en las secciones canónicas y en las últimas entradas;
+lo de la primera mitad del fichero cuenta cómo se llegó, no qué es cierto hoy.
+
+### Canon (vigente: leer esto primero)
+
+- [SECCION CANONICA — las 15 direcciones del selftest: indice, AGUJA, barras ENV, medidor-PANIC y MIDI-CC](#seccion-canonica-las-15-direcciones-del-selftest-indice-aguja-barras-env-medidor-panic-y-midi-cc) — las 15 direcciones del arnés, con su índice de orden de corrida y todas las subsecciones
+- [SECCION CANONICA — VOLVER (direccion 1b-bis): el retorno del salto ENV -> MATRIZ](#seccion-canonica-volver-direccion-1b-bis-el-retorno-del-salto-env---matriz) — VOLVER (1b-bis) en sección propia
+- [2026-09-27 — PENDIENTES: todo lo que quedó abierto en esta sesion, con su dueño y su coste](#2026-09-27-pendientes-todo-lo-que-quedó-abierto-en-esta-sesion-con-su-dueño-y-su-coste) — pendientes que quedaron abiertos el 27/09, con dueño y coste
+
+### Estado y punto de partida (2026-09-16/18, referencia)
+
+- [Contexto](#contexto)
+- [Repositorio](#repositorio)
+- [Línea base compilada](#línea-base-compilada)
+- [Prueba DSP actual](#prueba-dsp-actual)
+- [Arquitectura actual relevante](#arquitectura-actual-relevante) — arquitectura relevante
+- [Decisión arquitectónica actual](#decisión-arquitectónica-actual)
+- [Frontera DSP creada](#frontera-dsp-creada)
+
+### Construcción, pruebas y reglas de trabajo
+
+- [Procedimiento de build](#procedimiento-de-build)
+- [Reglas de comparación](#reglas-de-comparación)
+- [Persistencia de estado (Fase 4 cerrada, 2026-09-17)](#persistencia-de-estado-fase-4-cerrada-2026-09-17)
+- [Reglas de trabajo vigentes (desde la migración a Next.js, 2026-09-16)](#reglas-de-trabajo-vigentes-desde-la-migración-a-nextjs-2026-09-16)
+- [Criterio para no desperdiciar trabajo web](#criterio-para-no-desperdiciar-trabajo-web)
+- [2026-09-28 — REVISION DE CALIDAD del codigo de la sesion: un bug real (CZ101) y una regla triplicada](#2026-09-28-revision-de-calidad-del-codigo-de-la-sesion-un-bug-real-cz101-y-una-regla-triplicada) — revisión de calidad del código: un bug real y una regla triplicada
+- [2026-09-28 — mientras haya OTRO hilo en el arbol, los commits van por partes](#2026-09-28-mientras-haya-otro-hilo-en-el-arbol-los-commits-van-por-partes) — con otro hilo en el árbol, los commits van por partes
+- [2026-09-28 — el resumen final de build.bat dice QUE superficie fallo](#2026-09-28-el-resumen-final-de-buildbat-dice-que-superficie-fallo) — el resumen final de build.bat dice QUÉ superficie falló
+- [2026-09-28 — la bancada tolera un arranque en frio del WebView2 (reintenta, y espera mas)](#2026-09-28-la-bancada-tolera-un-arranque-en-frio-del-webview2-reintenta-y-espera-mas) — la bancada tolera un arranque en frío del WebView2
+- [2026-09-28 — la regresion visual del lienzo puede correr sola (Windows, en cada push)](#2026-09-28-la-regresion-visual-del-lienzo-puede-correr-sola-windows-en-cada-push) — la regresión visual del lienzo puede correr sola
+
+### Contrato de parámetros, presets y puente
+
+- [Contrato de parámetros (generado)](#contrato-de-parámetros-generado)
+- [Conexión de parámetros divergentes: implementado (2026-09-16)](#conexión-de-parámetros-divergentes-implementado-2026-09-16)
+- [Documentación de parámetros](#documentación-de-parámetros)
+- [Presets por el bridge (2026-09-17): protocolo v1 aditivo](#presets-por-el-bridge-2026-09-17-protocolo-v1-aditivo) — presets por el bridge (protocolo v1 aditivo)
+- [Bridge de parámetros JUCE <-> WebUI (2026-09-16)](#bridge-de-parámetros-juce---webui-2026-09-16)
+
+### DSP y motor (de-JUCE, efectos, determinismo)
+
+- [Fase 1 [4/6] — la frontera MIDI deja de ser JUCE (2026-09-18)](#fase-1-46-la-frontera-midi-deja-de-ser-juce-2026-09-18)
+- [Fase 1 [6/6] — el motor deja de incluir JUCE (2026-09-18)](#fase-1-66-el-motor-deja-de-incluir-juce-2026-09-18)
+- [Fase 1 [5/6] — el motor deja de depender de juce::Reverb (2026-09-18)](#fase-1-56-el-motor-deja-de-depender-de-jucereverb-2026-09-18)
+- [Arreglo de tiempo real: el jitter de entropía y el placeholder de `Resonator` (2026-09-18)](#arreglo-de-tiempo-real-el-jitter-de-entropía-y-el-placeholder-de-resonator-2026-09-18) — jitter de entropía y placeholder de Resonator
+- [Migración de los efectos a DspEffects — chorus, delay y saturación (2026-09-19)](#migración-de-los-efectos-a-dspeffects-chorus-delay-y-saturación-2026-09-19)
+- [Arreglo de la rampa de la reverb: duraba 960 BLOQUES, no 20 ms (2026-09-19)](#arreglo-de-la-rampa-de-la-reverb-duraba-960-bloques-no-20-ms-2026-09-19) — la rampa de la reverb duraba 960 bloques
+- [Tasa de control fija del motor: 64 muestras (2026-09-19)](#tasa-de-control-fija-del-motor-64-muestras-2026-09-19) — tasa de control fija de 64 muestras
+- [Matematica determinista en el sustrato: sin/atan sin libm (2026-09-19)](#matematica-determinista-en-el-sustrato-sinatan-sin-libm-2026-09-19) — matemática determinista sin libm
+- [2026-09-21 (s): auditoria de los dos motores — normalizacion, guardia y catch-up](#2026-09-21-s-auditoria-de-los-dos-motores-normalizacion-guardia-y-catch-up) — auditoría de los dos motores
+- [2026-09-26 (an): las voces del motor, perezosas (16/8 en vez de 32 fijas)](#2026-09-26-an-las-voces-del-motor-perezosas-168-en-vez-de-32-fijas) — las voces del motor, perezosas (16/8)
+
+### WASM, worklet y paridad
+
+- [2026-09-17 (d) — Fase 5: DSP real compilado a WASM (smoke test Node en verde)](#2026-09-17-d-fase-5-dsp-real-compilado-a-wasm-smoke-test-node-en-verde) — el DSP real compilado a WASM
+- [2026-09-18 — AudioWorklet del piloto (Fase 5, segundo hito)](#2026-09-18-audioworklet-del-piloto-fase-5-segundo-hito) — el AudioWorklet
+- [2026-09-18 (b) — Paridad bit-exacta WASM<->nativo (Fase 5, tercer hito, CERRADO)](#2026-09-18-b-paridad-bit-exacta-wasm-nativo-fase-5-tercer-hito-cerrado)
+- [Matriz de paridad WASM por sample rate y tamaño de bloque, y el hallazgo que destapa (2026-09-19)](#matriz-de-paridad-wasm-por-sample-rate-y-tamaño-de-bloque-y-el-hallazgo-que-destapa-2026-09-19) — matriz de paridad por sample rate y bloque
+- [2026-09-26 (ao): modulo WASM reconstruido y worklet sincronizado](#2026-09-26-ao-modulo-wasm-reconstruido-y-worklet-sincronizado) — módulo WASM reconstruido y worklet sincronizado
+- [2026-09-26 — fase 11.3 en el camino WASM: el motor del navegador suma las capas](#2026-09-26-fase-113-en-el-camino-wasm-el-motor-del-navegador-suma-las-capas)
+- [2026-09-28 — canal `neuronik:voice`: los ocho knobs de envolvente POR FIN llegan al motor local](#2026-09-28-canal-neuronikvoice-los-ocho-knobs-de-envolvente-por-fin-llegan-al-motor-local) — canal `neuronik:voice`: los ocho knobs al motor local
+
+### Arquitectura de la página y modo local
+
+- [Andamiaje vainilla de la WebUI (Fase 8, 2026-09-19)](#andamiaje-vainilla-de-la-webui-fase-8-2026-09-19) — andamiaje vainilla de la WebUI (Fase 8)
+- [Shell vainilla de la UI (base de 8.2, 2026-09-19) — hecha antes de 8.1 a propósito](#shell-vainilla-de-la-ui-base-de-82-2026-09-19-hecha-antes-de-81-a-propósito)
+- [Politica de audio fijada en codigo + motor del worklet portado (8.1, 2026-09-19)](#politica-de-audio-fijada-en-codigo-motor-del-worklet-portado-81-2026-09-19) — política de audio fijada en código
+- [8.2 — el lienzo unico: los 70 controles en una pantalla (2026-09-19)](#82-el-lienzo-unico-los-70-controles-en-una-pantalla-2026-09-19) — el lienzo único: los 70 controles
+- [La bancada sirve la página del PLUGIN (y `--pilot-page` para la retirada) (2026-09-19)](#la-bancada-sirve-la-página-del-plugin-y---pilot-page-para-la-retirada-2026-09-19)
+- [Retirada del piloto: las tres SSOT se mudan y la bancada pierde su snapshot (2026-09-19)](#retirada-del-piloto-las-tres-ssot-se-mudan-y-la-bancada-pierde-su-snapshot-2026-09-19)
+- [2026-09-27 — el smoke del MODO LOCAL, automatizado (Playwright + Chromium) y el bug que caza](#2026-09-27-el-smoke-del-modo-local-automatizado-playwright-chromium-y-el-bug-que-caza) — el smoke del modo local (Playwright + Chromium)
+- [8.1, paso 2c: el selftest de cuatro direcciones pasa al editor, y la bancada usa el MISMO (2026-09-19)](#81-paso-2c-el-selftest-de-cuatro-direcciones-pasa-al-editor-y-la-bancada-usa-el-mismo-2026-09-19) — el selftest pasa al editor
+
+### Arnés del selftest, dirección por dirección
+
+- [La dirección MATRIZ: el selftest corre con el cajón abierto y la matriz en uso (2026-09-19)](#la-dirección-matriz-el-selftest-corre-con-el-cajón-abierto-y-la-matriz-en-uso-2026-09-19)
+- [2026-09-26 — ZRING: el anillo morphZ por el camino nativo (telemetria frame.modulation[28])](#2026-09-26-zring-el-anillo-morphz-por-el-camino-nativo-telemetria-framemodulation28)
+- [2026-09-27 — el arco del anillo morpheZ con SIGNO: la semionda negativa se ve](#2026-09-27-el-arco-del-anillo-morphez-con-signo-la-semionda-negativa-se-ve) — el arco del anillo morph-Z con SIGNO
+- [2026-09-27 — commit 157fa16: AGUJA (la octava direccion), build.bat nopause y las causas raices](#2026-09-27-commit-157fa16-aguja-la-octava-direccion-buildbat-nopause-y-las-causas-raices) — AGUJA (fases 0-3)
+- [2026-09-27 — nopause, el parseo release y la retencion por coherencia de AGUJA](#2026-09-27-nopause-el-parseo-release-y-la-retencion-por-coherencia-de-aguja) — la retención por coherencia de AGUJA
+- [2026-09-27 — AGUJA fase 4: el PANIC del medidor, medido (el clic apaga el medidor y silencia las agujas)](#2026-09-27-aguja-fase-4-el-panic-del-medidor-medido-el-clic-apaga-el-medidor-y-silencia-las-agujas)
+- [2026-09-27 — las barras ENV del cajón de la MATRIZ: el nivel de cada envolvente en SU fila](#2026-09-27-las-barras-env-del-cajón-de-la-matriz-el-nivel-de-cada-envolvente-en-su-fila)
+- [2026-09-27 — las dos copias de cada barra ENV son GEMELAS (resumen vs cajon, misma fila y frame)](#2026-09-27-las-dos-copias-de-cada-barra-env-son-gemelas-resumen-vs-cajon-misma-fila-y-frame)
+- [2026-09-27 — VOLVER: el retorno del salto ENV -> MATRIZ se mide (la direccion 1b-bis)](#2026-09-27-volver-el-retorno-del-salto-env---matriz-se-mide-la-direccion-1b-bis)
+- [2026-09-27 — VOLVER extendida: la regla de CANCELACION, medida E2E](#2026-09-27-volver-extendida-la-regla-de-cancelacion-medida-e2e) — VOLVER extendida: la regla de cancelación
+- [2026-09-27 — VOLVER en el arnes: encaje tras ENV-RUTAS, el settle de modales y el cierre por cajon abierto](#2026-09-27-volver-en-el-arnes-encaje-tras-env-rutas-el-settle-de-modales-y-el-cierre-por-cajon-abierto) — VOLVER en el arnés: el encaje y el settle
+- [2026-09-27 — ESQUINA: la calle de vuelta del pad entra en el arnes (la direccion 7b)](#2026-09-27-esquina-la-calle-de-vuelta-del-pad-entra-en-el-arnes-la-direccion-7b)
+- [2026-09-27 — RESUMEN-RUTAS, la esquina clicable y la ayuda de gestos corregida: las tres caras del mismo viaje](#2026-09-27-resumen-rutas-la-esquina-clicable-y-la-ayuda-de-gestos-corregida-las-tres-caras-del-mismo-viaje)
+- [2026-09-28 — MIDI-CC: la direccion 10b del arnes, y el hueco del puente que hacia falta para medirla](#2026-09-28-midi-cc-la-direccion-10b-del-arnes-y-el-hueco-del-puente-que-hacia-falta-para-medirla) — MIDI-CC, la dirección 10b
+- [2026-09-28 — NEURONIK_SELFTEST_BUDGET: el presupuesto del selftest sube sin recompilar](#2026-09-28-neuronik_selftest_budget-el-presupuesto-del-selftest-sube-sin-recompilar) — el presupuesto del selftest sin recompilar
+- [2026-09-28 — el guion de 1b/1b-bis/1b-ter escrito como lo que es: UNA cadena por datos](#2026-09-28-el-guion-de-1b1b-bis1b-ter-escrito-como-lo-que-es-una-cadena-por-datos) — el guion de 1b/1b-bis/1b-ter: una cadena por datos
+
+### Agujas, barras, medidor y UI viva
+
+- [2026-09-27 — la aguja del MODO NAVEGADOR tiene verificacion visual E2E (WebUI/needle-probe)](#2026-09-27-la-aguja-del-modo-navegador-tiene-verificacion-visual-e2e-webuineedle-probe) — la aguja del modo navegador tiene verificación visual (needle-probe)
+- [2026-09-28 — las agujas SOSTENIDAS tienen foto de referencia: el unico bloque visual con audio](#2026-09-28-las-agujas-sostenidas-tienen-foto-de-referencia-el-unico-bloque-visual-con-audio)
+- [2026-09-28 — needle-probe entra en ctest como tercer E2E de Playwright, con sus dos puertos](#2026-09-28-needle-probe-entra-en-ctest-como-tercer-e2e-de-playwright-con-sus-dos-puertos)
+- [2026-09-27 — el medidor de voces es un BOTON PANIC: tooltip dinamico y el role de a11y arreglado](#2026-09-27-el-medidor-de-voces-es-un-boton-panic-tooltip-dinamico-y-el-role-de-a11y-arreglado) — el medidor de voces es un BOTÓN PANIC
+- [2026-09-22 (v): ENV 1 y ENV 2 como fuentes de la matriz — la envolvente del filtro sale del armario](#2026-09-22-v-env-1-y-env-2-como-fuentes-de-la-matriz-la-envolvente-del-filtro-sale-del-armario)
+- [2026-09-25 (ag): ENVOLVENTES — tamanos, destinos junto a cada grafica y el plan de N slots](#2026-09-25-ag-envolventes-tamanos-destinos-junto-a-cada-grafica-y-el-plan-de-n-slots) — ENVOLVENTES: tamaños y destinos
+- [2026-09-27 — el DUAL-PATH de las envolventes (bridge nativo vs meter WASM) y el unsubscribe de los onWorklet*](#2026-09-27-el-dual-path-de-las-envolventes-bridge-nativo-vs-meter-wasm-y-el-unsubscribe-de-los-onworklet) — el dual-path de las envolventes y el unsubscribe de los onWorklet*
+
+### Pad XY, aro morph-Z y ranuras A-D
+
+- [8.3, paso 1: el pad XY dibujado (2026-09-20)](#83-paso-1-el-pad-xy-dibujado-2026-09-20)
+- [2026-09-23 (o): el anillo de morphZ en el pad XY — el tercer eje gana su superficie](#2026-09-23-o-el-anillo-de-morphz-en-el-pad-xy-el-tercer-eje-gana-su-superficie)
+- [2026-09-25 (aa): el pad XY y el anillo morph-Z verificados EN VIVO con CZ-SWEP1 — y los cuatro fallos que la verificación destapó](#2026-09-25-aa-el-pad-xy-y-el-anillo-morph-z-verificados-en-vivo-con-cz-swep1-y-los-cuatro-fallos-que-la-verificación-destapó) — pad XY y aro verificados EN VIVO
+- [2026-09-25 (af): el anillo morphZ del pad, verificado en el navegador (destino 28)](#2026-09-25-af-el-anillo-morphz-del-pad-verificado-en-el-navegador-destino-28) — el anillo morphZ verificado en el navegador
+- [2026-09-26 — el pad XY, el anillo morphZ y las ranuras, sin host (modo local del navegador)](#2026-09-26-el-pad-xy-el-anillo-morphz-y-las-ranuras-sin-host-modo-local-del-navegador) — pad XY, aro y ranuras sin host
+- [2026-09-27 — el anillo del pad BAILA sin host (ruta local de la MATRIZ a Morph Z)](#2026-09-27-el-anillo-del-pad-baila-sin-host-ruta-local-de-la-matriz-a-morph-z)
+- [8.2 (b) — los slots de modelo A–D: la carga la hace el host y contesta TARDE (2026-09-19)](#82-b-los-slots-de-modelo-ad-la-carga-la-hace-el-host-y-contesta-tarde-2026-09-19) — los slots de modelo A-D
+- [2026-09-27 — la pagina RECUERDA sus ranuras de modelo sin host (memoria local)](#2026-09-27-la-pagina-recuerda-sus-ranuras-de-modelo-sin-host-memoria-local) — la página recuerda sus ranuras
+- [2026-09-27 — OLVIDAR: una ranura se vacia de verdad, con el aviso en la misma linea que el fallo](#2026-09-27-olvidar-una-ranura-se-vacia-de-verdad-con-el-aviso-en-la-misma-linea-que-el-fallo) — OLVIDAR: una ranura se vacía de verdad
+- [2026-09-27 — la MATRIZ tiene conmutador: la ruta local del pad, apagable y con LFO a elegir](#2026-09-27-la-matriz-tiene-conmutador-la-ruta-local-del-pad-apagable-y-con-lfo-a-elegir) — la MATRIZ tiene conmutador de ruta local
+- [2026-09-27 — el distintivo VIVO también vive en el lienzo, y pulsarlo abre su cajón](#2026-09-27-el-distintivo-vivo-también-vive-en-el-lienzo-y-pulsarlo-abre-su-cajón) — el distintivo vivo también en el lienzo
+- [2026-09-27 — los distintivos vivos también saben de MOTORES: el modo 'active'](#2026-09-27-los-distintivos-vivos-también-saben-de-motores-el-modo-active) — los distintivos vivos con motores
+- [2026-09-25 (ak): el distintivo del cajón de la MATRIZ, vivo (`setHeader`)](#2026-09-25-ak-el-distintivo-del-cajón-de-la-matriz-vivo-setheader)
+
+### UX, accesibilidad y controles compartidos
+
+- [Familia de controles compartidos en ABDSharedAssets (2026-09-16)](#familia-de-controles-compartidos-en-abdsharedassets-2026-09-16)
+- [Teclado MIDI compartido en la página (2026-09-17, Fase 4)](#teclado-midi-compartido-en-la-página-2026-09-17-fase-4)
+- [2026-09-27 — la ayuda contextual de gestos del cajón de MODELOS y su encaje con los tooltips cortos](#2026-09-27-la-ayuda-contextual-de-gestos-del-cajón-de-modelos-y-su-encaje-con-los-tooltips-cortos)
+- [2026-09-28 — revision de gestos no obvios: la ayuda GLOBAL de gestos, y lo que NO hacia falta](#2026-09-28-revision-de-gestos-no-obvios-la-ayuda-global-de-gestos-y-lo-que-no-hacia-falta)
+- [2026-09-28 — la pista de teclado de las esquinas, en el tooltip Y con UNA sola fuente](#2026-09-28-la-pista-de-teclado-de-las-esquinas-en-el-tooltip-y-con-una-sola-fuente)
+- [2026-09-28 — la fila del LCD: el D-pad estaba cortado a media altura](#2026-09-28-la-fila-del-lcd-el-d-pad-estaba-cortado-a-media-altura) — la fila del LCD: el D-pad cortado
+- [2026-09-27 — regresion VISUAL del lienzo: una referencia por ficha, y el umbral del hermano Resulto ciego](#2026-09-27-regresion-visual-del-lienzo-una-referencia-por-ficha-y-el-umbral-del-hermano-resulto-ciego) — regresión visual del lienzo
+
+### ModelMaker: análisis temporal, capas y rejilla
+
+- [2026-09-23 (m): FASE 10 completa — el ModelMaker ya produce modelos temporales (Neuron-parity)](#2026-09-23-m-fase-10-completa-el-modelmaker-ya-produce-modelos-temporales-neuron-parity) — Fase 10: modelos temporales
+- [2026-09-23 (n): sonda CLI del ModelMaker — el análisis verificado en producción](#2026-09-23-n-sonda-cli-del-modelmaker-el-análisis-verificado-en-producción)
+- [2026-09-23 (p): HPS refinado y guardia de maximo local — el estimador no cae a sub-armonicos ni fabrica parciales](#2026-09-23-p-hps-refinado-y-guardia-de-maximo-local-el-estimador-no-cae-a-sub-armonicos-ni-fabrica-parciales) — HPS refinado y guardia de máximo local
+- [2026-09-23 (q): 10.6 cerrada — frames con f0 por frame, y RRISE resulto ser material en capas](#2026-09-23-q-106-cerrada-frames-con-f0-por-frame-y-rrise-resulto-ser-material-en-capas)
+- [2026-09-25 (w): Fase 11.2 — el clustering por forma de envolvente (y las tres medidas que cambiaron el diseño del plan)](#2026-09-25-w-fase-112-el-clustering-por-forma-de-envolvente-y-las-tres-medidas-que-cambiaron-el-diseño-del-plan)
+- [2026-09-25 (x): el suelo de E1 — decidido con medidas: la vía es la f0 MANUAL (el suelo no se toca)](#2026-09-25-x-el-suelo-de-e1-decidido-con-medidas-la-vía-es-la-f0-manual-el-suelo-no-se-toca)
+- [2026-09-25 (dd): el formato ralo de parciales — DISEÑADO (fase 11.6), con las medidas delante](#2026-09-25-dd-el-formato-ralo-de-parciales-diseñado-fase-116-con-las-medidas-delante)
+- [2026-09-25 (ad): la pestana CAPAS del ModelMaker (Fase 11.5)](#2026-09-25-ad-la-pestana-capas-del-modelmaker-fase-115) — la pestaña CAPAS
+- [2026-09-25 (ah): el indicador de rejilla del ModelMaker, clicable](#2026-09-25-ah-el-indicador-de-rejilla-del-modelmaker-clicable) — el indicador de rejilla clicable
+- [2026-09-27 — el indicador de rejilla del ModelMaker es un MODELO PURO con su test](#2026-09-27-el-indicador-de-rejilla-del-modelmaker-es-un-modelo-puro-con-su-test) — el indicador de rejilla como modelo puro
+- [2026-09-27 — el indicador de rejilla se alcanza y acciona con el TECLADO](#2026-09-27-el-indicador-de-rejilla-se-alcanza-y-acciona-con-el-teclado) — el indicador de rejilla con teclado
+- [2026-09-26 — la metrica del clustering, seleccionable (y el coseno, medido)](#2026-09-26-la-metrica-del-clustering-seleccionable-y-el-coseno-medido) — la métrica del clustering, seleccionable
+- [2026-09-26 — rejillas entrelazadas en la sonda: el parcial 4 de SWEP1 no es un error de 212 cents](#2026-09-26-rejillas-entrelazadas-en-la-sonda-el-parcial-4-de-swep1-no-es-un-error-de-212-cents)
+- [2026-09-25 (aj): los rangos del residuo del banco CZ101, fijados en el ctest](#2026-09-25-aj-los-rangos-del-residuo-del-banco-cz101-fijados-en-el-ctest) — rangos del residuo fijados en el ctest
+- [2026-09-26 (am): la huella del modelo de 25 KB, medida y con presupuesto](#2026-09-26-am-la-huella-del-modelo-de-25-kb-medida-y-con-presupuesto)
 
 ## Estado de la instrumentación del arranque (bancada WebView2)
 
@@ -2920,6 +3078,13 @@ el motor y el arnés no puede exigirlo sin garantizar que el host esté corriend
 VST3 con un DAW dentro, el editor puede estar abierto con el audio parado). Lo que sí queda medido es
 que la matriz está configurada y que **la página la enseña donde tiene que enseñarla**.
 
+> Canon: la "SECCION CANONICA — las 15 direcciones del selftest" consolida esta dirección
+> (MATRIZ, la 2, y su subseccion «MATRIZ (canon): la ruta se pone por el APVTS y el cajon se queda
+> ABIERTO»). Esta entrada cuenta como se llego a ella. OJO al leerla hoy: el texto cita la maquinaria
+> de "NO APLICABLE" y la página del piloto RETIRADO, que ya no existen — la matriz se mide hoy en las
+> DOS superficies (plugin y bancada) sin omitidos, y el cajon se queda abierto a propósito porque las
+> direcciones siguientes corren con el lienzo tapado.
+
 ## Retirada del piloto: las tres SSOT se mudan y la bancada pierde su snapshot (2026-09-19)
 
 **El encargo.** Retirar el piloto: mudar sus tres SSOT (el contrato de parámetros, el contrato
@@ -5266,6 +5431,15 @@ LFO corre lentisimo; (3) el timeout del arnes paso de 30 a 90 s: una colecta pac
 ctest 34/34 intacto. Nota del turno: AGUJA (otra direccion nueva, en vuelo de otro agente)
 salia FAIL por SU cuenta ("SIN NIVEL") y dejaba el RESULT global en FAIL; ZRING media OK.
 
+> Canon: la "SECCION CANONICA — las 15 direcciones del selftest" consolida esta dirección
+> (ZRING, la 14 y ULTIMA del arnés, con su subseccion propia). Esta entrada cuenta como se llego a
+> ella. Sus numeros estan SUPERADOS por la canon y no conviene reusarlos tal cual: la ruta se pone
+> con los indices DERIVADOS de las tablas de contrato (`getModSources().indexOf("LFO 2")` y
+> `destinationIndexFor(IDs::morphZ)`), no con los literales "fuente 2"/"destino 28" que se leen aqui,
+> y el gate del periodo es 300..800 ms entre CRESTAS (no ~1000): el arco CON SIGNO culmina dos veces
+> por periodo, asi que a 1 Hz lo correcto son ~500 ms. El margen y su por qué estan en el
+> constructor del arnés, junto a las constantes.
+
 ## 2026-09-27 — el arco del anillo morpheZ con SIGNO: la semionda negativa se ve
 
 renderZ (WebUI/src/ui/xyPad.js) pintaba el arco de modulacion de la base al EFECTIVO clampeado
@@ -5373,6 +5547,12 @@ Nota para la siguiente sesion: ZRING en la bancada se queda sin CPU (NO_RING a p
 dt medio 87 ms frente al periodo esperado ~500 ms) y falla o agota su timeout aunque en el
 plugin pasa 2 de 2; le falta margen de periodo y presupuesto de tomas para hosts justos.
 
+> Canon: la "SECCION CANONICA — las 15 direcciones del selftest" consolida AGUJA (la 6, con sus
+> CUATRO fases) y ZRING (la 14); esta entrada cuenta como se llego a ellas. La nota del cierre ya
+> esta RESUELTA en la canon: el margen del periodo paso a 300..800 ms y las tomas escalan con
+> `NEURONIK_SELFTEST_BUDGET`, asi que el sintoma que se describe aqui (NO_RING por falta de CPU) es
+> el que motivo el margen, no uno abierto.
+
 ## 2026-09-27 — los badges de los cajones EDIT de la WebUI son vivos (MODELOS y GLOBAL)
 
 El `liveBadge` de la MATRIZ paso a familia con tres modos en `ui/panel.js::liveDrawerBadge`
@@ -5419,6 +5599,11 @@ las nombra; esta las documenta a fondo):
    medición compara el mismo numero por dos caminos, no dos instantes. El mismo principio
    vivo despues en las gemelidades de las cuatro curvas (lienzo vs cajon, mismo y) y en las
    barras ENV del cajon de la MATRIZ (mismo frame que las agujas).
+
+> Canon: la "SECCION CANONICA — las 15 direcciones del selftest" consolida este criterio en
+> AGUJA (la 6) y en las barras ENV (transversal, medidas DENTRO de AGUJA: no hay dirección propia).
+> La subseccion «Barras ENV (canon)» fija las TRES invariantes, y «Medidor-PANIC (canon)» la fase 4
+> que pulsa el medidor. Esta entrada cuenta como se llego a ellas.
 
 ## 2026-09-27 — el anillo del pad BAILA sin host (ruta local de la MATRIZ a Morph Z)
 
@@ -5664,6 +5849,10 @@ tras cambiar a Neurotik apaga Inharmonicity y Filter Cutoff, mientras el chip de
 Con eso queda demostrado que el distintivo y la celda leen la misma verdad.
 ## 2026-09-27 — VOLVER: el retorno del salto ENV -> MATRIZ se mide (la direccion 1b-bis)
 
+> Canon: **«SECCION CANONICA — VOLVER (direccion 1b-bis)»**, al final de este fichero. Esta
+> entrada cuenta como se llego; el guion vigente, el ciclo de vida del boton, la regla de
+> cancelacion y la fontaneria de cierres estan alla.
+
 El arnes ya media el salto de ruta (ENV-RUTAS) y su segunda via (RESUMEN-RUTAS), pero daba
 por hecho que el salto era de ida: nadie comprobaba que el usuario puede VOLVER. La direccion
 VOLVER (Stage::back, "1b-bis" del plan) cierra esa historia: el boton "VOLVER A LA RUTA n"
@@ -5681,8 +5870,10 @@ El guion, en cinco medidas (backDirection(slot)):
    descolgado) el gesto no existe -> FAIL.
 4. CLIC: la matriz reabierta tiene que quedar con SU velo y el MISMO slot resaltado
    (data-slot-highlight).
-5. El SLOT VIAJA del guion de ENV-RUTAS al de VOLVER, sin hardcodear: se deriva del APVTS
-   (el primer slot con fuente ENV), asi la sesion del usuario puede traer cualquier matriz.
+5. El SLOT VIAJA del guion de ENV-RUTAS al de VOLVER, sin hardcodear. (CORREGIDO el 28 de
+   septiembre: aqui se decia que se derivaba del APVTS, "el primer slot con fuente ENV", y ya
+   no vale —el Standalone restaura el `filterState` de la sesion anterior y ese puede traer la
+   matriz del usuario—: el slot sale de lo que la pagina PINTA. Ver el canon de VOLVER.)
 
 Ciclo de vida del boton (la parte no obvia): nace con el salto CON retorno, se REFRESCA en
 cada ida y vuelta completa (la vuelta reancla) y MUERE si el usuario cierra el cajon de
@@ -5756,6 +5947,10 @@ donde ya van `onChange`, `onPanic` y `onStartSound`), asi que el panel no lleva 
 paint se lo guarda y el clic solo dice hacia donde va.
 ## 2026-09-27 — VOLVER extendida: la regla de CANCELACION, medida E2E
 
+> Canon: **«SECCION CANONICA — VOLVER (direccion 1b-bis)»**, al final de este fichero. Esta
+> entrada cuenta como se llego; el guion vigente, el ciclo de vida del boton, la regla de
+> cancelacion y la fontaneria de cierres estan alla.
+
 Abrir GLOBAL con el retorno pendiente MATA el retorno, y el boton no reviva. Era la regla
 que quedaba sin cobertura: backDirection media el ciclo feliz (ida, boton, vuelta) y la
 cabecera documentaba "abre otro cajon antes de cerrar la matriz" como muerte del boton, pero
@@ -5785,13 +5980,17 @@ en corrida real del Standalone: las cuatro medidas de VOLVER OK y RESULT: OK
 (selftest-exit=0), y NEURONiK_WebUiSelftestContract verde con los selectores nuevos.
 ## 2026-09-27 — VOLVER en el arnes: encaje tras ENV-RUTAS, el settle de modales y el cierre por cajon abierto
 
+> Canon: **«SECCION CANONICA — VOLVER (direccion 1b-bis)»**, al final de este fichero. Esta
+> entrada cuenta como se llego; el guion vigente, el ciclo de vida del boton, la regla de
+> cancelacion y la fontaneria de cierres estan alla.
+
 Tres piezas de la fontaneria de VOLVER que las dos entradas anteriores dan por supuestas y esta deja
 escrita, para que tocarlas no obligue a releer el arnes:
 
 **1. El ENCAJE: corre detras de ENV-RUTAS y su slot VIAJA por datos.** El orden de las direcciones es
 MATRIZ -> ENV-RUTAS -> VOLVER -> RESUMEN-RUTAS -> AGUJA, y la cadena es de DATOS, no un guion fijo:
-ENV-RUTAS deriva el slot del APVTS (el primer slot con fuente ENV), la pagina lo PINTA y ese mismo
-slot llega a backDirection(slot) como argumento. VOLVER no lo hardcodea: el re-salto pulsa la MISMA
+ENV-RUTAS deriva el slot de lo que la pagina PINTA (CORREGIDO el 28 de septiembre: antes se
+derivaba del APVTS y no vale) y ese mismo slot llega a backDirection(slot) como argumento. VOLVER no lo hardcodea: el re-salto pulsa la MISMA
 fila .env-route que pulso ENV-RUTAS, el boton tiene que estar presente con SU numero ("VOLVER A LA
 RUTA n") y la matriz reabierta con SU resalte — si la sesion del usuario trae otra matriz, la
 direccion mide ESA. Hacia delante, cualquier salida de VOLVER cae en RESUMEN-RUTAS (pasandole el slot como
@@ -5824,7 +6023,7 @@ el origen y reancla el boton), el que lo CANCELA si antes se abrio otro cajon, y
 limpio en el settle.
 ## 2026-09-27 — las barras ENV del cajón de la MATRIZ: el nivel de cada envolvente en SU fila
 
-> Canon: la "SECCION CANONICA — las 14 direcciones del selftest" consolida esta pieza (Barras ENV); esta entrada cuenta como se llego a ella.
+> Canon: la "SECCION CANONICA — las 15 direcciones del selftest" consolida esta pieza (Barras ENV); esta entrada cuenta como se llego a ella.
 
 Cada fila del cajón de la MATRIZ lleva una barra fina de nivel (`.drawer-slot__env-level`) que se
 rellena de abajo a arriba con el nivel EN VIVO de la envolvente que la fuente de esa fila tiene
@@ -5999,7 +6198,7 @@ entorno), `WebUI/package.json` (`test:visual`, `test:visual:update`), `CMakeList
 `RESOURCE_LOCK` y el spec del E2E de audio) y `WebUI/README.md` (comandos y contrato).
 ## 2026-09-27 — AGUJA fase 4: el PANIC del medidor, medido (el clic apaga el medidor y silencia las agujas)
 
-> Canon: la "SECCION CANONICA — las 14 direcciones del selftest" consolida esta pieza (AGUJA); esta entrada cuenta como se llego a ella.
+> Canon: la "SECCION CANONICA — las 15 direcciones del selftest" consolida esta pieza (AGUJA); esta entrada cuenta como se llego a ella.
 
 El medidor de voces de la cabecera es un boton (`.voice-meter`) cuyo clic es PANIC — el gesto doble:
 notas apagadas por el bridge Y panico al worklet. Era el unico gesto de la cabecera sin cobertura E2E.
@@ -6121,7 +6320,7 @@ defaults.
   olvidar de una en una, que se puede deshacer recargando el fichero.
 ## 2026-09-27 — las dos copias de cada barra ENV son GEMELAS (resumen vs cajon, misma fila y frame)
 
-> Canon: la "SECCION CANONICA — las 14 direcciones del selftest" consolida esta pieza (Barras ENV (gemelidad)); esta entrada cuenta como se llego a ella.
+> Canon: la "SECCION CANONICA — las 15 direcciones del selftest" consolida esta pieza (Barras ENV (gemelidad)); esta entrada cuenta como se llego a ella.
 
 Hasta ahora AGUJA comparaba cada barra contra las agujas (margen 0.08, la geometria del path contra
 el frame crudo) pero no las copias ENTRE SI: la barra de la fila n del cajon de la MATRIZ y la de la
@@ -6176,8 +6375,10 @@ Cobertura: `panel.test.js` (medidor y leds), `e2e/localMode.spec.js` (el label c
 en el arnes. Ficheros: `WebUI/src/ui/panel.js` (button + setVoiceMeter) y
 `WebUI/src/styles/main.css` (la afordancia: cursor, focus-visible).
 
-> Canon: la "SECCION CANONICA — las 14 direcciones del selftest" consolida la fase PANIC de AGUJA
-> (que pulsa este boton); esta entrada cuenta como se llego a el.
+> Canon: la "SECCION CANONICA — las 15 direcciones del selftest" consolida la fase PANIC de AGUJA, y
+> su subseccion «Medidor-PANIC (canon)» fija el marcado (el boton, los 8 leds, `hidden` y
+> `data-active`), el label dinamico y el paso a paso de la fase 4 que lo pulsa; esta entrada cuenta
+> como se llego a el.
 
 ## 2026-09-27 — la ayuda contextual de gestos del cajón de MODELOS y su encaje con los tooltips cortos
 
@@ -6220,7 +6421,7 @@ acción. Cobertura: xyPad.test.js (plegado por defecto, el summary, los CUATRO i
 la aserción de la verdad vigente de esquinas, que abrir es un gesto del usuario y que destroy la
 desmonta). Fichero: WebUI/src/ui/visuals.js (la pieza entera vive aqui, en la rama model-slots).
 
-> Canon: la "SECCION CANONICA — las 14 direcciones del selftest" consolida el gesto de esquinas que
+> Canon: la "SECCION CANONICA — las 15 direcciones del selftest" consolida el gesto de esquinas que
 > esta ayuda documenta (MORPH, direccion 12); esta entrada cuenta como se llego a el.
 
 ## 2026-09-27 — la aguja del MODO NAVEGADOR tiene verificacion visual E2E (WebUI/needle-probe)
@@ -6259,12 +6460,17 @@ dejo medido: el motor ni se entera). El feed de la aguja sigue siendo REAL (_neu
 del motor); lo que falta es la plomeria de ADSR al worklet — pendiente del dueno del DSP, no de esta
 pagina.
 
+> **CADUCADO (2026-09-28)**: la plomeria de ADSR al worklet YA EXISTE — es el canal `neuronik:voice`
+> (POD de ocho floats en la frontera + `setVoiceEnvelope` en los dos motores) con su `pushVoiceToWorklet`
+> en el motor de la pagina. La entrada se conserva tal como estaba el dia; la prueba que faltaba
+> (exigir amp != filtro) se escribio de verdad esa misma tarde, en la entrada de abajo.
+
 Verificado: needleProbe 2/2 y la suite E2E COMPLETA 22/22 (smoke + regresion visual del mismo arbol,
 el fallo aislado del conmutador fue un flake de timing y pasa en la corrida completa). Ficheros:
 `WebUI/needle-probe/index.html`, `WebUI/needle-probe/needleProbe.js`, `WebUI/e2e/needleProbe.spec.js`
 y `WebUI/playwright.config.js` (el webServer paso a ARRAY con el dev de la pagina).
 
-> Canon: la "SECCION CANONICA — las 14 direcciones del selftest" consolida la AGUJA del plugin; esta
+> Canon: la "SECCION CANONICA — las 15 direcciones del selftest" consolida la AGUJA del plugin; esta
 > entrada cubre su hermana del modo navegador, que comparte vistas y escala pero viaja por el meter.
 
 ## 2026-09-27 — ESQUINA: la calle de vuelta del pad entra en el arnes (la direccion 7b)
@@ -6344,7 +6550,7 @@ enterrarse. Las tres piezas comparten la misma regla de oro: el slot de la esqui
 datos, el resalte del cajon se pinta en la numeracion que exista (data-slot-visual 0-based en MODELOS,
 data-slot 1-based en celdas) y ninguna capa hardcodea letras ni filas.
 
-> Canon: la "SECCION CANONICA — las 14 direcciones del selftest" consolida RESUMEN-RUTAS (5) y
+> Canon: la "SECCION CANONICA — las 15 direcciones del selftest" consolida RESUMEN-RUTAS (5) y
 > ESQUINA (13); esta entrada junta las tres piezas y cuenta como se llego a ellas.
 
 ## 2026-09-27 — el DUAL-PATH de las envolventes (bridge nativo vs meter WASM) y el unsubscribe de los onWorklet*
@@ -6388,10 +6594,10 @@ Ficheros: `WebUI/src/audio/audioWorkletEngine.js` (el fan-out del meter + los tr
 en el plugin (bridge), needle-probe 2/2 en el navegador (meter), y las invariantes del canon para
 los dos.
 
-> Canon: la "SECCION CANONICA — las 14 direcciones del selftest" consolida AGUJA y las barras ENV
+> Canon: la "SECCION CANONICA — las 15 direcciones del selftest" consolida AGUJA y las barras ENV
 > (los consumidores del par); esta entrada documenta el TRANSPORTE dual que los alimenta.
 
-## SECCION CANONICA — las 15 direcciones del selftest: indice, AGUJA, barras ENV y MIDI-CC
+## SECCION CANONICA — las 15 direcciones del selftest: indice, AGUJA, barras ENV, medidor-PANIC y MIDI-CC
 
 Referencia unica y vigente de lo que mide el arnes (Source/WebUI/BridgeSelftest.h). Las entradas
 cronologicas de este fichero cuentan COMO se llego a cada pieza; donde una entrada vieja y esta
@@ -6418,8 +6624,8 @@ con `--selftest`.
 |---|---|---|
 | 1 | MODELOS | los 6 assets del banco se releen con el lector de produccion y los 4 entran en las ranuras A-D; la pagina ensena los nombres |
 | 2 | MATRIZ | el cajon abre con 4 rutas y 12 celdas, la ruta 1 en uso; queda ABIERTO a proposito para las siguientes |
-| 3 | ENV-RUTAS | la fila ENV de la ficha ENVOLVENTES salta a la MATRIZ en SU slot (derivado del APVTS, no hardcodeado) |
-| 4 | VOLVER | el retorno es reversible: el boton reabre la matriz en el MISMO slot; y la CANCELACION: abrir GLOBAL mata el retorno y el boton no reviva |
+| 3 | ENV-RUTAS | la fila ENV de la ficha ENVOLVENTES salta a la MATRIZ en SU slot (derivado de lo que PINTA la pagina, no del APVTS) |
+| 4 | VOLVER | el retorno es reversible: el boton reabre la matriz en el MISMO slot; y la CANCELACION: abrir GLOBAL mata el retorno y el boton no reviva (detalle en «SECCION CANONICA — VOLVER (direccion 1b-bis)») |
 | 5 | RESUMEN-RUTAS | una fila del resumen (slot DISTINTO al de ENV-RUTAS) abre la matriz en SU slot, cruzado con el APVTS; deja el lienzo settle |
 | 6 | AGUJA | las agujas del frame pintan sobre las 4 curvas ADSR, coherentes con el motor, con el medidor, las barras y el PANIC (detalle abajo) |
 | 7 | NATIVO -> JS | mover masterLevel por el APVTS se ve en el slider de la pagina |
@@ -6429,11 +6635,19 @@ con `--selftest`.
 | 10b | MIDI-CC | el menu MIDI CONTROL del LCD arma el learn de CUTOFF, un CC del motor gana la asignacion y ese mismo CC mueve el parametro (detalle abajo) |
 | 11 | ACCIONES | RANDOM por SU boton mueve el APVTS y el pie publica lo mismo; con freezeResonator respeta los congelados |
 | 12 | MORPH | esquinas A-D del pad, lectura del estado del pad, gesto pad+aro y hit-testing en la pagina viva |
-| 13 | ESQUINA | el clic en la esquina A del pad (ranura 0) abre el cajon de MODELOS con SU ranura resaltada (data-slot-visual) |
+| 13 | ESQUINA | el clic en la esquina A del pad (ranura 0) abre el cajon de MODELOS con SU ranura resaltada (data-slot-visual), y el clic en una esquina VACIA no abre ni resalta (detalle abajo) |
 | 14 | ZRING | la ruta nativa LFO 2 -> Morph Z gira el anillo con arco CON SIGNO; control negativo (fuente Off) en cero |
 
 Encadenado: por DATOS (el slot viaja de ENV-RUTAS a VOLVER y a RESUMEN-RUTAS como avoid), nunca un
 guion fijo; todo fallo encadena a la direccion siguiente, nunca dos AGUJAS en paralelo.
+
+**Subsecciones de esta seccion** (guion e invariantes de cada direccion, en orden de corrida):
+MATRIZ, MODELOS, ENV-RUTAS, RESUMEN-RUTAS, AGUJA, NATIVO -> JS, JS -> NATIVO, GENERAL, MIDI,
+MIDI-CC, ACCIONES, MORPH, ESQUINA, ZRING. Mas cuatro transversales que no son direcciones: las barras
+ENV (medidas DENTRO de AGUJA), el medidor-PANIC de la cabecera (tambien dentro de AGUJA: su marcado
+es contrato de la fase 4), la fila del LCD (fase 0 de MIDI-CC) y los sondeos compartidos
+(`PageWait`, la maquinaria de espera que usan AGUJA y MIDI-CC). VOLVER tiene seccion canonica
+propia al final del fichero.
 
 ### AGUJA (canon): las CUATRO fases y sus invariantes
 
@@ -6454,6 +6668,15 @@ vistas (lienzo `.env-curves`, cajon `.env-blocks`).
    (`.voice-meter`, el gesto doble: bridge + worklet) tiene que dejar el medidor APAGADO (0 leds) y
    las cuatro agujas OCULTAS en el frame siguiente (sondeo de 100 tomas x 30 ms). La condicion de
    salida exige medidor apagado Y agujas ocultas: lo segundo solo podria ser la cola natural.
+
+   Las dos esperas que la fase PANIC necesita (medidor apagado ANTES de re-armar, medidor encendido
+   DESPUES) no son bucles propios: son predicados sobre el sondeo compartido **`PageWait`** (ver
+   "Sondeos compartidos (canon)" mas abajo), que devuelve ademas si el predicado llego a cumplirse.
+   Ese flag es lo que permite distinguir "el PANIC no apago el medidor" de "el re-arm no llego a
+   sonar", que antes salian con el mismo texto y costaban un buen rato de diagnostico.
+
+   El medidor que esta fase pulsa es contrato del arnes, no pintura libre: su marcado, su label
+   dinamico y el paso a paso del corte estan en «Medidor-PANIC (canon)» mas abajo.
 
 Veredicto: el AND de las cuatro fases (`needleOk`), con la linea de log de la direccion como
 evidencia: `... medidor 1 led(s), barras 8 (OK, gemelas OK) ... (cantando); nota fuera ... -> OK`.
@@ -6481,12 +6704,386 @@ Las tres invariantes, medidas DENTRO de AGUJA (mismas lecturas, entran en su ver
 
 Evidencia en el log: `barras 8 (OK, gemelas OK)` (4 del cajon + 4 del resumen).
 
+### Medidor-PANIC (canon): ocho leds que son un BOTON, y la fase 4 que lo pulsa
+
+Pieza transversal, medida DENTRO de AGUJA (fase 4) como las barras ENV. Vive en la fila de audio de
+la cabecera (`panel.js`), fuera del mueble: se ve con el cajon cerrado. Que el arnes lo mida no es un
+detalle: el medidor es a la vez el estado ENCENDIDO que la fase 4 tiene que romper y el estado APAGADO
+que prueba el corte, asi que su marcado ES contrato del arnes, no pintura libre.
+
+**Marcado**: un unico `<button type="button" class="voice-meter">` con `MAX_VOICES_UI = 8` hijos
+`<span class="voice-meter__led" data-led="1..8">`. Tres estados, los tres legibles del DOM sin
+preguntarle nada al motor:
+
+| Atributo | Donde | Que dice |
+|---|---|---|
+| `hidden` | el boton | 0 voces: el medidor desaparece entero (no queda un boton vacio) |
+| `data-active` | cada led | `"true"` si `index <= voices`: encendido — es lo que CUENTA el arnes |
+| `data-led` | cada led | posicion 1..8: la usa el propio pintado para saber cual enciende (`index <= voices`) |
+
+El conteo del arnes es `children` con `data-active === 'true'` — no lee `data-led` — asi que un led
+de mas sin `data-active` no cuenta, y un led encendido con el atributo ausente tampoco.
+
+El tope de 8 es del HOST (el Standalone declara 8 voces), no del motor: si la polifonia real lo
+supera, el medidor NO inventa leds — el numero entero va en el label, y al arnes solo le importa
+`>= 1`. CSS en `main.css`: `appearance: none`, fondo transparente y sin borde (la afordancia son
+los leds, el `cursor: pointer` y el tooltip), con `box-shadow` en el led activo y
+`:focus-visible` outlines para el teclado.
+
+**Label dinamico**: `setVoiceMeter(count)` reescribe a la vez `aria-label` y `title` con la ACCION
+y el conteo vivo — `PANIC: parar N voz activa` / `PANIC: parar N voces activas`, con el singular
+separado en el codigo — y en reposo nace `PANIC: parar todas las voces`. Lo alimenta `frame.voices`:
+del frame NATIVO en plugin, del meter del WORKLET en local (mismo patron que la aguja de las curvas
+o el anillo morphZ: pintura en vivo, no estado del snapshot). Los dos atributos llevan el MISMO
+texto a proposito: el boton no tiene texto visible, asi que el nombre accesible y el tooltip son su
+unica descripcion, y si divergieran uno de los dos estaria mintiendo. La intencion queda visible sin
+abrir la consola: antes el tooltip era generico y no decia cuantas voces iba a parar.
+
+**El clic es el gesto DOBLE**: el mismo `handlers.onPanic` que el boton `PANIC` de la franja del
+teclado — notas apagadas por el bridge Y panico al worklet. Son dos superficies para una sola accion;
+el arnes mide ESTA, no la franja.
+
+**La fase 4, paso a paso** (por que vive aqui y no solo dentro de AGUJA):
+
+1. `scriptNoteOff (60)` defensivo + `needleWaitQuiet` (400 tomas x 30 ms ≈ 12 s): la cola del
+   release de la fase 3 puede seguir sonando, y apilar el re-arm encima mediria el PANIC sobre dos
+   voces. El presupuesto de 12 s es el del panic nativo (`allNotesOff`: las voces mueren dentro de
+   SU cola). Si no se calma, lo DICE y sigue — es advertencia, no fallo.
+2. `scriptKeysAndNoteOn (60, 0.9f)`; si no devuelve `ON_SENT` → FAIL `PANIC sin nota que parar
+   (re-arm: …)`. Sin re-arme no hay voz que cortar.
+3. `needleWaitArmed` (100 tomas ≈ 3 s): espera `>= 1` led MEDIDO, no un delay a ciegas. El flag
+   viaja a la cadena, que es lo que distingue "el PANIC no apago nada" de "el re-arm no llego a sonar".
+4. `scriptPanicPress()`: `document.querySelector('.voice-meter')`; si no existe,
+   `{error: 'NO_VOICE_METER'}`. Lee `hidden` y el numero de leds con `data-active === 'true'`
+   **ANTES** del clic y lo devuelve como `meterBefore`; si ese objeto falta, `meterWasHidden` se
+   toma `true` y la fase falla — no se presume nada. Luego `meter.click()`.
+5. `needleSample` (400 tomas ≈ 12 s) con `needlePanicPhase = true`, que manda la lectura a
+   `needlePanicReading` y cambia el predicado del sondeo a "medidor apagado Y las cuatro ocultas".
+
+El OK es el AND de seis terminos: clic sin `error`, `meterBefore` NO oculto con `>= 1` led,
+despues oculto con 0 leds, y las cuatro agujas ocultas. El que la hace NO vacua es el "estaba
+encendido ANTES": sin el, un PANIC que no apague nada pasaria por los otros dos (medidor apagado ya
+por la cola natural + agujas ocultas por la misma cola).
+
+Del sondeo, dos detalles que se leen mal si se supone el patron de las fases 1-3: en fase PANIC el
+predicado es "medidor apagado Y las cuatro ocultas" (las solas no bastarian) y el bucle SALE en el
+primer frame que lo cumple — la lectura que se juzga es ese mismo frame, asi que medidor y agujas son
+del MISMO instante, que es la invariante que importa. Los 12 s son el techo del peor caso (un panic
+nativo que tarda en cortar), no la duracion normal.
+
+Evidencia en el log:
+`PANIC por el clic en el medidor (1 led(es) antes) -> medidor apagado, agujas env=off/flt=off (bloques off/off) (ocultas) -> OK`,
+con dos corchetes de diagnostico que solo aparecen cuando algo fallo:
+`[el re-arm no llego a encender el medidor en el sondeo]` y `[<error del clic>]`.
+
+Las doce direcciones que no son AGUJA ni MIDI-CC, una por una: que hace el guion y que lo
+hace fallar. Las tres piezas con seccion canonica propia mas alla de ellas (VOLVER, y las dos
+medidas dentro de AGUJA: las barras ENV y el medidor-PANIC) remiten a donde esta.
+
+### MATRIZ (canon): la ruta se pone por el APVTS y el cajon se queda ABIERTO
+
+Guion: escribe por el APVTS lo que pondria un preset — `mod1Source` = indice de "LFO 1" en
+`State::getModSources()`, `mod1Destination` = `destinationIndexFor (filterCutoff)`, `mod1Amount` =
++0.5 real— espera 400 ms y abre el cajon con `scriptOpenMatrixDrawer`. Cuatro invariantes:
+
+1. el cajon abierto y su **velo comparten id**: si no coinciden, lo que se abrio no es el dialogo
+   que ese disparador gobierna;
+2. 4 filas y 12 celdas (`numMatrixSlots` x `numMatrixCellsPerSlot` = 4 x 3);
+3. los dos selects enseñan los indices **esperados**, que salen de las tablas de contrato
+   (`getModSources()` y `getModDestinationTable()`), nunca escritos a mano: la tabla de destinos es
+   append-only y su orden ES estado de preset, asi que si un destino cambia de sitio la direccion
+   sigue midiendo lo mismo;
+4. la cantidad supera 0.5 en normalizado (0,5 real en un rango -1..1 son 0,75; el control
+   compartido publica normalizado, asi que se compara con margen en vez de exigir el texto).
+
+Deja el cajon ABIERTO a proposito: las trece direcciones siguientes corren con la matriz en uso y
+el lienzo tapado, que es donde se rompe una UI. Evidencia (corrida del 28 de septiembre): `MATRIZ: cajon
+"drawer-modMatrix" (velo "drawer-modMatrix") ABIERTO con 4 rutas y 12 celdas; ruta 1 = fuente 1 ->
+destino 10 (esperado 1 -> 10), cantidad 0.750 -> OK`.
+
+### MODELOS (canon): los SEIS assets pasan por el lector de produccion, los cuatro primeros llenan A-D
+
+Dos pasos y los dos se miden. **1. VALIDACION** (`loadSelfModels`): cada asset embebido
+(`NEURONiK_SelftestAssets`, los seis del banco CZ101) se escribe a fichero en el directorio
+temporal del arnes y se RELEE con `PresetManager::loadModelFromFile`; se exige `isValid` **y** el
+numero de frames que el asset declara (1 en los cuatro estaticos, 4 en los dos temporales), asi
+que los dos dialectos del v2 —denso y con f0 por frame— pasan por el lector de verdad. El material
+es el real del banco, no JSON sintetico: si el plugin dejase de entender el dialecto del Model
+Maker, esta direccion lo diria en vez de dar OK con ranuras vacias. **2. RANURAS**: los cuatro
+primeros (los mismos que el preset CZ101-BANK pone en las esquinas del pad) entran por
+`processor.loadModel (file, slot)`.
+
+Invariante de pagina: la ficha A-D tiene que mostrar exactamente `expectedSlotNames()` —los
+nombres **sin extension** (el processor publica `getFileNameWithoutExtension()`) y en el mismo
+orden—. El directorio es el temporal del sistema (`neuronik-selftest-models`): `loadSelfModels` lo
+vacía al empezar y `finish()` lo borra al terminar, **tambien con FAIL**, para que al reabrir el
+editor la ficha no los marque divergentes por estar a medias. No se toca ningun modelo del usuario. La otra
+mitad de "cargar un modelo se ve y suena" —que el motor SUENE— esta en `Tests/ModelSlotTest.cpp`,
+porque un proceso con ventana no puede medir su propia salida de audio sin pelearse con el hilo de
+audio del host. Evidencia: seis lineas `MODELOS: asset CZ-*.neuronikmodel -> OK (1 frame v2)` /
+`-> OK (4 frames v2, f0 por frame)`, cuatro `-> ranura N: cargado` y `MODELOS: la ficha A-D de la
+pagina muestra "CZ-BASS1|CZ-HAMOG|CZ-PAD1|CZ-SWEP1"`.
+
+### ENV-RUTAS (canon): el salto sale de lo que PINTA la pagina, y su slot es el input de las dos siguientes
+
+Guion: el script elige una fila entre los `button[data-env-route]` decidiendo cual es de ENV por el
+select de fuente que ensena el cajon de la MATRIZ que dejo abierto la direccion 0, la pulsa y
+**devuelve su slot**. Cuatro invariantes: fila ENV existente (`NO_ENV_ROUTE` / `NO_ENV_ROW_VISIBLE`
+si no la hay), cajon de la MATRIZ abierto con su velo, `data-slot-highlight` = el slot pulsado, y
+los selects de ese slot enseñando lo que el APVTS tiene (motor contra pagina). La quinta cosa que
+se mide sin querer es `wasOpenBefore`: la direccion 0 deja su cajon abierto, asi que el salto
+demuestra ademas que el opener **cierra al hermano y abre el suyo**.
+
+El slot no sale del APVTS (el Standalone restaura el `filterState` de la sesion anterior, que puede
+traer la matriz del usuario) sino de la pagina; los indices de ENV salen de `getModSources()` y el
+APVTS se lee DESPUES, solo para cruzar. Ese slot viaja a VOLVER y a RESUMEN-RUTAS por los dos
+caminos. Detalle completo en el bloque «ENCADENADO POR DATOS» de la cabecera de
+`BridgeSelftest.h` y en la seccion canonica de VOLVER, al final de este fichero.
+
+### RESUMEN-RUTAS (canon): la segunda via del mismo salto, en un slot DISTINTO
+
+Guion: `scriptSummaryRouteJump (avoidSlot)` elige la fila `button.mod-summary__row` del slot
+`(avoid % 4) + 1` —la que ENV-RUTAS ya midio, para no repetir cobertura— y la pulsa. Invariantes: 4 filas
+clicables, cajon de la MATRIZ abierto con su velo, resalte = slot pulsado, y los dos selects de ESE
+slot enseñando lo que el APVTS tiene. Si la fila del slot elegido no esta pintada devuelve
+`NO_ROW_FOR_SLOT` y la direccion **falla**: no pulsa a ciegas. Al terminar hace el settle del lienzo
+(`scriptSettleDrawers`) y encadena AGUJA. Detalle del settle en la seccion canonica de VOLVER.
+
+### NATIVO -> JS (canon): un control nativo se ve en la pagina
+
+Guion: `masterLevel` a 0.25 por el APVTS —el camino que usaria un control nativo— y 400 ms
+despues `scriptReadFirstRange` lee el `value` del input. Invariante: valor leido a 0.25 con margen
+0.02, y sobre todo que el script distinga `NO_SLIDER` y `NO_RESULT` de un numero: un slider que ha
+desaparecido no puede dar OK por ausencia de lectura. `masterLevel` es 0..1 sin skew, asi que
+normalizado y real coinciden y el margen es pequeno. Los 400 ms son margen de sobra para un poll de
+30 ms del dueno: quedarse corto antes que lento.
+
+### JS -> NATIVO (canon): un arrastre real llega al APVTS
+
+Guion: `scriptSetFirstRange ("0.75")` **no escribe el valor**: despacha un `input` de verdad, el
+mismo evento que produce un arrastre del usuario, y la pagina lo trata por su camino normal (no
+hay atajo). Invariantes: el script devuelve `DISPATCHED` y el APVTS queda a 0.75 con margen 0.02
+tras 600 ms —margen MAYOR que en el resto porque aqui son dos saltos: render de la pagina y luego
+poll del dueno—. Evidencia: `JS -> NATIVO: slider de la pagina a 0.75, masterLevel nativo = 0.7500`.
+
+### GENERAL (canon): los ids de la pestana tienen que ser numeros, y estar TODOS
+
+Guion: `envAttack` a 0.5 por el APVTS y `scriptReadGeneralState` lee los ids de la pestana
+GENERAL, que devuelve el valor leido y dos listas: `missing` (los ids que la pagina no publica) y
+`bad` (los que publica y no son numericos). Invariante: `missing` vacia, `bad` vacia y `envAttack` a
+0.5 con margen 0.02. Es la direccion que delata un id anadido a la pagina y no al contrato (sale
+en `missing`) o que viaja como texto en vez de numero (`bad`): por eso el veredicto exige las dos
+listas vacias y no solo el valor que se pedia. Evidencia: `GENERAL: ids de la pagina = 11, envAttack
+= 0.500 (nativo 0.5) -> OK`.
+
+### MIDI (canon): la nota entra, suena y SALE; la rueda vuelve
+
+Guion: rueda de modulacion a 0.5 por `processor.injectController` (la ruta del MIDI externo) y, en
+la pagina, cambio a la ficha KEYS y pulsacion del DO central (nota 60, velocidad 0.9) como un
+usuario. Tres invariantes de medicion y una de ORDEN:
+
+1. `ON_SENT` **y** la nota aparece en `processor.getHeldNotes()` (el FIFO de notas del motor, no el
+   eco de la pagina: es el canal por el que una nota que no suena se delata);
+2. la rueda se lee **normalizada** (la pagina pinta 0..127) a 0.5 con margen 0.1, con `NO_MOD` /
+   `NO_RESULT` separados del numero;
+3. `OFF_SENT` **y** la nota desaparece de las retenidas —una nota atascada deja la sesion colgando y
+   se reporta como `STUCK`, no como OK—;
+4. el orden importa: MIDI-CC corre detras (necesita la tabla CC en su estado de fabrica) y ACCIONES
+   ultima (su sorteo mueve los parametros de su tabla entera y invalidaria a quien mida valores
+   concretos antes).
+
+Evidencia: `MIDI: nota 60 de la pagina en nativo = on/off, rueda de modulacion en la pagina = 0.50
+(nativo 0.5) -> OK`.
+
+### ACCIONES (canon): el sorteo se mide por su EFECTO, dos veces, y por sus dos caras
+
+La direccion no se cierra en su primera pasada: mide el sorteo con todo suelto y despues lo
+contrario, que es la otra mitad de la promesa del boton.
+
+**Pasada 1** (`pressPageActions`): `randomStrength` a 1 y los tres `freeze*` a 0 por el APVTS (1 y 0
+son los extremos de lo que lee el sorteo), cierre del cajon de la matriz **por su velo** —el clic
+de fuera, porque con un modal delante la ficha no es alcanzable por un usuario— y pulsacion del
+BOTON de la pagina, leyendo en ella su etiqueta y su estado real (`enabled`). Invariantes: el
+boton habilitado, el cajon cerrado, el APVTS movido en **>= total - 2** objetivos (la holgura de dos
+es porque un objetivo puede caer por azar en el valor que ya tenia; un sorteo roto mueve 0 o 1, de
+modo que la separacion sigue siendo clara) y el pie de la pagina publicando los **MISMOS** numeros
+con 0 discrepancias, admitiendo como mucho `numPadOnlyTargets` (2) ids sin publicar: los dos del
+pad XY no estan en la lista del pie, que es el contrato de la pagina (los 70 ids del lienzo), y
+ninguno mas —media tabla sin publicar es una pagina que dejo de enterarse—.
+
+**Pasada 2** (`pressFreezeGuard`): `freezeResonator` a 1 y el MISMO boton. Invariantes: **cero**
+movimientos en el banco congelado (un congelado no tiene por que "caer" en su valor: no se le
+sortea nada, asi que aqui la holgura del azar no aplica) y `>= total - 2` movimientos en los
+sueltos. Los otros dos `freeze*` se dejan sueltos A PROPOSITO, para que "no se movio" signifique
+"estaba congelado" y no "el sorteo dejo de correr". Al salir devuelve `freezeResonator` a 0 (el
+congelado era de la medida, no del usuario); el APVTS se queda sorteado, que es una de las cosas
+que el arnes declara en su cabecera.
+
+La tabla de objetivos sale de `State::getRandomizeTargets()`, no de una lista escrita en el arnes:
+si el RANDOMIZE cambia de opinion sobre QUE sortea, la direccion mide lo nuevo sin tocarla.
+Evidencia: `ACCIONES: RANDOM de la pagina ("RANDOM", habilitado) ... APVTS movido en 23/23
+objetivos; el pie publica 23 de esos ids (0 sin publicar, 2 son del pad XY), 0 discrepancia(s)` y
+`RANDOM con freezeResonator ... movio 10/10 objetivos SUELTOS y 0 objetivos CONGELADOS`.
+
+### MORPH (canon): pad XY y aro morph-Z con el modelo REAL dentro, y la geometria que nadie mas ve
+
+Carga `CZ-SWEP1.neuronikmodel` en la ranura D —el fichero que instala `installFactoryModels()` y al
+que apunta el `modelPath3` del preset CZ101-BANK, no una copia— y mide cuatro cosas:
+
+1. **MOTOR -> PAGINA**: escribe `morphX`/`morphY`/`morphZ` = 0,2 / 0,8 / 0,6 por el APVTS (tres
+   valores DISTINTOS, para que una vista que se interchange no pueda pasar) y exige que el pulgar,
+   los `aria-valuenow` y el primer numero del `stroke-dasharray` del arco (60) pinten ESOS.
+   El `y` se lee des-invertido (`1 - top`) porque la pagina lo pinta al reves.
+2. **PAGINA -> MOTOR**: un arrastre del pad a 0,75 / 0,25 y un gesto del aro de 1/4 de vuelta, con
+   `PointerEvent` de verdad, y despues el APVTS tiene los tres parametros donde el gesto los dejo.
+3. **ECO**: la pagina se queda pintada donde la dejo el gesto (mismo viaje, misma lectura).
+4. **GEOMETRIA de la pagina viva**: el centro del pad tiene que caer en el pad y el trazo del aro en
+   el aro. Los gestos se despachan sobre `document.elementFromPoint`, o sea lo que hace el
+   navegador con un dedo: asi un aro de overlay que se come el pad sale aqui y no en un test de
+   manejadores, que pasaria igual con la pagina tapada.
+
+Ademas, las cuatro esquinas del pad y la ficha A-D tienen que enseñar los MISMOS cuatro nombres:
+si el morph y las ranuras dejan de hablar del mismo motor, esta direccion lo dice. Las dos lecturas
+(antes y despues del gesto) comparten UN recolector (`morphCollectorJs`), porque dos recolectores
+paralelos podrian divergir sin que nadie lo notase. El APVTS se queda con CZ-SWEP1 en D: es lo que
+el usuario pidio ver y el arnes no lo devuelve.
+
+### ESQUINA (canon): el gesto inverso, con la calle de vuelta abierta
+
+Guion: clic en la esquina A del pad (la ranura 0, cargada desde el arranque) y cuatro invariantes:
+el texto de la esquina es el **NOMBRE** del modelo cargado, no una letra (comparar contra
+`modelName (0)` es una verdad extra: la esquina y la fila del cajon tienen que seguir hablando del
+mismo motor); el cajon de MODELOS abierto con su velo; la ranura resaltada en la numeracion
+**0-based del motor** (`data-slot-visual="0"`, mientras que las celdas de la matriz son 1-based) y
+el nombre de esa ranura pintado en la fila resaltada. Doble guarda: si la esquina no esta clicable
+(sin modelo) o el cajon no abre con el resalte, FAIL.
+
+**La mitad SIN TIMBRE (anadida el 28 de septiembre de 2026).** La direccion mide tambien el clic
+en una esquina VACIA, que es la otra mitad de la regla del pad y la que se habia perdido: la
+pagina no la pinta siquiera (el componente compartido omite el span; `data-clickable` solo existe
+con ranura cargada), asi que el punto donde estaria se deriva por **simetria** —el espejo del
+centro de la esquina de enfrente, que comparte fila y alto— y se le manda un clic de verdad por
+`document.elementFromPoint`. Cuatro invariantes:
+
+1. la esquina de la ranura vacia **no esta en el DOM** (si aparece, la ranura no estaba vacia y la
+   direccion no midio lo que cree: `EMPTY_CORNER_PAINTED`);
+2. quedan las otras TRES, y el punto cae en el **pad**, no en una esquina (`hitIsPad=1`,
+   `hitIsCorner=0`): sin esa comprobacion, "no abrio nada" podria ser "no habia nada que abrir" —
+   y es exactamente lo que fallo en la primera version, que reutilizaba el ancho de la esquina de
+   referencia y mandaba el clic encima de la de al lado;
+3. no se abre **ningun** cajon (se exige el documento entero, no solo el de MODELOS, y el de
+   MODELOS se cierra por su id antes: con el delante, "no abre nada" no seria medida de nada);
+4. no queda **ningun** resalte en el documento (`[data-slot-highlight='true']`, que el panel
+   escribe en todas las filas).
+
+El veredicto de la direccion es el AND de las dos mitades, con dos lineas de log.
+
+**Para que la esquina vacia exista hubo que poder vaciar una ranura, y eso no existia en ninguna
+capa**: el processor solo tenia `loadModel`/`reloadModels` (y `reloadModels` no limpia
+`modelNames[]`), y la pagina lo tiene IMPIDIDO a proposito con host —"las ranuras son del PRESET y
+el motor las volveria a cargar al recargar el proyecto, asi que vaciarlas desde la pagina seria un
+gesto que no se sostiene" (`paramStore.js`, `forgetLocalModel`)—. De ahi `clearModelSlot (int slot)`
+en `NEURONiKProcessor`: la operation INVERSA de `loadModel`, que encola el `SpectralModel` por
+defecto por la MISMA cola de comandos (audio thread, sin asignar), pone el nombre a `EMPTY` y
+`modelPath<slot>` tambien, para que recargar el proyecto no lo resucite. `Resonator::loadModel` no
+valida el modelo, asi que un modelo por defecto **vacia la ranura de verdad**: la alternativa
+(solo renombrar) habria dejado el timbre viejo sonando con la pagina diciendo EMPTY. Devuelve
+false solo si el slot esta fuera de rango.
+
+El arnes vacia la D (la esquina `br`, la que MORPH acaba de llenar con el modelo real) y la
+**restaura** al terminar, con su CZ-SWEP1 real de la carpeta de fabrica: la restauracion se
+loguea —`la pagina vuelve a pintar CZ-BASS1|CZ-HAMOG|CZ-PAD1|CZ-SWEP1`, con `scriptReadMorph`— pero
+NO entra en el veredicto, porque es limpieza del propio arnes y no una invariante del producto.
+
+Al salir deja el lienzo como estaba: cierra el cajon **por su id** (`scriptCloseDrawerById`) y
+reabre la matriz por el APVTS con la ruta LFO 2 -> Morph Z, que es el estado que ZRING asume al
+arrancar. Detalle honesto: esas dos escrituras son LITERALES (fuente 2, destino 28) mientras que
+ZRING deriva los indices de las tablas de contrato; es una incoherencia sin efecto medido hoy
+(las dos coinciden), pero es el sitio donde un cambio de orden de la tabla pasaria desapercibido.
+
+**Comprobado que CAZA un defecto real de la pagina** (no solo uno del arnes): con la regla de
+`displayableModelName` mutada para que `EMPTY` deje de contar como ranura vacia (una sola linea),
+la pagina pinta las cuatro esquinas y la direccion lo dice con su nombre propio:
+`quedan 4 esquinas pintadas (esperado 3) ... [EMPTY_CORNER_PAINTED] -> FAIL`. Revertido a
+continuacion (`git status` de `WebUI/src/audio/localModels.js` sale limpio, dist reconstruido y
+verificacion en verde).
+
+### ZRING (canon): el anillo morph-Z girando de verdad, con control negativo A/B/A
+
+Guion: la ruta se escribe **por el APVTS** como la dejaria un preset —`mod1Source` = indice de
+"LFO 2", `mod1Destination` = `destinationIndexFor (morphZ)` (28), `mod1Amount` = 1, LFO 2 a 1 Hz en
+modo Free y `morphZ` a 0 (base en reposo: lo que se ve es el arco, no la base)— y luego tres
+tomas con muestreo de la pagina viva:
+
+1. **A (540 tomas a 30 ms)**: se reconstruye el PERIODO entre culminaciones del arco
+   (`stroke-dasharray` del arco `.zring-mod`, que `renderZ` escribe como "span <n>") y se exige
+   `zringPeriodMinMs` (300) < periodo < `zringPeriodMaxMs` (800) y `max > 40` guiones. Ojo al
+   numero: con el arco **con signo** pintado, la senoide completa culmina DOS veces por periodo, asi
+   que lo correcto a 1 Hz son ~500 ms entre culminaciones. El log lo dice asi desde el 28/09: la
+   linea imprime el GATE real (`gate 300..800 ms entre cristas`) y el porque de los ~500, porque un
+   texto fijo ("esperado ~1000") que no coincide con el gate es peor que no tener ninguno: se lee
+   como que el gate es otro.
+2. **CON SIGNO**: ademas de las dos condiciones anteriores, alguna instantanea tiene que caer en el
+   lado ANTIHORARIO (`5 < span < 95`), o sea la semionda negativa pintada de verdad.
+3. **B (30 tomas)**: la fuente a Off tiene que clavar el arco en 0 (`|max| < 2`). Es el control
+   NEGATIVO que hace la medida: un arco que no depende de la ruta no se apaga nunca.
+4. **A' (320 tomas)**: LFO 2 vuelve y el arco tiene que reanudarse (`max > 40`). Sin esta reprise un
+   arco que se apaga y no vuelve pasaria el control negativo por bueno.
+
+El veredicto (`zringOk`) es el AND de las cinco condiciones, y ZRING es la ULTIMA direccion: ella
+cierra el `finish()` con los 16 veredictos. El margen 300..800 ms es para hosts lentos, no una
+propiedad del motor (los gates fisicos del LFO de 1 Hz no escalan con `NEURONIK_SELFTEST_BUDGET`;
+las tomas si: 540/30/320 x factor). Evidencia: `ZRING: arco con LFO2 -> 28: max 100.0 guiones,
+periodo 500.103 ms (gate 300..800 ms entre cristas: |sin| de 1 Hz culmina dos veces por periodo, asi
+que ~500, no ~1000) -> OK`, `arco con signo: 198/540 instantaneas en el lado
+ANTIHORARIO`, `control negativo (fuente Off): |arco| max 0.0 guiones -> OK` y `A de nuevo: max
+100.0 guiones -> OK`, mas dos lineas de diagnostico con los spans y el dt medio de las tomas.
+
+### Sondeos compartidos (canon): `PageWait`, el "espera a que se cumpla X" del arnes
+
+Lo que tienen en comun los tres sondeos de espera del arnes es la misma maquinaria: `evaluate` del
+script, predicado sobre la lectura, `afterDelay` entre tomas, salida temprana en cuanto se cumple, y
+la guarda de por vida en las dos patadas. Vive en `BridgeSelftest.h::PageWait` (clase anidada, con
+una instancia `pageWait`), y su API es una linea:
+
+```cpp
+pageWait.run (script, predicado, maxSamples, pageWaitIntervalMs,
+              [this] (bool satisfied, const juce::String& lastRaw) { ... });
+```
+
+- `pageWaitIntervalMs` = 30 ms: el `evaluate` responde en ~1 ms, asi que sin espera las tomas se
+  consumirian antes de que la primera telemetria llegue a la pagina (~66 ms).
+- `satisfied` = el predicado se cumplio; `false` = se agotaron las tomas, con la ultima lectura a
+  mano. Es DIAGNOSTICO, no veredicto: decidir sigue siendo del llamante.
+- Con el arnes muerto, `onDone` **no** se llama: la cadena ya no tiene a quien volver.
+
+**Los tres consumidores** (los tres eran el mismo bucle, copiado):
+
+1. `needleWaitQuiet` (AGUJA/PANIC): espera a que el medidor se apague antes de re-armar, para que la
+   cola del release no apile voces encima del re-arm.
+2. `needleWaitArmed` (AGUJA/PANIC): espera a que el medidor se encienda tras re-armar, para medir el
+   PANIC sobre el estado encendido MEDIDO y no sobre un delay a ciegas.
+3. `ccSample` (MIDI-CC): espera a que el cutoff de la pagina BAJE tras la nota CC. Es el unico que
+   devuelve un VALOR en vez de un flag, y lo hace parseando la ultima lectura con el mismo lambda.
+
+**Lo que NO se extrajo, y por que**: los sondeos que acumulan (la colecta de AGUJA, las tomas del
+arco de ZRING) necesitan saber que guardan y cuando parar, asi que `PageWait` no les sirve y siguen
+siendo bucles propios. Extraerlos seria otra clase, no esta.
+
+**Comprobado que el flag hace su trabajo**: con el presupuesto del re-arm recortado a 2 tomas
+(experimento revertedido, 0 rastros), la linea de PANIC lo dice explicitamente —
+`PANIC por el clic en el medidor (0 led(es) antes  [el re-arm no llego a encender el medidor en el
+sondeo])`— donde antes solo decia "medidor ENCENDIDO", que es el sintoma de otro problema.
+
 ### MIDI-CC (canon): el LCD arma el learn, un CC del motor lo gana y mueve el parametro
 
 Direccion 10b, entre MIDI y ACCIONES (antes del sorteo, que moveria todos los valores que
 esta direccion mide). La tabla CC -> parametro vive en el MOTOR (`MidiMappingManager`, atomics
 RT) y la pagina la ensena y la edita, nunca la posee. Cuatro fases, cada una por su camino de
-verdad:
+verdad, mas una fase 0 que va antes: la geometria de la fila del LCD en la pagina viva (ver
+"Fila del LCD (canon)"). La fase 0 va en paralelo (solo lee el DOM, a 120 ms, antes del
+armado) y su veredicto se suma al final: si el D-pad no cabe en su chasis, esta direccion falla
+aunque el menu se pueda recorrer con eventos sinteticos.
 
 1. **ARMADO POR EL LCD**: los BOTONES del D-pad (`lcdPanel.js`: `.abd-lcd-panel__btn--*`, gesture
    `pointerdown`) navegan `MENU -> right x4 -> OK -> OK -> right`: en una raiz de cinco items los
@@ -6517,7 +7114,75 @@ los valores lleguen en el MISMO tick. Sin eso, el menu mentiria justo despues de
 que existe.
 
 Evidencia en el log: `MIDI-CC: learn del LCD sobre CUTOFF -> CC 75 (OK), nota CC (0/127) al motor:
-CUTOFF 0.545 -> 0.000 (baja), pantalla del LCD "CC 75" (esperado "CC 75") -> OK`.
+CUTOFF 0.545 -> 0.000 (baja), pantalla del LCD "CC 75" (esperado "CC 75"), fila del chasis sin
+recortes -> OK`, precedida de la fase 0: `MIDI-CC: fila del LCD en la pagina viva (dpr 1.25,
+zoom 1, ventana 1440x946): chasis 1420x54 en pantalla, contrato 54, D-pad 6 boton(es) en 2
+filas, 0 recortado(s), pantalla 1238x28 con 2 lineas dentro -> OK`.
+
+### Fila del LCD (canon): el D-pad es 3x2 y la pantalla va a 11px
+
+La fila del LCD son 54px de PRESUPUESTO FIJO (`GEOMETRY.lcd = 54` en `src/contracts/sections.js`; los
+946 del lienzo son 892 de canvas + 54 de esta fila + 8 de aire, y el test de encaje cuenta ese
+aire). Con `padding: 6px 10px` quedan 42px utiles, y ahi dentro conviven la pantalla 16x2 y el
+D-pad de seis botones. Los numeros medidos en Chromium sobre el dist, a la medida que recibe el
+WebView2 del plugin (1440x946):
+
+- **Chasis**: 1420x54, de y=56 a y=110. Contenido 42, de y=62 a y=104.
+- **D-pad**: rejilla de **3 columnas x 2 filas** (la del paquete compartido, `lcdPanel.js` con
+  `repeat(3, auto)`), botones de 39x14 en dos filas: y=67 y y=85. La segunda acaba en 99: **11px
+  de aire** y NINGUN boton recortado. Orden de DOM `[menu, ok, left, right, up, down]` = fila de
+  arriba MENU/OK/< y de abajo >/^/v.
+- **Pantalla**: 1239x29 en x=33, con las dos lineas de texto de 14px (11px de fuente x 1.3 de
+  line-height = 28.6 de los 29): el texto llena el alto sin desbordar.
+
+**Lo que NO se puede hacer aqui**: el `overflow: hidden` del chasis es una red de seguridad, no el
+mecanismo. El override del 27 Sep (2 columnas) lo era: a 2 columnas la rejilla de 6 botones se
+vuelve 2x3 = 3 filas de 14 + 2 gaps = 51px en los 42 de contenido, y la tercera (`^` `v`) se salia
+del chasis y este la cortaba A MEDIA ALTURA (medido: botones en y=99..113 con el chasis cerrando
+en 110 — los cursores de arriba y abajo se veian mutilados, y la direccion MIDI-CC los necesita
+para navegar). Volver a 3 columnas deja las dos filas dentro.
+
+Y el texto: `.abd-lcd__line` usaba `var(--text-sm, 11px)`, pero ese token **resuelve a 9px** en
+este tema, con lo que la reticula 16x2 dejaba 18 de los 30px de alto vacios y el texto se encogia
+en la esquina superior izquierda de una franja verde de 1200px. A 11px fijos el alto se llena
+(28.6 de 30) sin desbordar.
+
+Alcance: es CSS de la pagina (`WebUI/src/styles/main.css`), asi que cambia los snapshots del
+lienzo entero — las dos referencias de `e2e/visual.spec.js` (tema oscuro y claro) se regeneraron
+con el diff **acotado a la fila**: la pantalla (x desde 32) y el D-pad (x 1290..1419). Antes de
+aceptarlas se comprobo la linea base revirtiendo `main.css` a HEAD y reconstruyendo: los dos
+tests pasan sin el cambio, o sea que el diff es del cambio y solo suyo.
+
+**La invariante que hacia falta (fase 0 de MIDI-CC, `scriptLcdGeometry` +
+`checkLcdGeometry`)**: todas las pruebas de arriba son de CAPA — comparan clases, valores o
+snapshots — y el D-pad se conduce con eventos SINTETICOS, asi que un boton recortado por el
+chasis responde igual. Por eso la fila pudo pasar el selftest entero (15 direcciones), vitest
+(398/398) y la E2E (22/22) con los cursores `^` y `v` cortados a media altura: el defecto era
+invisible para el arnes. La fase 0 mide **CAJAS** en la pagina VIVA del WebView2 y exige cuatro
+cosas, todas en la pagina que el plugin muestra de verdad:
+
+1. el alto del chasis es el del CONTRATO (54, en pixeles de LAYOUT);
+2. los SEIS botones del D-pad existen;
+3. NINGUNO se sale del chasis (se calcula en la pagina, no comparando floats aqui);
+4. las DOS lineas de texto caben dentro de la pantalla (con 9px se recortaban por arriba).
+
+Comprobado que **caza**: se reprodujo el defecto del 27 Sep (una sola linea del CSS, la rejilla
+a 2 columnas) y la corrida dio `fila del chasis CON RECORTES` + `RESULT: FAIL`, con el crudo
+senalando los culpables: `"clipped":["up","down"]` (filas en y 62, 80.4, 98.8 con el chasis
+cerrando en 110 — la tercera se sale 3.2px). Las otras tres fases de MIDI-CC siguieron en verde
+en esa misma corrida, que es justo la prueba de que eran ciegas.
+
+**Medido DENTRO del WebView2 del plugin** (no en un navegador de escritorio), que es lo que
+aportaba la medicion y no se veia fuera:
+`dpr 1.25, zoom 1, ventana 1440x946, chasis 1420x54 en pantalla, contrato 54, D-pad 6 boton(es)
+en 2 filas, 0 recortado(s), pantalla 1238x28 con 2 lineas dentro`.
+
+**La bancada escala la pagina, y con razon**: su ventana es de 640x520 y escala el lienzo a
+0.44 (640/1440), asi que alla la fila mide 631x24 EN PANTALLA con los mismos 54 de alto en
+LAYOUT (por eso el contrato se comprueba con el valor COMPUTADO, `cssH`, y no con el rect). Con
+la primera version de la comprobacion —que comparaba 54 contra el rect— la bancada daba FAIL sin
+motivo: un falso positivo propio, que es lo que sale de medir la invariante en los dos hosts y
+no solo en el que se parece al plugin.
 
 ### Estado de verificacion (28 Sep, con MIDI-CC)
 
@@ -6765,3 +7430,1158 @@ YAML (parsea, con sus diez pasos), que las rutas del layout coinciden con `WebUI
 exactamente el que pasa en verde en local (`npx playwright test e2e/visual.spec.js` con
 `NEURONIK_E2E_PORT=5239`, el mismo puerto que le pasa ctest). El primer push a `master` es lo que lo
 demuestra de verdad.
+
+## 2026-09-28 — la fila del LCD: el D-pad estaba cortado a media altura
+
+Encargo: mirar la fila del LCD en el plugin compilado y afinar margenes y chasis si quedaba
+apretado. Sale de medir mucho: lo que habia era un **defecto visible**, no una holgura.
+
+**Lo que habia** (override del 27 Sep en `WebUI/src/styles/main.css`): chasis 54px con
+`overflow: hidden`, y el D-pad con la rejilla forzada a 2 columnas. Seis botones en 2 columnas son
+3 filas, no 2: 3x14 + 2 gaps de 4 = **51px en los 42 de contenido**, y la tercera fila (los
+cursores `^` y `v`) se salia del chasis, que la cortaba por la mitad — los botones vivian en
+y=99..113 con el chasis cerrando en y=110. En la foto con 3x de aumento se veian los dos cursores
+mutilados. El comentario del CSS lo reconocia ("la tercera [...] fuera de vista sin romper el
+encaje") como si fuera una decision; era un recorte.
+
+**El arreglo, dos lineas de CSS con su por que:**
+1. `grid-template-columns: repeat(3, ...)` — la rejilla del paquete compartido (`lcdPanel.js` ya
+   pedia `repeat(3, auto)`; el override local era el que la deshacia). Dos filas de 14 + 4 de gap
+   = 32px: los seis botones dentro, 11px de aire.
+2. `.abd-lcd__line` a `font-size: 11px` fijo en vez de `var(--text-sm, 11px)`, que **resuelve a
+   9px** en este tema. Con 9 la pantalla 16x2 usaba 18 de sus 30px de alto y el texto se encogia
+   en la esquina de una franja verde de 1200px de ancho; a 11 el texto llena el alto (28.6 de 30).
+
+**Como se verifico, que es lo que cuesta**: a la medida EXACTA que recibe el WebView2 del plugin
+(1440x946, segun `NEURONiKEditor`), midiendo el DOM en Chromium sobre el dist y comprobando que
+no hay ningun boton fuera del chasis. Despues, el plugin de verdad: los tres objetivos
+reconstruidos (el dist va embebido) y **selftest del Standalone con las 15 direcciones OK, exit 0**
+— incluida MIDI-CC, que es la direccion que navega con estos mismos botones y que habria fallado
+si el D-pad no respondiera.
+
+**El cliente de los snapshots**: los dos "lienzo entero" de `visual.spec.js` fallaron, y con
+razon. Antes de regenerarlos no se acepto el diff a ojo: se midio la caja de pixeles distintos
+(fila del LCD y=62..109, x=32..1419 — la pantalla por un lado, el D-pad por otro, nada mas) y se
+hizo la **linea base revirtiendo `main.css` a HEAD y reconstruyendo el dist**: los dos tests
+pasan sin el cambio. Ese par (medir el diff + comprobar la linea base) es lo que distingue un
+cambio legitimo de una referencia que se ha quedado vieja. Luego `--update-snapshots` de esos dos
+y la E2E completa en verde: **22/22**, mas vitest **398/398**.
+
+**Bancada, para que conste que no es regresion**: `MIDI-CC OK` con el D-pad nuevo (el learn se
+arma y la pantalla pinta `CC 75` igual que en el plugin) y AGUJA sigue fallando por lo de antes,
+`barras 8 (OK, gemelas DIVERGENTES)`. La fila del LCD no toca barras: la falla abierta de la
+bancada sigue siendo la misma, y el LCD no ha anadido ninguna.
+
+**Lo que faltaba y se ha cerrado en esta vuelta (28 Sep, tarde)**: las medidas de arriba estaban
+tomadas en Chromium sobre el dist, no en el WebView2 del plugin compilado, y de ahi salio lo que
+no se veia en ningun navegador de escritorio: el **`dpr 1.25`** (el escalado de Windows), la
+ventana exacta `1440x946` y la pantalla en `1238x28` en vez de los `1239x29` de Chromium (el
+layout cae en fracciones de pixel). Todo encaja, pero solo se puede SOSTENER que encaja
+midiendo donde el usuario lo ve. Y de ahi salio tambien el agujero: el D-pad lo empuja el arnes
+con eventos sinteticos, de modo que la fila paso las 15 direcciones, vitest y la E2E con los
+cursores `^` y `v` cortados. Anadida la fase 0 (geometria por cajas), reproducido el defecto del
+27 Sep para comprobar que lo caza (`"clipped":["up","down"]`, FAIL) y arreglo de un falso positivo
+propio en la bancada (su pagina va escalada a 0.44, asi que el contrato se mira en pixeles de
+LAYOUT). Estado final: **plugin 15/15 RESULT: OK (exit 0)**, bancada con la fase 0 **OK** y el
+FAIL de siempre en AGUJA, snapshots del lienzo en verde sin tocarlos otra vez.
+
+Un aviso de esta vuelta: la fase PANIC de AGUJA fallo **una vez de tres** corridas
+(`medidor ENCENDIDO` con las agujas ya ocultas: el PANIC llego al motor pero el medidor no se
+repinto). No se ha tocado: es un fallo de temporizacion de repintado, no de la fila del LCD, y las
+corridas siguientes lo dieron en verde. Queda anotado aqui para que si reaparece se mire el
+repintado del medidor y no el D-pad.
+
+> Canon: anadida la subseccion "Fila del LCD (canon)" con las tres medidas (chasis 54, D-pad
+> 3x2 de 39x14 con 11 de aire, pantalla 1239x29 con 28.6 de texto) y la regla de que el
+> `overflow: hidden` es red de seguridad, no mecanismo.
+
+## 2026-09-28 — NEURONiK_Vst3LoadTest: el VST3 de disco, escaneado como un DAW
+
+Encargo: comprobar rapido que el VST3 recien compilado carga y expone sus parametros. No
+existia ninguna comprobacion de eso: los tests de C++ hablan con el codigo, y el selftest habla
+con el Standalone y la bancada. **El bundle `.vst3` que se instala en un DAW no lo miraba
+nadie**, y es justo el artefacto que puede compilar sin errores y estar muerto.
+
+**`Tests/Vst3LoadTest.cpp` + target `NEURONiK_Vst3LoadTest` (ctest #16, 0.3 s)**: un proceso
+ aparte que no sabe nada de `NEURONiKProcessor` —lo unico que comparte con el plugin es el
+ `.vst3` de disco— que hace el camino de un host: `VST3PluginFormat` (con
+ `JUCE_PLUGINHOST_VST3=1`, que sin el no existe) -> `findAllTypesForFile` ->
+ `createPluginInstance` -> lista de parametros -> `setValueNotifyingHost` -> estado ->
+ `prepareToPlay` + un bloque. Los parametros esperados salen de `NEURONiK_ParameterContract`
+ (el mismo que compila el plugin), asi que un bundle viejo y unas fuentes nuevas no pueden dar
+ los dos verde. El target **depende de `NEURONiK_VST3`**: sin eso, un ctest sobre un arbol ya
+ construido mediria el bundle de la corrida anterior. Tambien acepta una ruta por `argv[1]`,
+ para medir una copia instalada.
+
+Comprobado que **no es vacuo**: con una ruta inexistente y con un fichero que no es VST3 falla
+con exit 1 y un motivo claro.
+
+**Lo que salio, y que no se sabia:**
+
+1. **El VST3 declara el fabricante como `yourcompany`.** Es el valor por defecto de JUCE
+   (`juce_add_plugin` no lleva `PLUGIN_MANUFACTURER_NAME`), asi que en la lista de plugins de
+   un DAW aparece el plugin con ese nombre. El codigo de fabricante (`Nrnk`) si que esta
+   puesto. **No se ha tocado**: el nombre del fabricante es una decision de producto.
+2. **El host recibe 2154 entradas, no 73.** Al servicio del plugin hay 73 —los del contrato, uno
+   a uno por nombre— y el resto (2080 + 1) es del ENVOLTORIO VST3: la familia de automatizacion
+   `MIDI CC <n>|<v>` y `Bypass`. Se filtran por nombre en el test, no por indice ni por recuento:
+   si el plugin publicara alguna vez una entrada llamada `Bypass`, saldria como diferencia en
+   vez de esconderse. Una DAW con vista de automatizacion ve las 2154.
+3. **El estado del procesador llega como blob opaco por el borde del VST3**, no como el arbol de
+   `PARAM` del APVTS (5348 bytes, tipo ilegible). Por eso el contraste de ids se hace por
+   nombre —que es lo que el host ve— y no por estado, y la prueba de que un parametro esta vivo
+   se hace por el objeto que automatiza el host, no por el estado.
+
+Lo que si queda verificado del parametro en si: `Master Level` es automatizable desde el host,
+`setValueNotifyingHost(0.25)` se relee a 0.25, el estado devuelto por el host (5348 bytes) lo
+conserva, y `prepareToPlay` + un bloque de 512 muestras sale sin NaN. El scan declara el plugin
+como instrumento, con uid 481681130.
+
+`ctest` queda en **43 tests** registrados (antes 42).
+
+## 2026-09-28 — el resumen final de build.bat dice QUE superficie fallo
+
+Encargo: distinguir el veredicto del plugin del de la bancada cuando las dos corran en la misma
+pasada. El problema real no era de formato: **el resumen final solo pintaba el del plugin**.
+
+- El parser (`Scripts\selftest_summary.ps1`) leia el log ACUMULATIVO, que solo escribe el
+  Standalone. La bancada su logFn escribe a stdout, nunca al log: su veredicto no llegaba al
+  resumen, solo a las lineas en linea del paso 9.
+- Peor: si el plugin fallaba, la pasada hacia `goto :finish` ANTES de correr la bancada, asi que
+  el resumen no decia ni que la segunda no llego a correr.
+- Y si fallaba la BANCA, el cierre era `RESULTADO: CON ERRORES` seguido de un resumen de plugin
+  en verde sin una sola linea que dijera quien habia fallado.
+
+**Ahora**: la bancada se captura a su propio transcript de UNA pasada
+(`build-reference\neuronik-selftest-bancada.log`, borrado antes de correr para que un transcript
+viejo no se imprima como si fuera de esta) y `:finish` imprime UN bloque por superficie, con su
+etiqueta, su exit, su veredicto por direccion y su transcript:
+
+```
+  PLUGIN (Standalone, exit 0):
+    [OK  ] ... 15 direcciones ...
+    Veredicto: OK
+    Transcript: ...\neuronik-selftest.log
+
+  BANCADA (WebPilotHost, exit 1):
+    [OK  ] ...
+    [FAIL] AGUJA
+           ...notas fuera sale, agujas env=off/flt=off (bloques off/off) (ocultas)
+    Veredicto: FAIL
+    Transcript: ...\neuronik-selftest-bancada.log
+```
+
+Y la superficie que NO se ejecuto se dice con su motivo (`PLUGIN_SKIP` / `PILOT_SKIP`, que se
+inicializan al principio del script y no en el paso 9: si no, un `goto :finish` anterior
+imprimia "no se ejecuto ()" sin explicar nada).
+
+**El parser acepta ya `<log> [etiqueta] [modo]`**: `log` (acumulativo del plugin, con su aviso
+de antiguedad) y `stdout` (transcript de una pasada, acotado por la ULTIMA linea `RESULT:`, que
+es lo unico que cierra la corrida de la bancada). Un `[FAIL]` cuya linea acaba en `-> FAIL` sin
+texto mas toma ahora el FINAL de la linea como motivo: sin eso el bloque decia `[FAIL] AGUJA` y
+nada mas, que es justo el caso para el que se separan las superficies.
+
+**Dos bugs que solo salieron al ejecutar de verdad, no al leer el codigo:**
+
+1. `set "PILOT_ST=%ERRORLEVEL%"` estaba DESPUES del `type` del transcript, y `type` pone
+   ERRORLEVEL a 0: una bancada en FAIL salia con `exit 0`, el `if` de abajo no entraba y la
+   pasada se cerraba en `RESULTADO: OK`. El exit se lee ahora antes del `type`.
+2. `Write-Header` se llamaba antes de estar definida (PowerShell no resuelve funciones definidas
+   mas abajo en tiempo de ejecucion).
+
+Y el guard del propio repo (`NEURONiK_ReferencedFiles`) canto en la primera pasada: el
+`Tests\Vst3LoadTest.cpp` nuevo estaba SIN VERSIONAR y CMakeLists lo nombra, o sea que un clon
+limpio no tendria el fichero. Esta en el indice.
+
+**Estado tras el cambio**: pasada completa con las dos superficies corriendo y los dos bloques en
+el resumen. El plugin da 15/15 OK; la bancada da AGUJA FAIL (las barras gemelas, la falla abierta
+de siempre) — que antes cerraba la pasada en verde sin que nadie pudiera ver de quien era.
+
+> Canon: el resumen del selftest tiene un bloque por superficie (PLUGIN / BANCADA), cada uno con
+> su exit y su transcript; una superficie que no corrio se dice con su motivo. El transcript de
+> la bancada es `build-reference\neuronik-selftest-bancada.log` (stdout, una pasada, se borra
+> antes de correr) y el del plugin sigue siendo el acumulativo `build-reference\neuronik-selftest.log`.
+
+## 2026-09-28 — la bancada tolera un arranque en frio del WebView2 (reintenta, y espera mas)
+
+Encargo: que el arnés de la bancada reintente o extienda la espera de pagina lista cuando el
+WebView2 no carga NINGUN recurso, para no perder la pasada por un pico de carga del sistema.
+
+**El fallo que se tapa.** El timer de la bancada vigilaba la pagina con un presupuesto plano de
+20 s: si en ese plazo la pagina no publicaba `__pilotReady`, `finish("timeout")` y FAIL. El caso
+que seava a perder no es "la pagina va lenta" —la lenta la cubre el presupuesto— sino que el
+WebView2 **no ha pedido nada**: el runtime de Edge arrancando en frio, el antivirus escaneando,
+otra pasada de build en paralelo. Ahi no habia ni un segundo intento: 20 s de espera en silencio
+y un FAIL sin explicacion.
+
+**Lo que hay ahora** (`Source/WebPilotHost.cpp`):
+
+- `watchColdStart()` se llama en cada tick mientras la pagina no esta lista. Si el proveedor no ha
+  servido NINGUN recurso, **vuelve a pedir la pagina** cada `coldStartStallMs` (10 s), hasta
+  `maxColdStartRetries` (3) veces, y **loguea cada reintento** (un reintento callado seria un FAIL
+  sin explicacion). En cuanto el proveedor sirve algo, la funcion deja de hacer nada para siempre:
+  a partir de ahi el problema, si lo hay, no es de arranque.
+- `pageDeadlineMs()` da el plazo: sin senal, `20 s + 3 x 10 s = 50 s`; con senal, los 20 s de
+  siempre contados desde la PRIMERA senal (no desde el ultimo sondeo, que moveria el plazo sin
+  parar) y nunca mas alla del total en frio. El caso patologico se aguanta 50 s; el normal no se
+  toca.
+- El informe de la corrida (`pilot-startup.log`) tiene una linea nueva: `cold start retries: N / 3`
+  y cuando fue la primera senal, para que una corrida con reintentos se vea sin buscar el stdout.
+
+**El umbral va a 10 s y no a 6 s por una medicion, no por un gusto**: con 6 s, una corrida normal
+de este equipo (maquina ocupada, primer recurso a **7,1 s**) disparaba un reintento
+innecesario. Reintentar no es gratis —la nueva navegacion CANCELA la que estaba en curso—, asi
+que el umbral tiene que quedar por encima de una carga lenta pero sana. Medido: con 10 s esa
+corrida da `cold start retries: 0 / 3` y carga igual que siempre (ready a 7,4-8,4 s segun la
+corrida, 6 recursos servidos).
+
+**La senal es "el proveedor sirvio algo", y NO `readyState`.** La primera version contaba tambien
+`document.readyState` y el panel en el DOM, y el experimento lo cazo: una navegacion que falla
+deja igualmente un documento en `interactive` (la pagina de error del navegador), asi que tras
+el primer reintento la funcion creia que todo iba bien y el proceso se rendia a los 28 s. Con la
+senal correcta, el mismo escenario da los tres reintentos y se rinde a los 52 s.
+
+**Como se ha verificado** (que no es "lo compile y me parece bien"): con el proveedor
+neutralizado temporalmente —un `if` de tres lineas con una env var, ya revertido, 0 rastros en
+el codigo— la corrida da `reintento de navegacion 1/3, 2/3, 3/3` a 10 s de intervalo, se rinde
+a los 52 s con `reason=timeout` y exit 1 (sigue siendo FAIL: esto tolera el arranque atascado, no
+tapa una pagina rota), y el informe dice `cold start retries: 3 / 3 (la pagina no dio ninguna
+senal)`. Sin el experimento, la corrida normal da 0 reintentos y el unico FAIL sigue siendo el de
+AGUJA (barras gemelas), que no tiene nada que ver.
+
+Nota de alcance: el reintento es de la **bancada** (`WebPilotHost.cpp`). El editor del plugin
+espera la pagina por su propio camino y no se ha tocado; si el problema aparece ahi, el arreglo
+es el mismo patron en `NEURONiKEditor` (o mieux, en el `NeuronikWebView` compartido, que ya
+centraliza el poll de las dos superficies).
+
+> Canon: la bancada reintenta la navegacion mientras el proveedor no sirva NINGUN recurso (3
+> reintentos cada 10 s, cada uno logueado) y solo entonces extiende su plazo de pagina a 50 s; con
+> una senal, el plazo es el de siempre desde esa senal. La senal es `servedCount > 0`, nunca
+> `readyState` (la pagina de error del navegador tambien lo cumple).
+
+## 2026-09-28 — `cancelRouteReturn` fijado al nivel de la unidad, en los TRES caminos de abrir
+
+> Canon: **«SECCION CANONICA — VOLVER (direccion 1b-bis)»**, al final de este fichero. Esta
+> entrada cuenta como se llego; el guion vigente, el ciclo de vida del boton, la regla de
+> cancelacion y la fontaneria de cierres estan alla.
+
+Encargo: un test en `panel.test.js` que fije `cancelRouteReturn` al abrir por EDIT / franja /
+chip — que el retorno muere y el boton se desmonta.
+
+**Lo que ya estaba y lo que faltaba.** El bloque `panel / VOLVER A LA RUTA` de
+`WebUI/tests/panel.test.js` ya fijaba la cancelacion por **EDIT**: dos tests, uno abriendo OTRO
+cajon (`[data-drawer-trigger="globalFull"]`) y otro el propio origen. Faltaban los otros dos
+caminos, y faltaba lo mas importante: **que la invariante este atada a la lista de caminos**, no
+a un caso escrito a mano.
+
+**Los tres caminos salen del MISMO hook.** En `panel.js`, `buildCard` recibe
+`onDrawerOpenedByUser: () => cancelRouteReturn()` y lo llama en los tres gesture de abrir por si
+mismo: el boton EDIT (`[data-drawer-trigger]`), el distintivo vivo de la cabecera
+(`[data-live-badge]`, el `.card__badge`) y la franja de GLOBAL & MASTER (`.global-strip`, que es
+un `role=button` con click y keydown). El riesgo real no es que el hook falle hoy —funciona— sino
+que alguien abra un cajon desde un sitio NUEVO y se olvide de la linea: el retorno sobrevive y el
+boton queda colgando, y nada lo diria.
+
+**El test** (uno por camino, con el MISMO cuerpo, generado de una lista) monta el salto con
+retorno pendiente (`clickEnvRouteJump`: ENV 1 -> RUTA 1, matriz abierta, boton colgando) y
+comprueba las CUATRO cosas, en este orden:
+
+1. punto de partida: destino vivo (`routeBack.target() === 1`) y boton **en el documento**;
+2. `routeBack.target()` es null — **el retorno muere**;
+3. `routeBack.element.isConnected === false` y el `.env-block__back` no esta en el cuerpo de
+   ENVOLVENTES — **el boton se DESMONTA**, no se esconde (`clear()` hace `element.remove()`);
+4. la vuelta que quedaba cobrada **no se ejecuta**: la matriz sigue abierta, cerrar la matriz no
+   reabre ENVOLVENTES, y un `paint` posterior no hace revivir el boton.
+
+Los tres abren GLOBAL & MASTER, que no es el origen del retorno, para que la cancelacion signifique
+algo. La franja y el chip viven en el cuerpo de la FICHA, no en el cajon, y con la matriz abierta
+estan bajo el velo: el clic del test es sobre el nodo del DOM, que es como los encuentra el
+usuario al cerrar el cajon.
+
+**Comprobado que NO es vacuo** (que es lo unico que hace que un test valga): quitando el
+`onDrawerOpenedByUser?.()` SOLO del handler de la franja, el test de la franja se pone rojo con
+`expected 1 to be null` —el retorno sobrevive— y **los otros dos siguen verdes**. Revertido a
+continuacion (`git diff` de `panel.js` deja de estar modificado, 0 rastros del experimento).
+
+Suite completa: **vitest 401/401** (antes 398, +3). Nota de convencion: `panel.test.js` esta en
+LF, como estaba; no se ha tocado el codigo de la pagina.
+
+## 2026-09-28 — el guion de 1b/1b-bis/1b-ter escrito como lo que es: UNA cadena por datos
+
+> Canon: **«SECCION CANONICA — VOLVER (direccion 1b-bis)»**, al final de este fichero. Esta
+> entrada cuenta como se llego; el guion vigente, el ciclo de vida del boton, la regla de
+> cancelacion y la fontaneria de cierres estan alla.
+
+La cabecera de `Source/WebUI/BridgeSelftest.h` describia las tres direcciones como si fueran
+independientes, y no lo son desde que el slot viaja entre ellas. Documentado como tal, con los
+tres datos que costan mas de ver en el codigo:
+
+**De donde sale el slot de ENV-RUTAS.** No del APVTS: el Standalone de JUCE restaura el
+`filterState` de la ultima sesion ANTES del selftest, y esa sesion puede traer la matriz del
+usuario, asi que "el primer slot con fuente ENV" del motor no seria el que el usuario tiene
+delante. Decide **lo que la pagina PINTA**: el script busca una fila entre los
+`button[data-env-route]` y deduce cual es de ENV leyendo el select de fuente que ensena el cajon
+de la MATRIZ que la direccion 0 dejo abierto. Los indices de `ENV 1`/`ENV 2` salen de
+`State::getModSources()`; el APVTS se lee DESPUES del clic, solo para cruzar que el cajon
+ensena lo mismo que el motor tiene en ese slot. El slot devuelto es el **argumento** de
+`backDirection(slot)` y de `summaryRouteJump(slot)` — por los **dos** caminos: si ENV-RUTAS
+falla, la cadena sigue igual con RESUMEN-RUTAS, y en ambos casos RESUMEN-RUTAS encadena el
+settle y detras AGUJA.
+
+**Como se repite cobertura sin repetir el mismo slot.** `scriptSummaryRouteJump(avoidSlot)`
+elige `(avoid % 4) + 1` sobre las CUATRO filas `button.mod-summary__row`; si esa fila no esta
+pintada devuelve `NO_ROW_FOR_SLOT` y la direccion **falla**, en vez de pulsar a ciegas.
+
+**El settle de RESUMEN-RUTAS.** `scriptSettleDrawers()` cierra **POR SU ✕** cada cajon que
+quede abierto, en un bucle de **hasta cinco**, y su JSON no se juzga: es limpieza, solo
+encadena. No cierra "el que haya" por dos razones concretas: cerrar por el velo podria consumir
+un retorno pendiente, y cerrar la matriz puede **REABRIR el cajon de origen** —el mismo
+comportamiento que mide VOLVER—, asi que hay que iterar hasta que no quede ninguno. AGUJA
+arranca sin modales. La cola `settle -> AGUJA` que existio antes murio con el encadenado: dos
+AGUJAs en paralelo se pisan la pagina (aguja "visible" en silencio, notas atascadas en MIDI).
+
+Tambien se arreglo el Doxygen de `envRouteJump()`, que seguia describiendo la derivacion vieja
+("se DERIVA del APVTS... el slot esperado es el que el APVTS dice"). Build limpio (solo los
+C4100 de siempre) y selftest del Standalone en verde: `ENV-RUTAS: 2 fila(s) ENV pintadas; clic en
+la del slot 2 -> slot resaltado 2` / `VOLVER: ... slot resaltado 2 (esperado 2)` /
+`RESUMEN-RUTAS: 4 fila(s) clicables; clic en la del slot 3`, `RESULT: OK`, exit 0 — la cadena
+visible en el log con los tres slots distintos.
+
+## SECCION CANONICA — VOLVER (direccion 1b-bis): el retorno del salto ENV -> MATRIZ
+
+Referencia unica y vigente de la direccion VOLVER del arnes (`Source/WebUI/BridgeSelftest.h`,
+`Stage::back`, `backDirection (int slot)` mas los scripts que la sostienen) y de la pieza de pagina
+que la hace posible (`WebUI/src/ui/routeBack.js` + el hook del panel). Las entradas cronologicas
+cuentan COMO se llego; donde una de ellas y esta seccion discrepen, **manda esta**. Complementa
+la fila 4 de la tabla en «SECCION CANONICA — las 15 direcciones del selftest» (esa da la foto del
+conjunto; esta da el detalle de una sola direccion).
+
+### Indice: donde estaba repartido antes de esta seccion
+
+La materia vivia en seis sitios, y con la certeza de que un golpe de grep no los encuentra todos.
+Cada fila dice que aporta la entrada y que queda MANDADO por aqui.
+
+| Entrada cronologica | Que aporta | Que queda canonico |
+|---|---|---|
+| 27 Sep, «VOLVER: el retorno del salto ENV -> MATRIZ se mide (la direccion 1b-bis)» | el guion de cinco medidas y el primer esbozo del ciclo de vida del boton | el punto 5 (derivacion del slot) esta CADUCADO: no sale del APVTS |
+| 27 Sep, «VOLVER extendida: la regla de CANCELACION, medida E2E» | las tres aserciones de cancelacion y el `NO_GLOBAL_EDIT_TRIGGER` | — (vigente: nombres de scripts, id `globalFull` y selectores, mas abajo) |
+| 27 Sep, «VOLVER en el arnes: encaje tras ENV-RUTAS, el settle de modales y el cierre por cajon abierto» | el encaje por datos, el settle y la fontaneria de selectores | su punto 1 tambien dice «ENV-RUTAS deriva el slot del APVTS»: CADUCADO |
+| 27 Sep, «RESUMEN-RUTAS, la esquina clicable y la ayuda de gestos corregida» | el destino del slot al salir de VOLVER (`avoid`) | solo el tramo del encaje; el resto es de RESUMEN-RUTAS |
+| 28 Sep, «cancelRouteReturn fijado al nivel de la unidad, en los TRES caminos de abrir» | los tres gestos que cancelan y los cuatro tests que lo fijan | — (vigente) |
+| 28 Sep, «el guion de 1b/1b-bis/1b-ter escrito como lo que es: UNA cadena por datos» | por que el slot viaja y no se recalcula | — (vigente) |
+
+### Que es el retorno, y quien lo siembra
+
+El unico gesto que **siembra** retorno es «IR A LA RUTA n» del cajon de ENVOLVENTES
+(`scriptBackJump (int slot)`); las filas `.env-route` del lienzo abren la matriz SIN retorno porque
+el VOLVER no nace con ellas. El estado esta partido por diseño, con un dueño cada cosa:
+
+- el **dueño del gesto** es el panel (`WebUI/src/ui/panel.js`): `let routeReturn = null` es el
+  retorno pendiente, lo arma `openDrawerRoute(sectionId, slot, { returnTo })` y lo **consume una
+  sola vez** en el `onClose` de la matriz (`const returnTo = routeReturn; routeReturn = null`), que
+  es lo que reabre ENVOLVENTES y reancla el boton. Un salto nuevo sustituye al anterior ANTES de
+  cerrar nada: el mueble compartido no tiene cierre silencioso, asi que un `close()` alli
+  consumiria un retorno vivo.
+- la **vista** es `WebUI/src/ui/routeBack.js` (`createRouteBack`): guarda el ultimo destino
+  (`lastTarget`), pinta/oculta y cablea el gesto (`onBack` -> `openDrawerRoute('modMatrix', slot,
+  { returnTo })`). La SSOT del texto y de la clase viven alli (`ROUTE_BACK_TEXT = 'VOLVER A LA
+  RUTA'`, `ROUTE_BACK_CLASS = 'env-block__back'`); el panel solo juega con `hidden` y
+  `textContent`, y `clear()` hace `element.remove()` —el boton se **desmonta**, no se esconde.
+
+### El guion de la direccion (cinco medidas, en orden)
+
+1. **RE-SALTO**: pulsa otra vez la MISMA fila de ruta del slot recibido como argumento; exige
+   matriz abierta.
+2. **CIERRE POR USUARIO**: el ✕ de la matriz (`scriptCloseMatrixDrawer`), no un ESC programatico
+   —es el gesto que PAGA la vuelta, y por eso no se simula.
+3. **BOTON PRESENTE** (`scriptReadBackButton`): al reabrirse el origen tiene que estar
+   `.env-block__back` con SU numero («VOLVER A LA RUTA n»). Sin boton (oculto o descolgado) el
+   gesto no existe y la direccion falla.
+4. **CLIC** (`scriptPressBackButton`): la matriz reabierta tiene que quedar con SU velo y el MISMO
+   slot resaltado (`data-slot-highlight`).
+5. **CANCELACION** (extension posterior): abrir GLOBAL por su cuenta con el retorno pendiente lo
+   mata y el boton no revive — ni al cerrar GLOBAL ni al cerrar despues la matriz, que tampoco
+   reabre el origen solo.
+
+El slot **viaja por datos**: lo elige ENV-RUTAS por lo que la pagina PINTA y lo recibe
+`backDirection` como argumento; ninguna capa lo recalcula ni lo hardcodea. (Correccion respecto a
+las entradas viejas: la derivacion ya **no** es «el primer slot con fuente ENV» del APVTS —el
+Standalone restaura el `filterState` de la sesion anterior y ese puede traer la matriz del
+usuario—; ver el bloque «ENCADENADO POR DATOS» de la cabecera de `BridgeSelftest.h`.)
+
+### La regla de CANCELACION, y los TRES caminos que la disparan
+
+Un solo hook, en `panel.js`: `buildCard` recibe `onDrawerOpenedByUser: () => { cancelRouteReturn(); }`
+(la linea 277) y lo llama en los tres gestos de abrir por si mismo —el boton EDIT
+(`[data-drawer-trigger]`), el distintivo vivo de la cabecera (`[data-live-badge]`) y la franja de
+GLOBAL & MASTER (`.global-strip`, con click y keydown)—. El riesgo que dejó escrito la entrada del
+28 de septiembre no es que el hook falle hoy, sino que alguien abra un cajon desde un sitio NUEVO y
+olvide la linea: el retorno sobrevive y el boton queda colgando sin que nada lo diga. Por eso hay
+un test por camino en `panel.test.js` (los tres, con el MISMO cuerpo generado de una lista) y cada
+uno exige las CUATRO cosas en este orden: destino vivo -> `routeBack.target() === null` -> boton
+**desmontado** (`element.isConnected === false`, no escondido) -> la vuelta que quedaba cobrada
+**no se ejecuta** (la matriz sigue abierta, cerrarla no reabre ENVOLVENTES y un `paint` posterior
+no hace revivir el boton).
+
+Scripts con los que se mide en la pagina viva: `scriptOpenGlobalDuringReturn` (el EDIT de GLOBAL,
+`[data-drawer-trigger="globalFull"]` — el id de la seccion es `globalFull`, no `global`),
+`scriptCloseDrawerById ("drawer-globalFull")` y `scriptReadPostCancelState`.
+
+### Fontaneria: como se cierra un cajon (y por que el ✕)
+
+El mueble deja el ✕ de cada cajon en el DOM aunque este cerrado (inerte, `aria-hidden`), asi que
+«cerrar el abierto» es `document.querySelector('.drawer--open .drawer__close')`, y eso es valido
+mientras haya **un** cajon abierto. Con dos (GLOBAL y la matriz) ese selector cierra el
+EQUIVOCADO, el primero del documento: de ahi `scriptCloseDrawerById`, que cierra por
+`[data-drawer="drawer-<id>"]`. Regla que deja esto escrito: el cierre de **usuario** (el ✕) es el
+que paga el retorno, el que lo cancela si antes se abrio otro cajon y el que limpia el lienzo en el
+settle; el cierre por velo queda fuera porque puede consumir un retorno pendiente por un camino que
+la direccion no cubre.
+
+El **settle** (`scriptSettleDrawers`, en RESUMEN-RUTAS y no en VOLVER) cierra por su ✕ cada cajon
+que quede abierto, **iterando hasta cinco**, porque cerrar la matriz puede reabrir el cajon de
+origen. Es limpieza, no veredicto: su JSON no se juzga, solo encadena AGUJA. La cola
+`settle -> AGUJA` que un dia vivio dentro de VOLVER murio con el encadenado — dos AGUJAs en
+paralelo se pisan la pagina.
+
+### Estado verificado (28 de septiembre de 2026)
+
+- Standalone `--selftest`: `ENV-RUTAS ... slot 2` -> `VOLVER: el boton reabre "drawer-modMatrix"
+  ..., slot resaltado 2 (esperado 2)` -> `RESUMEN-RUTAS ... clic en la del slot 3`, `RESULT: OK`,
+  exit 0. Los tres slots distintos en el log **son** la prueba de que la cadena viaja por datos.
+- Bancada (WebPilotHost): la direccion pasa; la que sigue fallando en la bancada es AGUJA, por las
+  barras gemelas divergentes, y es una falla abierta conocida, no de esta direccion.
+- vitest 401/401, con los tres tests de cancelacion de `panel.test.js` incluidos.
+
+## 2026-09-28 — canal `neuronik:voice`: los ocho knobs de envolvente POR FIN llegan al motor local
+
+La limitacion que arrastraba `WebUI/needle-probe/` desde el 27 de septiembre era real y estaba
+bien medida: en modo local el worklet solo canalizaba GlobalParams (matriz, LFOs, FX) y el morph.
+Los ocho tramos de envolvente —`envAttack/Decay/Sustain/Release` y `filterAttack/Decay/Sustain/
+Release`— son **VoiceParams**, no GlobalParams, y VoiceParams no tenian ningun camino al motor en
+el navegador: se movian en la pagina, la ENV 1 y la ENV 2 sonaban con los defaults de C++
+(sustain 0.7/0.7) y la aguja del navegador no podia distinguir una de otra. Que el *plugin* suene
+bien no lo tapaba: ahi los escribe el APVTS.
+
+**POR QUE UN CANAL NUEVO Y NO UN CAMPO MAS EN GlobalParams.** El `AdditiveVoice::Params` (motor
+NEURONiK) y el `NeurotikVoice::Params` (motor Neurotik) son structs DISTINTOS entre si —el
+neurotik no tiene envolvente de filtro, sus `getFilterEnvelopeLevel()` son 0 fijo—, asi que
+cruzar "el struct de voz" por el puente ataria el ABI a uno de los dos motores. Lo que cruza es un
+POD neutro de ocho floats (`VoiceEnvelopeWire`, el primer campo = attack de AMP, el cuarto = release
+de AMP, el quinto = attack de filtro) con tres exports, exactamente el mismo patron que
+GlobalParams: `neuronikVoiceEnvelopeSize` (32 bytes), `neuronikVoiceEnvelopeLayout` (los ocho
+offsetof, y con `out==0` el numero de campos) y `neuronikSetVoiceEnvelope(pod, size)`. El POD
+carry el layout del *contrato* de la pagina, no el de un struct, y por eso no se mueve cuando uno
+de los dos motores crece.
+
+**EL TRAMPA QUE HACE FALTA NOMBRAR, y que esta escrito en el codigo**: el camino NO puede ser
+`setVoiceParams`, que reemplaza el struct ENTERO. Como el worklet no tiene APVTS, el unico
+constructor de `AdditiveVoice::Params` que hay del lado JS es ese, y llamarlo en cada tecla habria
+borrado el `morphX/Y/Z` y los volumenes de las capas 1 y 2 que la pagina ya habia cruzado por
+`neuronikSetVoiceMorph`/`SetVoiceLayerMorph`. Por eso el read-modify-write se hace en el MOTOR:
+`BaseEngine::setVoiceEnvelope` (los ocho tramos, en ms, con los sustains en 0..1) es virtual y
+nadie en la base lo publica, NeuronikEngine lo implementa tocando los ocho campos de
+`pendingVoiceParams` y NeurotikEngine solo los cuatro de la ENV de AMP. Los otros cuatro no tienen
+destino ahi —y no hacen falta: el worklet los conserva en su espejo y los reenvia cuando se vuelve
+a NEURONiK—.
+
+**UNIDADES**: el layout del puente esta en MILISEGUNDOS (las de `AdditiveVoice::Params`) y el
+contrato da SEGUNDOS, que es lo que ve el APVTS del plugin. El factor 1000 lo aplica la pagina
+(`voiceFieldToReal` en `wasm/audioParams.js`), igual que el `* 1000.0f` de
+`synchronizeEngineParameters`. Sin el, el attack llegaria como 10 microsegundos. El clapeo de
+tiempos y sustains lo hace `Envelope::setParameters` (>= 0.1 ms, 0..1), igual que en nativo; la
+frontera solo rechaza el snapshot entero si trae un no-finitos (un NaNTravels por
+structuredClone), y descartarlo entero no pierde nada porque la pagina manda siempre los ocho.
+
+**EL TRABAJO EN EL WORKLET**: espejo `veMirror` (ocho floats) + `vePtr` en el heap, escrito por
+indice de layout; `veDirty` marca que la pagina ya hablo. El espejo **no** se manda al arrancar a
+propósito (el motor nace con los defaults de su struct y un push de ceros los congelaria en
+silencio), y `veDirty` es lo que hace legitimo re-aplicarlo entero tras `neuronik:engine`, que
+reconstruye el motor: los modelos y el morph ya se re-aplicaban por esa misma razon, el ADSR se
+suma a la lista. El payload de la pagina es por eso un snapshot COMPLETO
+(`voiceFieldsFromState` no salta ids ausentes: caen al default de su descriptor), no un delta
+como el de GlobalParams.
+
+**LA PRUEBA QUE NO SE PODIA ESCRIBIR, escrita.** La pagina de la aguja tiene un boton nuevo que
+empuja sustains 0.8 (amp) y 0.2 (filtro) por el mismo `pushVoiceToWorklet` que llama `app.js` en
+cada sync, y el spec exige ahora que las needles MIDAN esos valores: amp > 0.6, filtro < 0.4 y
+separacion > 0.3. Sin el canal, el poll no sale nunca (las cuatro se quedan en el 0.7 de C++), y
+comprobado esta: muteando el worklet para que no llame a `_neuronikSetVoiceEnvelope` el test cae
+rojo y el otro sigue verde. La asercion tiene un detalle que costó un fallo rojo propio: hay que
+esperar al **sustain**, no al primer frame visible —el primer frame visible es el pico del attack,
+donde las dos needles valen ~1.0 y no distinguen nada—; por eso el predicado del poll es
+`settled` y no `allVisible`.
+
+Verificado: `build_wasm.bat` completo en verde (paridad nativo<->WASM muestra a muestra, smoke,
+sync a `public/worklet` y guard de hashes contra `dist`), `workletSyncTest` sin drift con
+`WebUI/dist` reconstruido, vitest **407/407** (6 nuevos: el layout del POD, las unidades en ms, el
+snapshot completo, el canal por el que sale y la llamada desde `app.js` —esta ultima con regex y no
+con `toContain`, que una linea comentada con la misma llamada haria pasar), E2E **22/22** con
+`needleProbe` 2/2, ctest 42/43 (el unico rojo es `NEURONiK_WebUiLocalModeE2e`, el flake conocido del
+reloj de `AudioContext`, que pasa al re-run y en la corrida completa) y medicion directa desde node
+del canal entero: empujar 0.8/0.2 deja las needles del navegador clavadas en 0.80 y 0.20.
+
+> La entrada del 27 de septiembre que documente la limitacion queda marcada CADUCADA donde estaba.
+
+## 2026-09-28 — las agujas SOSTENIDAS tienen foto de referencia: el unico bloque visual con audio
+
+La regresion visual del lienzo (`e2e/visual.spec.js`, una foto por ficha) se hizo
+con una regla explicita: **sin audio, con estado de fabrica** — con el motor arrancado
+el medidor, el anillo y el LCD se mueven con el reloj del `AudioContext` y la foto
+seria distinta cada vez. La aguja seguia sin fotografia: `needleProbe.spec.js` afirma
+que las cuatro se VEN, pintan nivel y son gemelas, y (desde el canal `neuronik:voice`
+de la entrada anterior) que miden 0.8 y 0.2, pero nada fijaba que se **pinten en su
+sitio**: un `PAD` que se cayera, una escala mal repartida o una curva que se moviera
+un pixel salen verdes en las aserciones de numero.
+
+**EL BLOQUE NUEVO** (`NEURONiK Visual Regression - las agujas (needle-probe)`, al final
+de `visual.spec.js`, y por tanto dentro de `pnpm test:visual` y del ctest
+`NEURONiK_WebUiVisualRegression` sin tocar CMakeLists) rompe la regla de "sin audio", y
+lo que lo hace determinista son cuatro cosas, todas medidas:
+
+- **Se captura ASENTADO, no en vuelo.** El poll espera a que las cuatro agujas esten en
+  su sustain con margen 0.03 (0.8 la de amp, 0.2 la de filtro). El primer frame
+  visible es el pico del attack, donde las dos valen ~1.0: la version con un
+  `waitForTimeout` fijo regenero la referencia con 0.81/0.24 y fallo en rojo. Ahora son
+  dos **muestras consecutivas iguales** a dos decimales, con `expect.poll`.
+- **El `d` redondea.** `envelopeNeedlePath` escribe la Y con `toFixed(2)`, asi que en el
+  sustain los ultimos bits del float no llegan al pixel.
+- **Dos elementos, no la pagina.** Se fotografian `.env-curves` y `.env-blocks`: el texto
+  del estado lleva los Hz del dispositivo de audio (44100 en un portatil, 48000 en la
+  bancada) y haria la referencia dependiente de la maquina.
+- **`maxDiffPixels: 0`**, mas estricto que el 20 de la config. Medido: dos corridas
+  seguidas con el motor de verdad sonando dan 0 pixeles de diferencia.
+
+Y el boton "ADSR" de needle-probe ahora **repinta las dos vistas con el mismo estado que
+empuja al motor** (antes solo lo empujaba), para que la aguja caiga en la altura del
+sustain de SU propia curva y la foto signifique algo: si la escala de la aguja o el alto
+de la curva se mueven, la referencia se aparta aunque el motor siga perfecto.
+
+**CAZA, y se comprobo dos veces**: `PAD` de 2 a 6 en `envelopeCurve.js` → 1535 pixeles
+distintos; y quitar el repintado del boton (las curvas se quedan en el contrato por
+defecto) → 1162 pixeles distintos. El primer intento de mutacion no cazo nada y la
+leccion es la de siempre: el `str_replace` no habia aplicado porque la linea era
+`const PAD = 2;`, sin `export` — un test que pasa sin haber mutado nada no prueba nada.
+
+**DE PASO, un guard triplicado**: `ensureAudioClock` estaba copiado en `localMode.spec.js`
+y `needleProbe.spec.js` (y el tercero lo necesitaba el bloque nuevo). Vive ahora en
+`e2e/support/audioClock.js` —fuera del `testMatch` de Playwright, asi que no se cuela
+como spec— y lo importan los tres. La razon del guard (con `--mute-audio` el
+`AudioContext` dice 'running' pero su reloj no avanza: el grafo no se tira, el worklet no
+procesa y la pagina miente) queda escrita ahi, no repetida tres veces.
+
+Verificado: visual **12/12** (los 11 de antes intactos + el nuevo), E2E completo **23/23**,
+ctest `NEURONiK_WebUiVisualRegression` en verde por su cuenta, vitest 407/407. Las dos
+referencias nuevas viven en `e2e/snapshots/` con el nombre que compone el
+`snapshotPathTemplate` (`{testName}-{arg}`), versionadas con el resto.
+
+## 2026-09-28 — needle-probe entra en ctest como tercer E2E de Playwright, con sus dos puertos
+
+La pagina de la aguja (`WebUI/needle-probe/`) tenia spec (`e2e/needleProbe.spec.js`) y se
+corría a mano, pero **no era un test de ctest**: los otros dos si lo eran
+(`NEURONiK_WebUiLocalModeE2e` y `NEURONiK_WebUiVisualRegression`). Una suite que solo
+existe en local se acaba creyendo verde por costumbre, que es justo lo que el arnés del
+plugin evita con tanto cuidado.
+
+**LA ENTRADA** (`NEURONiK_WebUiNeedleProbeE2e`, `CMakeLists.txt`) copia el patron de las
+otras dos al pie de la letra: mismo ejecutable de node, mismo `cli.js` de Playwright,
+`WORKING_DIRECTORY` en `WebUI/`, `TIMEOUT 600`, el mismo `RESOURCE_LOCK
+"neuronik_webui_dist"` y el `else()` que avisa por status si Playwright no esta instalado
+(cuenta: 44 -> 45 tests).
+
+**LOS PUERTOS, Y AQUI ESTA EL TRABAJO DE VERDAD.** Este test es el primero que necesita
+**los dos** servidores del `webServer` de `playwright.config.js`: el preview de `dist`
+(que su webServer construye antes de servir) y el dev de `needle-probe` (la pagina no
+entra en `dist`, es de prueba y necesita los fuentes sueltos). Y el del dev estaba
+escrito a pelo, en dos sitios —el `command`/`url` de la config y la URL de cada spec—,
+cosa que hacia imposible que dos tests que usen la pagina coexistieran. Ahora:
+
+- `PROBE_PORT = NEURONIK_E2E_PROBE_PORT ?? 5237` en la config, con el comentario que
+  explica que es el mismo motivo que `E2E_PORT` (con `--strictPort`, dos servidores en el
+  mismo se comen un EADDRINUSE y el fallo aparece a los 13 s hablando de puertos);
+- `WebUI/e2e/support/probePage.js` con la URL, que ahora la leen los DOS specs que la
+  usan (`needleProbe` y el bloque de agujas de `visual`) —un solo sitio, y
+  `NEEDLE_PROBE_URL` sigue mandando sobre las dos por si hay un servidor levantado a mano.
+
+Asi el test nuevo lleva `NEURONIK_E2E_PORT=5240;NEURONIK_E2E_PROBE_PORT=5241` y no
+comparte ningun puerto con los otros dos. El candado de `dist` se conserva igual, y con
+motivo: aunque los puertos ya no se pisan, el webServer de `dist` lanza `npm run build`
+sobre el MISMO directorio de salida, y dos `vite build` a la vez se pisan (medido, no
+supuesto).
+
+**LO QUE HAY QUE SABER SI ALGO FALLA**: el primer `ctest -R` de este test dio `Timed out
+waiting 120000ms from config.webServer` —los servidores de Playwright de la corrida E2E
+anterior seguian levantados y la maquina iba cargada—. Repetido en limpio: 32 s, verde.
+No era el cableado; si vuelve a salir, mirar primero si hay un `vite`/`vite preview`
+vivo de otra corrida (`netstat` en 5236-5241) antes que la configuracion.
+
+Verificado: el test nuevo en verde solo (32 s) y en la suite completa `ctest -j6` con los
+tres E2E de Playwright corriendo en paralelo (45 needles 41.9 s, 43 localMode 57.4 s, 44
+visual 39.2 s). Con `-E "ModulationMatrixTest|ReferencedFiles"`, 43/43 en verde.
+
+> Aviso de la casa, ajeno a este trabajo: en `ctest -j6` completo fallan
+> `NEURONiK_ModulationMatrixTest` (Not Run: su exe no esta construido) y
+> `NEURONiK_ReferencedFiles` (`Tests/ModulationMatrixTest.cpp — SIN VERSIONAR`). Ese
+> fichero y `builddeep_tmp.bat` son **nuevos y sin versionar, de otra sesion** (aparecieron
+> a mitad de esta, con su bloque en `CMakeLists.txt` ya dentro). No se ha tocado nada de eso:
+> no es mio y versionarlo seria decidir por otro hilo. Lo que hace falta es un `git add`
+> de `Tests/ModulationMatrixTest.cpp` y un build del target.
+
+## 2026-09-28 — la pista de teclado de las esquinas, en el tooltip Y con UNA sola fuente
+
+El clic en una esquina A–D abre el cajón de MODELOS en esa ranura, y con foco tambien
+responden `Enter` y `Space` (el `keydown` delegado de `ui/xyPad.js`). Ese teclado estaba
+documentado en **un solo sitio**: el item "Esquinas A-D" del `<details>` "Gestos del pad
+XY" del cajón — o sea, solo se leia donde no hace falta. El `title` de la esquina, que es
+lo que aparece justo encima del elemento cuando el usuario ya lo está mirando, no lo
+decia.
+
+**El texto, una vez.** `CORNER_KEYBOARD_HINT = 'Enter/Space'` exportada por
+`ui/xyPad.js` (el modulo que despacha el clic y el `keydown`: el gesto es suyo, la
+ayuda solo lo documenta) e interpolada en los dos titles de `paintCorners` —el de la
+ranura cargada y el de la divergente, que si no documentarian gestos distintos— y en el
+item de la ayuda de `ui/visuals.js`, que ahora la importa. Se corrigieron de paso los
+DOS comentarios de `xyPad.js` que ya decian "Enter/Space con foco" en prosa: repetian
+la palabra, y un cambio de teclas los dejaria mintiendo, asi que ahora dicen
+"las teclas de CORNER_KEYBOARD_HINT".
+
+**Y el test que hace cumplir la fuente unica** (`xyPad.test.js`), que es la parte que
+hace que esto no se deshaga en un mes:
+
+- las dos variantes del `title` contienen la constante importada (comparar contra la
+  constante, no contra la cadena, para que un cambio de la constante no rompa el test
+  sin querer), y el item de la ayuda tambien;
+- la palabra aparece **exactamente una vez** en los dos modulos, y la cadena esta
+  **fijada en el test** en vez de derivarse de la constante: asi un renombrado de las
+  teclas sale rojo y obliga a revisar los dos textos a proposito;
+- los dos titles interpolan la constante y el item de la ayuda tambien (conteo de
+  usos: 2 y 1).
+
+Comprobado que muerde, por los dos lados: quitar la pista del tooltip pone 2 tests en
+rojo, y hacer que la ayuda escriba "(Enter/Space con foco)" a mano en vez de
+interpolar la constante tumba el de la fuente unica con el mensaje "'Enter/Space'
+aparece 2 veces; debe aparecer 1". Los dos experimentos revertidos, 0 rastros.
+
+Verificado: vitest **408/408**, E2E 22/23 (el rojo es `needleProbe` por el reloj de
+`AudioContext` en la corrida completa cargada —5.8 min—: al re-run y en solitario 2/2),
+selftest del Standalone `RESULT: OK` exit 0 (las esquinas se pintan tambien en el
+WebView2 del plugin; el arnés solo mira los `title` de las rutas de la matriz, no los
+de las esquinas). `dist` reconstruido.
+
+## 2026-09-28 — revision de gestos no obvios: la ayuda GLOBAL de gestos, y lo que NO hacia falta
+
+Encargo: revisar si otras fichas con gestos no obvios (franja GLOBAL, chips vivos, filas del
+resumen) necesitan ayuda contextual o tooltip. Se hizo con un volcado del DOM REAL montado
+(vitest + jsdom, el mismo arnes que `panel.test.js`) de los 29 knobs, 12 `title`, todos los
+`role`/`tabindex`/`aria-*`, y despues contra el codigo de cada gesto. Resultado: **una sola
+ficha tenia el hueco, y no era ninguna de las tres citadas**.
+
+**LO QUE NO NECESITA NADA (y dos falsos positivos que el volcado produjo).**
+
+- *Franja GLOBAL*: el DOM la muestra como `role=button` + `tabindex=0`, la forma exacta de
+  un boton de teclado que no hace nada. El codigo dice lo contrario: tiene su `keydown` con
+  `Enter`/`Space` (`ui/panel.js`). Sin hueco. Solo la redaccion es pasiva: el `title` dice
+  "Tempo, MIDI y aleatorio se editan en el cajon" sin el verbo de accion, mientras las filas
+  del resumen ("RUTA 1: abrir en la MATRIZ...") y las esquinas ("Abrir MODELOS...") si lo
+  llevan — y su `aria-label` ("GLOBAL & MASTER: abrir el cajon") si lo lleva. O sea, el
+  problema es del texto de raton, no del arbol de accesibilidad.
+- *Segmentado del motor*: el volcado dio `aria-label=null` y parecio un `radiogroup` sin
+  nombre. Falso positivo: el compartido lo nombra con `aria-labelledby` (`ui/controls.js` le
+  pasa `id`). Leccion: el volcado tenia que imprimir tambien ese atributo.
+- *Chips vivos* (`.card__badge`) y *filas del resumen* (`button.mod-summary__row`,
+  `button.env-route`): llevan recuento y destino en `title` y `aria-label`, son `<button>`
+  (teclado gratis) y tienen `cursor:pointer` + hover. Sin hueco.
+
+**EL HUECO REAL: los 29 botones redondos.** El componente compartido les da CUATRO gestos y
+ninguno se le contaba a nadie: arrastrar, `Shift` = 0.2x (1/5), rueda = 1/20 de la pista,
+flechas = ±0.01, y doble clic. Es la inversion de lo razonable: los controles MAS numerosos
+sin documentacion, los dos mas RAROS (pad y aro) con su pista en el `title` y su lista en el
+cajon de MODELOS — que es justo donde nadie busca una ayuda general.
+
+**LO NUEVO** (`WebUI/src/ui/gestureHelp.js`, montado en la cabecera, plegado): una sola
+ayuda de gestos de la pagina, con la lista como fuente unica del texto. Magnitudes medidas
+contra el componente, no de memoria, y hay dos que habria sido un error escribir de memoria:
+
+- el teclado del knob son **solo las cuatro flechas** a paso 0.01. Ni RePag ni Inicio/Fin:
+  esos son del ARO, que tiene otro manejador. Ponerlos aqui habria sido mentira;
+- el **doble clic va al MINIMO del rango**, no al valor por defecto: `knob.js` hace
+  `clamp01(options.value ?? 0)` y la WebUI construye el knob con `value: 0`
+  (`ui/controls.js`), y `setValue` no toca `options.value`. O sea, en cualquier parametro se
+  va al extremo (silencio en gain, 20 Hz en cutoff). El texto dice lo que hace —la unica cosa
+  honesta— y **el defecto es del paquete compartido** (`@abdsynths/shared`, otro repo): no se
+  puede arreglar desde aqui. Decision pendiente del dueno: arreglar el knob compartido (que
+  el dblclick vaya al default del contrato, o quitarlo) o dejar el gesto como esta.
+
+Lo que NO se repite en la ayuda: el pad y el aro ya llevan su gesto en el `title` y su lista
+completa esta en el cajon, asi que aqui solo se remite; y la pista de teclado de las esquinas
+se **importa** de `xyPad.js` (`CORNER_KEYBOARD_HINT`), para que la palabra no tenga dos
+versiones — la regla de la entrada anterior, ahora en un tercer consumidor.
+
+**LO QUE CUESTO EN GEOMETRIA, y por que hay un E2E midiendo.** La cabecera tiene ALTO FIJO,
+asi que la lista es un popover (`position: absolute`) y no una fila mas. Se cayo dos veces
+antes de fijarlo, y las dos las cazó medir en Chromium en vez de mirar codigo:
+
+1. el quinto hijo de la rejilla (`auto 1fr`) cae en una **fila implicita nueva**: medido, el
+   resumen quedo en y=44..52 con la cabecera en 0..35, o sea fuera de su banda y encima de la
+   fila del LCD;
+2. al meterlo en la fila 3 (la de la linea de contrato, que ocupa todo el ancho con
+   `justify-self: end` y su mitad izquierda vacia) la linea de contrato **bajaba 10 px**.
+
+La solucion es compartir CELDA: los dos con `grid-area: 3 / 1 / 4 / -1`, la ayuda a la
+izquierda (`justify-self: start`) y el contrato a la derecha. Medido despues: ayuda
+y=33..41 x=100..121, contrato y=33..41 x=1017..1180 — la linea de contrato vuelve
+exactamente donde estaba. Y el popover: con `right: 0` se salia por la izquierda
+(x=-143 con 265 px de ancho), asi que va anclado con `left: 0` (medido: x=100).
+
+Ojo con la asercion de referencia: la caja CSS de la cabecera (30 px) se queda CORTA con esa
+fila **ya antes de este cambio** (la linea de contrato tambien la desborda), asi que el test
+compara contra la linea de contrato y no contra la caja. Un primer intento de test que
+comparaba contra la caja daba rojo con la ayuda ya correcta.
+
+Comprobado que muerde: sin montar la ayuda en la cabecera, el test de `panel.test.js` cae
+rojo. El E2E `localMode.spec.js` mide banda, no-solape, contenido y legibilidad del popover.
+
+Verificado: vitest **412/412** (4 nuevos: 3 de la ayuda + 1 en `panel.test.js` que ata la
+ayuda a la cabecera y protege el invariante del host — el primer `input[type=range]` sigue
+siendo masterLevel y la ayuda no mete ningun input delante), E2E 23/24 (el rojo es
+`needleProbe` por el reloj de `AudioContext` en la corrida cargada; al re-run y en solitario
+2/2), referencias visuales regeneradas (solo cambian las 2 de pagina entera: las 9 por ficha
+no se movieron, lo que confirma que la ayuda no empujo ninguna banda) y selftest del
+Standalone `RESULT: OK` exit 0 (la cabecera tambien existe en el WebView2 del plugin).
+
+## El master volume es un Knob y GLOBAL & MASTER sube a la banda del motor (2026-09-28)
+
+Dos cambios de una vez, porque el segundo se ve en el primero.
+
+**1. El control base deja de ser un fader y pasa a ser un `Knob` del paquete
+compartido**, dentro de la ficha GLOBAL & MASTER. El `Knob` es un
+`div[role="slider"]` **sin `<input>` dentro**: expone `setValue()`, `getValue()`,
+`setModulation()`, `destroy()` y escribe `aria-valuenow` / `aria-valuetext`, pero
+no tiene `.value` ni setter de `HTMLInputElement`.
+
+Eso obliga a mover el **ancla del arnés del selftest**. Era
+`SelftestPage::firstRange = "input[type=range]"`, y funcionaba por un accidental: el
+fader era el primer range del documento y las ruedas del teclado venían detrás. Con
+un knob, ese selector pasa a apuntar a la **rueda de modulación** — y devolvería
+`0` en un test que crees que está midiendo el master, que es la peor forma de
+romper un contrato. Ahora el ancla es **explícito**:
+
+- `SelftestPage::baselineControl = "[data-baseline-control]"`, escrito en la celda
+  (no en el dial: la celda es lo que sobrevive a un repintado del knob), y
+- la celda expone además un **puente** `baselineControl.{value, setFromSnapshot}`
+  — el equivalente honesto de lo que antes eran `.value` del input y su setter.
+  `setFromSnapshot` es el camino de `paint` (no empuja al store: si lo hiciera,
+  NATIVO→JS seguido de un edit real haría un bucle) y `value = x` el del arnés o el
+  de un gesto (`commit`: empuja al store y cierra el gesto, como un dedo).
+
+**2. GLOBAL & MASTER sube a la banda del motor, al lado del LFO.** El reparto de
+`SECTIONS` pasa a `oscillator, lfo, globalFull | resonator, filter, modMatrix |
+envelopes, models, fx`. Las tres bandas siguen sumando 12 lanes: 6+2+4, 2+2+8 y
+5+2+5. Antes GLOBAL cerraba la banda de abajo con la matriz.
+
+### El fallo que la mudanza destapo (y por que NO se arregla en el mueble compartido)
+
+Cada cajón de `createDrawer` (ABDSharedAssets/components/drawer.js →
+overlayFocus.js) engancha **un listener de `keydown` en `document` por instancia**,
+y el destino del salto de ruta lo es. Con el retorno de ruta vivo, "cerrar la
+MATRIZ vuelve a ENVOLVENTES" **se comía a sí mismo**: la misma pulsación de ESC
+recorría los dos listeners, la matriz se cerraba, su `onClose` reabría
+ENVOLVENTES al instante, y el listener de ENVOLVENTES —que ya lo encontraba
+abierto— lo volvía a cerrar **dentro del mismo evento**.
+
+No se nota desde hace años porque el orden de montaje decidía quién corría
+primero, y al mover GLOBAL en SECTIONS cambió: la MATRIZ pasó a montarse antes que
+ENVOLVENTES y su listener, antes inocuo, pasó a ir el segundo.
+
+**Se probó y se descartó** `queueMicrotask(() => back.open())`: por fin la
+reapertura es correcta, pero entra tarde y rompe 5 tests (2 → 5). El
+`drawer.js` / `overlayFocus.js` es **otro repositorio** (ABDSharedAssets), no
+editable desde aquí.
+
+**Lo que sí funciona** es resolver el ESC en el propio panel, en **fase de
+captura** (`handleEscapeRouteReturn` en `WebUI/src/ui/panel.js`): antes que
+cualquier listener de burbuja, y solo cuando hay un `routeReturn` vivo, el panel
+cierra el destino y hace `stopImmediatePropagation()`. El `onClose` de la matriz
+hace su trabajo normal (resalte, consumo único, reapertura del origen) y ya no
+existe ningún oyente posterior que pueda cerrar lo que acaba de abrir. Sin retorno
+vivo no hace nada: cada cajón conserva su ESC.
+
+### El segundo fallo, encontrado mirando la página y no los tests
+
+Con el knob montado, un **gesto de verdad sobre el dial** dejaba el puente del
+arnés desfasado: el store iba a 0.55, el dial marcaba 0.55 y
+`baselineControl.value` seguía en **0.4**, el último pintado. El arnés habría
+leído un valor que la página ya no muestra. La causa: el `onChange` del knob
+empujaba al store pero no pasaba por `applyValue` (la única función que actualiza
+memoria, dial y readout). Los tests unitarios no lo cazaban porque en jsdom nadie
+arrastra un dial, así que la regresión vive en el **smoke E2E**
+(`e2e/localMode.spec.js`): arrastre real de ratón, y se comparan las tres lecturas
+—dial, readout y puente— más el `neuronik:params` que cruzó la frontera.
+
+### Un pin que llevaba años midiendo lo que no era
+
+`NEURONiK_WebUiSelftestContract` falló al quitar el comentario de `buildBaselineControl`:
+`parameterCellAttribute` pineaba `data-parameter-id` en `panel.js`, y lo único
+que había encontrado ahí era **un comentario** — el atributo lo escribe
+`dataset.parameterId`. El check llevaba tiempo en verde sin demostrar que la
+página escribiera el atributo. Ahora `pageForm` declara la forma real, con el
+motivo escrito al lado.
+
+### Verificado
+
+- vitest **421/421** (26 ficheros).
+- E2E `localMode.spec.js` **11/11** (uno nuevo: el del knob y su puente).
+- Referencias visuales regeneradas y **12/12** en segunda pasada: cambian la de
+  `globalFull`, `lfo` y `modMatrix` (las bandas se reordenaron) y las dos de
+  página entera.
+- `NEURONiK_WebUiSelftestContract` y `NEURONiK_NativePanelParity`: OK.
+- Plugin `NEURONiK` compila (los avisos C4100 de `BridgeSelftest.h` son previos).
+- En Chromium de verdad: GLOBAL & MASTER a la derecha del LFO y en la misma
+  banda (y=123 las dos), knob de 46×46 con `aria-valuenow`/`aria-valuetext`,
+  **cero** `<input>` dentro del ancla, solo quedan 2 `input[type=range]` en el
+  documento (las dos ruedas), y el ESC del retorno de ruta reabre ENVOLVENTES.
+
+**Controles negativos** (mutar el código y ver que algo cae, no suponerlo):
+
+| Mutación | Lo que cae |
+|---|---|
+| quitar `stopImmediatePropagation()` de la guarda ESC | los 2 tests del retorno de ruta (`panel.test.js`) |
+| quitar `data-baseline-control` | 6 tests (5 de `panel.test.js` + el de `keyboard.test.js`) |
+| `dataset.parameterId` → `dataset.parameterID` | `NEURONiK_WebUiSelftestContract` |
+| el `onChange` del knob sin `applyValue` | el smoke E2E del master |
+
+Fallos ajenos a este trabajo, sin tocar: `NEURONiK_ReferencedFiles` falla por
+`Tests/FxSlotsTest.cpp` **sin versionar** (otra sesión), y `NEURONiK_ModulationContractTest`
+sigue "Not Run" porque su exe solo existe en Debug.
+
+> Canon: el ancla del control base del arnés es `[data-baseline-control]`, **no**
+> "el primer `input[type=range]`" — ese selector significaba "el master" solo por
+> el orden de montaje, y con el knob (sin `<input>`) significaba "la rueda de
+> modulación". Los anclajes del contrato se nombran, no se deduplican por
+> posición.
+
+## Preparacion para el rack de efectos: que hay, que falta y por que (2026-09-29)
+
+Trabajo de reconocimiento mas la FUNDACION (que ya esta, verificada y en verde).
+El resto queda escrito aqui para no perderlo.
+
+### Que se ha encontrado
+
+El sistema de efectos nuevo son TRES capas, y conviene no confundirlas:
+
+| Capa | Donde | Que es |
+|---|---|---|
+| Vocabulario | `ABDSharedAssets/contracts/fx-effects.json` | 57 ids (0 bypass, 1..56) con nombre, `family`, `engine`, `params`. `generatedFrom`: `ABDEep/Source/DSP/FX/FXSlot_Factory.cpp` |
+| Aspecto | `components/fxTheme.js` + `styles/components/fx.css` | 11 temas por FAMILIA (no 57 por efecto) y el chasis `.fx-module[data-fx-theme=...]` con cinco tokens |
+| Piezas | `effectLEDButton.js`, `tapeEchoVisual.js` | Boton LED de efecto y visual de eco |
+
+ABDEep lo monta con cuatro slots, cada uno con un selector de tipo
+(`.fx-type-select[data-slot=N]`), `fx{N}_gain` y `fx{N}_param1..12` en el APVTS, y
+un area que repinta los mandos del efecto elegido leyendo los nombres del
+contrato.
+
+### El motor YA esta en NEURONiK. Lo que falta es la pagina.
+
+`Source/DSP/FxSlots.h` usa `FxEngine` + `fxDefaultCatalogue()` con 4 slots en
+serie (`kFxNumSlots = 4`). El oyente es la ficha EFECTOS: 12 mandos planos
+(`fxSaturation`, `fxDelay*`, `fxChorus*`, `fxReverb*`) sobre una rejilla 6x2. Es
+la unica parte del tema que va atrasada.
+
+### Los dos datos que mandan sobre el diseno
+
+**1. La columna `params` del contrato compartido NO es trasladable.** Cuenta los
+mandos que acepta la implementacion de ABDEep, que no es la de este motor:
+
+| Efecto | params del contrato | params de NUESTRO motor |
+|---|---|---|
+| coro | 11 | 2 |
+| delay | 12 | 2 |
+| reverberacion | 12 | 4 |
+| saturacion | 12 | 1 |
+| schroeder | 5 | 4 |
+| BBD | 4 | 4 |
+
+Asi que la pagina **no puede tomar el numero de mandos del JSON**: tiene que
+tomarlo del motor. Por eso la fundacion de abajo exporta el catalogo en vez de
+copiar el contrato. Es el mismo descuido que el contrato ya documenta dos veces
+sobre los NOMBRES, aplicado ahora a los mandos.
+
+**2. Solo TRES de los seis motores tienen fila en el contrato compartido.** Los
+otros 48 de ABDEep son codigo JUCE y no pueden entrar en `DspEffects` sin que el
+modulo deje de ser JUCE-free, que es lo que sostiene la paridad nativa <-> WASM
+de este producto. Mapa:
+
+| Motor | id | Nombre en el contrato | Familia | Estado |
+|---|---|---|---|---|
+| chorus | 10 | Stereo Chorus | chorus | alineado |
+| delay | 13 | Delay | delay | alineado |
+| bbd | 36 | BBD Chorus | chorus | alineado |
+| reverb (FreeVerb) | 1 | Hall | reverb | **reserva** |
+| saturation | 50 | Oversampled Dist | distortion | **reserva** |
+| schroeder | 22 | Deep Verb | reverb | **reserva** |
+
+Una reserva NO es una equivalencia: el id esta ocupado por una reserva declarada
+en `Source/DSP/FxCatalogue.h` y no por una fila del contrato. Por eso el flag
+`aligned` viaja a la pagina.
+
+### Lo que YA esta hecho y verificado
+
+La fundacion, que es lo que hace barato todo lo demas:
+
+- **`Source/DSP/FxCatalogue.h`** — la tabla que une el motor con el vocabulario
+  compartido. Un solo sitio para tocar cuando entren motores nuevos.
+- **`Source/DSP/FxCatalogExport.h/.cpp` + `Tests/FxCatalogExportTool.cpp`** — el
+  generador `NEURONiK_FxExport`, que escribe
+  `WebUI/generated/fx-catalog.generated.{json,js}`. Mismo patron que
+  `NEURONiK_ParameterExport` y en el mismo paso de `build.bat`.
+- **`Tests/FxCatalogueTest.cpp`** — fija el emparejamiento motor a motor. No
+  compara la tabla entera contra si misma porque las dos tablas se unen por
+  indice: una permutacion pasaria cualquier comparacion de recuento y dejaria un
+  modulo con el tema de un efecto y los knobs de otro.
+- **`Tests/fxCatalogContractTest.mjs`** — la paridad entre repositorios, que es lo
+  que ningun test de un solo repositorio puede ver. Para las filas alineadas
+  exige que id, nombre y familia coincidan con `fx-effects.json`; para las
+  reservas exige que el id este ocupado de verdad PERO que se diga otra cosa. Sin
+  el contrato a mano se salta con el motivo, nunca en verde.
+
+El bus sale del catalogo, no del modulo: **4 mandos por hueco**, no los
+`kFxMaxParams` (12) que son el maximo que el motor ACEPTA. Un bus de 12 para un
+catalogo que como mucho pide 4 serian ocho parametros muertos por hueco en cada
+preset y en el contrato de la pagina.
+
+**Verificado**: `NEURONiK_FxCatalogueTest` y `NEURONiK_FxSlotsTest` en verde,
+`NEURONiK_FxCatalogContract` en verde, plugin compila, vitest 421/421 sin cambios.
+**Controles negativos**: permutar las dos primeras filas de identidades -> el
+test C++ cae con 4 fallos; renumerar el id 10 como si lo hubiera cambiado ABDEep ->
+la paridad cae con 2.
+
+### Lo que falta, en orden
+
+1. **El bus en el APVTS.** Por hueco: 1 tipo + 1 ganancia + 1 mezcla + 4 mandos.
+   Son 6 x 4 = 24 en vez de los 12 de hoy, y el contrato pasaria de 73 a 85.
+   `setType` CREA y DESTRUYE, asi que el tipo se cambia en el hilo de mensajes
+   (`FxSlots.h` lo dice ya: "cuando el panel deje elegir el efecto de cada hueco,
+   ese `setType` vivira en el hilo de mensajes"). Hoy los tipos se fijan en
+   `prepare` y no se vuelven a tocar.
+2. **La migracion de presets**, que es donde estan los dos que no salen solos:
+   - `fxReverbMix` NO es el `mix` del hueco (el `mix` se queda en 0.5 y la mezcla
+     va en el `levels` de la fila), asi que no hay correspondencia directa;
+   - `fxDelaySync` y `fxDelayDivision` no son mandos del motor de retardo, que
+     solo tiene `time` y `feedback`: o se pierden o el motor crece.
+   Decidir cual de las dos cosas es lo que hay que escribir.
+3. **La ficha de la pagina**: un cajon (al estilo ENVOLVENTES) con un modulo por
+   hueco, `.fx-module[data-fx-theme=...]` con la familia que da el catalogo, el
+   selector de tipo y los mandos del efecto elegido. Los `FxParamSpec.name` del
+   motor son tecnicos en minuscula (`rate`, `depth`, `wear`): o se pone una tabla
+   de etiquetas, o se pinta en versalitas. Decision de producto, no tecnica.
+4. **Lo que hay que pedir al otro repositorio**: tres filas en
+   `fx-effects.json` para la reverberacion de FreeVerb, la saturacion de una banda
+   y el Schroeder. Hasta entonces son reservas, y el paridad test avisa.
+
+> Canon: el `id` de un efecto es un VOCABULARIO COMPARTIDO y el numero de mandos
+> es del PRODUCTO. El contrato compartido fija el primero; el motor fija el
+> segundo. Confundirlos es el descuido que el propio contrato ya documenta dos
+> veces sobre los nombres, y que se repetiria con los mandos si alguien copiara
+> la columna `params`.
+
+> Canon: el ancho del bus de mandos lo decide el catalogo del producto (el mayor
+> que pide), no el maximo que el motor acepta. Son cosas distintas, y confundirlas
+> mete parametros muertos en cada preset.
+
+## El hueco 1 del rack pasa a bus por hueco en el APVTS (2026-09-29)
+
+El primer hueco migrado de los cuatro. El motor, el catalogo y el exportador ya
+estaban (seccion anterior); esto es el APVTS.
+
+### Lo que cambia en el contrato
+
+`fxSaturation` (un mando que hacia DOS cosas) se sustituye por el **bus del
+hueco 1**:
+
+| id | que es | rango |
+|---|---|---|
+| `fx1Type` | el efecto del hueco (choice, del catalogo) | 0 = bypass, 1..6 |
+| `fx1Gain` | salida del hueco | 0..2, def 1.0 |
+| `fx1Mix` | mezcla mojado/seco | 0..1, def 0.0 |
+| `fx1Param1..4` | los mandos del efecto | 0..1 normalizado |
+
+73 - 1 + 7 = **79 parametros**. Los huecos 2, 3 y 4 los manejan TODAVIA los
+mandos planos de antes (`fxChorus*`, `fxDelay*`, `fxReverb*`): la migracion va
+hueco a hueco.
+
+### Las tres decisiones que no eran obvias
+
+**1. Los mandos del bus van NORMALIZADOS 0..1, no en unidades fisicas.** El rango
+depende de que efecto este puesto, y el hueco lo cambia el usuario en caliente;
+un parametro del APVTS tiene un rango fijo para siempre (lo guarda un preset, lo
+automatiza el host). Publicar "Drive 1..8" seria mentir para los otros cinco
+efectos del catalogo. El hueco habla normalizado (`FxSlot::setParameter` toma
+0..1) y el sesgo lo aplica la fila. La pagina, que si sabe que efecto hay, pone
+la etiqueta leyendo el catalogo exportado.
+
+**2. `GlobalParams::saturationAmt` NO se borra, aunque ya no lo lea nadie.** El
+struct tiene un ABI publico: `neuronikGlobalParamsLayout` publica el `offsetof`
+de cada campo y la pagina escribe el espejo por INDICES
+(`WebUI/src/wasm/audioParams.js`, 0..33). Anadir campos al final es seguro; quitar
+o reordenar un campo cambia lo que la pagina escribe sin que ningun aviso lo
+diga. El bus entra por el final (34..57) y el campo muerto se queda en el sitio
+1. Hay un test que lo vigila (`ningun id mapeado pisa el field 1`).
+
+**3. El destino 17 de la matriz no puede ser `&GlobalParams::fx[0].params[0]`,
+porque eso no existe en C++**: un puntero a miembro no puede atravesar un array.
+Por eso la tabla de modulacion gano un `Kind::globalFxAdd` y un campo
+`busParam` en el DESCRIPTOR, codificado como `hueco * kFxBusParams + mando`.
+
+Y un aviso que se lleva puesto: **anadir un campo a `ModRule` rompe la tabla
+entera en silencio.** Se inicializa posicionalmente y con elision de llaves, y el
+compilador rellena cada sub-agregado `ModRule` HASTA LLENARLO antes de pasar al
+siguiente, asi que un miembro nuevo hace que `env` se coma un inicializador mas de
+los que le tocaban. Las cincuenta filas existentes se empiezan a leer como otra cosa.
+Por eso el campo va en el descriptor, que se rellena por orden.
+
+### Lo que cambia de sonido
+
+El mando `fxSaturation` hacia el drive (`1 + 4*amt`) Y la mezcla (`mix = 1` en
+cuanto `amt > 0`, o sea insercion). Ahora son dos mandos. El bypass por `mix = 0`
+se conserva entero y sigue devolviendo la seca bit a bit.
+
+**Y la paridad de sonido con la cadena anterior esta COMPROBADA, no supuesta**:
+`Tests/FxSlotsTest.cpp` pone el bus en el valor que reproduce el mando viejo
+exactamente (el drive normalizado que da un drive fisico de `1 + 4*amt` sobre la
+fila, y el mix a 1) y la banda se queda en **1e-5**, que es la del redondeo del
+viaje normalizado <-> fisico. Un bus que no pudiera reproducir el sonido viejo
+seria una perdida real, y esa es la comprobacion que lo dice. El helper escribe
+ADEMAS `p.saturationAmt`, porque la cadena CONGELADA de ese test (una copia del
+envoltorio viejo) lo lee: poner solo el bus dejaria a la referencia en silencio y
+la comparacion mediria "una de las dos no hace nada".
+
+### En la pagina
+
+La ficha EFECTOS pinta `fx1Mix` y `fx1Param1` en lugar del mando suelto, y su
+rejilla paso de **6 a 7 columnas**: con dos mandos donde habia uno la ficha se
+queda con 13 controles, y en 6 columnas eso son TRES filas — y el lienzo es de
+alto FIJO, asi que una fila de mas no se encoge, se desborda. Con 7 columnas, 13
+controles entran en dos filas y el alto de la ficha no cambia.
+
+Los otros cinco ids del bus **no tienen celda todavia** (son del modulo del hueco,
+que no esta montado) pero **el store los POSEE**, y eso no es lo mismo: un id sin
+dueno lo descarta el store cuando llega del host, asi que sin ellos mover el
+selector de efecto en el host no llegaria a la pagina. `screens.test.js` los
+comprueba por nombre, para que la lista se note cuando se vacie.
+
+### La deuda que queda anotada
+
+`setType` se llama desde `parameterChanged` (hilo de mensajes), que es donde
+puede, pero ese `engine` se puede estar usando en `processBlock` mientras se
+toca. **No es una deuda nueva**: el intercambio de motor entero ya lo hace, y con
+el puntero completo. El `setType` de un hueco es un caso mas. Arreglarlo de verdad
+es un mutex o una suspension de audio que cubra las dos cosas, y es un cambio
+aparte.
+
+Tampoco se ha resuelto el **preset**: un preset guardado con `fxSaturation` ya no
+tiene ese id, y la migracion de presets (que es trabajo de la proxima fase)
+tiene que escribir el bus. Ver la seccion de preparacion del rack.
+
+### Verificado
+
+- ctest 45/49 en verde. Los que no: `PresetMigrationParityTest` y
+  `ModulationContractTest` "Not Run" (ejecutables de otra sesion, sin
+  versionar, preexistentes), `ReferencedFiles` falla **por los ficheros nuevos
+  sin versionar** —que es exactamente lo que ese test pide: un `git add`— y
+  `Vst3LoadTest` (tambien de otra sesion).
+- `NEURONiK_FxSlotsTest` 21/21 **con la paridad conservada en 1e-5**.
+- vitest 423/423. E2E local 11/11. Visuales 12/12 tras regenerar (cambia la
+  ficha `fx` y las dos de pagina entera).
+
+> Canon: el `GlobalParams` tiene un ABI publico por indices, asi que un parametro
+> nuevo se AÑADE AL FINAL y uno que deja de usarse NO SE BORRA (se queda muerto en
+> su sitio y un test vigila que nadie lo escriba). Un hueco del rack publica sus
+> mandos NORMALIZADOS, porque su rango depende del efecto que haya puesto y el
+> hueco se puede cambiar en caliente.
+
+> Canon: la tabla de destinos de la matriz se inicializa posicionalmente y con
+> elision de llaves, asi que **añadir un campo a `ModRule` no es inocuo**. El
+> campo nuevo va en `ModDestinationDescriptor`, que se rellena por orden.
+
+---
+
+## Fase 3 del rack FX: los doce ids planos al bus por hueco
+
+Un preset anterior al rack guarda `fxSaturation`, `fxChorusRate`, `fxDelayTime`...
+en el APVTS viejo, con el **normalizado de aquel APVTS**. El bus por hueco guarda
+el **normalizado de la FILA del efecto**, y no son el mismo numero. Esos dos
+normalizados no se pueden copiar uno en otro: hay que viajar de uno a otro
+pasando por el valor fisico, que es donde los dos coinciden.
+
+### Que hace
+
+`Source/Serialization/PresetMigrationFx.cpp` define una **tabla de doce filas con
+puerta**. Cada fila dice: de que id plano se lee, en que hueco cae, y con que
+rango del APVTS viejo se desnormaliza. La fila se aplica **solo si su id destino
+existe hoy en el layout**: la puerta es `el id del bus del hueco esta en el
+layout del processor`. Con el layout de hoy solo pasa el hueco 1 (saturacion) --
+el coro, el retardo y la reverb se siguen manejando con sus mandos planos, y sus
+tres ids viejos se quedan **sin tocar** en el arbol, a la espera de su fase.
+
+Por que la puerta y no "migrar los cuatro ya": si la fila 3 se escribiera hoy,
+el preset traeria `fx2Param1` con un numero que el hueco 2 todavia no publica, y
+el arbol lo guardaria sin que nadie lo oiga. Un preset que se guarda mal en
+silencio es peor que un preset que se guarda viejo. Ademas la puerta hace que
+bajar un parche con menos huecos no destruya nada: la fila simplemente no se
+aplica.
+
+### La conversion, que es donde esta el dinero
+
+`remapKnob` hace **viejo normalizado -> fisico (`fxDenormalise`) -> fisico de la
+fila -> normalizado de la fila (`fxNormalise`)**. Los rangos del APVTS viejo y
+las filas estan **congelados** en el fichero (`kRangeSaturation`, `kRangeChorusRate`,
+...) con un comentario que explica por que no se leen: `fxSaturation` ya no esta en
+el layout, asi que leer su rango de ahi daria un rango inventado.
+
+El hueco 1 es el unico con una conversion que merece nombre. El envoltorio viejo
+traducia el amount a `drive = 1 + 4 * amount` (rango 1..8, sesgo 0.5), y ese
+`1 + 4 *` esta **congelado aqui tambien**: si el drive fisico de la fila cambiara,
+el `1 + 4 *` tendria que cambiar con el, y copiar el amount no seria una
+migracion sino un cambio de sonido disfrazado de guardado.
+
+`PresetManager.cpp` llama a `migrateFlatFxToSlotBus` **ANTES** de
+`migratePresetState`, y ese orden **es el contrato**, no una preferencia: el
+limpiado borra los ids que ya no estan en el layout, asi que al reves se leeria
+`fxSaturation` de un arbol donde ya no existe y la migracion no tendria nada que
+convertir. Se lee de la fila `id` de cada hijo, no de los atomicos del APVTS: en
+el momento de cargar un preset, el APVTS todavia no tiene sus valores.
+
+### Idempotencia
+
+`writeParam` devuelve `true` solo si **anade**, y `alreadyOnBus` salta el hueco
+cuyo `fxNType` ya esta en el arbol. Migrar dos veces no escribe nada, y sobre todo
+**no pisa el efecto que el usuario haya cambiado desde el host**: migrar un preset
+que ya esta en el bus tiene que ser un no-op, no una sobrescritura.
+
+### Verificado
+
+- `NEURONiK_PresetMigrationParityTest` **35 pasan, 2 fallan** con el sabotaje
+  puesto y **37 de 37** sin el. Las dos que se ponen rojas son exactamente las de
+  la conversion, y ninguna otra: el sabotaje copia el `amount` viejo donde
+  deberia ir el normalizado del drive, que es justo el fallo que esta clase de
+  migracion comete en silencio.
+- ctest **47/49**. Los dos rojos: `ReferencedFiles`, que pide `git add` de los
+  ficheros nuevos (es lo que ese test hace), y `ModulationContractTest`.
+- `ModulationContractTest` **no es de esta fase**: la fase 2 cambio el destino 17
+  de la matriz de `fxSaturation` a `fx1Param1` en C++
+  (`ABD_CHECK_MOD_DEST_ID (17, fx1Param1)`) y el contrato compartido
+  `../ABDSharedAssets/contracts/neuronik_modulation_matrix.json` sigue diciendo
+  `{"label": "Saturation", "parameterId": "fxSaturation"}`. El JSON es el que va
+  atrasado y es de OTRO repositorio, asi que no se ha tocado. Se arregla cambiando
+  ese un campo por `fx1Param1`.
+- vitest 423/423 y `pnpm build` sin cambios (esta migracion no toca la pagina).
+
+> Canon: una fila de migracion solo se aplica si su id destino esta HOY en el
+> layout. Escribir un id que el hueco todavia no publica no suena a error, suena
+> a un preset que se guarda mal y no se nota hasta que algo lo lee.
+
+> Canon: migrar por unidades FISICAS, no copiando normalizados. El APVTS viejo y
+> la fila del efecto tienen rangos y sesgos distintos, asi que sus normalizados
+> son numeros distintos por construccion. Y el viaje de ahi se congela junto al
+> rango: si el rango se congela pero la conversion no, la fila parece correcta y
+> suena mal.

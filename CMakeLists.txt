@@ -134,6 +134,8 @@ set(NEURONIK_SOURCES
     Source/Serialization/PresetManager.cpp
     Source/Serialization/PresetMigration.h
     Source/Serialization/PresetMigration.cpp
+    Source/Serialization/PresetMigrationFx.h
+    Source/Serialization/PresetMigrationFx.cpp
     
     # DSP - CoreModules
     Source/DSP/CoreModules/LFO.cpp
@@ -193,9 +195,36 @@ target_include_directories(NEURONiK_Common PUBLIC
 # CREATE PLUGIN TARGET
 # ============================================================================
 
+# El nombre del FABRICANTE, en UN solo sitio. Va al bundle del VST3 y tambien se
+# le pasa al test de carga, que lo comprueba contra el bundle ya construido: por
+# eso el valor no esta escrito dos veces (si lo estuviera, el test compararia el
+# texto contra si mismo y no fijaria nada). Sale de la caja About del ModelMaker
+# ("(c) 2026 ABD Neural Audio"): la entidad que publica el plugin y lo que un DAW
+# ensena en su lista de plugins.
+#
+# Sin declararlo, JUCE pone "yourcompany": un valor por defecto que llego hasta
+# las listas de plugins de los usuarios, y que ademas cada DAW cachea.
+set(NEURONIK_MANUFACTURER_NAME "ABD Neural Audio")
+
 juce_add_plugin(NEURONiK
     PRODUCT_NAME "NEURONiK"
     DESCRIPTION "NEURONiK Synthesizer Plugin"
+    # OJO: el argumento se llama COMPANY_NAME, NO PLUGIN_MANUFACTURER_NAME. JUCE
+    # ignora en silencio cualquier otro nombre (no hay `message(FATAL_ERROR)`), asi
+    # que escribir el que suena bien deja el bundle con "yourcompany" y el build en
+    # verde. "yourcompany" es el valor por defecto GLOBAL de `JUCE_COMPANY_NAME` en
+    # JUCEUtils.cmake; el nombre real del fabricante sale de aqui.
+    COMPANY_NAME "${NEURONIK_MANUFACTURER_NAME}"
+    # BUNDLE_ID: JUCE lo deriva del nombre de compañía ("com.<compañía>.<target>")
+    # y con "ABD Neural Audio" sale un ID CON ESPACIOS, que es invalido y que
+    # ademas el propio JUCE avisa por pantalla. Se declara aqui para que el ID no
+    # dependa de como se escriba el nombre: si manana el nombre cambia, el ID
+    # sigue siendo el mismo y el plugin no aparece como otro en el Finder ni en
+    # la instalacion de macOS. Sin espacios y en minusculas, como pide Apple.
+    BUNDLE_ID "com.abdneuralaudio.neuronik"
+    # El CODIGO de fabricante ya estaba puesto y NO cambia: los DAW identifican
+    # el plugin por codigo (Nrnk), no por nombre; el nombre solo se ensena. Un
+    # cambio de nombre con el codigo delante no reinstala nada.
     PLUGIN_MANUFACTURER_CODE Nrnk
     PLUGIN_CODE Nrnk
     FORMATS VST3 AU Standalone
@@ -490,6 +519,7 @@ add_executable(NEURONiK_PresetMigrationParityTest
     Tests/PresetMigrationParity.cpp
     ${NEURONIK_DSP_SOURCES}
     Source/Serialization/PresetMigration.cpp
+    Source/Serialization/PresetMigrationFx.cpp
 )
 
 target_include_directories(NEURONiK_PresetMigrationParityTest PRIVATE
@@ -724,25 +754,65 @@ target_link_libraries(NEURONiK_DspReverbJucePolicyTest PRIVATE
 
 add_test(NAME NEURONiK_DspReverbJucePolicyTest COMMAND NEURONiK_DspReverbJucePolicyTest)
 
-# Efectos migrados a ABDSharedCode::DspEffects (continuacion de la Fase 1
-# [5/6], que movio la reverb): chorus, delay y saturacion son ahora motores
-# compartidos y Source/DSP/Effects/ son envoltorios de producto. Este test fija
-# que la migracion no cambio la salida: compara el envoltorio contra una
-# REFERENCIA CONGELADA del efecto de antes, 0 ulps, muestra a muestra.
+# La cadena global sobre el SISTEMA DE HUECOS. Los cuatro envoltorios de
+# Source/DSP/Effects/ han desaparecido: los efectos ya no se envuelven uno a uno
+# en el producto, se ponen en huecos del motor compartido (Source/DSP/FxSlots.h
+# sobre DspEffects/FxEngine.h). Este test es el registro medido de lo que eso ha
+# costado: compara etapa a etapa contra una copia CONGELADA de la cadena de
+# antes, exige 0 ulps donde la equivalencia es exacta (saturacion y reverb
+# apagadas, que son bypass de verdad) y una banda de 1e-5 donde el viaje del
+# mando por el normalizado mete redondeos, e imprime las dos etapas cuyo
+# mezclado cambia a proposito.
 #
 # No enlaza JUCE: el modulo compartido (DspCore + DspEffects) es JUCE-free, que
 # es justo el punto de la migracion. Solo necesita la ruta de include de
 # ABDSharedCode, que ya llega a nivel de directorio.
-add_executable(NEURONiK_DspEffectsParityTest
-    Tests/DspEffectsParityTest.cpp
+add_executable(NEURONiK_FxSlotsTest
+    Tests/FxSlotsTest.cpp
 )
 
-target_include_directories(NEURONiK_DspEffectsParityTest PRIVATE
+target_include_directories(NEURONiK_FxSlotsTest PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/Source"
     "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
 )
 
-add_test(NAME NEURONiK_DspEffectsParityTest COMMAND NEURONiK_DspEffectsParityTest)
+add_test(NAME NEURONiK_FxSlotsTest COMMAND NEURONiK_FxSlotsTest)
+
+# El CATALOGO de efectos que consume la pagina: que efectos hay, con que id del
+# vocabulario compartido y de que familia (y por tanto con que tema), y con que
+# mandos. El motor y sus tablas son del modulo compartido; la identidad compartida
+# y el exportador son de NEURONiK (`Source/DSP/FxCatalogue.h`).
+#
+# El test fija el emparejamiento MOTOR A MOTOR y no la tabla entera contra si
+# misma: las dos tablas se unen por indice, asi que una permutacion pasaria
+# cualquier comparacion de recuento y dejaria un modulo con el tema de un efecto
+# y los knobs de otro. Ver la cabecera del test.
+#
+# Los dos targets no enlazan JUCE, y eso no es una comodidad: el modulo de
+# efectos es JUCE-free para poder sostener la paridad nativa <-> WASM, y un
+# exportador que necesitara JUCE para leer una tabla de structs seria el primer
+# sitio donde el modulo dejaria de compilar solo.
+add_executable(NEURONiK_FxCatalogueTest
+    Tests/FxCatalogueTest.cpp
+)
+
+target_include_directories(NEURONiK_FxCatalogueTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+)
+
+add_test(NAME NEURONiK_FxCatalogueTest COMMAND NEURONiK_FxCatalogueTest)
+
+# Regenerates WebUI/generated/fx-catalog.generated.{json,js}
+add_executable(NEURONiK_FxExport
+    Tests/FxCatalogExportTool.cpp
+    Source/DSP/FxCatalogExport.cpp
+)
+
+target_include_directories(NEURONiK_FxExport PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+)
 
 # Sustrato compartido (ABDSharedCode::DspCore) contra su original: el port de
 # dsp::AudioBuffer se compara con juce::AudioBuffer (misma secuencia de
@@ -820,6 +890,7 @@ add_executable(NEURONiK_PresetRoundTripTest
     Tests/PresetRoundTripTest.cpp
     Source/Serialization/PresetManager.cpp
     Source/Serialization/PresetMigration.cpp
+    Source/Serialization/PresetMigrationFx.cpp
 )
 
 target_include_directories(NEURONiK_PresetRoundTripTest PRIVATE
@@ -844,6 +915,7 @@ add_executable(NEURONiK_FactoryPresetGenerator
     Tests/FactoryPresetGenerator.cpp
     Source/Serialization/PresetManager.cpp
     Source/Serialization/PresetMigration.cpp
+    Source/Serialization/PresetMigrationFx.cpp
 )
 
 target_include_directories(NEURONiK_FactoryPresetGenerator PRIVATE
@@ -1013,6 +1085,10 @@ target_link_libraries(NEURONiK_Vst3LoadTest PRIVATE
 
 target_compile_definitions(NEURONiK_Vst3LoadTest PRIVATE
     NEURONIK_VST3_PATH="$<TARGET_FILE:NEURONiK_VST3>"
+    # El nombre de fabricante ESPERADO, el mismo que se metio en el bundle. El
+    # test lo compara contra lo que JUCE lee del .vst3 en disco, de modo que
+    # fija el valor construido y no el declarado dos veces.
+    NEURONIK_EXPECTED_MANUFACTURER="${NEURONIK_MANUFACTURER_NAME}"
     # Sin esto, juce::VST3PluginFormat no existe: el formato de ESCANEO de VST3
     # solo se compila con el flag del host (es lo que hace falta aqui, no el
     # lado cliente, que es el que lleva el plugin).
@@ -1545,8 +1621,9 @@ else()
 endif()
 
 # Selftest contract, C++ <-> pagina. El selftest de siete direcciones
-# (WebUI/BridgeSelftest.h) consulta unos anclajes de la pagina (el primer
-# input[type=range], el <code> del pie, la pestana KEYS, la rueda de modulacion,
+# (WebUI/BridgeSelftest.h) consulta unos anclajes de la pagina (el control base,
+# localizado por data-baseline-control; el <code> del pie, la pestana KEYS, la
+# rueda de modulacion,
 # el cajon lateral de la matriz y la celda de un control, la ficha MODELOS A-D,
 # __pilotSendMidi) y comprueba los 11 ids de GENERAL: si un
 # lado se mueve sin el otro, el selftest deja de comprobar lo que dice comprobar y
@@ -1557,6 +1634,15 @@ endif()
 if(NEURONIK_NODE_EXECUTABLE)
     add_test(NAME NEURONiK_WebUiSelftestContract
         COMMAND ${NEURONIK_NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/Tests/webuiSelftestContractTest.mjs"
+    )
+
+    # Paridad del CATALOGO de efectos con el contrato compartido de
+    # ABDSharedAssets (queeffects.json: 57 ids). Los dos ficheros estan bien por
+    # separado; lo que se comprueba es que digan LO MISMO, que es justo lo que
+    # ningun test de un solo repositorio puede ver. Sin el contrato a mano el
+    # test se salta CON EL MOTIVO, nunca en verde.
+    add_test(NAME NEURONiK_FxCatalogContract
+        COMMAND ${NEURONIK_NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/Tests/fxCatalogContractTest.mjs"
     )
 
     # Paridad lienzo web <-> superficies nativas. El test NO exige que las dos

@@ -29,13 +29,17 @@ describe('controls / tipo por descriptor', () => {
   it('reparte el contrato en monos de la familia compartida', () => {
     const kinds = PARAMETERS.map((descriptor) => kindForControl(descriptor));
 
-    // 73 del contrato (2026-09-26: - filterEnvAmount) = 49 knobs + 5 toggles
-    // + 19 choices. Entre los knobs hay 47 celdas del reparto + masterLevel
-    // (baseline: el host lo monta como range nativo, pero SU TIPO es
-    // float/knob) + los tres MORPH-Z (FASE 10 y los dos de las capas, 11.3).
-    expect(kinds.filter((kind) => kind === KINDS.knob)).toHaveLength(49);
+    // 79 del contrato (2026-09-29: el bus del hueco 1 sustituye al mando suelto
+    // `fxSaturation`) = 54 knobs + 5 toggles + 20 choices. Entre los knobs hay
+    // 49 celdas del reparto + masterLevel (baseline: el host lo monta como range
+    // nativo, pero SU TIPO es float/knob) + los tres MORPH-Z (FASE 10 y los dos
+    // de las capas, 11.3) + los cinco knobs del bus (fx1Mix, fx1Gain y los
+    // cuatro mandos, uno de los cuales es la celda que sustituye al viejo
+    // `fxSaturation`, y los otros tres son del modulo del hueco, que todavia no
+    // esta montado pero ya son parte del contrato).
+    expect(kinds.filter((kind) => kind === KINDS.knob)).toHaveLength(54);
     expect(kinds.filter((kind) => kind === KINDS.toggle)).toHaveLength(5);
-    expect(kinds.filter((kind) => kind === KINDS.choice)).toHaveLength(19);
+    expect(kinds.filter((kind) => kind === KINDS.choice)).toHaveLength(20);
   });
 
   it('un float es un knob compartido con su dial', () => {

@@ -20,7 +20,7 @@
  *    WebView2 runtimes): the page keeps working bridge-only.
  */
 
-import { gpFieldsFromState } from '../wasm/audioParams.js';
+import { gpFieldsFromState, voiceFieldsFromState } from '../wasm/audioParams.js';
 import {
   AUDIO_STATUS_BLOCKED,
   workletAllowed,
@@ -44,10 +44,19 @@ function notify() {
   for (const listener of listeners) listener (audioEngineState);
 }
 
-/** Subscribe; fires immediately with the current state, then on every change. */
+/**
+ * Subscribe; fires immediately with the current state, then on every change.
+ * @returns {() => void} unsubscribe — the engine channel outlives the page (it is
+ * module state), so whoever subscribes owns giving the slot back.
+ */
 export function onAudioEngineChange(listener) {
   listener (audioEngineState);
   listeners.push (listener);
+
+  return () => {
+    const index = listeners.indexOf (listener);
+    if (index >= 0) listeners.splice (index, 1);
+  };
 }
 
 /**
@@ -271,6 +280,26 @@ export function pushParamsToWorklet(parameters) {
   node.port.postMessage ({
     type: 'neuronik:params',
     fields: gpFieldsFromState (parameters),
+  });
+  return true;
+}
+
+/**
+ * Push the ADSR (the eight envelope knobs) to the worklet — `neuronik:voice`,
+ * the channel that makes them reach the local engine (2026-09-28). They are
+ * VoiceParams, not GlobalParams, so `neuronik:params` never carried them: the
+ * browser's two envelopes ran on the C++ defaults whatever the page said.
+ *
+ * The payload is a COMPLETE snapshot (voiceFieldsFromState never skips ids),
+ * because the worklet keeps the mirror and re-applies it whole after an engine
+ * switch rebuilds the DSP.
+ */
+export function pushVoiceToWorklet(parameters) {
+  if (!node) return false;
+
+  node.port.postMessage ({
+    type: 'neuronik:voice',
+    fields: voiceFieldsFromState (parameters),
   });
   return true;
 }

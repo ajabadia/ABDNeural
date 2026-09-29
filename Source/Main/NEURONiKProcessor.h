@@ -52,6 +52,27 @@ public:
     void reloadModels();
 
     /**
+     * Deja UNA ranura vacia: el motor recibe el modelo por defecto (todo ceros,
+     * que es lo que un slot sin timbre es), el nombre pasa a `EMPTY` y
+     * `modelPath<slot>` tambien, para que recargar el proyecto no lo resucite.
+     *
+     * Es la operacion INVERSA de `loadModel` y existe por la misma razon que la
+     * pagina no puede hacerla: las ranuras son del PRESET, asi que vaciarlas es
+     * del dueno (el host o el arnes), no un gesto de la UI. `forgetLocalModel`
+     * dice exactamente eso en su documentacion, y sin esta pieza el arnes no
+     * puede medir lo que hace la pagina con una esquina sin modelo.
+     *
+     * La cola es la MISMA de `loadModel` (`EngineCommand::LoadModel`): el hilo de
+     * audio recibe el comando en su `processCommands`, sin asignar y sin locks.
+     * `Resonator::loadModel` no valida el modelo, asi que un `SpectralModel` por
+     * defecto vacia la ranura de verdad, en vez de dejar el timbre viejo sonando
+     * con la pagina diciendo EMPTY.
+     *
+     * @returns false solo si el slot esta fuera de rango.
+     */
+    bool clearModelSlot(int slot);
+
+    /**
      * Directorio donde el plugin instala los modelos de fabrica
      * (`Documents/NEURONiK/Models`): fuente UNICA de una ruta que
      * `installFactoryModels()` escribe y a la que apunta el `modelPath` de un

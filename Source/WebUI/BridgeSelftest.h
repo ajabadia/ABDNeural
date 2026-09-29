@@ -1,6 +1,7 @@
 /**
  * @file BridgeSelftest.h
- * @brief El selftest de diez direcciones del puente, compartido por la bancada
+ * @brief El selftest del puente, QUINCE direcciones (la 10b incluida) y dieciseis
+ *        veredictos en el AND de `finish()`, compartido por la bancada
  *        (WebView2) y el editor del plugin (Fase 8, ticket 8.1 paso 2c).
  *
  * El arnes nacio DENTRO de `Source/WebPilotHost.cpp` (la bancada), que era la
@@ -11,53 +12,145 @@
  *
  * Lo que comprueba, y por que son estas direcciones:
  *
+ * DONDE ESTA EL DETALLE: esta cabecera es el INDICE, no la referencia. El guion
+ * completo de cada direccion (invariantes, margenes y la linea de log que lo
+ * demuestra) esta en `HANDOFF.md`, en la seccion "SECCION CANONICA: las 15
+ * direcciones del selftest" (VOLVER, aparte, en su propia seccion al final de ese
+ * fichero). Donde esta cabecera y el canon discrepen, MANDA EL CANON: si cambias
+ * una invariante aqui, cambiala alla en la misma pasada.
+ *
  *   0. MATRIZ: pone la matriz de modulacion EN USO (una ruta real: fuente, destino y
  *      cantidad, por el APVTS, que es por donde la pondria un preset), abre el cajon
  *      lateral de esa ficha en la pagina y comprueba que el cajon muestra LAS DOS
  *      cosas: esta abierto con sus 4 rutas y 12 celdas, y sus controles ensenan la
- *      ruta configurada. Corre PRIMERO y deja el cajon ABIERTO a proposito: asi las
- *      direcciones siguientes pasan con la matriz en uso y el lienzo tapado, que es
- *      donde se rompe una UI (un anclaje que deja de ser el primero del documento, un
- *      cajon que roba el foco, un poll que deja de empujar...).
+ *      ruta configurada. Los indices esperados salen de las tablas de contrato
+ *      (`State::getModSources()` y `getModDestinationTable()`), nunca de literales:
+ *      la de destinos es append-only y su orden ES estado de preset. Cuerdan ademas
+ *      el id del cajon con el de su velo (si no coinciden, lo que se abrio no es el
+ *      dialogo que ese disparador gobierna) y la cantidad supera 0.5 en normalizado
+ *      (0,5 real en un rango -1..1 son 0,75; el control compartido publica
+ *      normalizado, asi que se compara con margen y no con el texto). Corre PRIMERO
+ *      y deja el cajon ABIERTO a proposito: asi las TRECE direcciones siguientes
+ *      pasan con la matriz en uso y el lienzo tapado, que es donde se rompe una UI
+ *      (un anclaje que deja de ser el primero del documento, un cajon que roba el
+ *      foco, un poll que deja de empujar...).
  *   1b. ENV-RUTAS: pulsa la ruta ENV de la ficha ENVOLVENTES (un <button> del
  *      lienzo) y mide el salto completo a la MATRIZ: cajon ABIERTO con su velo,
  *      SU slot resaltado y los controles del cajon ensenando la ruta que dice el
- *      APVTS. La ruta se DERIVA del APVTS (el primer slot con fuente ENV), no
- *      escrita a mano. Corre CON el cajon de la direccion 0 delante y demuestra
+ *      APVTS de ESE slot. Corre CON el cajon de la direccion 0 delante y demuestra
  *      ademas que el opener cierra al hermano y abre el suyo.
+ *
+ *      ENCADENADO POR DATOS (es el motor de 1b / 1b-bis / 1b-ter: las tres son
+ *      UNA cadena y cada paso se ejecuta sobre el dato que dejo el anterior; lo
+ *      que mide una direccion es el INPUT de la siguiente, y por eso el guion
+ *      DEVUELVE el slot en vez de recalcularlo). Aqui nace el primer dato, y se
+ *      elige por lo que la PAGINA PINTA, no por el APVTS: el Standalone restaura
+ *      el filterState de la sesion anterior y esa sesion puede traer la matriz del
+ *      usuario, asi que "el primer slot con fuente ENV" del motor no seria el que
+ *      el usuario tiene delante. El script busca UNA fila ENV, la pulsa y devuelve
+ *      su slot; los indices de "ENV 1"/"ENV 2" tampoco estan escritos a mano
+ *      (salen de `State::getModSources()`) y el APVTS se lee DESPUES, solo para
+ *      cruzar que el cajon ensena lo mismo que el motor tiene en ese slot. Ese
+ *      slot es el ARGUMENTO de VOLVER y, por los DOS caminos —exito o fallo— de
+ *      RESUMEN-RUTAS: la cadena nunca se parte.
  *   1b-bis. VOLVER: el retorno del salto ES reversible. El boton "VOLVER A LA
  *      RUTA n" del cajon de origen (routeBack del panel) reabre la MATRIZ con el
  *      MISMO slot resaltado: re-salto -> cierre por el ✕ de usuario -> boton
- *      presente con SU numero -> clic -> matriz abierta, SU slot. El slot viaja
- *      del guion de ENV-RUTAS (lo que la pagina PINTO) al de VOLVER, sin
- *      hardcodear: la sesion del usuario puede traer cualquier matriz.
+ *      presente con SU numero -> clic -> matriz abierta, SU slot.
+ *
+ *      Continua el encadenado: su guion vuelve a pulsar la MISMA fila que
+ *      ENV-RUTAS dejo pintada —el slot se RECIBE como argumento, no se vuelve a
+ *      derivar— y a la salida entrega ese MISMO slot a RESUMEN-RUTAS como "el
+ *      que ya se midio". Mide ademas LA REGLA DE CANCELACION: abrir GLOBAL por su
+ *      cuenta (su EDIT) con el retorno pendiente lo mata, y el boton no revive ni
+ *      al cerrar GLOBAL ni al cerrar la matriz, que tampoco reabre por su cuenta
+ *      el cajon de origen. Los DOS caminos —exito y fallo— siguen a
+ *      RESUMEN-RUTAS: la cadena no se parte nunca.
  *   1b-ter. RESUMEN-RUTAS: las filas clicables del RESUMEN de matriz (lienzo de
- *      la banda del fondo) abren la MATRIZ en SU slot. Se pulsa UNA fila cuyo
- *      slot NO fue el de ENV-RUTAS (un segundo slot medido), se cruza lo pintado
- *      con el APVTS del slot pulsado y se exige velo + resalte. El cajon queda
- *      cerrado al terminar (settle) para AGUJA.
+ *      la banda del fondo) abren la MATRIZ en SU slot. Cierra el bloque
+ *      1b/1b-bis/1b-ter y es la ultima que mide la matriz: pulsa la fila de un
+ *      SEGUNDO slot, para que el opener no se mida solo por el camino ya
+ *      recorrido. El slot lo eligen los DATOS, no el arnes: recibe el ya medido
+ *      y elige el siguiente entre las CUATRO filas pintadas (`data-slot`), y si
+ *      esa fila no esta pintada la direccion falla en vez de pulsar a ciegas. Lo
+ *      que ensena el cajon se cruza con el APVTS del slot PULSADO; se exige velo
+ *      + resalte.
+ *
+ *      SETTLE (lo que RESUMEN-RUTAS le deja a AGUJA): su propio salto deja la
+ *      MATRIZ abierta —el estado que la direccion 0 quiere— y AGUJA tiene que
+ *      arrancar sin modales. El settle (`scriptSettleDrawers`) cierra POR SU ✕
+ *      cada cajon que quede abierto, en un bucle de HASTA CINCO, y no "el que
+ *      haya": cerrar por el velo podria consumir un retorno pendiente, y cerrar
+ *      la matriz puede REABRIR el cajon de origen (justo lo que mide VOLVER), de
+ *      modo que hay que iterar hasta que no quede ninguno. Es LIMPIEZA, no
+ *      veredicto: su JSON no se juzga, solo encadena. Encadena detras AGUJA: la
+ *      cola settle -> AGUJA que existio murio con el encadenado, porque dos AGUJAs
+ *      en paralelo se pisan la pagina (aguja "visible" en silencio, notas atascadas
+ *      en MIDI).
  *   1c. AGUJA: una nota de la pagina SUENA en el motor y sus DOS envolventes se
  *      VEN: el frame envelopes[amp, filter] de la telemetria pinta la aguja
  *      horizontal sobre cada curva ADSR (data-visible + 'd' del path), en las
  *      DOS vistas (lienzo y cajon). Cuatro medidas: ocultas en silencio, visibles
- *      con nivel alto en el sustain (cruzado con getEnvelopeLevelsForUI: dos
- *      caras del mismo canal), ocultas tras el release — la aguja no se queda
+ *      con nivel alto en el sustain, cruzadas con getEnvelopeLevelsForUI (las dos
+ *      caras del mismo canal) con margen 0.08 y con una sonda que RETIENE la toma
+ *      mas coherente, porque en la bancada el frame llega uno o dos periodos tarde
+ *      y "la de nivel mas alto" cazaba el attack contra el sustain. Luego,
+ *      ocultas tras el release — la aguja no se queda
  *      clavada cuando la nota muere — y PANIC: el clic en el medidor de voces
- *      lo apaga y silencia las agujas.
+ *      lo apaga y silencia las agujas. El PANIC se RE-ARMA antes (tras el release el
+ *      motor ya esta mudo: sin re-arme, un silencio no demuestra nada), se espera a
+ *      que el medidor LLEGUE encendido, y la salida exige LAS DOS cosas (medidor
+ *      apagado y agujas ocultas en el frame siguiente), porque lo segundo por si
+ *      solo podria ser la cola natural. Las dos esperas de la fase (medidor apagado
+ *      ANTES de re-armar, medidor encendido DESPUES) son predicados del sondeo
+ *      compartido `PageWait`, que ademas dice si llego a cumplirse: sin ese flag,
+ *      "el PANIC no apago el medidor" y "el re-arm no llego a sonar" salian con el
+ *      mismo texto. DENTRO de esta direccion se miden tambien las barras ENV y su
+ *      GEMELIDAD (margen 0.01, el estricto de dibujo).
  *   1d. NATIVO -> JS: mueve `masterLevel` por el APVTS (lo que haria un control
- *      nativo) y lee la posicion del slider de la pagina.
- *   2. JS -> NATIVO: dispara un `input` de verdad sobre ese slider (lo que
- *      produce un arrastre del usuario) y lee el APVTS.
+ *      nativo) y lee la posicion del control base de la pagina: 0.25 con margen
+ *      0.02, y el guion distingue `NO_BASELINE` y `NO_RESULT` de un numero, para
+ *      que un control que ha desaparecido no pueda dar OK por ausencia de lectura.
+ *   2. JS -> NATIVO: escribe por el puente del control base —`baselineControl.
+ *      value`, el camino real de un gesto, no un atajo— y lee el APVTS: 0.75 con
+ *      margen 0.02 tras 600 ms, mas que en el resto porque aqui son dos saltos (el
+ *      render de la pagina y luego el poll del dueno), y el guion tiene que
+ *      devolver `DISPATCHED`.
  *   3. GENERAL: los 11 ids de la pestana GENERAL llegan al estado de la pagina
- *      con valor numerico (el pie de pagina los serializa como JSON).
+ *      con valor numerico (el pie de pagina los serializa como JSON). El veredicto
+ *      exige las DOS listas del script vacias y no solo el valor: `missing` (un id
+ *      que esta en la pagina y no en el contrato) y `bad` (uno que viaja como texto).
  *   4. MIDI: una nota de la pagina llega al motor (FIFO de notas retenidas) y
- *      una rueda de modulacion inyectada en nativo se refleja en la pagina.
+ *      una rueda de modulacion inyectada en nativo se refleja en la pagina. La nota
+ *      se comprueba en el FIFO de NATIVO (`getHeldNotes`), no en el eco de la pagina,
+ *      y tiene que SALIR: una nota atascada deja la sesion colgando y se reporta
+ *      como `STUCK`, no como OK. La rueda se lee normalizada (la pagina pinta
+ *      0..127) a 0.5 con margen 0.1.
+ *   4b. MIDI-CC: el LCD ASIGNA un CC a CUTOFF y la nota CC del motor MUEVE el
+ *      parametro — el eslabon completo de la tabla MidiMappingManager, que el
+ *      selftest no media. La pagina arma el learn por SU menu (el D-pad del LCD:
+ *      MENU -> MIDI CONTROL -> OK -> OK -> right, el encoder +1 que dispara
+ *      sendMidiCcLearn), la nota CC 75 del selftest (libre en la tabla de
+ *      fabrica: CUTOFF nace en 74) gana por el camino RT del processBlock, el
+ *      valor 0 del mismo CC baja filterCutoff por la cola applyPendingCcChanges
+ *      (sondeado en la pagina, patron AGUJA) y el item del LCD, seguido en EDIT,
+ *      pinta "CC 75" del snapshot midiCcState. Antes de nada mide la geometria de
+ *      la propia fila en la pagina VIVA del WebView2 (chasis de 54 del contrato,
+ *      los seis botones del D-pad DENTRO de el y las dos lineas dentro de la
+ *      pantalla): el D-pad se pulsa con eventos sinteticos, asi que un boton
+ *      recortado por el chasis responderia igual y la direccion pasaria en verde
+ *      con los cursores ^ y v mutilados. Al salir, resetToDefaults()
+ *      devuelve la tabla de fabrica y el parametro a su sitio.
  *   5. MODELOS: los SEIS `.neuronikmodel` del banco CZ101 que viajan embebidos se
  *      escriben al directorio temporal del arnes, se releen con el lector de
  *      produccion (los dos dialectos del v2: denso de 1 frame y con f0 por frame
  *      de 4) y los cuatro del banco entran por las ranuras A-D de ESTE proceso;
  *      la pagina —la de verdad, en su WebView— ensena los cuatro nombres en la
- *      ficha MODELOS A-D. Es la mitad "se ve en la pagina" de "cargar un modelo
+ *      ficha MODELOS A-D, sin extension y en ese mismo orden (`expectedSlotNames()`,
+ *      que es lo que publica el processor). El temporal del arnes lo vacia al
+ *      empezar y `finish()` lo borra al terminar, TAMBIEN con FAIL, para que al
+ *      reabrir el editor la ficha no marque divergentes lo que se quedo a medias.
+ *      Es la mitad "se ve en la pagina" de "cargar un modelo
  *      se ve y suena": la otra mitad (que el motor SUENE ese modelo) se mide en
  *      `Tests/ModelSlotTest.cpp`, porque un proceso con ventana no puede medir
  *      su propia salida de audio sin pelearse con el hilo de audio del host.
@@ -70,36 +163,90 @@
  *      APVTS -> pagina) sobre una accion de ESTADO, que no viaja como edicion de
  *      parametro. Como el cajon de la matriz se queda ABIERTO a proposito, y con
  *      un modal delante la ficha no es alcanzable, la direccion lo cierra antes
- *      por su velo: el clic de fuera, que es el gesto que daria un usuario.
+ *      por su velo: el clic de fuera, que es el gesto que daria un usuario. Con
+ *      `randomStrength` a 1 y los tres `freeze*` a 0 se admite que queden en pie
+ *      hasta DOS objetivos (uno puede caer por azar en el valor que ya tenia, y un
+ *      sorteo roto mueve 0 o 1), y del pie se admite que falten hasta los DOS
+ *      objetivos del pad XY, que no estan en su lista de ids: ninguno mas, porque
+ *      media tabla sin publicar es una pagina que dejo de enterarse. La direccion no
+ *      se cierra en esa pasada: `pressFreezeGuard` congela el banco espectral y
+ *      exige CERO movimientos ahi (a un congelado no se le sortea nada, asi que la
+ *      holgura del azar no aplica) mientras los otros dos `freeze*` se dejan SUELTOS
+ *      a proposito, para que "no se movio" signifique "estaba congelado" y no "el
+ *      sorteo dejo de correr". Al salir devuelve el congelado a 0: era de la medida,
+ *      no del usuario. Los objetivos salen de `State::getRandomizeTargets()`, asi que
+ *      si el RANDOMIZE cambia de opinion sobre QUE sortea, la direccion mide lo nuevo
+ *      sin tocarla.
  *   8. ZRING: el anillo morph-Z GIRANDO con la matriz por el camino NATIVO del
  *      plugin: la ruta LFO 2 -> Morph Z (destino 28) se escribe por el APVTS
  *      (como la dejaria un preset), el motor REAL del plugin la aplica en su
- *      render de audio y la telemetria (frame.modulation[28] -> setZMod) pinta
+ *      render de audio y la telemetria (frame.modulation[<indice de Morph Z>] -> setZMod) pinta
  *      el arco .zring-mod. Se muestrea el arco en la pagina viva (evaluate
- *      siacrono), se reconstruye el PERIODO entre cristas (~1000 ms a 1 Hz) y
- *      se hace el control negativo A/B/A: fuente Off clava el arco en 0 y al
- *      volver LFO 2 se reanuda. Es la otra mitad de la ruta que el motor local
- *      del navegador ya tiene pineada en _t59_e2e_zring.mjs: dos caminos, una
- *      sola verdad.
+ *      siacrono) y se reconstruye el PERIODO entre CRESTAS del arco: con el arco
+ *      CON SIGNO pintado la senoide completa culmina DOS veces por periodo, asi que
+ *      a 1 Hz lo correcto son ~500 ms, y el gate vive en `zringPeriodMinMs` /
+ *      `zringPeriodMaxMs` (300..800, margen para hosts lentos, no una propiedad del
+ *      motor: lo que escala con el presupuesto son las TOMAS, 540/30/320). Ademas
+ *      del maximo (> 40 guiones) se exige que alguna instantanea caiga en el lado
+ *      ANTIHORARIO, que es la semionda negativa pintada de verdad. El control
+ *      negativo A/B/A son TRES tomas: A (540); la fuente a Off tiene que clavar el
+ *      arco en 0 (|max| < 2, porque un arco que no depende de la ruta no se apaga
+ *      nunca); y A de nuevo (320) tiene que REANUDARSE, que sin lo cual un arco que
+ *      se apaga y no vuelve pasaria el control negativo por bueno. Ultima direccion:
+ *      ella cierra el `finish()` con los dieciseis veredictos. Es la otra mitad de la
+ *      ruta que el motor local del navegador ya tiene pineada en _t59_e2e_zring.mjs:
+ *      dos caminos, una sola verdad.
  *   7. MORPH: el pad XY y el anillo morph-Z con el modelo REAL de fabrica dentro.
  *      Carga `CZ-SWEP1.neuronikmodel` en la ranura D —el fichero que instala el
  *      plugin y al que apunta el `modelPath3` del preset de banco CZ101-BANK— y
  *      lo busca en la ESQUINA del pad, que sale de la misma fuente que la ficha
  *      MODELOS A-D: si el morph y las ranuras dejan de hablar del mismo motor,
- *      esta direccion lo dice. Despues mide las tres caras del pad: que pinte lo
- *      que dice el APVTS (motor -> pagina), que un arrastre del pad y un gesto
- *      del aro dejen los tres parametros donde el gesto los dejo (pagina ->
- *      motor) y —lo que ningun test de manejadores puede ver— que el HIT-TESTING
+ *      esta direccion lo dice, y las esquinas del pad y la ficha A-D tienen que
+ *      ensenar los MISMOS cuatro nombres. Despues mide las CUATRO caras del pad:
+ *      que pinte lo que dice el APVTS (motor -> pagina, con 0,2 / 0,8 / 0,6: tres
+ *      valores distintos, para que una vista que se interchange no pueda pasar);
+ *      que un arrastre del pad (a 0,75 / 0,25, con la y de pantalla invertida) y
+ *      un gesto del aro (1/4 de vuelta) dejen los tres parametros donde el gesto
+ *      los dejo (pagina -> motor) y —lo que ningun test de manejadores puede ver—
+ *      que el HIT-TESTING
  *      de la pagina viva deje el centro del pad en el pad y el trazo del aro en
- *      el aro: el overlay del aro cubria el pad entero y se comia sus gestos.
- *   7b. ESQUINA: el gesto inverso mide la calle de vuelta. Un CLIC en la esquina
+ *      el aro: el overlay del aro cubria el pad entero y se comia sus gestos, y eso
+ *      solo se ve midiendo CAJAS (los gestos se despachan sobre
+ *      `document.elementFromPoint`, que es lo que hace el navegador con un dedo).
+ *      Las dos lecturas, antes y despues del gesto, comparten UN recolector: dos
+ *      en paralelo podrian divergir sin que nadie lo notase.
+ *   7b. ESQUINA: el gesto inverso mide la calle de vuelta, y su mitad sin timbre.
+ *      Un CLIC en la esquina
  *      A del pad (la ranura 0, cargada desde el arranque) tiene que abrir el
  *      cajon de MODELOS con SU ranura resaltada (data-slot-visual="0", la
  *      numeracion 0-based del motor) — el wiring onCornerClick ->
  *      openDrawerRoute('models', 0). Doble guarda: si la esquina no esta
- *      clicable (sin modelo) o el cajon no abre con el resalte, FAIL; el cajon
- *      queda cerrado al salir (settle por ID) y la matriz se re-abre por el
- *      APVTS con el estado que ZRING necesita.
+ *      clicable (sin modelo) o el cajon no abre con el resalte, FAIL. El texto de
+ *      la esquina tiene que ser el NOMBRE del modelo cargado, no una letra: es una
+ *      verdad extra, la esquina y la fila del cajon tienen que seguir hablando del
+ *      mismo motor (las celdas de la matriz se numeran 1-based y aqui 0-based). Al
+ *      salir el cajon se cierra POR SU ID (con
+ *      dos cajones abiertos, el selector de "el abierto" cierra el equivocado).
+ *
+ *      Y despues, la MITAD SIN TIMBRE: el clic en una esquina VACIA. La pagina no
+ *      la pinta siquiera (el componente omite el span), asi que el punto se deriva
+ *      por SIMETRIA —el espejo del centro de la esquina de enfrente, que comparte
+ *      fila y alto— y se le manda un clic de verdad por `elementFromPoint`. Se exige
+ *      que no se abra NINGUN cajon y que no quede NINGUN resalte en el documento, y
+ *      que el gesto haya caído en el PAD (no en una esquina): sin esa ultima
+ *      comprobacion, "no abrio nada" podria ser "no habia nada que abrir". Para que
+ *      exista esa ranura vacia hay que vaciar una, y vaciar es del DUENO (la pagina
+ *      no puede con host: sus ranuras son del preset), asi que el arnes vacia la D
+ *      con `clearModelSlot` y la RESTAURA al terminar —la restauracion se loguea,
+ *      pero no entra en el veredicto: es limpieza del arnes, no una invariante del
+ *      producto—. El veredicto de la direccion es el AND de las dos mitades.
+ *
+ *      Al salir, la
+ *      matriz se re-abre por el APVTS con la ruta LFO 2 -> Morph Z, que es el estado
+ *      que ZRING asume al arrancar. Ojo: esas dos escrituras son LITERALES (fuente
+ *      2, destino 28) mientras que ZRING deriva los indices de las tablas de
+ *      contrato; hoy coinciden, pero es donde un cambio de orden de la tabla pasaria
+ *      desapercibido.
  *
  * Las direcciones 0 y 5 las exige la unica pagina que hay: la WebUI del plugin. Hasta el
  * ticket 8.4 el arnes podia declarar una direccion NO APLICABLE cuando el dueno servia la
@@ -109,7 +256,10 @@
  * superficies, y el veredicto no necesita matices.
  *
  * No mueve el raton: usa el MISMO canal que usaria un usuario, que es lo que hace
- * que el veredicto signifique algo.
+ * que el veredicto signifique algo. Los tres sondeos de espera (el medidor quieto
+ * y el medidor armado de AGUJA, el cutoff que baja de MIDI-CC) comparten una sola
+ * clase, `PageWait`: si una direccion nueva necesita "esperar a que la pagina llegue
+ * a X", esa es la que hay que usar, no otro bucle copiado.
  *
  * OJO: un selftest no es neutro. Mueve parametros (el que comprueban las
  * direcciones 1-3), deja UNA RUTA DE LA MATRIZ CONFIGURADA (direccion 0), cambia de
@@ -183,9 +333,21 @@ namespace NEURONiK::WebUI
  */
 namespace SelftestPage
 {
-    /** El PRIMER `input[type=range]` del documento es `masterLevel`: el control
-     *  base que la shell de la WebUI reserva a proposito para el selftest. */
-    inline constexpr const char* firstRange = "input[type=range]";
+    /** El control BASE (masterLevel), por su ANCLA EXPLICITA.
+     *
+     *  2026-09-28: antes era `input[type=range]`, o sea "el PRIMER range del
+     *  documento" — un accidental que se rompio en cuanto el master dejo de ser
+     *  un `<input>` y paso a ser un Knob del paquete compartido (un
+     *  `div[role=slider]`, sin input dentro). Con el selector viejo, el arnés
+     *  habria pasado a_parar la rueda de modulacion del TECLADO y NATIVO->JS y
+     *  JS->NATIVO habrian probado el control equivocado sin decir nada.
+     *
+     *  El ancla va en la CELDA del control, que es un elemento estable, y la
+     *  pagina expone en ella `baselineControl.value` (ver
+     *  `buildBaselineControl` en `WebUI/src/ui/panel.js`): leer y escribir por ahi
+     *  es recorrer el camino real de un gesto, no un atajo que solo conoce el
+     *  arnes. */
+    inline constexpr const char* baselineControl = "[data-baseline-control]";
 
     /** El pie de pagina con el estado NORMALIZADO serializado como JSON. */
     inline constexpr const char* stateCode = ".panel-footer code";
@@ -332,10 +494,35 @@ public:
     /** @brief Controles por ruta: fuente, destino y cantidad (ver `sections.js`). */
     static constexpr int numMatrixCellsPerSlot = 3;
 
+    /** La ranura que ESQUINA vacia para poder medir la esquina sin modelo (la 'br'),
+     *  y que restaura al terminar. Es la que MORPH acaba de llenar con el modelo real. */
+    static constexpr int emptyCornerSlot = 3;
+
     /** @brief Objetivos del sorteo que la pagina NO publica en su pie: `morphX` y
      *         `morphY` viven en el pad XY (`SECTION_VISUALS`), no en el estado que el
      *         lienzo serializa, asi que faltar esos dos es lo esperado. */
     static constexpr int numPadOnlyTargets = 2;
+
+    /** @brief MIDI-CC: los pasos de encoder +1 que separan el primer item de la
+     *         raiz del LCD de MIDI CONTROL (el ULTIMO de cinco) y el CC que la
+     *         nota del selftest ensena — libre en la tabla de fabrica, donde
+     *         CUTOFF nace en 74. */
+    static constexpr int midiCcMenuRootSteps = 4;
+    static constexpr int midiCcSelfLearnNumber = 75;
+
+    /** @brief La FILA del LCD (fase 0 de MIDI-CC), en los numeros del CONTRATO de
+     *         la pagina (`GEOMETRY` en WebUI/src/contracts/sections.js): 54 de alto
+     *         es un presupuesto FIJO del que el lienzo descuenta, y dentro conviven
+     *         la pantalla de 2 lineas y el D-pad de 6 botones (3 columnas x 2
+     *         filas, la rejilla del paquete compartido).
+     *
+     *  Se miden aqui porque el D-pad se conduce con eventos SINTETICOS: un boton
+     *  recortado por el chasis responde igual, y con la rejilla a 2 columnas (3
+     *  filas de 51px en los 42 de contenido) la fila paso todas las pruebas con
+     *  los cursores ^ y v cortados a media altura. */
+    static constexpr int lcdRowHeight = 54;
+    static constexpr int numLcdPadButtons = 6;
+    static constexpr int numLcdTextLines = 2;
 
     BridgeSelftest (NEURONiKProcessor& processorToUse,
                     EvaluateFn evaluateToUse,
@@ -442,7 +629,7 @@ public:
     [[nodiscard]] bool passed() const noexcept { return allOk; }
 
 private:
-    enum class Stage { idle, waitForPage, matrix, models, envRoutes, back, summaryRoutes, needle, nativeToPage, pageToNative, generalState, midi, actions, morph, corner, zring, done };
+    enum class Stage { idle, waitForPage, matrix, models, envRoutes, back, summaryRoutes, needle, nativeToPage, pageToNative, generalState, midi, midiCc, actions, morph, corner, zring, done };
 
     /** @brief La bandera de vida que comparten el arnes y sus callbacks. */
     struct Lifetime { bool alive = true; };
@@ -472,6 +659,107 @@ private:
         });
     }
 
+    /**
+     * @brief Sondeo ACOTADO de la pagina: "espera a que se cumpla X", con pacing.
+     *
+     * Es la maquinaria que comparten los sondeos de espera del arnes, y la que
+     * cualquier direccion nueva deberia usar en vez de escribir su propio bucle: la
+     * forma es siempre la misma —`evaluate` del script, predicado sobre la lectura,
+     * `afterDelay` entre tomas, salida temprana en cuanto se cumple, y las tres
+     * guardas de por vida (nada si el arnes ya murio)—.
+     *
+     * @details Lo que la clase pone y cada llamada evita repetir:
+     *
+     *   - el PACING (30 ms por omision): el `evaluate` responde en ~1 ms, asi que sin
+     *     espera las tomas se consumirian antes de que la primera telemetria llegue a
+     *     la pagina (~66 ms) y el sondeo mediria un instante, no un estado;
+     *   - el TECHO de tomas, que es un presupuesto y no una espera infinita: agotado,
+     *     `onDone` recibe `satisfied == false` con la ultima lectura, para que quien
+     *     llama pueda decir SI se cumplio o no. Distinguirlo es diagnostico, NO
+     *     veredicto: decidir sigue siendo del llamante;
+     *   - la GUARDA DE VIDA en las dos patadas (entrada y recusion): dentro de un DAW
+     *     el editor se puede cerrar con hops en vuelo, y un callback tardio no puede
+     *     tocar memoria liberada. Con el arnes muerto, `onDone` NO se llama: la cadena
+     *     de la direccion ya no tiene a quien volver.
+     *
+     * Lo que NO trae, y es deliberado: no acumula lecturas ni sabe de fases. Los sondeos
+     * que SI acumulan (la colecta de AGUJA, las tomas del arco de ZRING) necesitan saber
+     * que guardan y cuando parar, asi que siguen siendo bucles propios.
+     */
+    class PageWait
+    {
+    public:
+        /** @brief El predicado se evalua con la lectura cruda de la pagina. */
+        using Predicate = std::function<bool (const juce::String& raw)>;
+
+        /** @brief `satisfied` = el predicado se cumplio; `lastRaw` = la ultima lectura
+         *         (vacia si no se llego a tomar ninguna). */
+        using Done = std::function<void (bool satisfied, const juce::String& lastRaw)>;
+
+        explicit PageWait (BridgeSelftest& owner) noexcept : owner (owner) {}
+
+        /** @brief Toma hasta `maxSamples` lecturas de `script`, una cada `intervalMs`,
+         *         y entrega el resultado en cuanto `predicate` se cumple. */
+        void run (const juce::String& script, Predicate predicate, int maxSamples,
+                  int intervalMs, Done onDone)
+        {
+            if (maxSamples <= 0)
+            {
+                if (lifetimeAlive())
+                    onDone (false, {});
+
+                return;
+            }
+
+            step (script, std::move (predicate), maxSamples, intervalMs, std::move (onDone));
+        }
+
+    private:
+        void step (const juce::String& script, Predicate predicate, int remaining,
+                   int intervalMs, Done onDone)
+        {
+            if (remaining <= 0 || ! lifetimeAlive())
+                return;
+
+            owner.evaluate (script, [this, script, predicate, remaining, intervalMs, onDone]
+                                (const juce::String& raw) mutable
+            {
+                if (predicate (raw))
+                {
+                    onDone (true, raw);
+                    return;
+                }
+
+                // Ultima toma: se entrega lo que hay, fulfilled o no, para que el
+                // llamante pueda distinguir "no se cumplio" de "no llego a mirar".
+                if (remaining <= 1 || ! lifetimeAlive())
+                {
+                    if (lifetimeAlive())
+                        onDone (false, raw);
+
+                    return;
+                }
+
+                owner.afterDelay (intervalMs, [this, script, predicate, remaining, intervalMs, onDone]() mutable
+                {
+                    step (script, std::move (predicate), remaining - 1, intervalMs, std::move (onDone));
+                });
+            });
+        }
+
+        [[nodiscard]] bool lifetimeAlive() const noexcept { return owner.lifetime->alive; }
+
+        BridgeSelftest& owner;
+    };
+
+    /** La instancia que usan las direcciones: el sondeo comparte el `evaluate` y el
+     *  `afterDelay` del arnes, que ya llevan la guarda de vida. */
+    PageWait pageWait { *this };
+
+    /** El pacing por defecto de los sondeos del arnes (el que explica el ritmo de
+     *  la telemetria: ~15 Hz de frame, asi que 30 ms es medio frame de margen). */
+    static constexpr int pageWaitIntervalMs = 30;
+
     [[nodiscard]] const char* stageName() const noexcept
     {
         switch (stage)
@@ -488,6 +776,7 @@ private:
             case Stage::pageToNative: return "JS -> NATIVO";
             case Stage::generalState: return "GENERAL";
             case Stage::midi:         return "MIDI";
+            case Stage::midiCc:       return "MIDI-CC";
             case Stage::actions:      return "ACCIONES";
             case Stage::morph:        return "MORPH";
             case Stage::corner:       return "ESQUINA";
@@ -645,12 +934,16 @@ private:
      *          reconstruye la vista, un cambio del contrato de slots), el clic se
      *          queda mudo y nadie lo sabe.
      *
-     *          La ruta que se pulsa se DERIVA del APVTS (que es por donde la pondria
-     *          un preset), nunca escrita a mano: busca el primer slot mod1..mod4 con
-     *          fuente = ENV y toma SU slot (1..4) y SU fila pintada. La direccion 0
-     *          configuro mod1 como LFO 1 -> Filter Cutoff, asi que aqui se pulsa la
-     *          ruta de ENV (la de fabrica: mod2 = ENV 2 -> Filter Cutoff) y el slot
-     *          esperado es el que el APVTS dice, no un literal.
+     *          La ruta que se pulsa NO se elige leyendo el APVTS, sino lo que la
+     *          PAGINA PINTA: el script busca una fila de ENV entre los
+     *          `button[data-env-route]` que existen, decide cual es de ENV leyendo
+     *          el select de fuente que ensena el cajon de la MATRIZ que la direccion
+     *          0 dejo abierto (el estado de la pagina, no el del motor) y devuelve
+     *          SU slot. Los indices de ENV 1/ENV 2 no estan escritos a mano:
+     *          salen de `State::getModSources()`. El APVTS se lee DESPUES del clic,
+     *          solo para cruzar que el cajon ensena lo mismo que el motor tiene en
+     *          ese slot. Ese slot devuelto es lo que viaja a VOLVER —y a
+     *          RESUMEN-RUTAS por los dos caminos, exito y fallo.
      *
      *          Lo que se mide, en el MISMO viaje: la fila existe y es clicable, el
      *          cajon de la MATRIZ queda ABIERTO (con su velo), el slot resaltado es
@@ -1289,6 +1582,13 @@ private:
                                      ? (hiddenAfterRelease ? juce::String ("ocultas") : juce::String ("en cola, coherente con motor"))
                                      : juce::String ("SE QUEDARON"))                                                + ") -> " + (ok ? "OK" : "FAIL"));
 
+                            // El rastro va SIEMPRE, no solo cuando falla: una gemelidad
+                            // que pasa por poco y la que pasa de sobra se distinguen
+                            // con los numeros, y el dia que falle ya habra una linea
+                            // previa con la que comparar.
+                            log ("[selftest] AGUJA: barras (cajon/resumen slot env on/off nivel): "
+                                 + held.barsTrace());
+
                             if (! ok) { needleOk = false; pushNativeToPage(); return; }
 
                             // ==================================================================
@@ -1309,9 +1609,20 @@ private:
                             // allNotesOff y las voces mueren dentro de SU cola.
                             evaluate (scriptNoteOff (60), [this, ok] (const juce::String&)
                             {
-                                needleWaitQuiet ((int) std::lround (400.0 * budgetFactor), [this, ok]
+                                // El flag de cada espera viaja a la cadena: sin el, un
+                                // re-arm que no llega a sonar se reporta como "el PANIC no
+                                // apagó el medidor", que es un sintoma de otro problema.
+                                needleWaitQuiet ((int) std::lround (400.0 * budgetFactor), [this, ok] (bool quiet)
                                 {
-                                    evaluate (scriptKeysAndNoteOn (60, 0.9f), [this, ok] (const juce::String& rearmRaw)
+                                    // Un parametro de lambda no se puede capturar en la
+                                    // anidada: se copia a un local y se captura ese.
+                                    const auto quietOk = quiet;
+
+                                    if (! quietOk)
+                                        log ("[selftest] AGUJA: PANIC: el medidor seguia ENCENDIDO"
+                                             " al agotar el sondeo de calma; se re-arma igualmente");
+
+                                    evaluate (scriptKeysAndNoteOn (60, 0.9f), [this, ok, quietOk] (const juce::String& rearmRaw)
                                     {
                                         if (rearmRaw != "ON_SENT")
                                         {
@@ -1325,13 +1636,11 @@ private:
                                         // El clic se mide sobre el estado encendido
                                         // MEDIDO (>= 1 led en el frame), no sobre un
                                         // delay a ciegas.
-
-                                        // El clic se mide sobre el estado encendido
-                                        // MEDIDO (>= 1 led en el frame), no sobre un
-                                        // delay a ciegas.
-                                        needleWaitArmed ((int) std::lround (100.0 * budgetFactor), [this, ok]
+                                        needleWaitArmed ((int) std::lround (100.0 * budgetFactor), [this, ok] (bool armed)
                                         {
-                                            evaluate (scriptPanicPress(), [this, ok] (const juce::String& panicRaw)
+                                            const auto armedOk = armed;
+
+                                            evaluate (scriptPanicPress(), [this, ok, armedOk] (const juce::String& panicRaw)
                                             {
                                                 const auto pressed = juce::JSON::parse (panicRaw);
                                                 const auto* pressedObject = pressed.getDynamicObject();
@@ -1347,15 +1656,19 @@ private:
                                                     ? static_cast<int> (beforeObject->getProperty ("active")) : 0;
 
                                         // El sondeo: exito = medidor APAGADO y las cuatro agujas
-                                        // ocultas y YA NO VUELVEN. El panic nativo es un
+                                        // ocultas en el MISMO frame. El panic nativo es un
                                         // allNotesOff: la voz muere dentro de su cola natural
-                                        // (release aleatorio de la sesion), asi que el
-                                        // presupuesto es de 12 s (400 tomas a 30 ms) y el
-                                        // muestreo es hasta el final, sin salida temprana
-                                        // enganosa: lo que se demuestra es que tras el clic
-                                        // NO queda nada sonando.
+                                        // (release aleatorio de la sesion), asi que 400 tomas
+                                        // x 30 ms son 12 s de TECHO para el peor caso, no la
+                                        // duracion normal. needleSample sale en el primer
+                                        // frame que cumple y deja la lectura RETENIDA ahi:
+                                        // medidor y agujas se juzgan del mismo instante (lo
+                                        // que evita cazar el corte de una con la cola de la
+                                        // otra), y lo que no se puede colar es un estado
+                                        // ya mudo, porque `meterBefore` exige que el
+                                        // medidor estuviera ENCENDIDO antes del clic.
                                         needlePanicPhase = true;
-                                        needleSample ((int) std::lround (400.0 * budgetFactor), [this, ok, pressError, meterWasHidden, meterWasActive]
+                                        needleSample ((int) std::lround (400.0 * budgetFactor), [this, ok, armedOk, pressError, meterWasHidden, meterWasActive]
                                         {
                                             needlePanicPhase = false;
                                             const auto panic = parseNeedles (needlePanicReading);
@@ -1372,6 +1685,7 @@ private:
 
                                             log ("[selftest] AGUJA: PANIC por el clic en el medidor ("
                                                  + juce::String (meterWasActive) + " led(es) antes"
+                                                 + (armedOk ? juce::String() : juce::String ("  [el re-arm no llego a encender el medidor en el sondeo]"))
                                                  + (pressError.isEmpty() ? juce::String() : "  [" + pressError + "]")
                                                  + ") -> medidor "
                                                  + (panic.meterHidden ? juce::String ("apagado") : juce::String ("ENCENDIDO"))
@@ -1504,50 +1818,32 @@ private:
 
     /** Sondeo acotado: espera a que el medidor se APAGUE (el motor queda mudo).
         Lo usa la fase PANIC antes de re-armar: la cola de la fase de release
-        puede durar mas que el presupuesto del sondeo y apilaria voces. */
-    void needleWaitQuiet (int count, std::function<void()> onDone)
+        puede durar mas que el presupuesto del sondeo y apilaria voces.
+        El bucle es el de `PageWait`; aqui solo vive el PREDICADO y por que se
+        espera a esto. */
+    void needleWaitQuiet (int count, std::function<void (bool satisfied)> onDone)
     {
-        if (count <= 0 || ! lifetime->alive)
-        {
-            if (lifetime->alive) onDone();
-            return;
-        }
-
-        evaluate (scriptReadNeedles(), [this, count, onDone] (const juce::String& raw)
-        {
-            if (parseNeedles (raw).meterHidden)
-            {
-                onDone();
-                return;
-            }
-
-            afterDelay (30, [this, count, onDone] { needleWaitQuiet (count - 1, onDone); });
-        });
+        pageWait.run (scriptReadNeedles(),
+                      [this] (const juce::String& raw) { return parseNeedles (raw).meterHidden; },
+                      count, pageWaitIntervalMs,
+                      [onDone] (bool satisfied, const juce::String&) { onDone (satisfied); });
     }
 
     /** Sondeo acotado: espera a que el medidor se ENCIENDA (>= 1 led). Lo usa
         la fase PANIC tras re-armar: el clic se mide sobre el estado encendido
-        MEDIDO, no sobre un delay a ciegas. */
-    void needleWaitArmed (int count, std::function<void()> onDone)
+        MEDIDO, no sobre un delay a ciegas. Que se cumpliera o se agotara el
+        presupuesto es justo la diferencia entre "el PANIC fallo" y "el re-arm no
+        llego a sonar", asi que el flag travels a la cadena. */
+    void needleWaitArmed (int count, std::function<void (bool satisfied)> onDone)
     {
-        if (count <= 0 || ! lifetime->alive)
-        {
-            if (lifetime->alive) onDone();
-            return;
-        }
-
-        evaluate (scriptReadNeedles(), [this, count, onDone] (const juce::String& raw)
-        {
-            const auto reading = parseNeedles (raw);
-
-            if (! reading.meterHidden && reading.meterActive >= 1)
-            {
-                onDone();
-                return;
-            }
-
-            afterDelay (30, [this, count, onDone] { needleWaitArmed (count - 1, onDone); });
-        });
+        pageWait.run (scriptReadNeedles(),
+                      [this] (const juce::String& raw)
+                      {
+                          const auto reading = parseNeedles (raw);
+                          return ! reading.meterHidden && reading.meterActive >= 1;
+                      },
+                      count, pageWaitIntervalMs,
+                      [onDone] (bool satisfied, const juce::String&) { onDone (satisfied); });
     }
 
     /** @brief Nombre con el que el arnes llena cada ranura (lo que la pagina ensena):
@@ -1704,16 +2000,16 @@ private:
         // 400 ms es margen de sobra para quedarse corto antes que lento.
         afterDelay (400, [this]
         {
-            evaluate (scriptReadFirstRange(), [this] (const juce::String& raw)
+            evaluate (scriptReadBaseline(), [this] (const juce::String& raw)
             {
                 // La pagina guarda normalizado 0..1 y el control edita unidades
                 // reales; en `masterLevel` las dos escalas coinciden (0..1, sin
                 // skew), asi que el input lleva 0.25 salvo redondeo de texto.
                 const auto pageValue = raw.getFloatValue();
-                const auto ok = raw.isNotEmpty() && raw != "NO_SLIDER" && raw != "NO_RESULT"
+                const auto ok = raw.isNotEmpty() && raw != "NO_BASELINE" && raw != "NO_RESULT"
                                     && std::abs (pageValue - 0.25f) < 0.02f;
 
-                log ("[selftest] NATIVO -> JS: masterLevel nativo = 0.25, slider de la pagina = "
+                log ("[selftest] NATIVO -> JS: masterLevel nativo = 0.25, knob de la pagina = "
                      + raw + " -> " + (ok ? "OK" : "FAIL"));
                 nativeToPageOk = ok;
 
@@ -1730,9 +2026,10 @@ private:
     {
         stage = Stage::pageToNative;
 
-        // Un evento `input` de verdad, el mismo que dispara un arrastre del
-        // usuario: la pagina lo trata por su camino normal (no hay atajo).
-        evaluate (scriptSetFirstRange ("0.75"), [this] (const juce::String& raw)
+        // El camino real de un gesto: se escribe por `baselineControl.value`, que
+        // es la API que la pagina expone en la celda del control base. No hay
+        // atajo — el mismo camino que recorre un arrastre del usuario.
+        evaluate (scriptSetBaseline ("0.75"), [this] (const juce::String& raw)
         {
             // La pagina necesita un instante para re-renderizar y empujar por el
             // puente; el APVTS se aplica en el siguiente poll del dueno.
@@ -1742,7 +2039,7 @@ private:
                 const auto nativeValue = parameter != nullptr ? parameter->getValue() : -1.0f;
                 const auto ok = raw == "DISPATCHED" && std::abs (nativeValue - 0.75f) < 0.02f;
 
-                log ("[selftest] JS -> NATIVO: slider de la pagina a 0.75, masterLevel nativo = "
+                log ("[selftest] JS -> NATIVO: knob de la pagina a 0.75, masterLevel nativo = "
                      + juce::String (nativeValue, 4) + " -> " + (ok ? "OK" : "FAIL"));
                 pageToNativeOk = ok;
 
@@ -1842,17 +2139,209 @@ private:
                                      + " (nativo 0.5) -> " + (ok ? "OK" : "FAIL"));
                                 midiOk = ok;
 
-                                // ACCIONES va ULTIMA: su sorteo mueve los parametros
-                                // de su tabla entera, asi que detras de las direcciones
-                                // que miden valores concretos (GENERAL, MIDI) y nunca
-                                // delante, o las invalidaria.
-                                pressPageActions();
+                                // MIDI-CC corre detras: necesita la tabla en su estado
+                                // de fabrica (el learn y la restauracion son SUYOS) y
+                                // su lectura de CUTOFF. ACCIONES sigue ULTIMA: su
+                                // sorteo mueve los parametros de su tabla entera, asi
+                                // que detras de las direcciones que miden valores
+                                // concretos, nunca delante, o las invalidaria.
+                                pushMidiCc();
                             });
                         });
                     });
                 });
             });
         });
+    }
+
+    // ========================================================================
+    // 4b. MIDI-CC: el LCD asigna un CC a CUTOFF y la nota CC del motor mueve el
+    //     parametro (el eslabon completo de la tabla MidiMappingManager)
+    // ========================================================================
+
+    /**
+     * @brief Conduce el menu MIDI CONTROL del LCD, deja que una nota CC del motor
+     *        gane el learn sobre CUTOFF y mide que el parametro se mueva.
+     *
+     * @details La tabla CC -> parametro (`MidiMappingManager`) tenia las dos
+     *          mitades y ninguna medida: la pagina GESTIONA su CC (lcdTop:
+     *          sendMidiCcLearn/Clear/Reset + midiCcState de vuelta) y el motor la
+     *          APLICA (processBlock barre los CC del bloque, el learn armado gana,
+     *          la cola ccValueFifo aplica por setValueNotifyingHost en el poll).
+     *          La direccion encadena las dos mitades por los caminos de verdad:
+     *
+     *          0. LA FILA DEL LCD CABE EN SU CHASIS: antes de tocar nada se miden
+     *          las CAJAS en la pagina VIVA del WebView2 — las del chasis, las de
+     *          los seis botones del D-pad y las de la pantalla con sus dos lineas
+     *          de texto. Es la fase que hacia falta y no habia: el D-pad se
+     *          conduce con eventos SINTETICOS, asi que un boton recortado por el
+     *          chasis responde igual y las cuatro fases de abajo pasaban en
+     *          verde con los cursores ^ y v mutilados (el 27 Sep: la rejilla a 2
+     *          columnas hacia 3 filas de 51px en los 42 de contenido y el
+     *          `overflow: hidden` cortaba la tercera por la mitad). Aqui lo que
+     *          se compara es lo que ve el usuario, no lo que responde.
+     *
+     *          1. LA PAGINA ARMA: el D-pad del LCD (botones .abd-lcd-panel__btn--*,
+     *          el gesto de un usuario) navega MIDI CONTROL (ultimo item de la
+     *          raiz), entra con OK, re-OK sobre "CC CUTOFF" y right — el encoder
+     *          +1 en EDIT que dispara el onEdit -> sendMidiCcLearn('filterCutoff').
+     *
+     *          2. LA NOTA CC GANA: injectController del selftest (la ruta del MIDI
+     *          externo) con el CC 75 — libre en la tabla de fabrica, donde CUTOFF
+     *          nace en 74, asi que la asignacion no puede confundirse con la de
+     *          fabrica. setMappingByIndex desasigna el 74 y reclama el 75.
+     *
+     *          3. LA NOTA CC MUEVE: el MISMO CC a valor 0 encola y el hilo de
+     *          mensajes aplica; el cutoff de la pagina (pie normalizado) tiene que
+     *          BAJAR — sondeo con salida temprana, patron AGUJA.
+     *
+     *          4. LA PANTALLA LO PINTA: el item sigue en EDIT (el arnes no toca el
+     *          D-pad otra vez) y su linea 2 tiene que decir "CC 75" — el valor que
+     *          el snapshot midiCcState trae de la TABLA DEL MOTOR.
+     *
+     *          Al salir: resetToDefaults() (la tabla vuelve a fabrica: CUTOFF en
+     *          su 74) y el parametro a ABIERTO, para que el sorteo de ACCIONES y
+     *          el ZRING encuentren el estado que asumen.
+     */
+    void pushMidiCc()
+    {
+        stage = Stage::midiCc;
+
+        const auto* cutoff = processor.getAPVTS().getParameter (State::IDs::filterCutoff);
+        const auto cutoffBefore = cutoff != nullptr ? cutoff->getValue() : -1.0f;
+
+        // FASE 0 (deliberadamente en paralelo: solo LEE el DOM, no toca estado
+        // ni encadena con las de abajo, asi que no puede desordenar la corrida).
+        // Se mide con 120 ms porque corre antes que el armado (200) y su veredicto
+        // se suma al final, cuando todas las fases ya han terminado.
+        afterDelay (120, [this]
+        {
+            evaluate (scriptLcdGeometry(), [this] (const juce::String& raw)
+            {
+                lcdGeometryOk = checkLcdGeometry (raw);
+            });
+        });
+
+        afterDelay (200, [this, cutoffBefore]
+        {
+            // FASE 1 — LA PAGINA ARMA EL LEARN: cuatro right alcanzan MIDI
+            // CONTROL en la raiz (5 items: ^/v dan +-5, vuelta completa, y en
+            // navegacion el encoder +1 es el cursor), el primer OK entra en la
+            // rama ("CC CUTOFF" es su item 0) y el segundo OK pasa a EDIT; el
+            // right dispara el learn. Todo por los BOTONES: si el wiring
+            // boton -> maquina -> hook se rompe, esto lo dice.
+            evaluate (scriptLcdArmCcLearn (midiCcMenuRootSteps), [this, cutoffBefore] (const juce::String& armedRaw)
+            {
+                if (armedRaw != "LEARN_SENT")
+                {
+                    log ("[selftest] MIDI-CC: el LCD no consiguio armar el learn (" + armedRaw + ") -> FAIL");
+                    midiCcOk = false;
+                    pressPageActions();
+                    return;
+                }
+
+                // El arm viaja por el puente JS -> nativo: su entrega y la del
+                // evaluate que devolvio LEARN_SENT no tienen orden garantizado,
+                // asi que se espera y se VERIFICA en el motor antes de disparar
+                // la nota CC (si el arm no llego, la nota no ganaria nada y el
+                // fallo seria de nadie).
+                afterDelay (400, [this, cutoffBefore]
+                {
+                    if (! processor.isMidiLearnActive())
+                    {
+                        log ("[selftest] MIDI-CC: el arm del learn no llego al motor -> FAIL");
+                        midiCcOk = false;
+                        pressPageActions();
+                        return;
+                    }
+
+                    // FASE 2 — LA NOTA CC GANA: el proximo CC del motor asigna (el
+                    // mismo camino del learn de hardware: processBlock ->
+                    // setMappingByIndex, RT-safe; este CC asigna, no toca el parametro).
+                    processor.injectController (1, midiCcSelfLearnNumber, 127);
+                    afterDelay (600, [this, cutoffBefore]
+                    {
+                        const auto learnedCc = processor.getMidiMappingManager()
+                                                   .getCCForParam (State::IDs::filterCutoff);
+                        const auto learnOk = learnedCc == midiCcSelfLearnNumber;
+
+                        // FASE 3 — LA NOTA CC MUEVE EL PARAMETRO: valor 0, la cola
+                        // encola y applyPendingCcChanges aplica en el poll del dueno.
+                        // Con el learn perdido se conduce el MISMO 75: la tabla lo
+                        // ignora (sin mapeo no encola nada) y el veredicto cae por
+                        // learnOk/movedDown, no por un CC fuera de rango.
+                        const auto ccToDrive = learnOk ? learnedCc : midiCcSelfLearnNumber;
+                        processor.injectController (1, ccToDrive, 0);
+
+                        ccSample ((int) std::lround (30.0 * budgetFactor), cutoffBefore,
+                                  [this, cutoffBefore, learnedCc, learnOk] (float pageCutoffAfter)
+                        {
+                            const auto* cutoffNow = processor.getAPVTS().getParameter (State::IDs::filterCutoff);
+                            const auto cutoffAfter = cutoffNow != nullptr ? cutoffNow->getValue() : -1.0f;
+                            const auto movedDown = cutoffBefore > 0.0f
+                                                       && cutoffAfter >= 0.0f
+                                                       && cutoffAfter < cutoffBefore - 0.01f
+                                                       && pageCutoffAfter >= 0.0f
+                                                       && pageCutoffAfter < cutoffBefore - 0.01f;
+
+                            // FASE 4 — LA PANTALLA LO PINTA (tras el movimiento: el
+                            // snapshot que trae la tabla nueva es el que repinta el
+                            // item en EDIT).
+                            evaluate (scriptLcdReadCcScreen(), [this, cutoffBefore, cutoffAfter, learnedCc, learnOk, movedDown] (const juce::String& screenRaw)
+                            {
+                                const auto expectedText = "CC " + juce::String (learnedCc);
+                                const auto screenOk = screenRaw == expectedText;
+                                const auto ok = learnOk && movedDown && screenOk && lcdGeometryOk;
+
+                                log (juce::String ("[selftest] MIDI-CC: learn del LCD sobre CUTOFF -> CC ")
+                                     + juce::String (learnedCc) + " (" + (learnOk ? "OK" : "NO LLEGO")
+                                     + "), nota CC (0/127) al motor: CUTOFF " + juce::String (cutoffBefore, 3)
+                                     + " -> " + juce::String (cutoffAfter, 3)
+                                     + (movedDown ? juce::String (" (baja)") : juce::String (" (SIN MOVER)"))
+                                     + ", pantalla del LCD \"" + screenRaw + "\" (esperado \"" + expectedText
+                                     + "\"), fila del chasis "
+                                     + (lcdGeometryOk ? juce::String ("sin recortes")
+                                                      : juce::String ("CON RECORTES"))
+                                     + " -> " + (ok ? "OK" : "FAIL"));
+
+                                midiCcOk = ok;
+
+                                // RESTAURACION para las direcciones que quedan: la
+                                // tabla de fabrica (CUTOFF vuelve a su CC 74) y el
+                                // parametro ABIERTO (el sorteo de ACCIONES y el ZRING
+                                // esperan el estado que dejo la fabrica).
+                                processor.getMidiMappingManager().resetToDefaults();
+                                setParameterReal (State::IDs::filterCutoff, 20000.0f);
+                                afterDelay (200, [this] { pressPageActions(); });
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    }
+
+    /** @brief Sondeo del cutoff de la pagina tras la nota CC (patron AGUJA:
+     *         salida temprana en cuanto el parametro BAJA; presupuesto de 30
+     *         tomas x 30 ms por si el evaluate del host viene lento). Es el tercer
+     *         consumidor de `PageWait`: el bucle es el de la clase y aqui solo
+     *         estan el predicado y la lectura del valor. */
+    void ccSample (int count, float cutoffBefore, std::function<void (float)> onDone)
+    {
+        const auto readValue = [] (const juce::String& raw)
+        {
+            return (raw.isNotEmpty() && raw != "NO_CUTOFF" && raw != "NO_RESULT")
+                       ? raw.getFloatValue() : -1.0f;
+        };
+
+        pageWait.run (scriptReadCutoff(),
+                      [readValue, cutoffBefore] (const juce::String& raw)
+                      {
+                          const auto value = readValue (raw);
+                          return value >= 0.0f && cutoffBefore > 0.0f && value < cutoffBefore - 0.01f;
+                      },
+                      count, pageWaitIntervalMs,
+                      [readValue, onDone] (bool, const juce::String& lastRaw) { onDone (readValue (lastRaw)); });
     }
 
     // ========================================================================
@@ -2497,19 +2986,140 @@ private:
                      + slotName + "\")"
                      + (error.isEmpty() ? juce::String() : "  [" + error + "]")
                      + " -> " + (ok ? "OK" : "FAIL"));
-                cornerOk = ok;
+                cornerFilledOk = ok;
 
-                // La direccion deja el lienzo como estaba: el cajon cierra por
-                // SU id y la matriz se re-abre por el APVTS con la ruta LFO 2
-                // -> Morph Z (el estado que ZRING asume al arrancar).
+                // La direccion NO acaba aqui: falta la mitad sin timbre. Para que exista
+                // una esquina vacia hace falta una ranura sin modelo, y vaciar una ranura
+                // es del DUENO (la pagina no puede con host: las suyas son del preset), asi
+                // que el arnes vacia la D con clearModelSlot y la restaura al terminar.
+                // El cajon se cierra por SU id antes: con el de MODELOS delante, "no abre
+                // ningun cajon" no seria una medida de nada.
                 evaluate (scriptCloseDrawerById ("drawer-models"), [this] (const juce::String&)
                 {
-                    setParameterReal (State::IDs::mod1Source, 2.0f);
-                    setParameterReal (State::IDs::mod1Destination, 28.0f);
-
-                    log ("[selftest] ESQUINA: lienzo asentado (cajon cerrado, matriz re-abierta para ZRING)");
-                    zringDirection();
+                    cornerEmptyClick();
                 });
+            });
+        });
+    }
+
+    /**
+     * @brief 7b (segunda mitad): el clic en una esquina SIN modelo no abre nada.
+     *
+     * La regla de la pagina es que la esquina vacia no se pinta siquiera (el
+     * componente omite el span; `data-clickable` solo existe con ranura cargada), asi
+     * que el clic cae en el fondo del pad. Lo que se mide es que ese gesto sea INNOCUO
+     * y que el fondo siga siendo la superficie absoluta del morph:
+     *
+     *   1. la esquina de la ranura vacia NO esta en el DOM (si aparece, la ranura no
+     *      estaba vacia y la direccion no midio lo que cree: `EMPTY_CORNER_PAINTED`);
+     *   2. quedan las otras TRES, y el punto de la ausente se DERIVA de la pagina
+     *      (el espejo de la esquina de enfrente, con su misma fila y alto), no de los
+     *      4px/6px del CSS del paquete compartido, que pueden cambiar sin romper esta
+     *      medida;
+     *   3. el clic se despacha sobre `document.elementFromPoint` —lo que hace el
+     *      navegador con un dedo— y cae en el PAD, no en una esquina;
+     *   4. no se abre NINGUN cajon y no queda NINGUN resalte en el documento
+     *      (`[data-slot-highlight='true']`, que el panel escribe en todas las filas).
+     *
+     * Al salir RESTAURA la ranura: el arnes ya declara que no es neutro, pero dejar un
+     * agujero en el pad seria otra cosa. La restauracion no entra en el veredicto (es
+     * limpieza del propio arnes, no una invariante del producto): se loguea sola.
+     */
+    void cornerEmptyClick()
+    {
+        // La D (3) es la que acaba de cargar MORPH con el modelo REAL de fabrica, y la
+        // que el pad pinta como esquina 'br': vaciarla quita una esquina y devuelve la
+        // que el arnes acaba de verificar.
+        const auto cleared = processor.clearModelSlot (emptyCornerSlot);
+
+        log ("[selftest] ESQUINA: ranura " + juce::String (emptyCornerSlot)
+             + " (esquina 'br') vacia con clearModelSlot -> "
+             + (cleared ? "si" : "NO"));
+
+        // Un poll del dueno son 30 ms; 400 es el margen de siempre para que la pagina
+        // repinte las esquinas sin la cuarta antes de que tenga sentido pulsar ahi.
+        afterDelay (400, [this, cleared]
+        {
+            evaluate (scriptClickEmptyCorner (emptyCornerSlot), [this, cleared] (const juce::String& raw)
+            {
+                const auto parsed = juce::JSON::parse (raw);
+                const auto* object = parsed.getDynamicObject();
+                const auto field = [object] (const char* key)
+                {
+                    return object != nullptr ? object->getProperty (key) : juce::var();
+                };
+
+                const auto error = field ("error").toString();
+                const auto key = field ("key").toString();
+                const auto corners = static_cast<int> (field ("corners"));
+                const auto hitIsPad = static_cast<int> (field ("hitIsPad"));
+                const auto hitIsCorner = static_cast<int> (field ("hitIsCorner"));
+                const auto opened = field ("opened").toString();
+                const auto highlights = static_cast<int> (field ("highlights"));
+
+                const auto ok = error.isEmpty() && cleared
+                                    && corners == numMatrixSlots - 1
+                                    && hitIsPad == 1 && hitIsCorner == 0
+                                    && opened.isEmpty()
+                                    && highlights == 0;
+
+                log ("[selftest] ESQUINA: clic en la esquina VACIA ('" + key + "'): quedan "
+                     + juce::String (corners) + " esquinas pintadas (esperado "
+                     + juce::String (numMatrixSlots - 1) + "), el gesto cae en el pad="
+                     + juce::String (hitIsPad) + " / en una esquina=" + juce::String (hitIsCorner)
+                     + ", cajon abierto \"" + opened + "\"" + (opened.isEmpty() ? "" : " (TENIA QUE ESTAR CERRADO)")
+                     + ", resaltes en el documento = " + juce::String (highlights)
+                     + (error.isEmpty() ? juce::String() : "  [" + error + "]")
+                     + " -> " + (ok ? "OK" : "FAIL"));
+
+                // El veredicto de la direccion es el AND de sus dos mitades: la esquina
+                // con timbre abre SU cajon, y la vacia no abre nada.
+                cornerOk = cornerFilledOk && ok;
+
+                cornerRestore();
+            });
+        });
+    }
+
+    /** @brief Devuelve a la D el modelo real que MORPH cargo, y comprueba que la pagina
+     *         vuelve a pintar las cuatro esquinas. Limpieza del arnes, no veredicto. */
+    void cornerRestore()
+    {
+        const auto realModel = NEURONiKProcessor::factoryModelsDirectory()
+                                   .getChildFile ("CZ-SWEP1.neuronikmodel");
+        const auto restored = realModel.existsAsFile()
+                                  && processor.loadModel (realModel, emptyCornerSlot);
+
+        afterDelay (400, [this, restored]
+        {
+            evaluate (scriptReadMorph(), [this, restored] (const juce::String& raw)
+            {
+                const auto painted = parseMorph (raw);
+
+                // Las cuatro de nuevo, con los nombres de siempre: la D recupera el
+                // CZ-SWEP1 real, que es el MISMO nombre que su ranura del banco
+                // (`selfModel (3).fileName`), asi que el texto esperado no cambia.
+                const auto cornersBack = painted.ok && painted.corners == expectedSlotNames();
+
+                log ("[selftest] ESQUINA: ranura " + juce::String (emptyCornerSlot)
+                     + " restaurada (" + (restored ? "CZ-SWEP1" : "RECHAZADO") + "); la pagina vuelve a pintar "
+                     + painted.corners
+                     + (cornersBack ? "" : "  [las cuatro esquinas NO volvieron]")
+                     + (restored && cornersBack ? "" : "  [restauracion incompleta: el arnes deja la pagina como puede]"));
+
+                // Y ya, con el lienzo como estaba: la matriz re-abierta con la ruta que
+                // ZRING asume al arrancar. Los Indices se DERIVAN (getModSources /
+                // getModDestinationTable) igual que en ZRING, no escritos a mano: un 28
+                // de aqui es un 28 que nadie ve hasta que la tabla de destinos crece y
+                // el arco deja de girar — y el sintoma es que falla OTRA direccion.
+                setParameterReal (State::IDs::mod1Source,
+                                  (float) State::getModSources().indexOf ("LFO 2"));
+                setParameterReal (State::IDs::mod1Destination,
+                                  (float) destinationIndexFor (State::IDs::morphZ));
+
+                log ("[selftest] ESQUINA: lienzo asentado (cajon cerrado, matriz re-abierta "
+                     "para ZRING: LFO 2 -> Morph Z)");
+                zringDirection();
             });
         });
     }
@@ -2521,10 +3131,10 @@ private:
         // La ruta por el APVTS, como la dejaria un preset: la matriz usa
         // INDICES de contrato, nunca literales escritos a mano.
         zringLfo2Source = State::getModSources().indexOf ("LFO 2");
-        zringDest28 = destinationIndexFor (State::IDs::morphZ);
+        zringDestIndex = destinationIndexFor (State::IDs::morphZ);
 
         setParameterReal (State::IDs::mod1Source, (float) zringLfo2Source);
-        setParameterReal (State::IDs::mod1Destination, (float) zringDest28);
+        setParameterReal (State::IDs::mod1Destination, (float) zringDestIndex);
         setParameterReal (State::IDs::mod1Amount, 1.0f);
         setParameterReal (State::IDs::lfo2RateHz, 1.0f);
         setParameterReal (State::IDs::lfo2Depth, 1.0f);
@@ -2533,8 +3143,9 @@ private:
         setParameterReal (State::IDs::morphZ, 0.0f);   // base en reposo: el arco manda
 
         log ("[selftest] ZRING: ruta por APVTS = LFO 2 (fuente " + juce::String (zringLfo2Source)
-             + ") -> Morph Z (destino " + juce::String (zringDest28)
-             + "), amount 1.0, LFO2 a 1.0 Hz; el arco lo pinta frame.modulation[28].");
+             + ") -> Morph Z (destino " + juce::String (zringDestIndex)
+             + "), amount 1.0, LFO2 a 1.0 Hz; el arco lo pinta frame.modulation["
+             + juce::String (zringDestIndex) + "].");
 
         afterDelay (600, [this]
         {
@@ -2553,7 +3164,11 @@ private:
                 const bool sweepOk = zringMaxOn > 40.0;   // el arco sube hasta ~100 guiones
                 log ("[selftest] ZRING: arco con LFO2 -> 28: max " + juce::String (zringMaxOn, 1)
                      + " guiones, periodo " + juce::String (zringPeriodOn, 0)
-                     + " ms (esperado ~1000) -> " + (periodOk && sweepOk ? "OK" : "FAIL"));
+                     + " ms (gate " + juce::String (zringPeriodMinMs, 0) + ".."
+                     + juce::String (zringPeriodMaxMs, 0)
+                     + " ms entre cristas: |sin| de 1 Hz culmina dos veces por "
+                       "periodo, asi que ~500, no ~1000) -> "
+                     + (periodOk && sweepOk ? "OK" : "FAIL"));
                 log ("[selftest] ZRING: diagnostico A: " + zringTrace());
 
                 int paintedNegative = 0;
@@ -2606,7 +3221,7 @@ private:
                                               && offOk && backOk;
 
                                 log (juce::String ("[selftest] ZRING: la ruta nativa LFO 2 -> Morph Z (destino ")
-                                     + juce::String (zringDest28)
+                                     + juce::String (zringDestIndex)
                                      + ") gira el anillo con el arco CON SIGNO (semionda negativa incluida) -> "
                                      + (zringOk ? "OK" : "FAIL"));
 
@@ -2615,7 +3230,7 @@ private:
                                             && summaryRoutesDirectionOk() && needleDirectionOk()
                                             && modelsDirectionOk() && modelsAssetsOk
                                             && nativeToPageOk
-                                            && pageToNativeOk && generalOk && midiOk && actionsOk                                                && freezeGuardOk && morphOk && cornerOk && zringOk);
+                                            && pageToNativeOk && generalOk && midiOk && midiCcOk && actionsOk                                                && freezeGuardOk && morphOk && cornerOk && zringOk);
                             });
                         });
                     });
@@ -2820,6 +3435,9 @@ private:
     /** @brief Veredicto de ESQUINA: la esquina A abre MODELOS en la ranura 0. */
     [[nodiscard]] bool cornerDirectionOk() const noexcept { return cornerOk; }
 
+    /** @brief Veredicto de MIDI-CC: el LCD asigna el CC y la nota del motor mueve CUTOFF. */
+    [[nodiscard]] bool midiCcDirectionOk() const noexcept { return midiCcOk; }
+
     void finish (bool passed)
     {
         if (finished)
@@ -2849,24 +3467,27 @@ private:
     // ultima direccion: el antes y el despues no pueden medir cosas distintas.
     // ========================================================================
 
-    static juce::String scriptReadFirstRange()
+    static juce::String scriptReadBaseline()
     {
-        const auto anchor = juce::String ("'") + SelftestPage::firstRange + "'";
+        const auto anchor = juce::String ("'") + SelftestPage::baselineControl + "'";
 
-        return "document.querySelector(" + anchor + ")"
-               " ? String(document.querySelector(" + anchor + ").value)"
-               " : 'NO_SLIDER'";
+        // `baselineControl.value` es el PUENTE que expone la pagina en la celda
+        // del control base (ver `buildBaselineControl`). Se comprueba su
+        // existencia: si el master volviera a ser otra cosa y el puente no
+        // llegara, el arnes tiene que decirlo (`NO_BASELINE`) en vez de leer un
+        // `undefined` que luego se compararia como si fuera un valor.
+        return "(() => { const c = document.querySelector(" + anchor + ");"
+               " if (!c || !c.baselineControl) return 'NO_BASELINE';"
+               " return String(c.baselineControl.value); })()";
     }
 
-    static juce::String scriptSetFirstRange (const juce::String& value)
+    static juce::String scriptSetBaseline (const juce::String& value)
     {
-        const auto anchor = juce::String ("'") + SelftestPage::firstRange + "'";
+        const auto anchor = juce::String ("'") + SelftestPage::baselineControl + "'";
 
-        return "(() => { const s = document.querySelector(" + anchor + ");"
-               " if (!s) return 'NO_SLIDER';"
-               " const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;"
-               " setter.call(s, '" + value + "');"
-               " s.dispatchEvent(new Event('input', { bubbles: true }));"
+        return "(() => { const c = document.querySelector(" + anchor + ");"
+               " if (!c || !c.baselineControl) return 'NO_BASELINE';"
+               " c.baselineControl.value = " + value + ";"
                " return 'DISPATCHED'; })()";
     }
 
@@ -2907,6 +3528,247 @@ private:
                     + juce::String (note) + " });"
                "  return 'OFF_SENT';"
                " } catch (e) { return 'MIDI_FAIL: ' + e.message; } })()";
+    }
+
+    /** @brief Conduce el D-pad del LCD de la pagina hasta armar el learn de un
+     *         item 'cc': MENU -> (raiz) -> right x4 hasta MIDI CONTROL -> OK ->
+     *         OK (EDIT) -> right (el encoder +1 que dispara el learn).
+     *
+     *  Todo por los BOTONES del panel (pointerdown, el gesto de un usuario), no
+     *  por la maquina en mano: si el wiring boton -> maquina -> hook se rompe,
+     *  esto lo dice. El pointerup en window cierra el hold-repeat que el panel
+     *  attaches al boton. En una raiz de 5 items los cursores ^/v (+-5) son
+     *  vuelta completa: la navegacion va por el encoder +1 (right).
+     */
+    static juce::String scriptLcdArmCcLearn (int rootSteps)
+    {
+        const auto press = [] (const char* key, int times)
+        {
+            juce::String out;
+
+            for (int i = 0; i < times; ++i)
+                out += "document.querySelector('.abd-lcd-panel__btn--" + juce::String (key) + "')"
+                       "?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));"
+                       "window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));";
+
+            return out;
+        };
+
+        return "(() => { try {"
+               "  if (!document.querySelector('.abd-lcd-panel__btn--menu')) return 'NO_LCD';"
+               + press ("menu", 1)
+               + press ("right", rootSteps)
+               + press ("ok", 2)
+               + press ("right", 1)
+               + "  return 'LEARN_SENT';"
+               " } catch (e) { return 'LCD_FAIL: ' + e.message; } })()";
+    }
+
+    /** @brief La pantalla del LCD mientras el item 'cc' sigue en EDIT: linea 1
+     *         = SU etiqueta ("CC CUTOFF", la prueba de que el item correcto esta
+     *         en edicion), linea 2 = el valor que la pagina ensena de SU CC
+     *         ("CC 75" con la tabla nueva, "CC 74" si el snapshot no llego,
+     *         "CC --" sin mapeo). */
+    static juce::String scriptLcdReadCcScreen()
+    {
+        return "(() => { try {"
+               "  const lines = Array.from(document.querySelectorAll('.abd-lcd__line'));"
+               "  if (lines.length < 2) return 'NO_LCD';"
+               "  const l0 = (lines[0] ? lines[0].textContent : '').trim();"
+               "  const l1 = (lines[1] ? lines[1].textContent : '').trim();"
+               "  if (l0 !== 'CC CUTOFF') return 'WRONG_ITEM: ' + l0;"
+               "  return l1;"
+               " } catch (e) { return 'LCD_FAIL: ' + e.message; } })()";
+    }
+
+    /** @brief La geometria de la FILA del LCD en la pagina viva: chasis, D-pad y
+     *         pantalla, en cajas (getBoundingClientRect) y no en clases.
+     *
+     *  Devuelve JSON con `error` (vacio si se pudo medir), el `dpr` y el `zoom`
+     *  del documento (el WebView2 no es un navegador de escritorio: el zoom lo
+     *  aplica el editor con `style.zoom` y el dpr lo pone Windows), la caja de la
+     *  fila (`row`), un boton por entrada de `btns` como [nombre, x, y, w, h], los
+     *  nombres de los que se salen del chasis (`clipped`), la caja de la pantalla
+     *  (`screen`) y una por linea de texto (`lines`, [y, h, w]).
+     *
+     *  Se manda ABSOLUTA (`clipped` se calcula aqui, no en C++) para que el
+     *  veredicto no dependa de comparar floats en dos lados.
+     *
+     *  `cssH`/`cssW` son los valores COMPUTADOS (pixeles de LAYOUT) y ahi se
+     *  comprueba el contrato: los rects de arriba estan en pixeles de pantalla,
+     *  y la bancada escala la pagina a su ventana (640/1440 = 0.44), asi que su
+     *  fila mide 24 de alto en pantalla con los mismos 54 de layout.
+     */
+    static juce::String scriptLcdGeometry()
+    {
+        return "(() => { try {"
+               "  const row = document.querySelector('.lcd-top');"
+               "  if (!row) return JSON.stringify({ error: 'NO_ROW' });"
+               "  const rr = row.getBoundingClientRect();"
+               "  const btns = Array.from(row.querySelectorAll('.abd-lcd-panel__btn')).map(b => {"
+               "    const r = b.getBoundingClientRect();"
+               "    return [b.className.replace(/.*btn--/, ''), r.left, r.top, r.width, r.height];"
+               "  });"
+               "  const pad = row.querySelector('.abd-lcd-panel__pad');"
+               "  const screen = row.querySelector('.abd-lcd__screen') || row.querySelector('.abd-lcd');"
+               "  const sr = screen ? screen.getBoundingClientRect() : null;"
+               "  const lines = Array.from(row.querySelectorAll('.abd-lcd__line')).map(l => {"
+               "    const r = l.getBoundingClientRect();"
+               "    return [r.top, r.height, r.width];"
+               "  });"
+               "  const clipped = btns.filter(b => b[1] < rr.left - 0.5 || b[1] + b[3] > rr.right + 0.5"
+               "                                    || b[2] < rr.top - 0.5 || b[2] + b[4] > rr.bottom + 0.5)"
+               "                      .map(b => b[0]);"
+               "  return JSON.stringify({"
+               "    error: '',"
+               "    dpr: window.devicePixelRatio,"
+               "    zoom: getComputedStyle(document.documentElement).zoom || '1',"
+               "    win: [window.innerWidth, window.innerHeight],"
+               "    row: [rr.left, rr.top, rr.width, rr.height],"
+               "    cssH: parseFloat(getComputedStyle(row).height),"
+               "    cssW: parseFloat(getComputedStyle(row).width),"
+               "    cols: pad ? getComputedStyle(pad).gridTemplateColumns : '',"
+               "    btns: btns,"
+               "    clipped: clipped,"
+               "    screen: sr ? [sr.left, sr.top, sr.width, sr.height] : null,"
+               "    lines: lines"
+               "  });"
+               " } catch (e) { return JSON.stringify({ error: e.message }); } })()";
+    }
+
+    /** @brief Veredicto de la fase 0: la fila del LCD cabe en su chasis.
+     *
+     *  Lo que se comprueba, y por que cada cosa:
+     *   - el chasis mide el ALTO DEL CONTRATO (GEOMETRY.lcd = 54): es un presupuesto
+     *     fijo del que el lienzo descuenta, asi que si el CSS lo cambia se rompe el
+     *     encaje del canvas entero.
+     *   - los SEIS botones del D-pad existen (el paquete compartido los pone; si
+     *     uno desaparece, el menu MIDI CONTROL deja de navegarse).
+     *   - NINGUNO se sale del chasis: es la invariante que faltaba. Con la rejilla
+     *     a 2 columnas los seis hacian 3 filas de 51px en los 42 de contenido, y el
+     *     `overflow: hidden` cortaba la tercera (`^` `v`) por la mitad — el arnes
+     *     pulsaba los botones con eventos sinteticos y no se enteraba.
+     *   - las DOS lineas de texto caben DENTRO de la pantalla: el alto de la
+     *     pantalla es el alto del texto mas el aire, asi que si el texto no cabe
+     *     sale por el `overflow: hidden` de la pantalla y la retícula 16x2 se
+     *     recorta por arriba.
+     *
+     *  Loguea la medicion (dpr, zoom, cajas) porque es el unico sitio donde se
+     *  ven las cifras de la fila dentro del WebView2 del plugin, y el JSON crudo
+     *  solo cuando falla, que es cuando hace falta.
+     */
+    bool checkLcdGeometry (const juce::String& raw)
+    {
+        const auto parsed = juce::JSON::parse (raw);
+        const auto* object = parsed.getDynamicObject();
+        const auto field = [object] (const char* key)
+        {
+            return object != nullptr ? object->getProperty (key) : juce::var();
+        };
+
+        const auto error = field ("error").toString();
+        const auto row = field ("row");
+        const auto rowHeight = static_cast<double> (row[3]);
+        const auto layoutHeight = static_cast<double> (field ("cssH"));
+        const auto btns = field ("btns");
+        const auto clipped = field ("clipped");
+        const auto screen = field ("screen");
+        const auto lines = field ("lines");
+
+        const auto buttonCount = btns.isArray() ? static_cast<int> (btns.size()) : 0;
+        const auto clippedCount = clipped.isArray() ? static_cast<int> (clipped.size()) : 0;
+        const auto lineCount = lines.isArray() ? static_cast<int> (lines.size()) : 0;
+
+        // El alto del CONTRATO, en pixeles de LAYOUT (no de pantalla: la bancada
+        // escala la pagina a su ventana y su fila mide 24 en pantalla), con 1px de
+        // tolerancia por el redondeo del subpixel.
+        const auto heightOk = std::abs (layoutHeight - (double) lcdRowHeight) <= 1.0;
+        const auto buttonsOk = buttonCount == numLcdPadButtons;
+
+        // Cada linea dentro de la pantalla (arriba, abajo y a lo ancho).
+        auto linesFit = screen.isArray() && lineCount == numLcdTextLines;
+        if (linesFit)
+        {
+            const auto screenTop = static_cast<double> (screen[1]);
+            const auto screenWidth = static_cast<double> (screen[2]);
+            const auto screenBottom = screenTop + static_cast<double> (screen[3]);
+
+            for (int i = 0; i < lineCount && linesFit; ++i)
+            {
+                const auto line = lines[i];
+                const auto top = static_cast<double> (line[0]);
+                const auto height = static_cast<double> (line[1]);
+                const auto width = static_cast<double> (line[2]);
+
+                linesFit = top >= screenTop - 0.5
+                        && top + height <= screenBottom + 0.5
+                        && width <= screenWidth + 0.5;
+            }
+        }
+
+        // Filas DISTINTAS del D-pad: lo que dice si la rejilla cabe en el chasis
+        // (3 columnas = 2 filas; a 2 columnas serian 3 y la tercera se sale).
+        // La tolerancia es la mitad del ALTO del boton, no un fijo: dentro del
+        // WebView2 el layout cae en fracciones de pixel (dpr 1.25) y dos botones
+        // de la misma fila no coinciden exactamente al milimetro. Los representantes
+        // se guardan en un vector de las filas YA vistas — comparar contra los
+        // botones indices por fila contaba la misma fila mas de una vez.
+        std::vector<double> rowTops;
+        for (int i = 0; i < buttonCount; ++i)
+        {
+            const auto top = static_cast<double> (btns[i][2]);
+            const auto tolerance = std::max (1.0, static_cast<double> (btns[i][4]) / 2.0);
+            auto known = false;
+
+            for (const auto rowTop : rowTops)
+                known = known || std::abs (rowTop - top) <= tolerance;
+
+            if (! known)
+                rowTops.push_back (top);
+        }
+
+        const auto padRows = static_cast<int> (rowTops.size());
+
+        const auto ok = error.isEmpty() && heightOk && buttonsOk && clippedCount == 0 && linesFit;
+
+        if (ok)
+        {
+            log (juce::String ("[selftest] MIDI-CC: fila del LCD en la pagina viva (dpr ")
+                 + juce::String (static_cast<double> (field ("dpr")), 2) + ", zoom " + field ("zoom").toString()
+                 + ", ventana " + juce::String (static_cast<int> (field ("win")[0]))
+                 + "x" + juce::String (static_cast<int> (field ("win")[1]))
+                 + "): chasis " + juce::String (static_cast<int> (row[2]))
+                 + "x" + juce::String (rowHeight, 0) + " en pantalla"
+                 + (std::abs (rowHeight - layoutHeight) > 1.0
+                        ? juce::String (" (") + juce::String (layoutHeight, 0) + " de alto en layout, pagina escalada x"
+                          + juce::String (rowHeight / std::max (1.0, layoutHeight), 2) + ")"
+                        : juce::String())
+                 + ", contrato " + juce::String (lcdRowHeight)
+                 + ", D-pad " + juce::String (buttonCount) + " boton(es) en "
+                 + juce::String (padRows) + " filas, " + juce::String (clippedCount)
+                 + " recortado(s), pantalla " + juce::String (static_cast<int> (screen[2]))
+                 + "x" + juce::String (static_cast<int> (screen[3])) + " con " + juce::String (lineCount)
+                 + " lineas dentro -> OK");
+        }
+        else
+        {
+            log ("[selftest] MIDI-CC: la fila del LCD NO cabe bien en su chasis -> FAIL");
+            log ("[selftest] MIDI-CC: crudo de la medicion = " + raw);
+        }
+
+        return ok;
+    }
+
+    /** @brief El cutoff de la pagina, por el pie NORMALIZADO (el mismo canal que
+     *         GENERAL): un CC mueve el parametro por la cola del poll, y su
+     *         snapshot es lo que el pie serializa. */
+    static juce::String scriptReadCutoff()
+    {
+        return "(() => { try {"
+               "  const state = JSON.parse(document.querySelector('"
+                    + juce::String (SelftestPage::stateCode) + "').textContent);"
+               "  return String(state.filterCutoff);"
+               " } catch (e) { return 'NO_CUTOFF'; } })()";
     }
 
     /** @brief El selector de la celda de un parametro: `[data-parameter-id="id"]`. */
@@ -3187,6 +4049,73 @@ private:
                " } catch (e) { return JSON.stringify({ error: e.message }); } })()";
     }
 
+    /**
+     * @brief El gesto sobre una esquina SIN modelo: la que la pagina no pinta.
+     *
+     * El componente compartido OMITE el span de una esquina vacia, asi que no hay
+     * elemento que pulsar: lo que se busca es el PUNTO donde esa esquina estaria, y se
+     * deriva de las que si se pintan por SIMETRIA (el espejo del centro de la esquina de
+     * enfrente, que comparte fila y alto) en vez de escribir los 4px/6px del CSS, que son
+     * del paquete compartido y pueden cambiar sin que esta medida se entere. El clic se
+     * despacha sobre `document.elementFromPoint`, que es lo que hace el navegador con un
+     * dedo.
+     *
+     * Lo que devuelve son los dos negativos que se exigen (ningun cajon abierto, ningun
+     * resalte) MAS la prueba de que el gesto cayo en el pad y no en una esquina, que es
+     * lo que distingue "no abrio nada" de "no habia nada que abrir".
+     */
+    static juce::String scriptClickEmptyCorner (int slot)
+    {
+        const auto visual = juce::String ("'[data-visual=\"") + SelftestPage::padVisual + "\"]'";
+        const auto pad = juce::String ("'") + SelftestPage::padSurface + "'";
+
+        return "(() => { try {"
+               "  const order = ['tl', 'tr', 'bl', 'br'];"
+               "  const key = order[" + juce::String (slot) + "];"
+               "  const visual = document.querySelector(" + visual + ");"
+               "  if (!visual) return JSON.stringify({ error: 'NO_VISUAL', key: key });"
+               "  const padEl = visual.querySelector(" + pad + ");"
+               "  if (!padEl) return JSON.stringify({ error: 'NO_PAD', key: key });"
+               "  const corners = Array.from(padEl.querySelectorAll('.abd-xypad__corner[data-corner]'));"
+               // Si la esquina "vacia" esta pintada, la ranura no estaba vacia: medir aqui
+               // seria medir el caso de al lado sin decirlo.
+               "  if (padEl.querySelector('.abd-xypad__corner[data-corner=\"' + key + '\"]'))"
+               "    return JSON.stringify({ error: 'EMPTY_CORNER_PAINTED', key: key, corners: corners.length });"
+               "  const rightAligned = (key === 'tr' || key === 'br');"
+               "  const others = corners.filter((c) => c.dataset.corner !== key);"
+               "  if (others.length === 0) return JSON.stringify({ error: 'NO_OTHER_CORNERS', key: key });"
+               // Las cuatro esquinas comparten fila y alto, y las de una MISMA fila se
+               // reflejan: el punto de la vacia es el ESPEJO del centro de la de enfrente
+               // (bl -> br, tl -> tr). No se copia su ANCHO porque los nombres son de largo
+               // distinto: la primera version reutilizo el ancho de la referencia y el clic
+               // cayo encima de la esquina de al lado, que el gate cazo con hitIsCorner=1.
+               "  const mirror = rightAligned ? (key === 'br' ? 'bl' : 'tl') : (key === 'bl' ? 'br' : 'tr');"
+               "  const ref = others.find((c) => c.dataset.corner === mirror) || others[0];"
+               "  const padRect = padEl.getBoundingClientRect();"
+               "  const refRect = ref.getBoundingClientRect();"
+               "  if (!(padRect.width > 0 && padRect.height > 0 && refRect.width > 0))"
+               "    return JSON.stringify({ error: 'SIN_LAYOUT', key: key, corners: corners.length });"
+               "  const x = padRect.left + padRect.right - (refRect.left + refRect.width / 2);"
+               "  const y = refRect.top + refRect.height / 2;"
+               "  const target = document.elementFromPoint(x, y);"
+               "  if (!target) return JSON.stringify({ error: 'NADA_EN_ESE_PUNTO', key: key, corners: corners.length });"
+               "  const send = (type) => target.dispatchEvent(new PointerEvent(type, {"
+               "    clientX: x, clientY: y, bubbles: true, cancelable: true,"
+               "    pointerId: 1, pointerType: 'mouse', isPrimary: true }));"
+               "  send('pointerdown'); send('pointerup');"
+               "  const open = document.querySelector('."
+               + juce::String (SelftestPage::openDrawerClass) + "');"
+               // El panel escribe data-slot-highlight en TODAS las filas: cero es "nada
+               // resaltado" en cualquier cajon, no solo en el de MODELOS.
+               "  const highlights = document.querySelectorAll('[data-slot-highlight=\"true\"]').length;"
+               "  return JSON.stringify({ key: key, corners: corners.length,"
+               "    hitIsPad: target.closest(" + pad + ") ? 1 : 0,"
+               "    hitIsCorner: target.closest('.abd-xypad__corner') ? 1 : 0,"
+               "    opened: open ? (open.dataset.drawer || '') : '',"
+               "    highlights: highlights });"
+               " } catch (e) { return JSON.stringify({ error: e.message, key: key }); } })()";
+    }
+
     /** @brief Cierra un cajon POR ID (su ✕ de usuario, aunque otro cajon
      *  este abierto delante). El cierre de la matriz NO es "el primero a
      *  mano": con dos cajones abiertos, document.querySelector('.drawer--open
@@ -3414,6 +4343,32 @@ private:
                      int envelope = -1; double level = 0.0; };
         std::vector<Bar> bars;
 
+        /**
+         * @brief Rastro crudo de las barras, para el log cuando la gemelidad falla.
+         *
+         * La linea de veredicto solo decia "DIVERGENTES": con ocho barras y cuatro
+         * parejas eso no dice SI la diferencia es de pintura o de datos, NI de
+         * cuanto. El fallo de la bancada era exactamente eso —una diferencia
+         * pequeña y sistematica— y sin este rastro no habia manera de separar
+         * "las dos copias se pintaron de frames distintos" de "una copia lee la
+         * envolvente equivocada". El formato es `cajon/resumen slot env nivel`.
+         */
+        juce::String barsTrace() const
+        {
+            juce::String text;
+
+            for (const auto& bar : bars)
+            {
+                if (text.isNotEmpty()) text += " | ";
+                text += (bar.drawer ? "cajon " : "resumen") + juce::String (" slot ")
+                      + juce::String (bar.slot) + " env " + juce::String (bar.envelope)
+                      + " " + (bar.live ? "on" : "off") + " "
+                      + juce::String (bar.level, 3);
+            }
+
+            return text;
+        }
+
         // El medidor de voces (cabecera): visible y leds encendidos.
         bool meterHidden = true;
         int meterActive = 0;
@@ -3451,11 +4406,23 @@ private:
         if (auto* barsArray = object->getProperty ("bars").getArray())
             for (const auto& entry : *barsArray)
                 if (auto* barObject = entry.getDynamicObject())
+                {
+                    // Una etiqueta AUSENTE es -1 (sin envolvente), no 0. El
+                    // `static_cast<int>` de un var nulo da 0, que es exactamente
+                    // la etiqueta de ENV 1: una copia que se olvidara de
+                    // etiquetarse emparejaba con la fila de ENV 1 y la
+                    // gemelidad pasaba (o fallaba) por el motivo equivocado. El
+                    // fallo de la bancada era este.
+                    const auto envelopeVar = barObject->getProperty ("envelope");
+                    const auto envelope = envelopeVar.isVoid() ? -1
+                                                               : static_cast<int> (envelopeVar);
+
                     reading.bars.push_back ({ barObject->getProperty ("live"),
                                               static_cast<bool> (barObject->getProperty ("drawer")),
                                               static_cast<int> (barObject->getProperty ("slot")),
-                                              static_cast<int> (barObject->getProperty ("envelope")),
+                                              envelope,
                                               static_cast<double> (barObject->getProperty ("level")) });
+                }
 
         // El medidor de voces (si la lectura lo trae).
         if (auto* meterObject = object->getProperty ("meter").getDynamicObject())
@@ -3597,6 +4564,8 @@ private:
     bool pageToNativeOk = false;
     bool generalOk = false;   // los 11 ids en la pagina + propagacion nativo -> pagina
     bool midiOk = false;      // nota de la pagina en el motor + rueda de nativo en la pagina
+    bool midiCcOk = false;    // el LCD asigna CC a CUTOFF y la nota CC del motor mueve el parametro
+    bool lcdGeometryOk = false; // la fila del LCD cabe en su chasis en la pagina VIVA (fase 0 de MIDI-CC)
     bool actionsOk = false;   // el RANDOM de la pagina movio el APVTS y volvio pintado
 
     double startedAtMs = 0.0;
@@ -3605,7 +4574,8 @@ private:
     bool freezeGuardOk = false;   // con el banco congelado, el sorteo movio solo lo suelto
     std::vector<float> beforeFreezeGuard; // APVTS antes de la pasada con freezeResonator a 1
     bool morphOk = false;         // el pad XY y el aro morph-Z, con el modelo real en D
-    bool cornerOk = false;        // el clic en la esquina A abre MODELOS con la ranura 0 resaltada
+    bool cornerFilledOk = false;  // el clic en la esquina A abre MODELOS con la ranura 0 resaltada
+    bool cornerOk = false;        // ESQUINA entera: la esquina con timbre ABRE y la vacia NO
     bool zringOk = false;         // el aro morph-Z GIRANDO con LFO2 -> 28 (telemetria nativa)
 
     // Estado de la colecta ZRING: instantaneas del arco (span en guiones) con
@@ -3616,7 +4586,7 @@ private:
     double zringPeriodOn = -1.0;
     double zringMaxOn = 0.0;
     int zringLfo2Source = -1;
-    int zringDest28 = -1;
+    int zringDestIndex = -1;
     bool zringNegativeSeen = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BridgeSelftest)

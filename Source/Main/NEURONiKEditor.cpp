@@ -2,6 +2,7 @@
 
 #include "Core/BuildVersion.h"
 #include "State/ParameterDefinitions.h"
+#include "WebUI/SelftestLog.h"
 
 // `juce_StandaloneFilterWindow.h` NO incluye sus propias dependencias: usa los tipos
 // de `juce_audio_devices` (AudioDeviceManager, AudioIODeviceCallback, MidiInput) y
@@ -44,34 +45,23 @@ namespace
     }
 
     /**
-     * @brief Donde queda el transcript del selftest.
-     * @details `NEURONIK_SELFTEST_LOG` manda si esta puesta. Por defecto NO se
-     *          escribe junto al ejecutable: dentro de un DAW ese ejecutable es el
-     *          del host (y su carpeta es de otro), asi que el sitio honesto son
-     *          los datos de usuario del sistema.
+     * @brief Donde queda el transcript del selftest, y como se escribe.
+     * @details Delega en `WebUI/SelftestLog.h`, que es la SSOT del formato: la
+     *          bancada escribe su log con la MISMA politica, y por eso los dos
+     *          transcripts se pueden juxtaponer al comparar dos pasadas. La
+     *          variable de entorno sigue siendo `NEURONIK_SELFTEST_LOG` y el
+     *          nombre por defecto el mismo; lo unico que ha cambiado es donde
+     *          vive la regla, no lo que produce.
      */
     juce::File selftestLogFile()
     {
-        const auto fromEnvironment = juce::SystemStats::getEnvironmentVariable ("NEURONIK_SELFTEST_LOG", {});
-
-        if (fromEnvironment.isNotEmpty())
-            return juce::File (fromEnvironment);
-
-        return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
-                   .getChildFile ("NEURONiK")
-                   .getChildFile ("neuronik-selftest.log");
+        return NEURONiK::WebUI::SelftestLog::fileFor (NEURONiK::WebUI::SelftestLog::plugin());
     }
 
     /** @brief Una linea al stdout del host y al log, con marca de tiempo en el log. */
     void logSelftestLine (const juce::String& line)
     {
-        std::cout << line << std::endl;
-
-        const auto file = selftestLogFile();
-
-        file.getParentDirectory().createDirectory();
-        file.appendText (juce::Time::getCurrentTime().toString (true, true) + "  " + line + juce::newLine,
-                         false, false, nullptr);
+        NEURONiK::WebUI::SelftestLog::write (NEURONiK::WebUI::SelftestLog::plugin(), line);
     }
 } // namespace
 #endif
@@ -161,6 +151,12 @@ void NEURONiKEditor::startSelftestIfRequested()
 {
     if (! selftestRequested())
         return;
+
+    // La cabecera de corrida la escribe la politica compartida, para que las dos
+    // superficies dejen el mismo tipo de marca en el log y dos pasadas se puedan
+    // comparar.
+    NEURONiK::WebUI::SelftestLog::beginRun (NEURONiK::WebUI::SelftestLog::plugin(),
+                                            "--selftest o NEURONIK_SELFTEST=1");
 
     logSelftestLine ("[selftest] pedido (--selftest o NEURONIK_SELFTEST=1); log: "
                      + selftestLogFile().getFullPathName());

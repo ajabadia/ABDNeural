@@ -51,12 +51,19 @@
 #include "UI/XYPad.h"
 #include "WebUI/BridgeAdapters.h"
 #include "WebUI/BridgeSelftest.h"
+#include "WebUI/ColdStartWatch.h"
+#include "WebUI/SelftestLog.h"
 #include "WebUI/ParameterBridge.h"
 
 #include <atomic>
 #include <iostream>
 #include <optional>
 #include <vector>
+
+// La politica del arranque en frio vive en WebUI/ColdStartWatch.h y la comparte
+// el editor del plugin. Atajo de nombre: el componente de esta translation unit
+// no esta dentro del namespace de la WebUI.
+namespace ColdStart = NEURONiK::WebUI::ColdStart;
 
 namespace
 {
@@ -74,6 +81,23 @@ namespace
 
     /** @brief Process start, used as the zero for every measurement. */
     double processStartMs = 0.0;
+
+    // ---- ARRANQUE EN FRIO (ver watchColdStart en PilotComponent) -----------
+    //
+    // La POLITICA (los umbrales, el techo de reintentos y que es una señal) vive
+    // en WebUI/ColdStartWatch.h, no aqui: el editor del plugin la comparte desde
+    // el 28/09 y dos copias del criterio acabarian divergiendo sin que nadie se
+    // entere. Lo que sigue siendo de esta superficie es el ESTADO (lo consultan
+    // el timer que decide reintentar y el informe de la corrida) y la acción
+    // (volver a navegar). Los reintentos de navegacion solo ocurren mientras la
+    // pagina no ha cargado NINGUN recurso.
+    constexpr double coldStartStallMs = NEURONiK::WebUI::ColdStart::stallMs;
+    constexpr int maxColdStartRetries = NEURONiK::WebUI::ColdStart::maxRetries;
+
+    int coldStartAttempts = 0;                     // reintentos ya gastados (informe)
+    double firstSignalMs = 0.0;                    // 0 = el proveedor no ha servido nada
+    double lastPageSignalMs = 0.0;                 // cuando se vio la ultima señal (informe)
+    ColdStart::Watcher coldStartWatcher;           // el estado que decide (politica compartida)
 
     /** @brief Timings captured while the page boots, in milliseconds from start. */
     struct StartupMetrics
@@ -367,6 +391,13 @@ namespace
         report << "  document interactive: " << formatMs (metrics.documentMs) << "\n";
         report << "  panel in DOM        : " << formatMs (metrics.panelMs) << "\n";
         report << "  react ready         : " << formatMs (metrics.reactReadyMs) << "\n";
+        // El arranque en frio deja rastro: una corrida con reintentos se ve aqui
+        // sin tener que buscar la linea de stdout.
+        report << "  cold start retries  : " << coldStartAttempts << " / " << maxColdStartRetries
+               << (firstSignalMs > 0.0
+                       ? "  (primera senal a los " + juce::String (firstSignalMs, 0) + " ms)"
+                       : "  (la pagina no dio ninguna senal)")
+               << "\n";
         report << "  resources served    : " << served
                << " (" << juce::String (bytes / 1024) << " KB)" << "\n";
         report << "  resource misses     : " << missedCount.load();
@@ -481,6 +512,9 @@ namespace
 
             if (selftest)
             {
+                // La cabecera de corrida y la linea de "pedido" las escribio
+                // `initialise`, antes de que existiera este componente. Aqui solo
+                // arranca el arnés.
                 // The SAME harness the plugin editor runs (ticket 8.1 step 2c), so
                 // the bench cannot drift from the surface that ships. Here it only
                 // gets this browser and this verdict: the exit code is what build.bat
@@ -501,11 +535,26 @@ namespace
                                               : juce::String ("NO_RESULT"));
                             });
                     },
-                    [] (const juce::String& line) { std::cout << line << "\n"; },
+                    [] (const juce::String& line)
+                    {
+                        // stdout + log acumulativo con marca de tiempo, el MISMO
+                        // formato que el plugin: antes esto escribia solo en stdout,
+                        // y por eso build.bat lo re-capturaba a un transcript de una
+                        // pasada (sin marcas) y el resumen necesitaba un modo aparte.
+                        NEURONiK::WebUI::SelftestLog::write (NEURONiK::WebUI::SelftestLog::bench(),
+                                                             line);
+                    },
                     [this] (bool passed)
                     {
                         selftestPassed = passed;
                         g_selftestExitCode.store (passed ? 0 : 1, std::memory_order_relaxed);
+                        // El CIERRE de corrida. El arnés emite `RESULT:` al final,
+                        // pero el resumen acota la pasada por `veredicto:` (la que
+                        // escribe el plugin), asi que sin esta linea su lectura de un
+                        // log acumulativo no hallaria donde acaba la corrida.
+                        NEURONiK::WebUI::SelftestLog::write (
+                            NEURONiK::WebUI::SelftestLog::bench(),
+                            juce::String ("[selftest] veredicto: ") + (passed ? "OK" : "FAIL"));
                         finish (passed ? "selftest-ok" : "selftest-fail");
                     });
 
@@ -533,6 +582,30 @@ namespace
     private:
         static constexpr int stripHeight = 240;   // the real GENERAL tab needs more than the old strip
         static constexpr double pollTimeoutMs = 20000.0;
+
+        // ---- ARRANQUE EN FRIO: la pagina que no carga NADA -------------------
+        //
+        // Con el presupuesto plano de 20 s, una pagina que no ha pedido ni un
+        // recurso se comia el reloj en silencio y terminaba en FAIL: 20 s de
+        // espera y ni una segunda navegacion. Ese caso NO es "la pagina va
+        // lenta" — es que el WebView2 todavia no ha arrancado, o que la
+        // navegacion inicial se perdio — y es justo el que aparece con la
+        // maquina saturada (arranque en frio del runtime de Edge, antivirus,
+        // otra pasada de build en paralelo). Por eso:
+        //
+        //   * mientras no haya NINGUNA senal, se reintenta la navegacion cada
+        //     `coldStartStallMs`, hasta `maxColdStartRetries` veces, y cada
+        //     reintento se loguea (un reintento callado seria un FAIL sin
+        //     explicacion);
+        //   * el plazo de rendirse se alarga lo que duren esos reintentos, y
+        //     SOLO en ese caso: en cuanto hay una senal, el plazo vuelve a ser
+        //     el de siempre, porque a partir de ahi el pipeline de recursos
+        //     esta vivo y una pagina que no llega a ready esta rota de verdad.
+        //
+        // Margen total en el peor caso: 20 s + 3 x 10 s = 50 s (antes 20 s), y
+        // solo se llega a el si el proveedor no sirvio NI UN recurso. El estado
+        // y los limites viven arriba, junto a las metricas, porque los consultan
+        // el timer y el informe de la corrida.
 
         // ============================================================================
         // --selftest: the six-direction check lives in WebUI/BridgeSelftest.h.
@@ -589,6 +662,18 @@ namespace
             // encolo esperan aqui. El editor hace lo mismo con su timer.
             processor.applyPendingCcChanges();
 
+            // La tabla CC no viaja con los parametros: un learn de HARDWARE la
+            // reescribe en el hilo de audio. Sin esta comparacion, la pagina de
+            // la bancada se queda con la tabla vieja en su menu MIDI CONTROL
+            // (mismoMotivo, mismo arreglo que en el editor).
+            const auto tableVersion = processor.getMidiMappingManager().getTableVersion();
+
+            if (tableVersion != lastMidiCcTableVersion)
+            {
+                lastMidiCcTableVersion = tableVersion;
+                bridge->sendMidiCcState();
+            }
+
             bridge->publishPendingChanges();
 
             // Mirror the plugin's external MIDI view on the page keyboard every
@@ -620,7 +705,14 @@ namespace
             // declara FAIL. Con la pagina lista, quien decide es el presupuesto
             // del PROPIO arnes (`BridgeSelftest::timeoutMs`), que siempre acaba
             // en un veredicto y no puede colgarse.
-            if (metrics.reactReadyMs < 0.0 && nowMs() > pollTimeoutMs)
+            //
+            // Antes de rendirse, se reintenta la navegacion SI la pagina no ha
+            // cargado nada (pico de carga del sistema: el WebView2 ni ha
+            // empezado). Ver watchColdStart().
+            if (metrics.reactReadyMs < 0.0)
+                watchColdStart();
+
+            if (metrics.reactReadyMs < 0.0 && nowMs() > pageDeadlineMs())
             {
                 finish ("timeout");
                 return;
@@ -683,6 +775,70 @@ namespace
             }
         }
 
+        /** @brief Reintenta la navegacion mientras la pagina no de NINGUNA senal.
+         *
+         *  La decision --umbrales, techo y que es una senal-- es la de
+         *  WebUI/ColdStartWatch.h, que el editor del plugin comparte desde el
+         *  28/09: dos copias del criterio acabarian divergiendo sin que nadie se
+         *  entere. Aqui solo se cuenta el reintento y se vuelve a pedir la pagina.
+         *  Ver ese fichero para el por que de los numeros y para que NO cuentan
+         *  `readyState` ni el panel en el DOM (una navegacion fallida deja
+         *  igualmente un documento en `interactive`).
+         */
+        void watchColdStart()
+        {
+            const auto hasSignal = servedCount.load() > 0 || metrics.reactReadyMs >= 0.0;
+            const auto now = nowMs();
+
+            if (hasSignal && firstSignalMs <= 0.0)
+                firstSignalMs = now;
+
+            if (! ColdStart::shouldRetry (coldStartWatcher, now, hasSignal))
+                return;
+
+            // El estado vive en el vigilante (politica compartida); estos dos son
+            // la COPIA que lee el informe de la corrida.
+            coldStartAttempts = coldStartWatcher.retries;
+            lastPageSignalMs = coldStartWatcher.lastSignalMs;
+
+            // Al log tambien, no solo a stdout: un arranque en frio que se
+            // salta el presupuesto es justo el fallo que se explica con ESTA
+            // linea, y si se queda en la consola se pierde en cuanto la pasada
+            // se guarda en el log acumulativo. `write` imprime A stdout, asi que
+            // fuera del selftest esta linea se sigue viendo en consola como antes
+            // (solo se decide si ademas se copia al log).
+            const juce::String retryLine =
+                juce::String ("[page] la pagina no ha cargado NINGUN recurso en ")
+                    + juce::String (coldStartStallMs, 0) + " ms: reintento de navegacion "
+                    + juce::String (coldStartAttempts) + "/" + juce::String (maxColdStartRetries);
+
+            if (selftest)
+                NEURONiK::WebUI::SelftestLog::write (NEURONiK::WebUI::SelftestLog::bench(),
+                                                     retryLine);
+            else
+                std::cout << retryLine << std::endl;
+
+            browser.goToURL (juce::WebBrowserComponent::getResourceProviderRoot());
+        }
+
+        /** @brief Cuando hay que rendirse con la pagina.
+         *
+         *  Con señal: los `pollTimeoutMs` de siempre, contados desde la primera
+         *  (no desde el ultimo sondeo, que moveria el plazo sin parar). Sin señal:
+         *  los mismos 20 s mas el margen de los reintentos, que es lo que evita
+         *  el FAIL sinintentarlo. El tope es el presupuesto en frio en los dos
+         *  casos, para que la espera maxima no crezca por sorpresa.
+         */
+        [[nodiscard]] double pageDeadlineMs() const noexcept
+        {
+            const auto coldBudget = pollTimeoutMs + (double) maxColdStartRetries * coldStartStallMs;
+
+            if (firstSignalMs <= 0.0)
+                return coldBudget;
+
+            return juce::jmin (coldBudget, firstSignalMs + pollTimeoutMs);
+        }
+
         void finish (const juce::String& reason)
         {
             if (finished)
@@ -735,6 +891,10 @@ namespace
         juce::AudioDeviceManager audioDeviceManager;
         juce::AudioProcessorPlayer audioPlayer;
         int midiStateTick = 0;
+        // Ultima version de la tabla CC publicada a la pagina (-1 = ninguna: el
+        // primer poll la manda, para que el menu MIDI CONTROL no arranque en
+        // "CC --"). Mismo contrato que el editor.
+        int lastMidiCcTableVersion = -1;
         // Telemetry decimation: emit every Nth poll (~15 Hz over the 30 ms poll;
         // the bridge value-diffs on top, so an idle synth adds no traffic).
         static constexpr int telemetryTicks = 2;
@@ -788,15 +948,53 @@ namespace
         {
             processStartMs = juce::Time::getMillisecondCounterHiRes();
 
-            std::cout << "[page] sirviendo " << pageSourceName() << "\n"
-                      << "[page] root: "
-                      << (servedRoot().isDirectory() ? servedRoot().getFullPathName()
-                                                     : juce::String ("<no esta en disco>"))
-                      << std::endl;
-
             // --selftest implies --auto-quit: the check runs unattended and the exit
             // code is the verdict (0 = every applicable direction moved, 1 = something didn't).
             const auto runSelftest = containsArgument (commandLine, "--selftest");
+
+            // Que pagina se sirvio va al log: cuando dos pasadas divergen, saber
+            // que una cargo `dist` y la otra otra cosa explica mas que cualquier
+            // veredicto. Se escribe solo cuando hay selftest, porque fuera de el
+            // este proceso es una app de escritorio y no debe dejar rastro.
+            if (runSelftest)
+            {
+                // La cabecera de corrida va ANTES de que el arnés escriba nada: sin
+                // ella, dos pasadas en el log acumulativo son dos bloques pegados y
+                // comparar una fallida con la anterior obliga a contar lineas a mano.
+                NEURONiK::WebUI::SelftestLog::beginRun (NEURONiK::WebUI::SelftestLog::bench(),
+                                                        "--selftest");
+                NEURONiK::WebUI::SelftestLog::write (
+                    NEURONiK::WebUI::SelftestLog::bench(),
+                    "[selftest] pedido (--selftest); log: "
+                        + NEURONiK::WebUI::SelftestLog::fileFor (NEURONiK::WebUI::SelftestLog::bench())
+                              .getFullPathName());
+            }
+
+            // UNA sola escritura. `SelftestLog::write` ya imprime a stdout, asi que
+            // dejar aqui el `std::cout` original haria que en modo selftest esta
+            // linea saliera DOS veces en consola: la de `write` y la de aqui. Se
+            // conserva el texto tal cual (dos lineas, no una) porque asi sigue
+            // leyendose como antes para quien arranca la app a mano.
+            const juce::String serving = juce::String ("[page] sirviendo ") + pageSourceName();
+            const juce::String rootLine = juce::String ("[page] root: ")
+                                            + (servedRoot().isDirectory()
+                                                   ? servedRoot().getFullPathName()
+                                                   : juce::String ("<no esta en disco>"));
+
+            if (runSelftest)
+            {
+                // Al log, que es donde se comparan dos pasadas: saber que una
+                // cargo `dist` y la otra otra cosa explica mas que el veredicto.
+                NEURONiK::WebUI::SelftestLog::write (NEURONiK::WebUI::SelftestLog::bench(),
+                                                     serving);
+                NEURONiK::WebUI::SelftestLog::write (NEURONiK::WebUI::SelftestLog::bench(),
+                                                     rootLine);
+            }
+            else
+            {
+                std::cout << serving << "\n" << rootLine << std::endl;
+            }
+
             const auto shouldAutoQuit = containsArgument (commandLine, "--auto-quit") || runSelftest;
 
             window = std::make_unique<MainWindow> (shouldAutoQuit, runSelftest);

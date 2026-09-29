@@ -97,6 +97,20 @@ public:
 
     /** Set global parameters. */
     virtual void setGlobalParams(const GlobalParams& p) = 0;
+
+    /**
+     * @brief Pone un efecto en un hueco del rack. SOLO desde el hilo de mensajes.
+     * @details `FxSlot::setType` crea y destruye la instancia del efecto, asi que
+     *          no puede correr en el hilo de audio — a diferencia de
+     *          `setGlobalParams`, que solo deja un snapshot pendiente. Por eso
+     *          esta en la interfaz y no solo en `BaseEngine`: el panel habla con
+     *          el motor por `ISynthesisEngine*` y necesita poder cambiar el tipo
+     *          de un hueco sin conocer la clase concreta.
+     *
+     *          Los mandos del bus se pasan y se aplican DESPUES del cambio,
+     *          porque la instancia nueva nace con sus valores por defecto.
+     */
+    virtual void setFxSlotType (int slot, int type, const FxSlotParams& bus) = 0;
 };
 
 } // namespace NEURONiK::DSP

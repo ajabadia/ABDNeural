@@ -147,7 +147,10 @@ void NeurotikEngine::applyModulation()
                 if (route.source == 7)
                     for (auto& v : voices) v->modEnvFltRelease += route.amount;
                 break;
-            case 17: currentGlobalParams.saturationAmt += rawMod; break;
+            // El drive del hueco 1, que desde 2026-09-29 tiene bus propio. El
+            // indice vaparecido con el destino 17 de la tabla de NEURONiK
+            // (ModRule::Kind::globalFxAdd, hueco 0, mando 0).
+            case 17: currentGlobalParams.fx[0].params[0] += rawMod; break;
             case 18: currentGlobalParams.delayTime += rawMod; break; 
             case 19: currentGlobalParams.delayFB += rawMod; break;
             case 20: for (auto& v : voices) v->modParity += rawMod; break;
@@ -251,6 +254,21 @@ void NeurotikEngine::setVoiceLayerMorph (float layerGain2, float layerGain3)
 {
     pendingVoiceParams.layerGain2 = layerGain2;
     pendingVoiceParams.layerGain3 = layerGain3;
+}
+
+// ADSR del canal del worklet (los knobs de envolvente de la pagina, que no
+// tienen APVTS). Solo la ENV de AMP: la voz neurotik no tiene envolvente de
+// filtro, asi que los cuatro tramos 'f*' no tienen destino aqui. Mismo
+// read-modify-write RT-safe que los tres de arriba: el morph no se pisa.
+void NeurotikEngine::setVoiceEnvelope (float attack, float decay, float sustain, float release,
+                                       float fAttack, float fDecay, float fSustain, float fRelease)
+{
+    (void) fAttack; (void) fDecay; (void) fSustain; (void) fRelease;
+
+    pendingVoiceParams.attack  = attack;
+    pendingVoiceParams.decay   = decay;
+    pendingVoiceParams.sustain = sustain;
+    pendingVoiceParams.release = release;
 }
 
 void NeurotikEngine::handleMidiEvent(const dsp::MidiMessage& m)

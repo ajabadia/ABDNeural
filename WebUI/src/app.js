@@ -50,6 +50,7 @@ import {
   pushModelsToWorklet,
   pushMorphToWorklet,
   pushParamsToWorklet,
+  pushVoiceToWorklet,
   getWorkletMorph,
   startAudioEngine,
 } from './audio/audioWorkletEngine.js';
@@ -65,6 +66,55 @@ const BASELINE_PARAMETER_ID = 'masterLevel';
 
 const root = document.getElementById('app');
 const store = createParameterStore({ ids: SCREEN_PARAMETER_IDS });
+
+/**
+ * SUSCRIPCIONES DE LA PAGINA (el circuito del unsubscribe).
+ *
+ * Todos los canales devuelven su remover —`store.onUserEdit`,
+ * `store.onTelemetry`, `store.subscribe` y los `onWorklet*` del motor— y sin
+ * llamarlos la pagina se los lleva puestos. En una pestaña del navegador no se
+ * nota: el documento se tira entero y los suscriptores con el. En WebView2 SI:
+ * los canales son estado de MODULO (viven mas alla del documento), asi que un
+ * `pagehide` sin limpiar deja la `paint` de la pagina ya cerrada apuntando al
+ * store, y la siguiente que monte el plugin se suma a la cola. `subscribeForPage`
+ * es el unico sitio por el que pasa una suscripcion: la que se quede fuera es
+ * una fuga silenciosa.
+ */
+const pageSubscriptions = [];
+
+/** Anota el remover de una suscripcion para el apagado de pagina. */
+function subscribeForPage(unsubscribe) {
+  // `undefined` = el canal no devolvio remover (hoy ninguno); se acepta igual
+  // para no mentir con un `if` en cada punto de suscripcion.
+  if (typeof unsubscribe === 'function') pageSubscriptions.push(unsubscribe);
+}
+
+/**
+ * APAGAR la pagina: devuelve los canales que tomo. Idempotente por construccion
+ * —`splice(0)` deja la lista VACIA—, asi que un `pagehide` repetido no hace
+ * nada y la pagina apagada no vuelve a pintar por un frame que llegara tarde.
+ */
+function teardownPage() {
+  for (const unsubscribe of pageSubscriptions.splice(0)) {
+    try {
+      unsubscribe();
+    } catch (error) {
+      console.warn('suscripcion que no se pudo cerrar', error);
+    }
+  }
+}
+
+// `pagehide`, no `beforeunload`: el primero SIEMPRE llega (navegacion, cierre de
+// pestana, cierre del editor del plugin), mientras que `beforeunload` el
+// navegador puede suprimirlo del todo y WebView2 no lo garantiza al navegar.
+// Ademas no bloquea la salida: aqui no hay audio ni temporizadores que cerrar,
+// solo suscriptores que devolver. `persisted` = la pagina se va a la CACHE
+// (bfcache) y puede volver: ahi el documento sigue vivo, y quitarle los
+// suscriptores la dejaria muda al regresar.
+window.addEventListener('pagehide', (event) => {
+  if (event.persisted) return;
+  teardownPage();
+});
 
 /**
  * Carga LOCAL de modelos (modo navegador, sin host): el input de fichero
@@ -262,7 +312,7 @@ if (root) {
   // canal es de EDITS DE USUARIO: un cambio nativo (host, automatizacion, un
   // preset) no lo dispara — no es tu mano la que gira. showParameterPreview
   // guarda el estado del propio LCD (en EDIT del menu no pisa).
-  store.onUserEdit((id, normalized) => lcdTop.showParameterPreview(id, normalized));
+  subscribeForPage(store.onUserEdit((id, normalized) => lcdTop.showParameterPreview(id, normalized)));
 
   const panel = createPanel({
     bands,
@@ -336,13 +386,13 @@ if (root) {
   // Anillo morphZ del pad en standalone: el meter del worklet trae la
   // contribucion del destino 28 (en plugin la trae el frame de telemetria
   // nativo, que visuals.js consume del canal bridge). Mismo destino, dos caminos.
-  onWorkletMorphZ((mod) => canvasMorphZView?.setZMod(mod));
+  subscribeForPage(onWorkletMorphZ((mod) => canvasMorphZView?.setZMod(mod)));
 
   // AGUJA de las curvas ADSR en standalone: el meter del worklet trae los dos
   // niveles (envelopes=[amp, filter], el mismo par que el frame nativo). En
   // plugin la aguja vive del canal bridge; aqui, del meter. Mismo par, dos
   // caminos — y las DOS vistas (lienzo y cajón), que son curvas gemelas.
-  onWorkletEnvelopeLevels(([amp, filter]) => {
+  subscribeForPage(onWorkletEnvelopeLevels(([amp, filter]) => {
     canvasEnvCurvesView?.needleFor?.('env')?.setLevel(amp);
     canvasEnvCurvesView?.needleFor?.('filter')?.setLevel(filter);
     drawerEnvBlocksView?.needleFor?.('env')?.setLevel(amp);
@@ -352,13 +402,13 @@ if (root) {
     // se repintan solas, como las agujas). Es el mismo par que trae el frame
     // nativo — el puente lo entra por store.onTelemetry, el meter por aquí.
     pushTelemetryFrame({ spectral: SILENT_SPECTRAL_FRAME, envelopes: [amp, filter] });
-  });
+  }));
 
   // ACTIVIDAD POR VOZ junto a la fila de audio (standalone): el meter del
   // worklet cuenta las voces activas del motor. En plugin el contador vive en
   // el motor nativo y la pagina no lo mueve — el indicador simplemente no
   // aparece (hidden en 0).
-  onWorkletVoices((count) => panel.setVoiceMeter(count));
+  subscribeForPage(onWorkletVoices((count) => panel.setVoiceMeter(count)));
 
   const renderAudio = () => panel.paintAudio({ owner, ...engineSnapshot });
 
@@ -369,10 +419,7 @@ if (root) {
   // teclado (el fallo "no se distinguen las teclas": el keybed estaba FUERA).
   mountFitStage(root, { width: CANVAS.width, height: CANVAS.height });
 
-  bindBaseline(panel.element.querySelector(`#${BASELINE_PARAMETER_ID}`), store);
-
-  // Connect (or fall into local mode) once the panel is in the DOM: the host
-  // times the page startup against `window.__pilotReady`, which start() sets.
+  // Connect (or fall into local mode) once the panel is in the DOM: the host  // times the page startup against `window.__pilotReady`, which start() sets.
   store.start();
 
   // MODO LOCAL: la ficha RANURAS necesita el shape de models para pintarse
@@ -434,14 +481,14 @@ if (root) {
   // sin esta copia el worklet arrancaba y procesaba, pero no le llegaba ni un
   // `neuronik:params` (matriz, LFO y pad en los defaults del struct: el anillo
   // del pad no bailaba). Lo caza el E2E de Playwright (e2e/localMode.spec.js).
-  onAudioEngineChange((engine) => {
+  subscribeForPage(onAudioEngineChange((engine) => {
     const wasReady = engineSnapshot.status === 'ready';
 
     engineSnapshot = { ...engine };
     renderAudio();
 
     if (engine.status === 'ready' && !wasReady) paint(store.getState());
-  });
+  }));
 
   /**
    * Page -> worklet sync. ONE path for both page edits and native snapshots, so
@@ -492,6 +539,11 @@ if (root) {
     }
 
     pushParamsToWorklet(state.parameters);
+
+    // El ADSR va por su propio canal (VoiceParams, no GlobalParams): sin esta
+    // linea los ocho knobs de envolvente se movian en la pagina y el motor
+    // local seguia con los defaults de C++ — la ENV 2 era la ENV 1.
+    pushVoiceToWorklet(state.parameters);
   }
 
   paint = (state) => {
@@ -516,33 +568,22 @@ if (root) {
 }
 
 // subscribe() paints immediately, so the panel never renders a blank frame.
-store.subscribe(paint);
+subscribeForPage(store.subscribe(paint));
 
 // Telemetria (nativa -> web): los frames NO son estado (a ~15 Hz no pasan por
 // setState); alimentan directamente la pintura en tiempo real. Hoy, el anillo
 // de modulacion; el espectral y el scope se cuelgan del mismo canal.
-store.onTelemetry((frame) => modRings.handleFrame(frame));
+subscribeForPage(store.onTelemetry((frame) => modRings.handleFrame(frame)));
 
 /**
- * Wire the baseline slider: normalised value on the wire, real units in the
- * readout, and the gesture protocol around the drag (begin/change/end).
+ * El control BASE (masterLevel) ya NO se cablea aqui: desde 2026-09-28 es un
+ * Knob del paquete compartido y lo construye `buildBaselineControl`, que recibe
+ * los `handlers` del panel y engancha el gesto (begin/end) y el `onChange` por
+ * el MISMO camino que cualquier otro control continuo.
+ *
+ * Antes este sitio tenía su propio cableado a mano —`pointerdown` -> gesto,
+ * `input` -> handleChange— porque el fader era un `<input>` nativo y no salía de
+ * la familia compartida. Ese trato especial era justo lo que lo separaba del
+ * resto; con el knob desaparece, y con el `bindBaseline` desaparece también la
+ * segunda mitad del contrato 8.1 2c (el ancla `data-baseline-control` la escribe la celda, y el puente `baselineControl.value` va en ella).
  */
-function bindBaseline(slider, parameterStore) {
-  if (!slider) return;
-
-  const id = slider.dataset.parameterId;
-
-  slider.addEventListener('pointerdown', () => {
-    parameterStore.handleGesture(id, 'begin');
-  });
-
-  slider.addEventListener('input', () => {
-    parameterStore.handleChange(id, Number(slider.value));
-  });
-
-  for (const eventName of ['pointerup', 'pointercancel', 'blur']) {
-    slider.addEventListener(eventName, () => {
-      parameterStore.handleGesture(id, 'end');
-    });
-  }
-}

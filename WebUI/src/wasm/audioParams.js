@@ -11,6 +11,8 @@
  *
  * Everything lives here — not in the worklet — so a contract change is
  * one edit in one place and the worklet stays dumb (it only knows indices).
+ * Lo mismo para el segundo canal, el del ADSR de la voz (`neuronik:voice`,
+ * `CONTRACT_TO_VOICE_FIELD`): son VoiceParams y viajan aparte de GlobalParams.
  *
  * Real-units conversion reuses contracts/paramValue.js' math (via parameters.js):
  * contract values are normalised 0..1 on the wire and the DSP wants REAL units
@@ -31,7 +33,13 @@ import { fromNormalized, getDescriptor } from '../contracts/parameters.js';
  */
 export const CONTRACT_TO_GP_FIELD = {
   masterLevel: 0,
-  fxSaturation: 1,
+  // Field 1 is `saturationAmt`, which the plugin NO LONGER HANDLES ANYWHERE: the
+  // first FX slot got its own bus on 2026-09-29 and the drive moved into it
+  // (see `fx1Param1` below). The field stays at index 1 on purpose — the
+  // layout is a documented order and removing it would shift every index below
+  // it, so the page would start writing the wrong field with no warning. It is
+  // simply never written from here.
+  //
   // 2 = bpm (f64, contract-free for now)
   fxDelayTime: 3,
   fxDelayFeedback: 4,
@@ -66,7 +74,54 @@ export const CONTRACT_TO_GP_FIELD = {
   mod4Source: 31,
   mod4Destination: 32,
   mod4Amount: 33,
+
+  // El BUS DEL HUECO 1 (2026-09-29), que empieza en el field 34: los cuatro
+  // mandos, luego la ganancia y la mezcla; y a partir del 40 el hueco 2, que
+  // todavia NO esta migrado y por eso no se escribe desde aqui. Los numeros
+  // salen del orden que publica `neuronikGlobalParamsLayout`, y ese orden es
+  // `params[0..bus-1], gain, mix` por hueco — el mismo que en el puente.
+  //
+  // `fx1Type` NO APARECE, y no es un olvido: el tipo de un hueco lo decide el
+  // hilo de mensajes (crea y destruye la instancia del efecto) y no viaja por
+  // el espejo del hilo de audio. Es el unico parametro del bus que no se mapea.
+  fx1Param1: 34,
+  fx1Param2: 35,
+  fx1Param3: 36,
+  fx1Param4: 37,
+  fx1Gain: 38,
+  fx1Mix: 39,
 };
+
+/**
+ * contractId -> ADSR field index (order from neuronikVoiceEnvelopeLayout).
+ *
+ * Los ocho tramos de las DOS envolventes. Van por un canal aparte
+ * (`neuronik:voice`, no `neuronik:params`) porque son VoiceParams —los publica
+ * la voz, no el motor global—, igual que el morph. Antes de este canal la
+ * pagina movia los ocho knobs y el motor local seguia con los defaults de C++.
+ *
+ * UNIDADES: el layout del puente esta en MILISEGUNDOS (las unidades de
+ * `AdditiveVoice::Params`) y el contrato las da en SEGUNDOS, que es lo que ve
+ * el APVTS del plugin; el factor 1000 lo aplica `voiceFieldToReal` aqui, igual
+ * que el `* 1000.0f` de `synchronizeEngineParameters`. Los dos sustains van
+ * 0..1 sin factor.
+ */
+export const CONTRACT_TO_VOICE_FIELD = {
+  envAttack: 0,
+  envDecay: 1,
+  envSustain: 2,
+  envRelease: 3,
+  filterAttack: 4,
+  filterDecay: 5,
+  filterSustain: 6,
+  filterRelease: 7,
+};
+
+/** Los ids de ADSR cuyo layout es un SEGUNDO y viaja como milisegundos. */
+const VOICE_TIME_FIELDS = new Set([
+  'envAttack', 'envDecay', 'envRelease',
+  'filterAttack', 'filterDecay', 'filterRelease',
+]);
 
 /** GlobalParams C++ defaults (DspTypes.h) as REAL units, per field index. */
 export const GP_FIELD_DEFAULTS = {
@@ -133,6 +188,42 @@ export function gpFieldsFromState(parameters) {
   }
 
   return fields;
+}
+
+/** Un tramo de ADSR -> los milisegundos (o el nivel) del layout del puente. */
+function voiceFieldToReal(contractId, descriptor, normalized) {
+  const real = fromNormalized (descriptor, normalized);
+
+  return VOICE_TIME_FIELDS.has (contractId) ? real * 1000.0 : real;
+}
+
+/**
+ * The ADSR payload for the CURRENT page state, in the bridge's units.
+ * Unlike gpFieldsFromState this does NOT skip ids missing from the state: the
+ * mirror is pushed as a whole snapshot and the worklet re-applies it verbatim
+ * after an engine switch, so a half-filled mirror would freeze the envelopes at
+ * zero. Ids absent from the contract fall back to their own default.
+ */
+export function voiceFieldsFromState(parameters) {
+  const fields = [];
+
+  for (const [contractId, fieldIndex] of Object.entries (CONTRACT_TO_VOICE_FIELD)) {
+    const descriptor = getDescriptor (contractId);
+    if (!descriptor) continue;
+
+    const normalized = contractId in parameters
+      ? parameters[contractId]
+      : descriptor.defaultNormalized;
+
+    fields.push ([fieldIndex, voiceFieldToReal (contractId, descriptor, normalized)]);
+  }
+
+  return fields;
+}
+
+/** The full ADSR snapshot from the contract defaults (arranque del motor). */
+export function defaultVoiceFields() {
+  return voiceFieldsFromState ({});
 }
 
 function clampInt(value, min, max) {

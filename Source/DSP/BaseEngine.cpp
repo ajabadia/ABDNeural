@@ -29,10 +29,10 @@ void BaseEngine::prepare(double sampleRate, int samplesPerBlock)
     currentSamplesPerBlock = samplesPerBlock;
     controlCarry = 0;
 
-    saturation.prepare(sampleRate);
-    delay.prepare(sampleRate, static_cast<int>(sampleRate * 2.0)); // 2s max
-    chorus.prepare(sampleRate);
-    reverb.prepare(sampleRate);
+    // Los cuatro huecos de la cadena global. El motor trocea el bloque si este
+    // es mayor que el tamano con el que se preparo, asi que lo que se le pasa
+    // es el del host.
+    fx.prepare(sampleRate, samplesPerBlock);
     
     lfo1.setSampleRate(sampleRate);
     lfo2.setSampleRate(sampleRate);
@@ -53,15 +53,7 @@ void BaseEngine::updateParameters()
 {
     currentGlobalParams = pendingGlobalParams;
     
-    saturation.setDrive(currentGlobalParams.saturationAmt);
-    delay.setParameters(currentGlobalParams.delayTime, currentGlobalParams.delayFB);
-    chorus.setParameters(currentGlobalParams.chorusRate,
-                         currentGlobalParams.chorusDepth,
-                         currentGlobalParams.chorusMix);
-    reverb.setParameters(currentGlobalParams.reverbSize,
-                         currentGlobalParams.reverbDamping,
-                         currentGlobalParams.reverbWidth,
-                         currentGlobalParams.reverbMix);
+    fx.updateFromGlobalParams(currentGlobalParams);
     
     masterLevelSmoother.setTargetValue(currentGlobalParams.masterLevel);
 
@@ -91,10 +83,7 @@ void BaseEngine::updateParameters()
 
 void BaseEngine::reset()
 {
-    saturation.resetState();
-    delay.reset();
-    chorus.reset();
-    reverb.reset();
+    fx.reset();
 
     lfo1.reset();
     lfo2.reset();
@@ -277,11 +266,10 @@ void BaseEngine::applyGlobalFX(dsp::AudioBuffer<float>& buffer)
     // de control, junto con la modulacion (antes se leian una vez por bloque del host y
     // la matriz de modulacion heredaba el tamano de bloque).
 
-    // Global Effects
-    saturation.processBlock(buffer);
-    chorus.processBlock(buffer);
-    delay.processBlock(buffer);
-    reverb.processBlock(buffer);
+    // Global Effects. La cadena es la de siempre —saturacion, coro, retardo,
+    // reverberacion, en serie— pero la hace el motor de huecos: el mismo
+    // `FxEngine` que usa ABDEep, con el ruteo 0 (serie) y en modo insercion.
+    fx.process(buffer, numSamples);
 
     // 3. Output Level
     masterLevelSmoother.applyGain(buffer, numSamples);

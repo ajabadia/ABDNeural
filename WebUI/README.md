@@ -58,6 +58,15 @@ regresión visual afirma que **se pinta bien**: cada ficha del lienzo (y el lien
 entero, en los dos temas) tiene su foto de referencia en `e2e/snapshots/` y se
 compara con un umbral.
 
+Además, **las cuatro agujas de ADSR sostenidas** (`visual.spec.js`, bloque
+`las agujas (needle-probe)`): con el motor WASM de verdad sonando y las dos
+envolventes con sustains distintos (0.8 y 0.2), se fotografían las DOS vistas
+de producción. Es el único bloque con audio, y sale determinista por
+construcción (las agujas se capturan ya asentadas en su sustain, y ese valor
+entra en el `d` con `toFixed(2)`), así que compara con `maxDiffPixels: 0`.
+`needleProbe.spec.js` afirma lo mismo en número; la foto es lo que fija que se
+**pinten** en su sitio.
+
 ```bash
 cd ABDNeural/WebUI && pnpm test:visual           # solo la regresion visual
 cd ABDNeural/WebUI && pnpm test:visual:update    # REGENERA las referencias (cambio de pintura INTENCIONAL)
@@ -97,7 +106,7 @@ funciona, pero ningún envío sale al plugin ni se pinta estado nativo.
 | `src/contracts/sections.js` | nuevo | **Reparto y geometría del lienzo**: fichas, ids de cada una, bandas y la cuenta del encaje (`canvasHeight()`). |
 | `src/contracts/screens.js` | nuevo | Ids del lienzo (`SCREEN_PARAMETER_IDS`) y los anclajes del host (`GENERAL_PARAMETER_IDS`, `KEYS_TAB_SELECTOR`). |
 | `src/bridge/bridgeCore.js` | `WebPilot/lib/bridge.js` | Transporte del bridge WebView2 (contrapartida JS de `WebUI/contracts/bridge-protocol.json`). |
-| `src/wasm/audioParams.js` | `WebPilot/lib/audioParams.js` | Contrato → índices de `GlobalParams` del motor WASM (página **fuera** del plugin). |
+| `src/wasm/audioParams.js` | `WebPilot/lib/audioParams.js` | Contrato → índices de `GlobalParams` del motor WASM y del ADSR de la voz (página **fuera** del plugin). |
 | `src/audio/audioWorkletEngine.js` | `WebPilot/lib/audioWorkletEngine.js` | Ciclo de vida del `AudioContext` + worklet y los mensajes al DSP, **con la guarda de la política de audio**. |
 | `src/audio/policy.js` | nuevo | Quién posee el audio (regla de 8.1): nativo dentro de un host, worklet en el navegador. |
 | `src/ui/panel.js` | nuevo | El lienzo: cabecera, bandas de fichas, franja de teclado y el pie con el estado. |

@@ -13,7 +13,10 @@
  *   1. sin motor, las cuatro agujas OCULTAS (el DOM existe, nadie las pinta);
  *   2. con nota, las cuatro VISIBLES con nivel alto y GEMELAS entre vistas
  *      (misma envolvente, mismo frame: |lienzo - cajon| pequeno);
- *   3. nota OFF: las cuatro se OCULTAN (la cola baja del suelo del dibujo).
+ *   3. las dos envolventes MIDEN cosas distintas: el boton de ADSR empuja
+ *      sustains 0.8 (amp) y 0.2 (filtro) por el canal de VoiceParams, y las
+ *      needles tienen que acabar ahi y no en el 0.7 de los defaults de C++;
+ *   4. nota OFF: las cuatro se OCULTAN (la cola baja del suelo del dibujo).
  *
  * La pagina se sirve desde el servidor de DEV (vite, puerto 5237, segunda
  * entrada de playwright.config.js) a proposito: es una pagina de PRUEBA y no
@@ -22,38 +25,24 @@
 
 import { expect, test } from '@playwright/test';
 
-const PROBE_URL = process.env.NEEDLE_PROBE_URL ?? 'http://localhost:5237/needle-probe/';
-
-/**
- * Espera a que el reloj del servicio de audio avance (mismo guard que
- * localMode.spec.js: el primer arranque tarda ~4 s y puede clavarse).
- * @returns {Promise<number>} intentos consumidos; 0 = este entorno no procesa audio.
- */
-async function ensureAudioClock(page, attempts = 24) {
-  return page.evaluate(async (tries) => {
-    for (let attempt = 1; attempt <= tries; attempt += 1) {
-      const context = new AudioContext();
-
-      await context.resume().catch(() => {});
-
-      const before = context.currentTime;
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      const advanced = context.currentTime - before;
-
-      await context.close();
-
-      if (advanced > 0) return attempt;
-    }
-
-    return 0;
-  }, attempts);
-}
+import { ensureAudioClock } from './support/audioClock.js';
+import { PROBE_URL } from './support/probePage.js';
 
 /** Las cuatro agujas, leidas de los paths con la escala del arnes. */
 const readNeedles = (page) => page.evaluate(() => window.__needles());
 
 const allHidden = (needles) => Object.values(needles).every((needle) => !needle.visible);
 const allVisible = (needles) => Object.values(needles).every((needle) => needle.visible);
+
+/**
+ * Las cuatro visibles Y las dos envolventes ya en su SUSTAIN (amp 0.8, filtro
+ * 0.2). Importa la segunda mitad: el primer frame visible es el pico del
+ * attack, donde las dos needles valen ~1.0 y no distinguen nada — leer ahi dio
+ * un fallo rojo el dia que se escribio esta asercion, y el motor estaba bien.
+ */
+const settled = (needles) => allVisible(needles)
+  && needles.canvasAmp.level > 0.6
+  && needles.canvasFilter.level < 0.4;
 
 test.beforeEach(async ({ page }) => {
   await page.goto(PROBE_URL);
@@ -75,18 +64,21 @@ test('SOUND ON + nota: las cuatro agujas se VEN, pintan nivel y son GEMELAS entr
   await page.locator('#start').click();
   await expect(page.locator('#status')).toHaveAttribute('data-status', 'ready', { timeout: 20_000 });
 
-  // La nota entra por el MISMO mensaje que manda el teclado de la pagina.
+  // La nota entra por el MISMO mensaje que manda el teclado de la pagina. El
+  // ADSR va ANTES: el motor lo toma en el updateParameters() del bloque que
+  // sigue al push, asi que una nota sonada antes veria los defaults de C++.
+  await page.locator('#voice-adsr').click();
   await page.locator('#note-on').click();
 
   // Sostenido: las CUATRO visibles (el meter trae envelopes=[amp, filter] y las
-  // dos vistas pintan su aguja).
-  await expect.poll(() => readNeedles(page).then(allVisible), { timeout: 20_000, intervals: [200, 400, 800] })
+  // dos vistas pintan su aguja) y ya asentadas en su sustain.
+  await expect.poll(() => readNeedles(page).then(settled), { timeout: 20_000, intervals: [200, 400, 800] })
     .toBe(true);
 
   const needles = await readNeedles(page);
 
-  // Nivel alto (el sustain de amp vive en 0.7: una aguja pintando la cola del
-  // attack no pasa este corte).
+  // Nivel alto (el sustain de amp vive en 0.8 tras el push del ADSR: una aguja
+  // pintando la cola del attack no pasa este corte).
   for (const [name, needle] of Object.entries(needles)) {
     expect(needle.level, `nivel de ${name}`).toBeGreaterThan(0.2);
   }
@@ -96,13 +88,15 @@ test('SOUND ON + nota: las cuatro agujas se VEN, pintan nivel y son GEMELAS entr
   expect(Math.abs(needles.canvasAmp.level - needles.blocksAmp.level)).toBeLessThanOrEqual(0.02);
   expect(Math.abs(needles.canvasFilter.level - needles.blocksFilter.level)).toBeLessThanOrEqual(0.02);
 
-  // NOTA (hallazgo de esta pagina, no una asercion): aqui NO se exige amp !=
-  // filtro. En modo local el worklet solo canaliza GlobalParams (matriz, LFOs,
-  // FX) y el morph — no hay canal de VoiceParams/ADSR —, asi que las dos
-  // envolventes viven en los defaults de C++ (sustain 0.7/0.7) y los knobs de
-  // envolvente de la pagina no llegan al motor local. El feed de la aguja sigue
-  // siendo REAL (el meter lee _neuronikGetEnvelopeLevels del motor); lo que no
-  // existe todavia es la plomeria de ADSR al worklet.
+  // Y AHORA SI: las dos envolventes MIDEN lo que la pagina les pidio, no lo
+  // que el motor traia de C++. Los sustains empujados son 0.8 (amp) y 0.2
+  // (filtro). Sin el canal `neuronik:voice` las cuatro needles se quedarian
+  // juntas en el 0.7 de los defaults de C++ y el poll de arriba no saldria
+  // nunca: esta es la asercion que la limitacion de esta pagina prohibia.
+  expect(needles.canvasAmp.level, 'sustain de amp pedido 0.8').toBeGreaterThan(0.6);
+  expect(needles.canvasFilter.level, 'sustain de filtro pedido 0.2').toBeLessThan(0.4);
+  expect(needles.canvasAmp.level - needles.canvasFilter.level,
+         'las dos envolventes tienen que separarse').toBeGreaterThan(0.3);
 
   await page.locator('#note-off').click();
 

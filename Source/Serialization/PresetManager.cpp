@@ -10,6 +10,7 @@
 
 #include "PresetManager.h"
 #include "PresetMigration.h"
+#include "PresetMigrationFx.h"
 
 namespace NEURONiK::Serialization {
 
@@ -360,6 +361,16 @@ void PresetManager::loadPresetFromFile(const juce::File& file)
         if (xml != nullptr)
         {
             auto state = juce::ValueTree::fromXml(*xml);
+
+            // EL ORDEN DE ESTAS TRES LLAMADAS ES EL CONTRATO, no una cuestion
+            // de estilo. `fxSaturation` ya no es un parametro del layout, asi que
+            // `migratePresetState` (que borra lo que el plugin no reconoce) lo
+            // eliminaria ANTES de que la migracion del bus leyera su valor, y
+            // el preset migrado abriria con la saturacion a cero sin decir nada.
+            // Por eso la del bus va PRIMERO: lee los ids planos, escribe los del
+            // bus, y despues el limpiado se lleva los viejos, que ya no hacen
+            // falta.
+            migrateFlatFxToSlotBus (state, valueTreeState.processor);
 
             // Presets saved by older builds may carry parameters that no longer
             // exist (e.g. harmMix). Dropping them here keeps the state honest and

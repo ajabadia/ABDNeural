@@ -29,6 +29,7 @@
 #include <WebView2Bridge/WebView2ResourceProvider.h>
 
 #include "BridgeAdapters.h"
+#include "ColdStartWatch.h"
 #include "ParameterBridge.h"
 
 // Generado por juce_add_binary_data (target NEURONiK_WebUIAssets): la copia
@@ -37,8 +38,10 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <atomic>
 #include <cstring>
 #include <functional>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -156,9 +159,29 @@ public:
         if (bridge == nullptr)
             return;
 
+        // Lo primero: el arranque en frio. Antes de cualquier publicacion, para
+        // que un editor que se abre con la pagina atascada se recupere solo en
+        // cuanto el WebView2 acepte una navegacion.
+        watchColdStart();
+
         // CC -> parametro (los CC que el bloque encolo): ANTES del sondeo, para
         // que el parameterChanged del valor aplicado salga en el MISMO tick.
         processor.applyPendingCcChanges();
+
+        // La tabla CC -> parametro NO es del APVTS: un learn completado por
+        // HARDWARE (el gesto clasico de MIDI Learn) la reescribe en el hilo de
+        // audio y la pagina no se enteraba — su menu MIDI CONTROL se quedaba
+        // con la tabla vieja. El contador del manager delata el cambio (tambien
+        // el learn, el clear y el reset de la propia pagina) y aqui se
+        // republica, antes del sondeo, para que la tabla y los valores lleguen
+        // en el MISMO tick.
+        const auto tableVersion = processor.getMidiMappingManager().getTableVersion();
+
+        if (tableVersion != lastMidiCcTableVersion)
+        {
+            lastMidiCcTableVersion = tableVersion;
+            bridge->sendMidiCcState();
+        }
 
         bridge->publishPendingChanges();
 
@@ -334,6 +357,13 @@ private:
     /** @brief Embebido primero (el VST3 no tiene cwd); disco solo si es dev. */
     static std::optional<juce::WebBrowserComponent::Resource> resourceProvider (const juce::String& url)
     {
+        // Un recurso servido es la SENAL de vida de la pagina: es el mismo criterio
+        // que usa la bancada (su proveedor cuenta igual), y es el unico fiable —
+        // `pageLoaded` no, porque una navegacion fallida tambien acaba en
+        // `interactive`. Es lo que permite al vigilante del arranque en frio
+        // distinguir "WebView2 todavia no ha pedido nada" de "la pagina va mal".
+        servedResourceCount().fetch_add (1, std::memory_order_relaxed);
+
         if (auto fromDisk = resolveDevOverride (url))
             return fromDisk;
 
@@ -342,6 +372,35 @@ private:
         // en su bundle, asi que en tiempo de ejecucion no necesita nada del disco.
         // El plugin no depende del sistema de ficheros para pintar su interfaz.
         return abd::webview2::webView2ResourceProvider (url, assetsCatalog());
+    }
+
+    /**
+     * @brief ARRANQUE EN FRIO: vuelve a pedir la pagina si WebView2 no ha pedido nada.
+     *
+     * Lo mismo que hace la bancada desde el 27/09, con la MISMA politica
+     * (`WebUI/ColdStartWatch.h`): si la pagina no ha dado ninguna señal en un
+     * rato, se vuelve a navegar, hasta tres veces. Aqui importa igual que alla:
+     * un pico de carga deja el editor en blanco y el usuario ve un plugin roto
+     * cuando en realidad solo,WebView2 aun no habia arrancado.
+     *
+     * Lo llama `poll()` (el timer del editor), no un timer propio: asi el
+     * vigilante muere con el componente y no hay dos relojes que mantener.
+     */
+    void watchColdStart()
+    {
+        const auto now = juce::Time::getMillisecondCounter() - componentCreatedMs;
+        const auto hasSignal = servedResourceCount().load (std::memory_order_relaxed) > 0 || pageLoaded;
+
+        if (! ColdStart::shouldRetry (coldStartWatcher, now, hasSignal))
+            return;
+
+        // Aviso al log del plugin (el que se lee cuando el editor se queda en
+        // blanco): un reintento callado seria un fallo sin rastro.
+        std::cout << "[webui] la pagina no ha cargado NINGUN recurso en "
+                  << juce::String (ColdStart::stallMs, 0) << " ms: reintento de navegacion "
+                  << coldStartWatcher.retries << "/" << ColdStart::maxRetries << std::endl;
+
+        getWebBrowser().goToURL (juce::WebBrowserComponent::getResourceProviderRoot());
     }
 
     void applyPageZoom()
@@ -367,6 +426,11 @@ private:
     std::unique_ptr<MidiInjectionAdapter> midiAdapter;
     std::unique_ptr<EngineModelsAdapter> modelsAdapter;
     std::unique_ptr<MidiCcMappingsAdapter> midiCcAdapter;
+
+    /** Ultima version de la tabla CC publicada a la pagina (-1 = ninguna: el
+     *  primer poll manda la tabla, para que el menu MIDI CONTROL no arranque
+     *  en "CC --"). */
+    int lastMidiCcTableVersion = -1;
     std::unique_ptr<RandomizerAdapter> randomizeAdapter;
     std::unique_ptr<VisualizationSourceAdapter> visualizationAdapter;
 
@@ -374,6 +438,28 @@ private:
     int telemetryTick = 0;
     int midiStateTick = 0;
     bool pageLoaded = false;
+
+    /**
+     * @brief Cuantos recursos ha servido el proveedor de esta pagina.
+     *
+     * No puede ser un miembro: `resourceProvider` es ESTATICA (la base lo exige
+     * asi), asi que el contador vive en una static local —que se construye una
+     * vez y NO se reinicia al abrir otro editor, porque ahi lo que importa es
+     * "¿ha pedido algo esta pagina?", no la cuenta. El estado que decide el
+     * reintento (`coldStartWatcher`) si es por instancia.
+     */
+    static std::atomic<int>& servedResourceCount()
+    {
+        static std::atomic<int> counter { 0 };
+
+        return counter;
+    }
+
+    /** Reloj del componente, para el vigilante (0 = recien creado). */
+    const juce::uint32 componentCreatedMs = juce::Time::getMillisecondCounter();
+
+    /** El estado del arranque en frio (politica compartida con la bancada). */
+    ColdStart::Watcher coldStartWatcher;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NeuronikWebView)
 };

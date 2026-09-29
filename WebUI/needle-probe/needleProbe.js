@@ -19,16 +19,27 @@
  * { visible, y, level } con el nivel derivado del 'd' del path con la MISMA
  * escala que el arnes (viewBox 100x48, PAD 2: level = (H - PAD - y)/(H - 2*PAD)).
  * window.__probeReady = true cuando el montaje termino.
+ *
+ * El boton "ADSR: amp 0.8 / filtro 0.2" empuja el ADSR por el canal de
+ * VoiceParams (`neuronik:voice`), el mismo que app.js: las dos envolventes con
+ * sustains distintos, para que el E2E pueda exigir que las needles MIDAN
+ * valores distintos y no solo que se muevan. Ademas REPINTA las dos vistas con
+ * ese mismo estado, que es lo que permite la referencia visual de las agujas
+ * SOSTENIDAS (`visual.spec.js`): la aguja tiene que caer en la altura del sustain
+ * de SU propia curva.
  */
 
 import {
   onWorkletEnvelopeLevels,
   pushMidiToWorklet,
+  pushVoiceToWorklet,
   startAudioEngine,
 } from '../src/audio/audioWorkletEngine.js';
 import {
   describeControl,
   defaultNormalizedState,
+  getDescriptor,
+  toNormalized,
 } from '../src/contracts/parameters.js';
 import { BANDS } from '../src/contracts/sections.js';
 import {
@@ -115,6 +126,11 @@ if (!envSection || !matrixSection) {
       ? `motor local: ON · ${state.sampleRate} Hz`
       : `motor: ${state.status}${state.error ? ` (${state.error})` : ''}`,
     state.status);
+
+    // El snapshot del contrato al motor recien arrancado, como hace el syncEngine
+    // de app.js al recibir el 'ready': sin esto el motor se queda en los
+    // defaults de C++ hasta que alguien mueva un knob.
+    if (state.status === 'ready') pushVoiceToWorklet(snapshot);
   });
 
   // La nota, por el MISMO mensaje que el teclado de la pagina manda en app.js.
@@ -123,6 +139,38 @@ if (!envSection || !matrixSection) {
   });
   document.querySelector('#note-off')?.addEventListener('click', () => {
     pushMidiToWorklet({ kind: 'noteOff', note: 60 });
+  });
+
+  // EL ADSR POR SU CANAL (`neuronik:voice`, el mismo pushVoiceToWorklet que
+  // llama app.js en cada sync): las dos envolventes con sustains MUY distintos
+  // (0.8 la de amp, 0.2 la de filtro) y tiempos de release largos para que las
+  // needles de las dos vistas se queden arriba el tiempo suficiente. Es lo que
+  // convierte la aguja en una prueba del cable y no solo del dibujo: si el
+  // motor no recibiera el ADSR, las dos needles cairian al 0.7 de C++ y a la
+  // vez, que es justo lo que el spec ya no admite.
+  //
+  // El MISMO estado se repinta en las dos vistas antes de empujarlo, para que la
+  // foto de referencia muestre la aguja EN LA ALTURA de su propio sustain (y no
+  // sobre una curva que sea la del contrato por defecto). Asi la referencia
+  // tambien caza un error de PINTADO: si la escala de la aguja o el alto de la
+  // curva se mueven, la foto se aparta aunque el motor siga bien.
+  const ADSR_STATE = {
+    ...snapshot,
+    envAttack: toNormalized(getDescriptor('envAttack'), 0.01),
+    envDecay: toNormalized(getDescriptor('envDecay'), 0.05),
+    envSustain: toNormalized(getDescriptor('envSustain'), 0.8),
+    envRelease: toNormalized(getDescriptor('envRelease'), 2.0),
+    filterAttack: toNormalized(getDescriptor('filterAttack'), 0.01),
+    filterDecay: toNormalized(getDescriptor('filterDecay'), 0.05),
+    filterSustain: toNormalized(getDescriptor('filterSustain'), 0.2),
+    filterRelease: toNormalized(getDescriptor('filterRelease'), 2.0),
+  };
+
+  document.querySelector('#voice-adsr')?.addEventListener('click', () => {
+    canvasView.paint(ADSR_STATE);
+    drawerView.paint(ADSR_STATE);
+    pushVoiceToWorklet(ADSR_STATE);
+    setStatus('ADSR pushed: amp 0.8 / filtro 0.2', 'ready');
   });
 
   window.__probeReady = true;

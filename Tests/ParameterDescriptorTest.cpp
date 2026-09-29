@@ -28,12 +28,24 @@ namespace
     // FASE 11.3: + morphZ2/morphZ3 (los z de las capas 1 y 2) = 74.
     // 2026-09-26: - filterEnvAmount (la ruta ENV 2 -> Filter Cutoff de la matriz
     // es LA profundidad; el knob era la misma profundidad dos veces) = 73.
-    constexpr int EXPECTED_PARAMETER_COUNT = 73;
+    // 2026-09-29: el hueco 1 del rack de efectos sustituye al mando suelto
+    // `fxSaturation` por su bus: - 1 + 7 (tipo, ganancia, mezcla y cuatro
+    // mandos) = 79.
+    constexpr int EXPECTED_PARAMETER_COUNT = 79;
     // Audited against the real references in Source/, not against an assumption:
     // see the DSP_PARAMETERS.md section "Estado de implementación DSP".
     // FASE 10: 65 historicos + oscExciteBow + morphZ = 67.
     // FASE 11.3: + morphZ2/morphZ3 (con consumidor en el motor) = 69.
-    constexpr int EXPECTED_IMPLEMENTED_COUNT = 68;
+    // 2026-09-29: + 6 del bus del hueco 1 = 74. Los seis cuentan como
+    // IMPLEMENTADOS y no como UI-only, y la distincion importa: los seis
+    // tienen consumidor en el motor aunque hoy suenen a silencio. `fx1Type`
+    // llama a `setType` desde el hilo de mensajes, y los cinco restantes viajan
+    // en `GlobalParams::fx[0]` hasta el hueco. Que `fx1Param2..4` no suenen con
+    // el efecto de serie (la saturacion declara UN mando) es COSA DEL EFECTO
+    // PUESTO, no del cableado: en cuanto el selector de tipo cambie de efecto,
+    // se oyen. Marcarlos como UI-only dira "nadie los lee" cuando el motor si
+    // los lee, y ese descriptor es el que dice que hay modulo o no lo hay.
+    constexpr int EXPECTED_IMPLEMENTED_COUNT = 74;
     constexpr int EXPECTED_UI_ONLY_COUNT = 4;
     constexpr int EXPECTED_NOT_ROUTED_COUNT = 1;
 

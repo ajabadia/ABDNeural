@@ -15,6 +15,7 @@
 #include <memory>
 
 #include "ModDestinationTable.h"
+#include "../DSP/FxCatalogue.h"
 
 namespace NEURONiK::State {
 
@@ -81,8 +82,24 @@ namespace IDs {
     static constexpr const char* filterSustain   = "filterSustain";
     static constexpr const char* filterRelease   = "filterRelease";
 
-    // FX
-    static constexpr const char* fxSaturation    = "fxSaturation";
+    // FX: el BUS POR HUECO. El hueco 1 (saturacion) es el primero migrado
+    // (2026-09-29): `fxSaturation` dejo de existir y en su lugar estan el tipo
+    // del hueco, su ganancia, su mezcla y sus cuatro mandos. Los huecos 2, 3 y 4
+    // los manejan TODAVIA los mandos planos de mas abajo; la migracion va hueco
+    // a hueco. Ver `Source/DSP/FxSlots.h` y `Source/DSP/FxCatalogue.h`.
+    //
+    // El prefijo `fx1` (y no `fxSlot1`) es el que usa el panel para encadenar:
+    // `fx1Type`, `fx1Param1`..`fx1Param4`. Un hueco con id fijo y mandos
+    // numerados es lo unico que el APVTS, un preset y la matriz pueden hablar
+    // sin saber que efecto hay puesto.
+    static constexpr const char* fx1Type    = "fx1Type";
+    static constexpr const char* fx1Gain    = "fx1Gain";
+    static constexpr const char* fx1Mix     = "fx1Mix";
+    static constexpr const char* fx1Param1  = "fx1Param1";
+    static constexpr const char* fx1Param2  = "fx1Param2";
+    static constexpr const char* fx1Param3  = "fx1Param3";
+    static constexpr const char* fx1Param4  = "fx1Param4";
+
     static constexpr const char* fxDelayTime     = "fxDelayTime";
     static constexpr const char* fxDelayFeedback = "fxDelayFeedback";
     static constexpr const char* fxDelaySync     = "fxDelaySync";
@@ -139,6 +156,119 @@ namespace IDs {
     static constexpr const char* mod4Amount = "mod4Amount";
 }
 
+//==============================================================================
+// LOS IDS DEL BUS POR HUECO, COMPUESTOS Y NO ESCRITOS.
+//
+// Los cuatro ids del hueco 1 estan como literales en `IDs::` (los usan el panel
+// y la tabla de destinos por nombre), pero la MIGRACION DE PRESETS tiene que
+// poder escribir los de los cuatro huecos sin tener los cuatro en una lista. Se
+// compone el id y se ata la composicion a los literales con `static_assert`, de
+// modo que un rename que se lleve el compositor se rompe al compilar aqui y no
+// en la migracion, donde el fallo seria un preset que pierde un mando sin decir
+// nada.
+//
+// POR QUE UN BUFFER Y NO UN `juce::String`: `juce::String` no es una expresion
+// constante (asigna memoria), asi que un `static_assert` que lo compare no
+// compila (C2131). El buffer de `char` si lo es, y la comparacion de texto es
+// `modDestinationTextIs`, que ya vive en este namespace.
+
+/** Escribe en `out` el id de un hueco y devuelve cuantos caracteres escribio.
+    `out` tiene que caber: dos del prefijo, uno o dos del numero y el campo.
+
+    EL NUMERO SIN CERO A LA IZQUIERDA, que es lo que hizo tropezar esto: la
+    primera version escribia los dos digitos siempre y componia `fx01Param1`,
+    que no es el id de nadie. Un `static_assert` que compara contra el literal
+    es justo lo que caza eso antes de que llegue a un preset. */
+constexpr int composeFxBusId (char* out, int slot, const char* field, int fieldLength) noexcept
+{
+    int n = 0;
+    out[n++] = 'f';
+    out[n++] = 'x';
+
+    const int number = slot + 1;
+
+    if (number >= 10)
+        out[n++] = static_cast<char> ('0' + (number / 10));
+
+    out[n++] = static_cast<char> ('0' + (number % 10));
+
+    for (int i = 0; i < fieldLength; ++i)
+        out[n++] = field[i];
+
+    out[n] = '\0';
+    return n + 1;
+}
+
+/** `fieldLength` a partir de un literal, sin `strlen` (que no es constexpr). */
+constexpr int literalLength (const char* text) noexcept
+{
+    return *text == '\0' ? 0 : 1 + literalLength (text + 1);
+}
+
+/** El id del mando `param` (base 0) del hueco `slot`: `fx1Param1`...
+
+    EL NUMERO DEL MANDO SE ESCRIBE AQUI Y NO EN `composeFxBusId`, que compone el
+    hueco y el campo pero no el mando. Se puede hacer de las dos maneras, y la
+    que se parece mas a la que hay que evitar es concatenar el numero fuera: el
+    `static_assert` de abajo solo ve `fx1Param`, no `fx1Param1`, asi que la
+    comprobacion de la composicion se queda en la mitad y deja pasar justo el
+    error que deberia cazar. Con el numero dentro, el aserto mira la cadena
+    entera. */
+inline juce::String fxBusParamId (int slot, int param)
+{
+    char buffer[32] {};
+    int n = composeFxBusId (buffer, slot, "Param", literalLength ("Param"));
+    n -= 1;   // el terminador, que se sobreescribe
+
+    const int number = param + 1;
+
+    if (number >= 10)
+        buffer[n++] = static_cast<char> ('0' + (number / 10));
+
+    buffer[n++] = static_cast<char> ('0' + (number % 10));
+    buffer[n] = '\0';
+
+    return juce::String (buffer);
+}
+
+/** El id de un campo del hueco: `fx1Type`, `fx1Gain`, `fx1Mix`. */
+inline juce::String fxBusFieldId (int slot, const char* field)
+{
+    char buffer[32] {};
+    composeFxBusId (buffer, slot, field, literalLength (field));
+    return juce::String (buffer);
+}
+
+// Los cuatro ids del hueco 1, comprobados UNO POR UNO y sin macro. La macro
+// que habia aqui metia mas logica de la que la cuenta daba: tenia ramas
+// y solo una se ejercitaba, y la que no se ejercita es justo la que compone
+// el numero del mando. Cuatro lineas que se leen enteras valen mas que una
+// que hay que seguir con el dedo.
+static_assert ([&] { char b[32] {}; composeFxBusId (b, 0, "Type", 4);
+                      return modDestinationTextIs (b, "fx1Type"); }(),
+               "el compositor de ids del bus no compone `fx1Type`");
+
+static_assert ([&] { char b[32] {}; composeFxBusId (b, 0, "Gain", 4);
+                      return modDestinationTextIs (b, "fx1Gain"); }(),
+               "el compositor de ids del bus no compone `fx1Gain`");
+
+static_assert ([&] { char b[32] {}; composeFxBusId (b, 0, "Mix", 3);
+                      return modDestinationTextIs (b, "fx1Mix"); }(),
+               "el compositor de ids del bus no compone `fx1Mix`");
+
+// El del mando lleva su numero DENTRO de la cadena comprobada, y por eso se
+// compone a mano aqui en vez de llamar a `fxBusParamId`: esa funcion es
+// `inline` y devuelve un `juce::String`, que no es una expresion constante, y
+// un `static_assert` que la llame no compila (C2131, que es justo el error que
+// dio la primera version). Se repite aqui el numero a proposito: es la
+// composicion ENTERA la que se mira, no media.
+static_assert ([&] { char b[32] {};
+                      int n = composeFxBusId (b, 0, "Param", 5);
+                      b[n - 1] = '1';
+                      b[n] = '\0';
+                      return modDestinationTextIs (b, "fx1Param1"); }(),
+               "el compositor de ids del bus no compone `fx1Param1`");
+
 /**
  * @brief Cada `parameterId` de la tabla es exactamente el `IDs::` que le toca.
  *
@@ -176,7 +306,11 @@ ABD_CHECK_MOD_DEST_ID (13, filterAttack);
 ABD_CHECK_MOD_DEST_ID (14, filterDecay);
 ABD_CHECK_MOD_DEST_ID (15, filterSustain);
 ABD_CHECK_MOD_DEST_ID (16, filterRelease);
-ABD_CHECK_MOD_DEST_ID (17, fxSaturation);
+// El destino 17 modulaba el mando suelto de la saturacion; con el hueco 1
+    // migrado a bus (2026-09-29) el mando sigue siendo el drive, y el id que lo
+    // publica es el del hueco. Esta comprobacion existe justo para que el
+    // nombre de la tabla de modulacion y el id del APVTS no se separen.
+    ABD_CHECK_MOD_DEST_ID (17, fx1Param1);
 ABD_CHECK_MOD_DEST_ID (18, fxDelayTime);
 ABD_CHECK_MOD_DEST_ID (19, fxDelayFeedback);
 ABD_CHECK_MOD_DEST_ID (20, resonatorParity);
@@ -279,7 +413,67 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::resonatorRolloff, "Harmonic Roll-off", juce::NormalisableRange<float>(0.1f, 4.0f, 0.0f, 0.5f), 1.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::resonatorParity, "Odd/Even Balance", juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::resonatorShift, "Spectral Shift", juce::NormalisableRange<float>(0.5f, 2.0f, 0.0f, 0.5f), 1.0f));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::fxSaturation, "Saturation", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
+    // --- EL BUS DEL HUECO 1 (2026-09-29) -----------------------------------
+    // Que efectos hay y como se llaman sale del CATALOGO (`FxCatalogue.h`), no
+    // de una lista escrita aqui: con dos copias, el desplegable del host y el
+    // modulo siempre se separan, y el que se olvide de actualizar es el que no
+    // da error. La lista del desplegable es el `displayName` del motor.
+    juce::StringArray fx1Types { "Bypass" };
+
+    for (int i = 1; i <= NEURONiK::DSP::fxNeuronikCatalogueSize(); ++i)
+    {
+        const auto entry = NEURONiK::DSP::fxNeuronikEffectAt (i);
+
+        if (entry.effect != nullptr)
+            fx1Types.add (juce::String (entry.effect->displayName));
+    }
+
+    // El default de `fx1Type` es el efecto que va de serie en el hueco 1, leido
+    // de la MISMA tabla que usa el motor al preparar (`fxDefaultTypeForSlot`).
+    // Si los dos tuvieran numeros distintos, un preset nuevo sonaria distinto
+    // de lo que acaba de guardar el host, y no habria ningun error.
+    const int fx1DefaultType = NEURONiK::DSP::fxDefaultTypeForSlot (0);
+    const auto fx1Default = NEURONiK::DSP::fxNeuronikEffectAt (fx1DefaultType);
+
+    // El indice 0 es bypass y el resto va en el MISMO orden que el catalogo,
+    // porque `typeForSlot`/`setSlotType` hablan ese indice. Elegir por indice y
+    // no por nombre es lo que deja que el hueco cambie de efecto sin que el
+    // APVTS tenga que saber nombres.
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::fx1Type, "FX 1 Type", fx1Types, fx1DefaultType));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::fx1Gain, "FX 1 Gain", juce::NormalisableRange<float>(0.0f, 2.0f), 1.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::fx1Mix, "FX 1 Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
+
+    // Los cuatro mandos del hueco van NORMALIZADOS 0..1, y no en las unidades
+    // fisicas del efecto, y no por gusto: el RANGO depende de que efecto este
+    // puesto, y el hueco lo cambia el usuario en caliente. Un parametro del
+    // APVTS tiene un rango fijo para siempre (un preset lo guarda, el host lo
+    // automatiza), asi que publicar "Drive 1..8" seria mentir para los otros
+    // cinco efectos del catalogo. El hueco habla normalizado
+    // (`FxSlot::setParameter` toma 0..1) y el sesgo lo aplica la fila. El panel
+    // web, que SI sabe que efecto hay puesto, pone la etiqueta y las unidades
+    // leyendo el catalogo exportado.
+    //
+    // El default del primer mando sale del MOTOR (el valor por defecto de ESA
+    // fila, ya normalizado), no de un numero escrito: escrito a mano seria el
+    // mismo numero en dos sitios, y el dia que la fila cambiara su default el
+    // parametro se quedaria en el viejo sin decir nada. Los otros tres son 0.5
+    // a proposito —ningun motor del catalogo los usa— y no el default de otra
+    // fila, que seria inventar un valor para un mando que no existe.
+    const float fx1Default0 = fx1Default.effect != nullptr && fx1Default.effect->params != nullptr
+                                  ? abd::dsp::fxNormalise (fx1Default.effect->params[0],
+                                                           fx1Default.effect->params[0].defaultValue)
+                                  : 0.5f;
+
+    static const char* const fx1ParamIds[] = {
+        IDs::fx1Param1, IDs::fx1Param2, IDs::fx1Param3, IDs::fx1Param4
+    };
+    const float fx1ParamDefaults[] = { fx1Default0, 0.5f, 0.5f, 0.5f };
+
+    for (int i = 0; i < NEURONiK::DSP::kFxBusParams; ++i)
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            fx1ParamIds[i], "FX 1 Param " + juce::String (i + 1),
+            juce::NormalisableRange<float>(0.0f, 1.0f), fx1ParamDefaults[i]));
+
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::fxDelayTime, "Delay Time", juce::NormalisableRange<float>(0.01f, 2.0f, 0.0f, 0.5f), 0.3f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::fxDelayFeedback, "Delay FB", juce::NormalisableRange<float>(0.0f, 0.95f), 0.4f));
     
@@ -288,8 +482,12 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     juce::StringArray rhythmicDivisions = { "1/1", "1/2", "1/4", "1/8", "1/16", "1/32", "1/4t", "1/8t", "1/16t" };
     params.push_back(std::make_unique<juce::AudioParameterChoice>(IDs::fxDelayDivision, "Delay Division", rhythmicDivisions, 2));
 
-    // Chorus
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::fxChorusRate, "Chorus Rate", juce::NormalisableRange<float>(0.1f, 10.0f, 0.0f, 0.5f), 1.0f));
+    // Chorus. El techo del `rate` es 8 Hz y no 10 porque el tope ahora lo pone
+    // la FILA del catalogo de huecos (DspEffects/adapters/BasicAdapters.h), que
+    // es donde vive la tabla: medido, el motor modula 5..30 ms de retardo y a
+    // 10 Hz la linea da una vuelta cada 100 muestras, o sea un tremolo. Dejar el
+    // panel en 10 seria un tramo de recorrido sin efecto en el extremo.
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::fxChorusRate, "Chorus Rate", juce::NormalisableRange<float>(0.1f, 8.0f, 0.0f, 0.5f), 1.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::fxChorusDepth, "Chorus Depth", juce::NormalisableRange<float>(0.0f, 1.0f), 0.2f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(IDs::fxChorusMix, "Chorus Mix", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
 
