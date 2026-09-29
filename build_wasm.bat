@@ -22,12 +22,21 @@ REM  separado y se contradicen, y el unico sintoma es un aviso en la linea de
 REM  audio. Recogerlo aqui y no en un segundo comando es justo el punto: un paso
 REM  que hay que recordar es un paso que se olvida.
 REM
+REM  Y AVISA SI EL ARBOL DEL LAYOUT ESTA SUCIO. Antes de regenerar la firma mira
+REM  Source/ y WebUI/generated/ y, si hay cambios sin commitear, los lista. No
+REM  detiene el build, y no por descuido: la firma y el `.wasm` los lee el mismo
+REM  arbol en esta misma pasada, asi que los artefactos que salen ACUERDAN entre
+REM  si. El aviso va de otra cosa --artefactos nuevos junto a codigo viejo si se
+REM  commitean por separado--, que es problema de quien commitea, no de quien
+REM  compila. Detener aqui impediria compilar con cambios a medias, que es como
+REM  se trabaja la mayor parte del tiempo.
+REM
 REM  Uso:  build_wasm.bat            -> compila, valida y sincroniza; PAUSA final
 REM        build_wasm.bat nopause   -> sin pausa (para automatizacion)
 REM  Cada pasada deja ademas wasm-last-run.log (log espejo de la consola).
 REM ============================================================================
-
 REM ---- Log espejo: relanza el script internamente y teed consola+fichero ----
+
 REM      (mismo patron que build.bat: deja wasm-last-run.log en la raiz, asi el
 REM      resultado queda en disco aunque la ventana se cierre sin querer)
 if not "%~1"=="--internal-log" (
@@ -106,6 +115,31 @@ REM movido, esta tabla y el binario de abajo lo leen igual y no pueden mentir.
 REM
 REM Va ANTES que la compilacion de emscripten a proposito: si el exportador
 REM falla, se pierde en segundos y no despues de minutos de compilacion.
+
+REM --- AVISO: el arbol del layout esta sucio ------------------------------
+REM NO es un fallo, y esa decision es deliberada. Aqui la firma y el `.wasm`
+REM los leen los DOS del mismo arbol y en esta misma pasada, asi que los
+REM artefactos que salgan ACUERDAN entre si: el desajuste que este paso evita
+REM no puede ocurrir dentro de una sola ejecucion. Lo que un arbol sucio puede
+REM producir es otra cosa --artefactos nuevos junto a codigo viejo, si alguien
+REM los commitea por separado-- y eso lo decide quien commitea, no quien
+REM compila. FALLAR aqui impediria compilar con cambios a medias, que es
+REM exactamente como se trabaja la mayor parte del tiempo.
+REM
+REM El ambito es el mismo que usa el vigilante: lo que alimenta el layout
+REM (Source/) y lo que el exportador escribe (WebUI/generated/).
+set "LAYOUT_DIRTY="
+for /f "usebackq delims=" %%L in (`git status --porcelain -- Source WebUI/generated 2^>nul`) do set "LAYOUT_DIRTY=1"
+if defined LAYOUT_DIRTY (
+    echo.
+    echo   [AVISO] El arbol del layout tiene cambios SIN COMMITEAR:
+    git status --porcelain -- Source WebUI/generated
+    echo     La firma y el .wasm saldran de ESTE arbol, asi que los dos
+    echo     artefactos ACUERDAN entre si y el build es coherente. Lo que no
+    echo     debe pasar es commitear el .wasm y gp-layout.generated.js sin el
+    echo     codigo que los produjo.
+    echo.
+)
 cmake --build build-reference --config Release --target NEURONiK_LayoutExport
 if errorlevel 1 goto :fail
 REM La ruta del exportador es ABSOLUTA: este script se puede lanzar desde
