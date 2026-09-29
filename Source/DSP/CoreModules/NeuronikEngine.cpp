@@ -273,60 +273,62 @@ static_assert (perNoteMatchesTheEngine(),
 
 // -- `replaces` (descriptor compartido) <=> REEMPLAZAR (envAssign) ---------
 //
-// Las dos cosas son la MISMA politica desde los dos lados: "con su envolvente,
-// la ruta REEMPLAZA el factor en vez de sumar encima" es exactamente lo que hace
-// `envAssign` y lo que no hace `envAdd`. Hasta ahora solo se ataba `perNote` con
-// "esta fila PREGUNTA por la fuente", asi que los dos campos podian separarse en
-// silencio: pasar una fila de envAssign a envAdd sin tocar el `replaces`
-// publicado no rompia NADA, y el contrato JSON de ABDSharedAssets seguia
-// diciendo "reemplaza" para un destino que suma.
+// Las dos cosas son la MISMA politica vista desde los dos lados: "con su
+// envolvente, la ruta REEMPLAZA el factor en vez de sumar encima" es lo que hace
+// `envAssign` y no lo que hace `envAdd`. Lo que las ata es una IGUALDAD, y la
+// decision se tomo el 2026-09-29.
 //
-// Al atarlo aparece una DIVERGENCIA VIVA, y por eso esto no es un simple par de
-// asertos: los destinos 12..16 se publican como `replaces: true` --en el
-// contrato, en la UI y en la lista escrita a mano de ModulationMatrixTest-- y el
-// motor los SUMA (`envAdd`). Los tres dicen lo mismo, y los tres dicen una cosa
-// que el motor no hace.
+// LA HISTORIA, que es la parte que no se ve: los destinos 12..16 se publicaban
+// como `replaces: true` y el motor los SUMABA. Cada lado tenia su razon, y
+// mientras tanto la pagina y ABDEep se construyeron sobre ese `replaces`,
+// esperando que la envolvente pisase el factor en vez de sumarse.
 //
-// NO se corrige aqui, y el motivo es el orden de las cosas: pasar esas cinco
-// filas de `envAdd` a `envAssign` cambia el SONIDO de cinco destinos --una ENV 2
-// negativa deja de invertir el ADSR del filtro y pasa a borrarlo--, y con el
-// sonido se mueven los 41 hashes de la paridad. Eso es una decision de producto
-// (que de las dos verdades es la buena) y no un refactor. Lo que si se hace es
-// que deje de ser invisible: los dos asertos de abajo la nombran fila a fila, de
-// modo que tocarla --en cualquiera de los dos lados-- pone el build en rojo en el
-// sitio de la regla, que es donde se puede ver gratis.
+// Se decidio que la verdad es la del motor, y hay tres razones, no una:
+//
+//   - `IVoice.h` declara los cinco como ACUMULADORES A CERO y los documenta
+//     como "aditivo"; el sustain lleva "clamp 0..1 en la voz", que solo tiene
+//     sentido sumando a un factor con neutro.
+//   - `resetModulations()` los pone a cero ANTES de cada aplicacion. Por eso
+//     sumar y asignar dan EL MISMO NUMERO en estos cinco destinos, siempre, y no
+//     solo a veces: MEDIDO, los 41 hashes de `ModulationParityDump` no se mueven
+//     ni un ULP al pasar las cinco filas a `envAssign`. Es un cambio de
+//     etiqueta, no de sonido. Cuando dos verdades no se distinguen, gana la que
+//     se puede escribir en el contrato sin mentir.
+//   - El neutro de 1.0, sin el cual "reemplazar" y "sumar" son lo mismo, solo lo
+//     tienen los destinos 1 y 10. Son los dos unicos que de verdad REEMPLAZAN, y
+//     los que lo necesitan: alli la envolvente ES la senal (ENV 1 -> VCA), no una
+//     profundidad.
+//
+// El aserto es una IGUALDAD y no una implicacion a proposito: `replaces` no
+// admite un tercer valor, asi que o la fila reemplaza y lo dice, o lo dice mal.
 
-// (a) Lo que REEMPLAZA esta publicado como `replaces`. Sin esto, una fila nueva
-//     con envAssign saldria al contrato diciendo que suma.
-constexpr bool assignIsPublishedAsReplaces (int index = 0)
+constexpr bool replacesMatchesTheEngine (int index = 0)
 {
     return index >= kNumModDestinations
         ? true
-        : (kModDestinations[index].env.kind != Kind::envAssign
-            || kModDestinationTable[index].replaces)
-          && assignIsPublishedAsReplaces (index + 1);
+        : (kModDestinationTable[index].replaces
+            == (kModDestinations[index].env.kind == Kind::envAssign))
+          && replacesMatchesTheEngine (index + 1);
 }
 
-static_assert (assignIsPublishedAsReplaces(),
-               "toda fila que REEMPLAZA (envAssign) se publica como replaces");
+static_assert (replacesMatchesTheEngine(),
+               "`replaces` dice lo que hace la fila: REEMPLAZA si y solo si es envAssign");
 
-// (b) Las filas que se publican `replaces` y que el motor SUMA. Este no es un
-//     aserto de que la divergencia este bien: es un aserto de que la lista sigue
-//     siendo ESTA, para que mover una de estas cinco filas en cualquiera de los
-//     dos lados avise, en vez de decidirlo el oido.
-constexpr bool publishedReplacesThatTheEngineAdds (int index = 0)
-{
-    return index >= kNumModDestinations
-        ? true
-        : ((index < 12 || index > 16)
-            || (kModDestinationTable[index].replaces
-                && kModDestinations[index].env.kind == Kind::envAdd))
-          && publishedReplacesThatTheEngineAdds (index + 1);
-}
+// Los dos unicos que de verdad reemplazan, nombrados: son los que un preset
+// nuevo necesita para sonar y los que un refactor sin esto perderia en silencio.
+static_assert (kModDestinationTable[ 1].replaces && kModDestinations[ 1].env.kind == Kind::envAssign,
+               "destino 1 (Osc Level): ENV 1 REEMPLAZA el factor de routing");
+static_assert (kModDestinationTable[10].replaces && kModDestinations[10].env.kind == Kind::envAssign,
+               "destino 10 (Filter Cutoff): ENV 2 REEMPLAZA el factor de routing");
 
-static_assert (publishedReplacesThatTheEngineAdds(),
-               "las filas 12..16 se publican replaces y el motor las SUMA: si la "
-               "divergencia se decide, esta frase es la que hay que cambiar");
+// Y los cinco que se suman, que es la otra mitad de la decision: son perNote
+// (se resuelven por voz) y NO son replaces (la envolvente no pisa el factor, lo
+// modula). Confundir las dos cosas es justo lo que produjo la divergencia.
+static_assert (kModDestinationTable[12].perNote && !kModDestinationTable[12].replaces
+               && kModDestinations[12].env.kind == Kind::envAdd
+               && kModDestinationTable[16].perNote && !kModDestinationTable[16].replaces
+               && kModDestinations[16].env.kind == Kind::envAdd,
+               "destinos 12..16: por voz y SUMADOS, no reemplazo (decidido el 2026-09-29)");
 
 static_assert (kModDestinations[0].add.kind == Kind::none
                && kModDestinations[0].env.kind == Kind::none,

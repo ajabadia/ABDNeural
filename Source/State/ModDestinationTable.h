@@ -152,11 +152,32 @@ inline constexpr ModDestination kModDestinationTable[] =
     // indices are the preset format. The engine adds it to the 1.0 routing
     // factor of ENV 2 (AdditiveVoice::modEnvFltDepth), so the label keeps
     // its meaning: more/less/inverted envelope through the route.
-    makeModDestination<12> ("Filter Env Amt", nullptr,          true, true),
-    makeModDestination<13> ("Flt Attack",     "filterAttack",    true, true),
-    makeModDestination<14> ("Flt Decay",      "filterDecay",     true, true),
-    makeModDestination<15> ("Flt Sustain",    "filterSustain",   true, true),
-    makeModDestination<16> ("Flt Release",    "filterRelease",   true, true),
+    //
+    // LOS CINCO (12..16) NO SON `replaces`, Y ESO SE DECIDIO EL 2026-09-29.
+    // Antes las cinco filas decian `replaces` y el motor las SUMABA, que es
+    // la divergencia que dos asertos del motor nombraban fila a fila. Se
+    // decidio que la verdad es la del motor, y no por tastes:
+    //
+    //   - `IVoice.h` los declara como ACUMULADORES A CERO y los documenta
+    //     como "aditivo"; el sustain lleva "clamp 0..1 en la voz", que solo
+    //     tiene sentido si se suma a un factor con neutro.
+    //   - `resetModulations()` los pone a cero ANTES de cada aplicacion, asi
+    //     que sumar y asignar dan EL MISMO NUMERO, siempre. Medido: los 41
+    //     hashes de `ModulationParityDump` no se mueven ni un ULP al pasar las
+    //     cinco filas a `envAssign`. Es un cambio de etiqueta, no de sonido,
+    //     y por eso no habia nada que decidir por el oido.
+    //   - el neutro de 1.0, que es lo que hace falta para que "reemplazar" sea
+    //     distinto de "sumar", solo lo tienen los destinos 1 y 10 (los dos
+    //     unicos que de verdad REEMPLAZAN, y los que lo necesitan: alli la
+    //     envolvente ES la senal, no una profundidad).
+    //
+    // Lo que NO se pierde: siguen siendo `perNote`, que es otra cosa. Se
+    // resuelven POR VOZ (una envolvente no es global), y eso no cambia.
+    makeModDestination<12> ("Filter Env Amt", nullptr,          true),
+    makeModDestination<13> ("Flt Attack",     "filterAttack",    true),
+    makeModDestination<14> ("Flt Decay",      "filterDecay",     true),
+    makeModDestination<15> ("Flt Sustain",    "filterSustain",   true),
+    makeModDestination<16> ("Flt Release",    "filterRelease",   true),
     makeModDestination<17> ("Saturation",     "fx1Param1"),   // el drive del hueco 1 (2026-09-29)
     makeModDestination<18> ("Delay Time",     "fxDelayTime"),
     makeModDestination<19> ("Delay FB",       "fxDelayFeedback"),

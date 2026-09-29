@@ -254,14 +254,27 @@ int main()
         if (destinations[i].perNote)   perNote.push_back ((int) i);
     }
 
-    const std::vector<int> expectedReplacing { 1, 10, 12, 13, 14, 15, 16 };
+    // LAS DOS LISTAS SON DISTINTAS desde el 2026-09-29, y antes no lo eran: el
+    // contrato publicaba `replaces` para siete destinos y el motor solo
+    // reemplazaba en dos. Se decidio que la verdad es la del motor, asi que
+    // `replaces` quedo con los dos de verdad (1 y 10) y los cinco que solo
+    // MODULAN el factor con su envolvente dejaron de publicarlo.
+    //
+    // LAS DOS COSAS SIGUEN SIENDO CIERTAS Y DISTINTAS, que es el punto:
+    //  - los SIETE se resuelven POR VOZ (`perNote`), porque una envolvente no
+    //    es un parametro del bus;
+    //  - de esos siete, solo DOS la PISAN (`replaces`), y son los que lo
+    //    necesitan porque alli la envolvente ES la senal.
+    //
+    // Que se separen no es un descuido: es la decision. Y el aserto que
+    // las ata sigue estando, pero como dos listas, para que un destino nuevo
+    // que modifique una de las dos se vea aqui.
+    const std::vector<int> expectedReplacing { 1, 10 };
+    const std::vector<int> expectedPerNote { 1, 10, 12, 13, 14, 15, 16 };
     check (replacing == expectedReplacing,
-           "los siete destinos que reemplazan son los que declara la tabla");
-    // perNote y replaces van juntos en este contrato: un destino o pregunta por
-    // la fuente de la voz o no pregunta. Si algun dia se separan, este aserto
-    // avisa en vez de dejarlos separarse en silencio.
-    check (perNote == expectedReplacing,
-           "perNote y replaces coinciden: los siete van de la mano");
+           "los destinos que reemplazan son el 1 y el 10, y solo esos");
+    check (perNote == expectedPerNote,
+           "los siete que se resuelven por voz siguen siendo siete");
 
     // El destino 12 no conduce parametro pero si modula: su parametro se
     // retiro y la PROFUNDIDAD vive en la ruta. parameterId null NO significa
