@@ -92,7 +92,22 @@ export function buildMenuTree(engineType = 0) {
       // de la ruta ENV 2 -> Filter Cutoff es el amount de la MATRIZ.
     ] },
     { label: 'EFFECTS', sub: [
-      { label: 'SATURATION', paramId: 'fxSaturation' },
+      // SATURATION apuntaba a `fxSaturation`, que la migracion del hueco 1
+      // RETIRO: ese mando suelto lo sustituyo el drive del bus, que es
+      // `fx[0].params[0]`, o sea `fx1Param1` (el destino 17 de la matriz
+      // conduce justo ese id, y el contrato de ABDSharedAssets lo dice). Con
+      // el id viejo el knob no estaba muerto del todo: lo estaba en silencio,
+      // porque el store ignora un id que no posee y la llamada se come sin
+      // ruido.
+      //
+      // Y POR QUE EL NOMBRE NO PUEDE QUEDARSE en SATURATION: `fx1Param1` es el
+      // parametro 1 del efecto PUESTO, y el parametro 1 de la saturacion es el
+      // drive mientras que el de un chorus es su rate (lo dice el catalogo:
+      // `params[0].name`). Este arbol es ESTATICO --solo depende del
+      // engineType--, asi que un nombre aqui seria mentira en cuanto la ficha
+      // cambie el efecto. Los nombres de verdad, uno por efecto, viven en el
+      // `.fx-module` del cajon, que los lee del catalogo.
+      { label: 'FX 1 P1', paramId: 'fx1Param1' },
       { label: 'CHORUS MIX', paramId: 'fxChorusMix' },
       { label: 'DELAY TIME', paramId: 'fxDelayTime' },
       { label: 'REVERB MIX', paramId: 'fxReverbMix' },

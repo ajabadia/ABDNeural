@@ -8,7 +8,10 @@
  *   - el D-pad conduce los parámetros REALES del store (pasos discretos del
  *     contrato, clamp 0..1, push en fase 'end' — un gesto de hardware);
  *   - el reposo muestra preset/estado y un edit nativo se ve en EDIT;
- *   - rebuild() cambia el árbol cuando cambia el motor.
+ *   - rebuild() cambia el árbol cuando cambia el motor;
+ *   - y que CADA id del árbol exista en el contrato generado, que es la
+ *     cuenta que faltaba cuando un id retirado dejó un knob muerto en
+ *     silencio.
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -16,7 +19,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createLcdPanel } from '@abdsynths/shared/components';
 
 import { buildMenuTree, createLcdTop } from '../src/ui/lcdTop.js';
-import { describeControl, defaultNormalizedState } from '../src/contracts/parameters.js';
+import { describeControl, defaultNormalizedState, getDescriptor } from '../src/contracts/parameters.js';
 import { SCREEN_PARAMETER_IDS } from '../src/contracts/screens.js';
 
 function makeHost() {
@@ -71,6 +74,52 @@ describe('lcdTop / el árbol del synth (LcdMenuManager migrado)', () => {
     expect(branch(neuronik, 'MIDI CONTROL').sub.find((i) => i.label === 'RESET ALL').type).toBe('action');
   });
 });
+
+  it('CADA id del arbol existe en el contrato generado, en los dos motores', () => {
+    // ESTE TEST ES EL QUE FALTABA, y su ausencia es como se muere un knob
+    // en silencio. La migracion del hueco 1 retiro el mando suelto
+    // `fxSaturation` y la entrada del LCD se quedo apuntando al id retirado
+    // sin que nada se pusiera rojo: el store IGNORA un id que no posee, la
+    // llamada se come sin error y el knob no hacia NADA. El lienzo si tiene
+    // esta cuenta (`sections.test.js`, 'cada id del lienzo existe en el
+    // contrato generado'); el arbol del LCD, no, y es el mismo contrato.
+    //
+    // Se recorren los dos motores porque el arbol depende del engineType, y
+    // lo que se apaga con un motor puede ser justo lo que se rompe con el
+    // otro. Las Actions (RESET ALL) no son parametros y se saltan: su id es
+    // un verbo del D-pad, no un mando del APVTS.
+    const items = (node, into = []) => {
+      for (const item of node) {
+        if (item.sub) items(item.sub, into);
+        else if (item.type !== 'action') into.push(item);
+      }
+      return into;
+    };
+
+    const missing = [0, 1]
+      .flatMap((engineType) => items(buildMenuTree(engineType)).map((item) => ({ engineType, ...item })))
+      .filter((item) => getDescriptor(item.paramId) === null)
+      .map((item) => `${item.label} (${item.paramId}) en el motor ${item.engineType}`);
+
+    // VACIA, y el propio test lo dice: hasta el 2026-09-29 era
+    // 'SATURATION (fxSaturation)', el id que la migracion del rack retiro.
+    expect(missing).toEqual([]);
+  });
+
+  it('el mando del drive es el del hueco 1, no el id retirado', () => {
+    // El caso concreto del anterior, nombrado: la entrada que antes se
+    // llamaba SATURATION conduce ahora `fx1Param1`, que es el drive del
+    // bus del hueco 1 (`fx[0].params[0]`) y el id que usa tambien el destino
+    // 17 de la matriz. Se mira el id y NO la etiqueta a proposito: el nombre
+    // es el de un parametro cuyo sentido depende del efecto puesto, y esa
+    // es justo la parte que este arbol, por ser estatico, no puede
+    // prometer.
+    const effects = buildMenuTree(0).find((item) => item.label === 'EFFECTS');
+    const ids = effects.sub.map((item) => item.paramId);
+
+    expect(ids).toContain('fx1Param1');
+    expect(ids).not.toContain('fxSaturation');
+  });
 
 describe('lcdTop / showParameterPreview (el LCD ensena lo que giras)', () => {
   it('un edit de usuario (id, normalizado) pinta label + valor del contrato en transitorio', () => {
