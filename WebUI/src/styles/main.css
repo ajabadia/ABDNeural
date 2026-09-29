@@ -127,6 +127,12 @@ body {
   color: var(--color-text-dim, #4a637a);
   font-variant-numeric: tabular-nums;
 }
+/* Mandos que mueven la pagina y NO llegan al motor (`paintAudio`): el
+   `.wasm` de public/worklet es anterior al layout del puente. El texto lo
+   pone el panel y el color es solo para que se note sin leerlo entero. */
+.audio-mode__detail[data-issue='unreachable'] {
+  color: var(--color-warn, #d8a13a);
+}
 
 /* --- actividad por voz (fila de audio, standalone) ------------------------- */
 

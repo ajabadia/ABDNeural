@@ -557,6 +557,44 @@ describe('panel / propiedad del audio (policy)', () => {
     expect(document.querySelector('.audio-mode__detail').textContent).toContain('sin device');
   });
 
+  it('ense\u00f1a los mandos que NO llegan al motor, y se va cuando llegan', () => {
+    // Lo que antes solo era un `console.warn` del worklet. El fallo que
+    // ense\u00f1aba era el de los seis mandos del hueco con un `.wasm` viejo:
+    // se movian en la pagina, no sonaban y no decia nada por ningun sitio.
+    // La linea de audio es donde se mira si el sonido esta bien, asi que el
+    // aviso vive ahi, con el recuento a la vista y los IDS en el tooltip
+    // (la linea va en 8 px y el remedy no cabe).
+    const panel = mountPanel();
+    const detail = document.querySelector('.audio-mode__detail');
+    const ids = ['fx1Gain', 'fx1Mix', 'fx1Param1', 'fx1Param2'];
+    panel.paintAudio({
+      owner: AUDIO_OWNER.WORKLET,
+      status: 'ready',
+      sampleRate: 48000,
+      unreachableFieldIds: ids,
+    });
+
+    // El estado del motor sigue ahi: el aviso se anade, no sustituye.
+    expect(detail.textContent).toContain('48.0 kHz');
+    expect(detail.textContent).toContain('4 sin motor');
+    expect(detail.dataset.issue).toBe('unreachable');
+    expect(detail.title).toContain('fx1Param1');
+    expect(detail.title).toContain('build_wasm.bat');
+
+    // Y con el `.wasm` al dia se retira: un aviso que se queda pegado es peor
+    // que no tenerlo, porque tapa lo que ya esta bien.
+    panel.paintAudio({
+      owner: AUDIO_OWNER.WORKLET,
+      status: 'ready',
+      sampleRate: 48000,
+      unreachableFieldIds: [],
+    });
+
+    expect(detail.textContent).not.toContain('sin motor');
+    expect(detail.dataset.issue).toBe('');
+    expect(detail.title).toBe('');
+  });
+
   it('el medidor de VOCES enciende un LED por voz activa y se esconde en silencio', () => {
     const panel = mountPanel();
     const meter = document.querySelector('.voice-meter');

@@ -673,39 +673,72 @@ export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = nu
   /**
    * Línea de audio: quién posee el motor y (solo en modo local) cómo arrancarlo.
    * La alimenta app.js desde la política + el estado del propio motor.
+   *
+   * `unreachableFieldIds` son los ids que esta pagina escribe en el espejo
+   * de GlobalParams y que el motor de este `.wasm` NO publica: los mandos
+   * se mueven en la pagina y no suenan. Antes de esto solo existia como un
+   * `console.warn` en el motor, que es una consola que el plugin no abre y
+   * que el usuario no ve nunca. Aqui se enseña en la MISMA linea que el
+   * estado del motor, porque es donde se mira si el audio esta bien.
    */
-  function paintAudio({ owner, status: audioState = 'idle', sampleRate = 0, error = null }) {
+  function paintAudio({
+    owner,
+    status: audioState = 'idle',
+    sampleRate = 0,
+    error = null,
+    unreachableFieldIds = [],
+  }) {
     audioLabel.textContent = audioOwnerLabel(owner);
+
+    const fuera = Array.isArray(unreachableFieldIds) ? unreachableFieldIds : [];
+
+    // El detalle se pinta por aqui para que el aviso viaje pegado al estado
+    // del motor en los cinco casos, y para que se limpie SOLO cuando la
+    // lista vuelve a estar vacia (un `.wasm` al dia la deja vacia).
+    const detalle = (texto) => {
+      audioDetail.textContent = fuera.length > 0
+        ? `${texto} · ${fuera.length} sin motor`
+        : texto;
+      // El atributo es el enganche al color (main.css) y el `title` es donde
+      // van los ids: la linea es corta a proposito y el remedy (recompilar el
+      // `.wasm`) no cabe en 8 px.
+      audioDetail.dataset.issue = fuera.length > 0 ? 'unreachable' : '';
+      audioDetail.title = fuera.length > 0
+        ? `El espejo pide ${fuera.length} campo(s) que este motor no publica: `
+          + `${fuera.join(', ')}. Esos mandos mueven la pagina y no llegan al motor: `
+          + 'recompila el .wasm (build_wasm.bat) y sincroniza WebUI/dist.'
+        : '';
+    };
 
     const localMode = owner === AUDIO_OWNER.WORKLET;
 
     if (!localMode) {
-      audioDetail.textContent = '· sin control en la página';
+      detalle('· sin control en la página');
       audioButton.hidden = true;
       return;
     }
 
     switch (audioState) {
       case 'ready':
-        audioDetail.textContent = `· ON · ${(sampleRate / 1000).toFixed(1)} kHz`;
+        detalle(`· ON · ${(sampleRate / 1000).toFixed(1)} kHz`);
         audioButton.hidden = true;
         break;
       case 'loading':
-        audioDetail.textContent = '· arrancando…';
+        detalle('· arrancando\u2026');
         audioButton.hidden = true;
         break;
       case 'error':
-        audioDetail.textContent = `· ERROR${error ? `: ${error}` : ''}`;
+        detalle(`· ERROR${error ? `: ${error}` : ''}`);
         audioButton.textContent = 'REINTENTAR';
         audioButton.hidden = false;
         break;
       case 'unsupported':
       case 'blocked':
-        audioDetail.textContent = `· ${error ?? audioState}`;
+        detalle(`· ${error ?? audioState}`);
         audioButton.hidden = true;
         break;
       default:
-        audioDetail.textContent = '· sin arrancar';
+        detalle('· sin arrancar');
         audioButton.textContent = 'SOUND ON';
         audioButton.hidden = false;
         break;

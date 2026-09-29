@@ -81,6 +81,7 @@ lo de la primera mitad del fichero cuenta cómo se llegó, no qué es cierto hoy
 - [2026-09-28 — canal `neuronik:voice`: los ocho knobs de envolvente POR FIN llegan al motor local](#2026-09-28-canal-neuronikvoice-los-ocho-knobs-de-envolvente-por-fin-llegan-al-motor-local) — canal `neuronik:voice`: los ocho knobs al motor local
 - [ctest 51/51 y el bus del hueco ya viaja al navegador (2026-09-29)](#ctest-5151-y-el-bus-del-hueco-ya-viaja-al-navegador-2026-09-29) — el ctest completo al 100%, los 7 fallos del 85% atribuidos, y lo que queda del `.wasm`
 - [Los tests de paridad dejan de concatenar la cola del layout (2026-09-29)](#los-tests-de-paridad-dejan-de-concatenar-la-cola-del-layout-2026-09-29) — la tabla unica del layout, y la relacion entre los dos exports comprobada
+- [El aviso de mandos sin motor se ve en la pagina, no solo en la consola (2026-09-29)](#el-aviso-de-mandos-sin-motor-se-ve-en-la-pagina-no-solo-en-la-consola-2026-09-29) — `unreachableFieldIds` en la linea de audio, con los ids en el tooltip
 
 ### Arquitectura de la página y modo local
 
@@ -8875,3 +8876,40 @@ Lo que se gana, mas alla de la limpieza:
 > Canon: un consumidor que se traga en silencio un campo ausente es la peor de
 > las dos mitades de un fallo. La otra mitad —el aviso— tiene que estar en el
 > punto donde todavia se puede cambiar algo, no en un log posterior.
+## El aviso de mandos sin motor se ve en la pagina, no solo en la consola (2026-09-29)
+
+Pendiente **5** de la entrada del ctest, cerrado. `unreachableFieldIds` —los ids
+que la pagina escribe en el espejo y que el motor de este `.wasm` no publica—
+llego hasta `audioEngineState` y ahi se quedaba, con un `console.warn` como todo
+aviso: una consola que el plugin no abre y que el usuario no ve nunca.
+
+Ahora vive en la **linea de audio**, que es donde se mira si el sonido esta bien.
+`paintAudio` acepta `unreachableFieldIds` y anade el recuento a lo que ya
+ensenaba (`· ON · 48.0 kHz · 6 sin motor`), marca `data-issue="unreachable"` para
+el color y deja los **ids y el remedio en el `title`**: la linea va en 8 px y
+"recompila el .wasm" no cabe ahi. El aviso se retira solo cuando la lista vuelve
+a estar vacia, porque un aviso pegado tapa lo que ya esta bien.
+
+No hizo falta tocar `app.js`: `engineSnapshot` ya era una copia de
+`audioEngineState` y `renderAudio` lo reparte entero.
+
+### Verificado
+
+- `panel.test.js` 94/94, con un test nuevo que exige el recuento, el
+  `data-issue`, los ids y el remedio en el tooltip, y que el aviso se vaya.
+- **Control negativo**: volviendo el detalle a pintar solo el estado del motor,
+  el test cae en `expected '· ON · 48.0 kHz' to contain '4 sin motor'`.
+- vitest **464/464** en 28 ficheros.
+- **Lo que NO se ha podido comprobar**: en un navegador de verdad. El servidor de
+  vite no arranca por un export duplicado en `ABDSharedAssets/components/index.js`
+  (trabajo en vuelo del otro hilo), que es tambien lo que tiene en rojo los tres
+  E2E de Playwright. Cuando ese repo cierre, el aviso se ve en cuanto se suba un
+  `.wasm` viejo.
+
+> Canon: un aviso que solo existe en una consola es un aviso que no existe. El
+> estado que el usuario no puede ver no puede arreglar: primero se enseña en la
+> superficie donde ya se mira lo que falla, y el detalle largo (ids, remedy) al
+> `title`.
+
+> Canon: un aviso tiene que **saber retirarse**. Enseñar de mas para no perder un
+> fallo es cambiar un fallo silencioso por un falso positivo permanente.
