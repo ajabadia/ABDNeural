@@ -1754,6 +1754,29 @@ else()
     message(STATUS "node not found: NEURONiK_WorkletMirrorLayout test skipped")
 endif()
 
+# LA FIRMA DEL LAYOUT, CONTRA EL BINARIO DE VERDAD. El test anterior comprueba
+# el ESPEJO de parametros: que la pagina y el worklet tradujan igual. Este
+# comprueba algo mas de fondo: que el binario que se sirve y la tabla que leen
+# la pagina HAYAN SALIDO DEL MISMO COMPILADO. Son dos mitades que se separan solas
+# --cambia el DSP, se regenera `gp-layout.generated.js`, y nadie recompila el
+# `.wasm`--, y cuando se separan la pagina solo puede avisar en la linea de
+# audio, que es justo donde nadie mira. Aqui el desajuste es un rojo de ctest.
+#
+# Sin el export de la firma el binario es indistinguible de uno correcto: el
+# aviso de la pagina y un PASS de este test se ven igual. Por eso el test
+# comprueba TAMBIEN el numero de campos en claro, que no depende del hash.
+#
+# OJO: este test esta ROJO mientras el `.wasm` versionado no se recompile con el
+# export del puente. Es lo que tiene que pasar para que el desajuste no pueda
+# pasar inadvertido; en cuanto `build_wasm.bat` corra, pasa a verde.
+if(NEURONIK_NODE_EXECUTABLE)
+    add_test(NAME NEURONiK_WasmLayoutFingerprint
+        COMMAND ${NEURONIK_NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/Tests/wasmLayoutFingerprintTest.mjs"
+    )
+else()
+    message(STATUS "node not found: NEURONiK_WasmLayoutFingerprint test skipped")
+endif()
+
 # E2E de navegador REAL (Playwright + Chromium): el smoke del MODO LOCAL que hasta hoy se
 # verificaba a mano -SOUND ON arranca el motor WASM, la ficha RANURAS carga un modelo, una
 # tecla enciende la voz y el pad mueve morphX/morphY con su anillo bailando-. Sirve `dist`

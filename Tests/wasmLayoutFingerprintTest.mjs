@@ -29,17 +29,27 @@
     colaron aqui dos cosas, un nombre de export que no existe y un
     TypeError esperando a que alguien recompilara el binario.
 
+    LAS RUTAS CUELGAN DEL FICHERO, NO DE process.cwd(). ctest arranca
+    este test con el directorio de build como cwd, de modo que un
+    caminho relativo ahi apunta al sitio equivocado y el fallo se lee
+    como "falta el binario" cuando lo que falta es el punto de partida.
+    Mismo criterio que workletSyncTest.mjs y workletMirrorLayoutTest.mjs.
+
   ==============================================================================
 */
 
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const thisDir = path.dirname(fileURLToPath(import.meta.url));
+const neuralRoot = path.resolve(thisDir, '..');
 
 const DEFAULT_MODULE = 'WebUI/public/worklet/neuronik_dsp.js';
 const GENERATED = 'WebUI/generated/gp-layout.generated.js';
 
 const jsPathArg = process.argv[2];
-const jsPath = path.resolve(process.cwd(), jsPathArg ?? DEFAULT_MODULE);
+const jsPath = path.resolve(neuralRoot, jsPathArg ?? DEFAULT_MODULE);
 const wasmPath = jsPath.replace(/\.js$/, '.wasm');
 
 let failures = 0;
@@ -49,14 +59,15 @@ function check (ok, label, detail) {
 }
 
 // --- 1. La firma que espera la pagina -----------------------------------------
-const generated = await readFile(GENERATED, 'utf8');
+const generatedPath = path.join(neuralRoot, GENERATED);
+const generated = await readFile(generatedPath, 'utf8');
 const match = generated.match(/LAYOUT_FINGERPRINT\s*=\s*(\d+)/);
 if (!match) {
-  console.error(`[fingerprint] ${GENERATED} no declara LAYOUT_FINGERPRINT`);
+  console.error(`[fingerprint] ${generatedPath} no declara LAYOUT_FINGERPRINT`);
   process.exit(1);
 }
 const expected = Number(match[1]);
-console.log(`[fingerprint] binario : ${path.relative(process.cwd(), jsPath)}`);
+console.log(`[fingerprint] binario : ${path.relative(neuralRoot, jsPath)}`);
 console.log(`[fingerprint] pagina  : ${expected}`);
 
 // --- 2. Instanciar el binario real -------------------------------------------
