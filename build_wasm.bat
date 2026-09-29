@@ -13,6 +13,15 @@ REM  NOTA: se necesita el entorno de Visual Studio ANTES de emsdk para que el
 REM  bootstrap de juceaide (cross-compile) encuentre MSVC y no un MinGW del
 REM  PATH (JUCE lo rechaza). Por eso vcvars64 va primero.
 REM
+REM  QUE GENERA TAMBIEN, Y POR QUE ESTA AQUI. Ademas del binario, esta pasada
+REM  regenera WebUI\generated\gp-layout.generated.js --la firma del layout-- y
+REM  comprueba que el binario y esa tabla cuadran antes de dar el build por bueno.
+REM  Son dos artefactos de la MISMA pasada porque los dos se leen del arbol: si
+REM  uno se regenera en una vuelta y el otro en otra, ambos son correctos por
+REM  separado y se contradicen, y el unico sintoma es un aviso en la linea de
+REM  audio. Recogerlo aqui y no en un segundo comando es justo el punto: un paso
+REM  que hay que recordar es un paso que se olvida.
+REM
 REM  Uso:  build_wasm.bat            -> compila, valida y sincroniza; PAUSA final
 REM        build_wasm.bat nopause   -> sin pausa (para automatizacion)
 REM  Cada pasada deja ademas wasm-last-run.log (log espejo de la consola).
@@ -57,7 +66,7 @@ if not exist "%VCVARS%" (
     goto :fail
 )
 
-echo [1/6] Preparando entorno Visual Studio + emsdk ...
+echo [1/7] Preparando entorno Visual Studio + emsdk ...
 call "%VCVARS%" >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] vcvars64 fallo
@@ -73,8 +82,8 @@ for /d %%D in ("%EMSDK_ROOT%\node\*") do set "PATH=%%D\bin;%PATH%"
 where cl.exe >nul 2>&1 || (echo [ERROR] cl.exe no esta en PATH tras vcvars64 & goto :fail)
 where emcmake >nul 2>&1 || (echo [ERROR] emcmake no esta en PATH: falta %EMSDK_ROOT%\upstream\emscripten & goto :fail)
 
-REM --- 3. Configurar y compilar ------------------------------------------------
-echo [2/6] Configurando (emcmake + Ninja) ...
+REM --- 3. Configurar, firma y compilar ----------------------------------------
+echo [2/7] Configurando (emcmake + Ninja) ...
 rem Generador Ninja: el generador Visual Studio no soporta el compilador
 rem em++ del toolchain Emscripten. El entorno de vcvars ya esta armado,
 rem asi que el bootstrap de juceaide encuentra MSVC sin problema.
@@ -86,13 +95,31 @@ rem falso. Fusionarlo con stdout lo deja como texto normal.
 emcmake cmake -S wasm -B build-wasm -G Ninja -DCMAKE_BUILD_TYPE=Release 2>&1
 if errorlevel 1 goto :fail
 popd
+echo [3/7] Regenerando la firma del layout (mismo arbol que el binario) ...
+REM El binario y la tabla que lee la pagina tienen que salir del MISMO arbol.
+REM Antes eran dos pasos que recordar --compilar el .wasm por un lado, regenerar
+REM la firma por otro-- y el que se olvidaba no hacia ruido en ninguna parte: el
+REM .wasm viejo pasaba todos los tests y el desajuste solo aparecia como un aviso
+REM en la linea de audio, que es donde nadie mira. Aqui la firma se regenera
+REM siempre, en la misma pasada, antes de compilar: si el arbol del layout esta
+REM movido, esta tabla y el binario de abajo lo leen igual y no pueden mentir.
+REM
+REM Va ANTES que la compilacion de emscripten a proposito: si el exportador
+REM falla, se pierde en segundos y no despues de minutos de compilacion.
+cmake --build build-reference --config Release --target NEURONiK_LayoutExport
+if errorlevel 1 goto :fail
+REM La ruta del exportador es ABSOLUTA: este script se puede lanzar desde
+REM cualquier directorio, y una ruta relativa escribiria la tabla en el sitio
+REM de quien lo lanzo en vez de en el repositorio.
+"%~dp0build-reference\Release\NEURONiK_LayoutExport.exe" "%~dp0WebUI\generated"
+if errorlevel 1 goto :fail
 
-echo [3/6] Compilando ...
+echo [4/7] Compilando ...
 cmake --build build-wasm --config Release
 if errorlevel 1 goto :fail
 
-REM --- 4. Smoke test Node ------------------------------------------------------
-echo [4/6] Referencia nativa + test de paridad WASM contra nativo ...
+REM --- 4. Paridad y smoke test Node -------------------------------------------
+echo [5/7] Referencia nativa + test de paridad WASM contra nativo ...
 REM La referencia nativa ejecuta los MISMOS 5 escenarios que el test Node
 REM re-ejecuta sobre el modulo WASM: si difieren, el DSP o la frontera han
 REM cambiado por un lado y no por el otro.
@@ -103,7 +130,7 @@ if errorlevel 1 goto :fail
 node "%~dp0Tests\neuronik_wasm_parity.mjs" "%~dp0build-wasm\neuronik_dsp.js" "%~dp0build-wasm\parity-native.json"
 if errorlevel 1 goto :fail
 
-echo [5/6] Smoke test Node del modulo WASM ...
+echo [6/7] Smoke test Node del modulo WASM ...
 node "%~dp0Tests\neuronik_wasm_smoke.mjs" "%~dp0build-wasm\neuronik_dsp.js"
 if errorlevel 1 goto :fail
 
@@ -112,7 +139,7 @@ REM Sin este paso el worklet de WebUI\public\worklet se queda en el DSP de la
 REM pasada anterior: el drift no se ve en el codigo (los .js/.wasm se versionan)
 REM y solo aparece como audio viejo en la WebUI. Ocurrio dos veces; ahora es
 REM imposible por construccion.
-echo [6/6] Sincronizando artefactos con WebUI\public\worklet ...
+echo [7/7] Sincronizando artefactos con WebUI\public\worklet ...
 node "%~dp0WebUI\scripts\sync-wasm.mjs"
 if errorlevel 1 goto :fail
 
@@ -121,13 +148,26 @@ REM audio viejo en la WebUI. Compara build-wasm <-> public/worklet (y dist si ex
 node "%~dp0Tests\workletSyncTest.mjs"
 if errorlevel 1 goto :fail
 
+REM Cierre: la firma del layout contra el binario YA sincronizado, que es el
+REM que carga el AudioWorklet. Va al final y no al principio a proposito: hasta
+REM que sync-wasm.mjs ha copiado, el binario de public\worklet es el de la
+REM pasada anterior y compararlo aqui solo daria ruido. Aqui ya estan las tres
+REM mitades de la misma pasada --la tabla que leen la pagina, el binario nuevo
+REM y el arbol del que salieron-- asi que si algo se desajusta, el build falla
+REM en vez de dejar un aviso en la linea de audio. El mismo test que corre
+REM como NEURONiK_WasmLayoutFingerprint en ctest, para que compilar y testear
+REM no puedan discrepar.
+node "%~dp0Tests\wasmLayoutFingerprintTest.mjs"
+if errorlevel 1 goto :fail
+
 echo.
 echo =======================================================
-echo  [EXITO] WASM compilado y validado (paridad + smoke + sync)
+echo  [EXITO] WASM compilado y validado (firma + paridad + smoke + sync)
 echo    build-wasm\neuronik_dsp.js
 echo    build-wasm\neuronik_dsp.wasm
 echo    build-wasm\parity-native.json  (referencia nativa)
 echo    WebUI\public\worklet\      (sincronizado)
+echo    WebUI\generated\gp-layout.generated.js  (firma, del mismo arbol)
 echo =======================================================
 set "EXIT_CODE=0"
 goto :finish
