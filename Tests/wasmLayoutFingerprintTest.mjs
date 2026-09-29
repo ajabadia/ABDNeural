@@ -21,6 +21,14 @@
     `.wasm` de verdad; sin el, un binario antiguo --sin el export-- pasa
     todos los tests que hay y la pagina avisa en silencio.
 
+    NINGUNA COMPROBACION SE SALE ANTES DE TIEMPO. La primera version
+    hacia process.exit en cuanto faltaba el export de la firma, con lo
+    que la del numero de campos --que va despues-- no llegaba a correr
+    nunca. Un test con un tramo que solo se ejecuta cuando todo lo
+    anterior va bien no es un test: es codigo sin probar, y asi se
+    colaron aqui dos cosas, un nombre de export que no existe y un
+    TypeError esperando a que alguien recompilara el binario.
+
   ==============================================================================
 */
 
@@ -74,40 +82,52 @@ const Module = await createModule({
 
 Module._neuronikInit(48000, 128);
 
-// --- 3. Lo que el binario publica --------------------------------------------
-const hasFn = typeof Module._neuronikGlobalParamsLayoutFingerprint === 'function';
+// --- 3. La firma que publica el binario --------------------------------------
+const hasFingerprint = typeof Module._neuronikGlobalParamsLayoutFingerprint === 'function';
 check(
-  hasFn,
+  hasFingerprint,
   'el .wasm publica neuronikGlobalParamsLayoutFingerprint',
-  hasFn ? '' : 'falta el export: recompila el .wasm con el exportador'
+  hasFingerprint ? '' : 'falta el export: recompila el .wasm con el exportador'
 );
 
-if (!hasFn) {
-  console.log('');
+if (hasFingerprint) {
+  const got = Module._neuronikGlobalParamsLayoutFingerprint();
+  console.log(`[fingerprint] binario : ${got}`);
+  check(
+    got === expected,
+    'la firma del binario es la que espera la pagina',
+    got === expected ? '' : `binario ${got} != pagina ${expected}`
+  );
+} else {
   console.log('  NOTA: sin este export el worklet postea layoutFingerprint: null');
-  console.log('        y la pagina avisa de que el binario no es el suyo. Con el');
-  console.log('        export de vuelta, el aviso solo aparece si hay desajuste.');
-  process.exit(1);
+  console.log('        y la pagina avisa de que el binario no es el suyo.');
 }
 
-const got = Module._neuronikGlobalParamsLayoutFingerprint();
-console.log(`[fingerprint] binario : ${got}`);
-check(
-  got === expected,
-  'la firma del binario es la que espera la pagina',
-  got === expected ? '' : `binario ${got} != pagina ${expected}`
-);
-
-// --- 4. El conteo de campos, que es la causa raiz -----------------------------
-// La firma es un hash: si dos tablas distintas dieran el mismo hash seria un
-// accidente. El numero de campos va en claro, asi que tambien tiene que cuadrar
-// con el que dice la cabecera generadora.
+// --- 4. El numero de campos, que va en claro ---------------------------------
+// La firma es un hash: si dos tablas distintas dieran el mismo valor seria un
+// accidente, y el hash no lo delata hasta que colisiona. El numero de campos
+// va en claro y se puede comparar sin esperar a eso.
+//
+// El recuento NO tiene export propio: se pide el de la funcion de layout
+// pasándole punteros nulos, que es la via que usa gpMirror. Llamar a un
+// neuronikGlobalParamsFieldCount() que no existe daria un TypeError que
+// pareceria un fallo del binario cuando lo que fallaria seria este test.
+const hasLayout = typeof Module._neuronikGlobalParamsLayout === 'function';
 const fieldMatch = generated.match(/LAYOUT_FIELD_COUNT\s*=\s*(\d+)/);
-if (fieldMatch) {
+
+if (!fieldMatch) {
+  console.log('  --  el generado no declara LAYOUT_FIELD_COUNT: nada que comparar');
+} else if (!hasLayout) {
+  check(false, 'el .wasm publica neuronikGlobalParamsLayout', 'falta el export');
+} else {
   const want = Number(fieldMatch[1]);
-  const gotFields = Module._neuronikGlobalParamsFieldCount();
+  const gotFields = Module._neuronikGlobalParamsLayout(0, 0);
   console.log(`[fingerprint] campos  : binario ${gotFields}, pagina ${want}`);
-  check(gotFields === want, 'el numero de campos cuadra con la pagina');
+  check(
+    gotFields === want,
+    'el numero de campos cuadra con la pagina',
+    gotFields === want ? '' : `binario ${gotFields} != pagina ${want}`
+  );
 }
 
 console.log('');
