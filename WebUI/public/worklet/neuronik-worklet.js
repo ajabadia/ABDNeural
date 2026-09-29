@@ -54,13 +54,21 @@ import createModule from './neuronik_dsp.js';
 // escribia con `INT_FIELDS` y `BPM_FIELD` escritas a mano son copias del
 // struct, y una copia se queda vieja sin avisar (ver `gpMirror.js`).
 import { readGpLayout, writeGpField as writeGpFieldIn } from './gpMirror.js';
+// La traduccion de los eventos, la cola que los reparte por bloque y el
+// aviso de los campos que el motor no publica viven en modulos aparte, con
+// sus tests en vitest. Aqui no se puede probar nada: este fichero se
+// registra como `AudioWorkletProcessor` al importarse y no exporta nada.
+import { eventFromMessage } from './gpEvents.js';
+import { createEventQueue, MAX_EVENTS_PER_BLOCK } from './gpEventsQueue.js';
+import { createFieldAudit } from './gpFieldAudit.js';
 
-const EVENT_TYPE = { NOTE_ON: 0, NOTE_OFF: 1, PITCH_BEND: 2, CHANNEL_PRESSURE: 3 };
+// Los tipos de evento, el canal y la nota por defecto van en `gpEvents.js`:
+// son el ABI del POD y ahora tienen sus tests al lado.
 
 /** ModMatrix destination the page's z-ring visualises (engine enum: 28 = Morph Z). */
 const MORPH_Z_DESTINATION = 28;
 const EVENT_BYTES = 24; // Runtime::Event: 4xi32 + f32 + i32 (static_assert'd)
-const MAX_EVENTS_PER_BLOCK = 16;
+// El tope por bloque va en `gpEventsQueue.js`, con la cola que lo aplica.
 
 // El bpm (unico double del espejo) y el resto de escalares: lo default que
 // el motor ya trae de su struct y que la pagina no tiene que mandar.
@@ -84,7 +92,14 @@ class NeuronikProcessor extends AudioWorkletProcessor {
     this.blockCounter = 0;
 
     // Runtime::Event staging (heap side) — filled from the message queue.
-    this.pendingEvents = [];
+    // La cola reparte los eventos por bloque (`gpEventsQueue.js`) y el
+    // registro cuenta los campos que el motor no publica
+    // (`gpFieldAudit.js`). Los dos son modulos con tests; lo que se queda
+    // aqui es el volcado al heap, que necesita el `Module`.
+    this.eventQueue = createEventQueue ({
+      write: (index, event) => this.writeEventRecord (index, event),
+    });
+    this.fieldAudit = createFieldAudit (() => this.paramsFieldCount);
 
     this.port.onmessage = (event) => this.handleMessage(event.data ?? {});
     this.initialize();
@@ -130,6 +145,11 @@ class NeuronikProcessor extends AudioWorkletProcessor {
         sampleRate: this.sampleRate,
         globalParamsSize: this.gpSize,
         paramsFieldCount: this.paramsFieldCount,
+        // La firma del layout de ESTE binario, para que la pagina la
+        // compare con la suya al arrancar y diga si el `.wasm` que
+        // cargo es el que ella espera. Va en el ready y no en un
+        // aviso aparte: es un dato del arranque, no un evento.
+        layoutFingerprint: this.gpLayout.fingerprint,
         voiceEnvelopeSize: this.veSize,
       });
       console.log('[worklet-dbg] initialize COMPLETO (ready posteado)');
@@ -215,37 +235,26 @@ class NeuronikProcessor extends AudioWorkletProcessor {
 
   /** Campo pedido por la pagina que el layout del motor NO publica. */
   noteMissingField(fieldIndex) {
-    if (!this.missingGpFields) this.missingGpFields = new Set ();
-    this.missingGpFields.add (fieldIndex);
+    this.fieldAudit.note (fieldIndex);
   }
 
   /**
    * Avisa de los campos que el motor no publica, UNA vez por push y solo
-   * si ha aparecido alguno nuevo.
-   *
-   * POR QUE AL FINAL DEL PUSH y no dentro de `writeGpField`: un snapshot
-   * completo son 38 campos, y con el .wasm viejo seis no existen. Avisando en
-   * cada escritura salian seis mensajes y seis warnings para un solo
-   * `postMessage`, con la cuenta de menor a mayor. Y el aviso NO se repite
-   * en los pushes siguientes: los campos que faltan son siempre los
-   * mismos (el contrato no cambia con el tiempo) y repetirlo cada vez que
-   * se mueve un knob llenaria la consola de la pagina.
+   * si ha aparecido alguno nuevo. La cuenta y la regla estan en
+   * `gpFieldAudit.js`; aqui solo se decide a quien se le avisa.
    */
   flushMissingFields() {
-    const missing = this.missingGpFields;
-    if (!missing || missing.size === this.reportedMissingCount) return;
+    const report = this.fieldAudit.takeReport ();
+    if (report === null) return;
 
-    this.reportedMissingCount = missing.size;
-    const lista = Array.from (missing).sort ((a, b) => a - b);
-
-    console.warn ('[worklet] el espejo pide', lista.length,
-      'campos que este motor no publica (de', this.paramsFieldCount, '):', lista,
+    console.warn ('[worklet] el espejo pide', report.missingCount,
+      'campos que este motor no publica (de', report.fieldCount, '):', report.fields,
       '- o el .wasm de public/worklet es anterior al layout del puente,'
       + ' o la pagina escribe un campo que ya no existe');
     this.port.postMessage ({
       type: 'neuronik:layout',
-      paramsFieldCount: this.paramsFieldCount,
-      missingFields: lista,
+      paramsFieldCount: report.fieldCount,
+      missingFields: report.fields,
     });
   }
 
@@ -456,8 +465,12 @@ class NeuronikProcessor extends AudioWorkletProcessor {
         if (message.kind === 'panic') {
           this.module._neuronikAllNotesOff();
         } else {
-          this.pendingEvents.push (message);
-          if (this.pendingEvents.length > 256) this.pendingEvents.shift();
+          this.eventQueue.push (message);
+          // Tope de seguridad: si la pagina mandara sin parar (un bucle
+          // mal escrito) la cola creceria sin fin en el hilo de audio, que
+          // es donde mas caro sale. 256 eventos son mas de seis segundos
+          // de entrada, y lo que se tira es lo mas viejo.
+          while (this.eventQueue.length > 256) this.eventQueue.popOldest ();
         }
         break;
       }
@@ -475,55 +488,35 @@ class NeuronikProcessor extends AudioWorkletProcessor {
   /** Drain the queued messages into a Runtime::Event block (byte layout in
    *  NeuronikWasmBridge.cpp: i32 type, i32 channel, i32 note, i32 value14,
    *  f32 value, i32 sampleOffset). */
+  /**
+   * Un registro del POD Event en el heap. Es la mitad de `stageEvents` que
+   * NO se puede probar sin wasm: el reparto y la traduccion del mensaje
+   * estan en `gpEventsQueue.js` y `gpEvents.js`.
+   *
+   * `value` es float y los otros cinco campos son enteros, asi que el
+   * cuarto se escribe por la vista de float. Con una sola vista, el motor
+   * leeria el patron de bits de IEEE donde espera un entero.
+   */
+  writeEventRecord (index, event) {
+    const heap32 = this.module.HEAP32;
+    const heapF32 = this.module.HEAPF32;
+    const record = (this.eventsPtr >> 2) + index * 6;
+
+    heap32[record + 0] = event.type;
+    heap32[record + 1] = event.channel;
+    heap32[record + 2] = event.note;
+    heap32[record + 3] = event.value14;
+    heapF32[record + 4] = event.value;
+    heap32[record + 5] = event.sampleOffset;
+  }
+
+  /**
+   * Un bloque: reparte los eventos pendientes y devuelve cuantos salieron.
+   */
   stageEvents() {
-    if (this.pendingEvents.length === 0) return 0;
+    if (this.eventQueue.length === 0) return 0;
 
-    const Module = this.module;
-    const heap32 = Module.HEAP32;
-    const heapF32 = Module.HEAPF32;
-    const base = this.eventsPtr >> 2;
-    const baseF = this.eventsPtr >> 2;
-    const count = Math.min (this.pendingEvents.length, MAX_EVENTS_PER_BLOCK);
-
-    for (let i = 0; i < count; ++i) {
-      const message = this.pendingEvents[i];
-      const record = base + i * 6;
-      const recordF = baseF + i * 6;
-
-      let type = EVENT_TYPE.NOTE_ON;
-      let channel = 1;
-      let note = 0;
-      let value14 = 8192;
-      let value = 0.0;
-
-      if (message.kind === 'noteOn') {
-        type = EVENT_TYPE.NOTE_ON;
-        note = message.note ?? 60;
-        value = Number (message.velocity ?? 0.8);
-        value14 = Math.max (0, Math.min (16383, Math.round (value * 16383)));
-      } else if (message.kind === 'noteOff') {
-        type = EVENT_TYPE.NOTE_OFF;
-        note = message.note ?? 60;
-      } else if (message.kind === 'pitchBend') {
-        type = EVENT_TYPE.PITCH_BEND;
-        value = Math.max (-1, Math.min (1, Number (message.value ?? 0)));
-        value14 = Math.max (0, Math.min (16383, Math.round ((value + 1) * 8191.5)));
-      } else if (message.kind === 'pressure') {
-        type = EVENT_TYPE.CHANNEL_PRESSURE;
-        value = Math.max (0, Math.min (1, Number (message.value ?? 0)));
-        value14 = Math.round (value * 16383);
-      }
-
-      heap32[record] = type;
-      heap32[record + 1] = channel;
-      heap32[record + 2] = note;
-      heap32[record + 3] = value14;
-      heapF32[recordF + 4] = value;
-      heap32[record + 5] = 0; // sampleOffset: block boundary is fine for UI notes
-    }
-
-    this.pendingEvents.splice (0, count);
-    return count;
+    return this.eventQueue.flush (eventFromMessage);
   }
 
   process(inputs, outputs) {
