@@ -79,6 +79,7 @@ lo de la primera mitad del fichero cuenta cómo se llegó, no qué es cierto hoy
 - [2026-09-26 (ao): modulo WASM reconstruido y worklet sincronizado](#2026-09-26-ao-modulo-wasm-reconstruido-y-worklet-sincronizado) — módulo WASM reconstruido y worklet sincronizado
 - [2026-09-26 — fase 11.3 en el camino WASM: el motor del navegador suma las capas](#2026-09-26-fase-113-en-el-camino-wasm-el-motor-del-navegador-suma-las-capas)
 - [2026-09-28 — canal `neuronik:voice`: los ocho knobs de envolvente POR FIN llegan al motor local](#2026-09-28-canal-neuronikvoice-los-ocho-knobs-de-envolvente-por-fin-llegan-al-motor-local) — canal `neuronik:voice`: los ocho knobs al motor local
+- [ctest 51/51 y el bus del hueco ya viaja al navegador (2026-09-29)](#ctest-5151-y-el-bus-del-hueco-ya-viaja-al-navegador-2026-09-29) — el ctest completo al 100%, los 7 fallos del 85% atribuidos, y lo que queda del `.wasm`
 
 ### Arquitectura de la página y modo local
 
@@ -8690,3 +8691,144 @@ celda**, no solo que exista. Es el que habria parado esto.
 > Canon: la puerta de una vista se deriva de lo que el store POSEE, no de una
 > lista escrita a mano. La lista hay que mantenerla; la puerta se sola con que
 > aparezca el id.
+## ctest 51/51 y el bus del hueco ya viaja al navegador (2026-09-29)
+
+### La medida
+
+```
+antes  (2026-09-29 07:05)   40/47 = 85%    35674 s   (9 h 54 min)
+ahora (2026-09-29 13:4x)   51/51 = 100%    121.74 s   (ctest -C Release -j 4)
+```
+
+Los 9,9 h no eran lentitud de los tests: eran **un test que tardaba 9 h 17 min en
+morir** (`NEURONiK_TransposableOffsetsTest`, 33396 s), y el cuello de botella era
+una aserción de JUCE del final de la cuenta, no el cálculo. Con eso fuera, los
+48 tests que no son E2E de navegador tardan menos de 3 s cada uno; los tres
+Playwright (45,96 + 40,73 + 35,03 s) son la cola entera.
+
+### Los 7 fallos del 85%, atribuidos
+
+**Grupo A — cuatro abortos, una sola causa.** `NEURONiK_DSPReferenceTest`,
+`NEURONiK_LayerEngineTest`, `NEURONiK_TransposableOffsetsTest` y
+`NEURONiK_NeurotikBowTest` morían los cuatro con la misma línea:
+
+```
+Assertion failed: isPositiveAndBelow (sampleIndex, size),
+  file D:\desarrollos\ABDSynths\ABDSharedCode\DspCore/DspCore.h, line 1846
+```
+
+Es un `copyToRawArray` leyendo fuera del buffer: **memoria que el motor creía
+puesta a cero y no lo estaba**. Los tres primeros llegaban con sus `[ok]` en
+verde y reventaban al final, que es justo lo que convertía un test de segundos
+en otro de horas. Lo arregló `2517603` (`alignas(16)` en los tres arrays de pila
+de `SIMDWrapper.h` + `{}` en `extraAmps`/`extraOffsets` de `SpectralModel.h`).
+
+**Grupo B — un test con checks rojos, la misma causa por el otro lado.**
+`NEURONiK_LayerViewTest`: seis `[FAIL]` seguidos (parciales por capa, índices
+vacíos en `-1`, recuento de la leyenda, `frameCountOf`, alturas
+global-normalizadas) mientras "la vista declara las 2 capas" pasaba. No era la
+vista: es que `SpectralModel.h` **rellena esa vista** con `extraAmps` y
+`extraOffsets` sin valor inicial, así que la asignación por parcial salía basura.
+Mismo commit, `2517603`.
+
+**Grupo C — un contrato que medía algo que ya no existía.**
+`NEURONiK_WebUiSelftestContract`:
+`parameterCellAttribute ("data-parameter-id") sigue en su sitio de la pagina`.
+El literal ya solo vivía en un comentario del propio panel; la página escribe
+`dataset.parameterId`. Un test que se ponía verde por un comentario borrado, que
+es peor que rojo. `99c9905` cambió el `pageForm` del contrato y dejó escrito por
+qué.
+
+**Grupo D — deriva visual real, no un defecto.** `NEURONiK_WebUiVisualRegression`:
+5 de 12 capturas distintas (lienzo entero, ficha lfo, globalFull, modMatrix,
+tema claro); 19281 píxeles, ratio 0,02, en la del lienzo entero. Consecuencia del
+trabajo de UI que aterrizó después del ctest del 85% (temas de familia del rack,
+cajón de EFECTOS, fondos). Las instantáneas se regeneraron al entrar `99c9905` y
+`9fe80fb`.
+
+### El recuento también se movió: 47 → 51
+
+- **+2 míos**: `NEURONiK_WasmLayoutOrderTest` (`020f18a`, el orden del bus dentro
+  del layout) y `NEURONiK_WorkletMirrorLayout` (`f52bc9b`, el espejo contra el
+  `.wasm` que se sirve).
+- **+3 del rack de huecos** (`99c9905`): `FxCatalogueTest`, `FxSlotsTest`,
+  `FxCatalogContract`.
+- **−1 retirado** (`99c9905`): `NEURONiK_DspEffectsParityTest`. No se perdió nada
+  por recorte; la paridad de efectos la cubren ahora los tres de arriba.
+
+### Lo del `.wasm`, que era el agujero de verdad
+
+`neuronikModMatrixLayout` ya publicaba el tramo entero (matriz **y** bus) desde
+`020f18a`. Lo que no lo publicaba era **el binario**: el `.wasm` versionado en
+`WebUI/public/worklet` era del 2026-09-28, anterior a ese commit. Medido sobre
+él:
+
+```
+gpSize 144 | base fields 22 | mod fields 12   ->  34 campos
+```
+
+La página escribe hasta el 39 (`fx1Param1..fx1Mix`), así que **los seis mandos
+del hueco 1 se perdían en silencio**: el worklet recibía `[34, 0.7]`, no encontraba
+offset, y `writeGpField` hacía `return`. El knob se movía en la página, el motor
+no oía nada y no saltaba ningún error. Recompilado con `build_wasm.bat` (paridad
+WASM↔nativo bit-exacta en los 9 casos de la matriz) el motor publica **58** y el
+bus entra de verdad.
+
+Encima, el consumidor tenía un error de numeración: el worklet concatenaba la
+tabla de `neuronikGlobalParamsLayout` con la de `neuronikModMatrixLayout` porque
+aquella solo daba los 22 escalares. Ahora la segunda **es la cola de la primera
+renumerada desde cero**, no una continuación: concatenar duplicaba matriz y bus
+(`paramsFieldCount` decía 94 con un layout de 58) y el índice 58 habría apuntado
+a la matriz otra vez. Se traduce con la tabla única.
+
+Ahora el fallo tampoco puede volver a ser invisible: el worklet cuenta los
+campos del espejo que su layout no publica y los avisa por el port
+(`neuronik:layout`), una vez por push; la página los traduce a **ids** con
+`gpIdsBeyondFieldCount` y los deja en `audioEngineState.unreachableFieldIds`.
+
+### Lo que queda pendiente
+
+1. **Regla operativa del `.wasm`**: `build_wasm.bat` compila, sincroniza
+   `public/worklet` y al final **falla** si `WebUI/dist/worklet` no cuadra con
+   `build-wasm`. Hay que correr `pnpm build` en `WebUI/` detrás de cada
+   `build_wasm.bat`, o el `NEURONiK_WorkletSync` queda rojo por el `dist` viejo.
+   Hoy está cuadrado (ambos lados en `5a432b902b96`).
+2. **`Tests/localMorphZRouteTest.mjs` y `Tests/neuronik_wasm_parity.mjs` siguen
+   concatenando `base.concat(mod)`**, la misma duplicación que se quitó del
+   worklet. Pasan porque la página solo escribe 0..39, pero llevan una tabla con
+   la matriz y el bus repetidos y deberían usar la tabla única.
+3. **Solo el hueco 1 está migrado en el contrato**: `fx2Param1`, `fx3…` y
+   `fx4…` no existen en `generated/parameters.generated.js`. El motor publica los
+   cuatro buses y la página no escribe tres, que es lo correcto, pero significa
+   que el layout ya tiene sitio para ellos y el contrato todavía no.
+4. **`fx1Type` no viaja por el espejo**: el tipo lo decide el hilo de mensajes
+   (crea y destruye la instancia del efecto). Es el único mando del bus fuera del
+   espejo, a propósito, pero conviene recordarlo antes de tocar el mapa.
+5. **`unreachableFieldIds` es un `console.warn` y nada más.** Con el binario al
+   día la lista va vacía, pero si alguien vuelve a subir un `.wasm` viejo, el
+   aviso cae en una consola que nadie mira. Debería verse en la página.
+
+### Verificado
+
+- vitest **463/463** en 28 ficheros; ctest **51/51**.
+- `NEURONiK_WorkletMirrorLayout` comprobado con **control negativo**: con el
+  `.wasm` viejo (34 campos) falla nombrando los 18 campos que se perdían (22..39).
+- `NEURONiK_WebUiNeedleProbeE2e`, el flake conocido, pasó en 35 s sin tocar nada.
+
+> Canon: un artefacto binario que se sirve al navegador es parte del contrato
+> aunque no aparezca en el `git diff` de quien lo construye ni en el de quien
+> toca la página. El `.wasm` versionado iba dos commits por detrás del puente que
+> lo produce, y la divergencia no daba ningún error: se perdían seis mandos **en
+> silencio**. Un consumidor que no encuentra un campo tiene que **decirlo**, no
+> devolver.
+
+> Canon: cuando dos exports publican el mismo tramo, uno es una **renumeración**
+> del otro, no una continuación. Concatenarlos duplica el tramo y hace que un
+> índice pasado de la raya escriba en el sitio equivocado sin que nada se entere.
+
+> Canon: el orden de un layout publicado tiene tres guardas que se comprueban unas
+> a otras — el `offsetof` en C++, el mapa de la página y el binario. Cada una
+> puede quedarse atrás por su cuenta; las tres juntas no.
+
+> Canon: cuando una suite pasa de horas a segundos, el tiempo **era** el fallo.
+> Un assert al final de una cuenta de 9 h no es lentitud, es un cuelgue con pasos.
