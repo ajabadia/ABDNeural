@@ -115,20 +115,23 @@ check(store2.seedLocalMorphZRoute() === false,
 const gpSize = Module._neuronikGlobalParamsSize();
 const gpPtr = Module._malloc(gpSize);
 
-const baseFields = Module._neuronikGlobalParamsLayout(0, 0);
-const modFields = Module._neuronikModMatrixLayout(0, 0);
+const fieldCount = Module._neuronikGlobalParamsLayout(0, 0);
+const layoutPtr = Module._malloc(4 * fieldCount);
+Module._neuronikGlobalParamsLayout(layoutPtr, fieldCount);
 
-const basePtr = Module._malloc(4 * baseFields);
-Module._neuronikGlobalParamsLayout(basePtr, baseFields);
+// UNA sola tabla, la del layout COMPLETO y con los indices que escribe la
+// pagina: 0..21 escalares, 22..33 matriz, 34.. el bus.
+//
+// ANTES se concatenaba con `neuronikModMatrixLayout` porque aquel solo
+// publicaba los doce de la matriz y asi quedaba el conjunto. Ahora
+// `neuronikModMatrixLayout` es la COLA de esta, renumerada desde cero
+// (la matriz y el bus), y concatenarla duplicaba justo eso: la tabla
+// llegaba con 94 entradas para un layout de 58, y el indice 58
+// apuntaba a la matriz otra vez. Es lo mismo que se hizo en el worklet.
+const byteOffsets = Array.from(
+    Module.HEAP32.subarray(layoutPtr >> 2, (layoutPtr >> 2) + fieldCount));
 
-const modPtr = Module._malloc(4 * modFields);
-Module._neuronikModMatrixLayout(modPtr, modFields);
-
-const byteOffsets = Array.from(Module.HEAP32.subarray(basePtr >> 2, (basePtr >> 2) + baseFields))
-    .concat(Array.from(Module.HEAP32.subarray(modPtr >> 2, (modPtr >> 2) + modFields)));
-
-Module._free(basePtr);
-Module._free(modPtr);
+Module._free(layoutPtr);
 
 // Misma disciplina que el worklet: bpm es f64 y los choice/int se escriben enteros.
 const BPM_FIELD = 2;
@@ -152,6 +155,21 @@ function writeField(fieldIndex, value)
 }
 
 const fields = gpFieldsFromState(parameters);
+
+// `writeField` se come en silencio un campo que el layout no publica, y
+// asi es como los seis mandos del hueco se perdian: el motor recien
+// compilado publica 58 campos y la pagina escribe hasta el 39, pero con
+// un `.wasm` viejo (34) la cuenta habria sido verde con el knob parado.
+// Aqui se dice ANTES de escribir, que es donde se puede.
+const fueraDelLayout = fields
+    .map(([fieldIndex]) => fieldIndex)
+    .filter((fieldIndex) => fieldIndex >= byteOffsets.length);
+
+check(fueraDelLayout.length === 0,
+      `los ${fields.length} campos que escribe la pagina estan en el layout del motor`
+      + ` (${byteOffsets.length} publicados)`
+      + (fueraDelLayout.length > 0 ? `; fuera: ${fueraDelLayout.join(', ')}` : ''));
+
 for (const [fieldIndex, value] of fields) writeField(fieldIndex, value);
 
 const heapU8 = Module.HEAPU8 ?? new Uint8Array(Module.HEAP32.buffer);

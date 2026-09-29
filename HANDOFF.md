@@ -80,6 +80,7 @@ lo de la primera mitad del fichero cuenta cómo se llegó, no qué es cierto hoy
 - [2026-09-26 — fase 11.3 en el camino WASM: el motor del navegador suma las capas](#2026-09-26-fase-113-en-el-camino-wasm-el-motor-del-navegador-suma-las-capas)
 - [2026-09-28 — canal `neuronik:voice`: los ocho knobs de envolvente POR FIN llegan al motor local](#2026-09-28-canal-neuronikvoice-los-ocho-knobs-de-envolvente-por-fin-llegan-al-motor-local) — canal `neuronik:voice`: los ocho knobs al motor local
 - [ctest 51/51 y el bus del hueco ya viaja al navegador (2026-09-29)](#ctest-5151-y-el-bus-del-hueco-ya-viaja-al-navegador-2026-09-29) — el ctest completo al 100%, los 7 fallos del 85% atribuidos, y lo que queda del `.wasm`
+- [Los tests de paridad dejan de concatenar la cola del layout (2026-09-29)](#los-tests-de-paridad-dejan-de-concatenar-la-cola-del-layout-2026-09-29) — la tabla unica del layout, y la relacion entre los dos exports comprobada
 
 ### Arquitectura de la página y modo local
 
@@ -8832,3 +8833,45 @@ campos del espejo que su layout no publica y los avisa por el port
 
 > Canon: cuando una suite pasa de horas a segundos, el tiempo **era** el fallo.
 > Un assert al final de una cuenta de 9 h no es lentitud, es un cuelgue con pasos.
+## Los tests de paridad dejan de concatenar la cola del layout (2026-09-29)
+
+Pendiente **2** de la entrada anterior, cerrado. `localMorphZRouteTest.mjs` y
+`neuronik_wasm_parity.mjs` seguian haciendo `base.concat(mod)` igual que hacia
+el worklet antes de `f52bc9b`: pasaban porque la pagina solo escribe 0..39, pero
+llevaban una tabla con la matriz y el bus repetidos y con 94 entradas para un
+layout de 58. Ahora los dos translates con la tabla unica de
+`neuronikGlobalParamsLayout`, que es la numeracion que escribe la pagina.
+
+Lo que se gana, mas alla de la limpieza:
+
+- **`neuronik_wasm_parity.mjs` comprueba la RELACION entre los dos exports** en
+  vez de suponerla: que `mod[i]` es exactamente `full[22 + i]` y que la cola
+  acaba donde acaba el layout. Con un campo de mas sale rojo nombrando la
+  cuenta entera, que es justo lo que faltaba para que nadie volviera a pegarla.
+- **`localMorphZRouteTest.mjs` dice ANTES de escribir** que todos los campos que
+  manda la pagina estan en el layout del motor (`los 38 campos ... 58
+  publicados`). Su `writeField` se come en silencio un campo ausente, que es
+  exactamente como se perdian los seis mandos del hueco; ahora el sitio donde se
+  puede decir es antes de escribir, y no despues.
+
+### Verificado
+
+- `neuronik_wasm_parity.mjs` (build-wasm): `[layout] OK: la cola (36 campos) es
+  el layout desde el 22 hasta el 57, sin repetir nada` y paridad **bit-exacta en
+  los 9 casos** de la matriz.
+- `localMorphZRouteTest.mjs`: 18 `[ok]`, 0 `[FAIL]`.
+- **Control negativo** en los tres sitios: con `MOD_MATRIX_FIELD` a 21 la paridad
+  cae (`D_modmatrix FALLO, 3008/3072 muestras`), con la tabla leida un campo
+  desplazada el anillo mide 0.0000 y salen cuatro `[FAIL]`, y con la cola
+  desplazada el nuevo `[layout] FALLO` nombra los 36 campos.
+- ctest: los cuatro tests de esta zona en verde (`WasmLayoutOrder`,
+  `WorkletMirrorLayout`, `LocalMorphZRoute`, `LocalModelCache`).
+
+> Canon: quitar una tabla duplicada y comprobar la RELACION que la justificaba
+> son el mismo trabajo. Sin lo segundo, la limpieza es cosmetica: nadie puede
+> decir por que los dos exports tienen que cuadrar, asi que el dia que uno se
+> desalinee vuelve a pegarse sin ruido.
+
+> Canon: un consumidor que se traga en silencio un campo ausente es la peor de
+> las dos mitades de un fallo. La otra mitad —el aviso— tiene que estar en el
+> punto donde todavia se puede cambiar algo, no en un log posterior.

@@ -149,12 +149,58 @@ function fillTestModel(view) {
 // --- Escritura de GlobalParams por offsets del propio módulo (nunca hardcoded)
 const gpSize = Module._neuronikGlobalParamsSize();
 const gpPtr = Module._malloc(gpSize);
+// UNA sola tabla: la del layout COMPLETO (escalares, matriz y bus), que es
+// la numeracion que escribe la pagina. `neuronikModMatrixLayout` es la
+// cola de esta renumerada desde cero, no una continuacion, asi que
+// concatenarla duplicaba la matriz y el bus en una tabla que decia
+// 94 campos para un layout de 58.
 const layoutSize = Module._neuronikGlobalParamsLayout(0, 0);
 const layoutPtr = Module._malloc(layoutSize * 4);
-const nLayout = Module._neuronikGlobalParamsLayout(layoutPtr, layoutSize);
-const modSize = Module._neuronikModMatrixLayout(0, 0);
-const modPtr = Module._malloc(modSize * 4);
-const nMod = Module._neuronikModMatrixLayout(modPtr, modSize);
+Module._neuronikGlobalParamsLayout(layoutPtr, layoutSize);
+
+const MOD_MATRIX_FIELD = 22;   // primera ruta de la matriz en el layout
+
+// LA RELACION ENTRE LOS DOS EXPORTS, comprobada y no supuesta. Este test
+// ya no concatenaba la cola porque duplicaba la matriz y el bus, pero
+// entonces nadie comprobaba QUE es esa cola, y "lo que publica el segundo
+// export" es justo lo que hay que tener claro para no volver a
+// pegarla: `mod[i]` tiene que ser exactamente `full[MOD_MATRIX_FIELD + i]`,
+// y el segundo tiene que acabar donde acaba el primero.
+//
+// Un dia que se rompe (un export que publica otra cosa, o el layout con un
+// hueco delante), esto se pone rojo antes de que ningun consumidor note
+// nada.
+function checkLayoutRelation() {
+  const modSize = Module._neuronikModMatrixLayout(0, 0);
+  const modPtr = Module._malloc(4 * Math.max(modSize, 1));
+  Module._neuronikModMatrixLayout(modPtr, modSize);
+  const mod = Module.HEAP32.subarray(modPtr >> 2, (modPtr >> 2) + modSize);
+  const full = Module.HEAP32.subarray(layoutPtr >> 2, (layoutPtr >> 2) + layoutSize);
+
+  const problemas = [];
+
+  if (MOD_MATRIX_FIELD + modSize !== layoutSize)
+    problemas.push(`la cola tiene ${modSize} campos y empieza en ${MOD_MATRIX_FIELD},`
+      + ` pero el layout tiene ${layoutSize}`);
+
+  for (let i = 0; i < modSize; ++i)
+    if (mod[i] !== full[MOD_MATRIX_FIELD + i])
+      problemas.push(`cola[${i}] = ${mod[i]} y layout[${MOD_MATRIX_FIELD + i}] = ${full[MOD_MATRIX_FIELD + i]}`);
+
+  Module._free(modPtr);
+
+  if (problemas.length > 0) {
+    console.error(`[layout] FALLO: la cola de neuronikModMatrixLayout no es la cola del layout:`);
+    for (const problema of problemas) console.error(`[layout]   ${problema}`);
+    return false;
+  }
+
+  console.log(`[layout] OK: la cola (${modSize} campos) es el layout desde el ${MOD_MATRIX_FIELD},`
+    + ` campo hasta el ${layoutSize - 1}, sin repetir nada.`);
+  return true;
+}
+
+const layoutRelationOk = checkLayoutRelation();
 
 const heap32 = Module.HEAP32;
 const heapF32 = Module.HEAPF32;
@@ -172,7 +218,6 @@ function setF64At(byteOffset, v) {
 function writeParams(p) {
   heap32.fill(0, gpPtr >> 2, (gpPtr + gpSize) >> 2);
   const off = (i) => heap32[(layoutPtr >> 2) + i];
-  const modOff = (i) => heap32[(modPtr >> 2) + i];
 
   const setF32 = (i, v) => { heapF32[(gpPtr + off(i)) >> 2] = v; };
   const setI32 = (i, v) => { heap32[(gpPtr + off(i)) >> 2] = v; };
@@ -180,7 +225,8 @@ function writeParams(p) {
   // Orden documentado en NeuronikWasmBridge.cpp (globalParamsLayout):
   // 0 masterLevel, 1 saturationAmt, 2 bpm, 3 delayTime, 4 delayFB,
   // 5 chorusRate, 6 chorusDepth, 7 chorusMix, 8 reverbSize, 9 reverbDamping,
-  // 10 reverbWidth, 11 reverbMix, 12-16 lfo1, 17-21 lfo2, luego modMatrix (12 slots)
+  // 10 reverbWidth, 11 reverbMix, 12-16 lfo1, 17-21 lfo2, luego modMatrix
+  // (12 campos, desde MOD_MATRIX_FIELD) y despues el bus de cada hueco.
   setF32(0, p.masterLevel); setF32(1, p.saturationAmt); setF64At(gpPtr + off(2), p.bpm);
   setF32(3, p.delayTime);   setF32(4, p.delayFB);
   setF32(5, p.chorusRate);  setF32(6, p.chorusDepth); setF32(7, p.chorusMix);
@@ -191,9 +237,9 @@ function writeParams(p) {
     setF32(idx + 4, lfo.depth);
   }
   for (let r = 0; r < 4; ++r) {
-    heap32[(gpPtr + modOff(r * 3 + 0)) >> 2] = p.modMatrix[r].source;
-    heap32[(gpPtr + modOff(r * 3 + 1)) >> 2] = p.modMatrix[r].destination;
-    heapF32[(gpPtr + modOff(r * 3 + 2)) >> 2] = p.modMatrix[r].amount;
+    heap32[(gpPtr + off(MOD_MATRIX_FIELD + r * 3 + 0)) >> 2] = p.modMatrix[r].source;
+    heap32[(gpPtr + off(MOD_MATRIX_FIELD + r * 3 + 1)) >> 2] = p.modMatrix[r].destination;
+    heapF32[(gpPtr + off(MOD_MATRIX_FIELD + r * 3 + 2)) >> 2] = p.modMatrix[r].amount;
   }
   Module._neuronikSetGlobalParams(gpPtr, gpSize);
 }
@@ -308,9 +354,11 @@ for (const c of reference.cases) {
   console.log(`[parity] ${label}  ${ok ? 'OK   ' : 'FALLO'} ${buildScenarios().length - caseFailed}/${buildScenarios().length} escenarios  maxUlp=${caseMaxUlp}`);
 }
 
-Module._free(gpPtr); Module._free(layoutPtr); Module._free(modPtr);
+Module._free(gpPtr); Module._free(layoutPtr);
 
-if (totalFailed > 0) {
+// La relacion de los dos exports va en el mismo veredicto que la paridad:
+// si uno miente, el modulo no sirve para comparar nada.
+if (totalFailed > 0 || !layoutRelationOk) {
   console.error(`[parity] FALLO: ${totalFailed} comparacion(es) fuera de su presupuesto de ulps.`);
   process.exit(1);
 }
