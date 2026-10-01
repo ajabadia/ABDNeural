@@ -43,9 +43,9 @@ node Scripts/selftest_verify_all_node.js
 
 ## Qué mira cada uno, y cuál es el que quieres
 
-**`selftest_verify_all_node.js`** (el tercero) es el rápido: 74 comprobaciones
+**`selftest_verify_all_node.js`** (el tercero) es el rápido: 214 comprobaciones
 sobre la lista de conocidos y sobre lo que se rompe en silencio, sin compilar
-nada. Tarda segundos. Si has tocado la lista, `Scripts/known/` o
+nada. Tarda unos minutos. Si has tocado la lista, `Scripts/known/` o
 `verify_all_node.js`, **este es el que quieres**.
 
 **`verify_all_check.sh`** (el primero) es el completo: pasa el selftest,
@@ -196,6 +196,66 @@ mirado los `.exe`, y viaja con el nombre en un fichero temporal con una línea
 por test (`nombre`, un tabulador, el motivo). Los dos scripts solo **cuentan**
 las líneas de ese fichero, para lo del código de salida 3; el motivo lo
 muestra el aviso de `ARREGLO`.
+
+## Cómo se prueba un aviso que no sale nunca
+
+`verify_all_known.json` tiene `entradas: []`: no hay ningún rojo conocido, así
+que el aviso de `ARREGLO` / `SIN MEDIR` **no aparece en el verify de verdad, ni
+siquiera con `--no-build`**. No se ve porque no hay nada que lo dispare, no
+porque esté roto. Ese es un problema para el que lo lee y para el que lo
+escribe: un aviso que no sale nunca no se puede revisar ni por la ortografía ni
+por la claridad, y se escribe bien, pasa las comprobaciones, y el día que
+aparece por primera vez nadie lo ha leído nunca.
+
+Por eso el selftest tiene dos secciones que **montan el aviso y enseñan la
+pantalla entera**, con entradas reales de esta batería:
+
+| Sección | Qué enseña |
+| --- | --- |
+| 13 | Una entrada real de verdad: un test reconstruido (`ARREGLO`), uno con el `.exe` de antes y uno sin `.exe` (los dos `SIN MEDIR`), con los motivos redactados como se redactan de verdad |
+| 14 | Las dos pantallas, con build y con `--no-build`, y los **tres motivos distintos** uno al lado del otro |
+
+Las dos imprimen la salida tal cual, entre líneas, con los códigos de color de
+verdad. Al ejecutarlas se lee el aviso como lo verías en la consola, que es
+justo lo que no se puede hacer con el verify real.
+
+### Por qué una entrada de mentira no basta
+
+Las secciones 12 y anteriores comprueban la **regla** con nombres inventados
+(`T1`, `T2`), que es lo correcto para una prueba automática: la regla no
+depende de que hoy haya un rojo en concreto. El problema es que un nombre de dos
+letras deja fuera justo lo que hay que mirar en un aviso:
+
+- Si el nombre **cabe** en la línea y si el motivo entero se entiende debajo.
+- Si el texto dice lo que hay que hacer, no solo lo que pasó.
+- Si los dos `SIN MEDIR` que parecen iguales **son** iguales, o si tienen que
+  decir cosas distintas.
+
+Y hay una razón más, que es la que de verdad manda: **la lista de verdad no se
+puede usar como banco de pruebas.** Es el sitio donde viven los rojos que se
+saben que hay. Añadir una entrada para probar un aviso significaría que un rojo
+que no existe se anunciaría como `ARREGLO` de verdad, con el consejo de borrar
+un fichero de `known/` que no habría que borrar. El banco de pruebas tiene que
+estar en un directorio temporal, y por eso `known/` tiene su copia propia con
+`entradas: []`.
+
+### Qué se comprueba, y qué no
+
+La diferencia importa, porque es donde está el límite de lo que el selftest
+puede decir por sí solo:
+
+- **Las reglas se comprueban con `ok`**, y cada comprobación nueva se verifica
+  **por mutación**: se rompe el código a propósito y se mira que la comprobación
+  caiga. Una comprobación que no se ha visto caer no se sabe si mira algo.
+- **La ortografía y la claridad se miran leyendo**, que es lo único que sirve.
+  Por eso la sección 13 imprime la pantalla: para eso está.
+
+Un detalle que parece menor y no lo es: la sección 14 cuenta las líneas del
+fichero de no medidos con cada uno de los dos comandos de verdad, `grep -c .` y
+el `for /f` del `.bat`, y los compara. Añadir el tabulador al formato podría
+romper el código de salida 3 en silencio —si un gemelo se quedara contando una
+línea o ninguna, saldría con cualquier cuenta y la línea del informe del script
+mentiría— así que eso se mide, no se supone.
 
 ## Cuando algo falla de verdad
 

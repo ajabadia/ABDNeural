@@ -124,6 +124,60 @@ Junto a estos dos hay dos avisos mas que no son de la carpeta:
   se puede leer, no avisa de ARREGLO: un log que no se lee no es un log sin
   rojos, asi que en ese caso no se puede decir que nadie haya pasado.
 
+## El tercer aviso, y por que esta carpeta esta vacia
+
+Un test de la lista puede **no haberse ejecutado**: su `.exe` no se ha compilado
+en esta pasada, o no hay `.exe` siquiera. Ese test no puede decir ARREGLO,
+porque no se ha ejecutado nada: sale como
+
+```
+  SIN MEDIR  NEURONiK_EjemploTest
+            su .exe no se ha compilado en esta pasada, asi que no se sabe si falla: no se puede decir que este arreglado,
+            y por eso NO hay que quitarlo del indice ni borrar su motivo
+```
+
+y **no pide borrar nada**, que es justo lo que diferencia este aviso del de
+ARREGLO.
+
+El motivo de cada uno lo escribe el aviso de binarios rancios del paso 1, que es
+el unico que ha mirado los `.exe`, y no es el mismo en todos los casos:
+
+| Situacion | Lo que dice el motivo |
+| --- | --- |
+| Su `.exe` es de una pasada anterior | `su .exe no se ha compilado en esta pasada` |
+| No hay `.exe` | `no tiene .exe: no se ha ejecutado nunca` |
+| El paso 1 no se ha ejecutado (`--no-build`) | `no se ha compilado nada en esta pasada` |
+
+El segundo es el que mas importa: un test sin `.exe` no tiene un binario viejo
+que recompilar, asi que recompilar su target tampoco hace que su rojo se
+vaya. Hay que arreglar por que no se construye.
+
+### Por que esta carpeta esta vacia ahora
+
+Porque no queda ningun rojo conocido: la lista esta en `entradas: []`. Y con la
+lista vacia **ninguno de los dos avisos sale nunca**, ni `ARREGLO` ni `SIN
+MEDIR`: no hay entradas que los disparen. Estan escritos y comprobados, pero no
+se han visto en el verify de verdad ni una vez.
+
+Por eso el selftest los monta y los imprime con entradas reales
+(secciones 13 y 14 de `Scripts/selftest_verify_all_node.js`): al ejecutarlo se
+ve la pantalla tal cual. Ver *Como se prueba un aviso que no sale nunca* en
+[`../VERIFICAR.md`](../VERIFICAR.md).
+
+Y por eso **esta carpeta no sirve como banco de pruebas**, que es lo que hace
+falta entender antes de tocar nada aqui:
+
+- Si anades una entrada aqui para "probar el aviso", el verify la leera como un
+  rojo de verdad y anunciara un `ARREGLO` de verdad, con el consejo de borrar un
+  fichero de `known/` que no habria que borrar. El aviso que pide borrar cosas
+  no puede probarse en el sitio donde viven las cosas que se pueden borrar.
+- La prueba va en un directorio temporal, con su propia copia de la lista y sus
+  propios motivos. Por eso los dos avisos se pueden probar sin tocar ni el
+  indice ni esta carpeta.
+
+Una consecuencia util: como la lista esta vacia y comprobada, cualquier entrada
+que aparezca aqui es de verdad. No hay que dudar de si se ha dejado a medias.
+
 ## Por que esta partida en dos, y no todo en el JSON
 
 Porque con cinco entradas cabia entero. A treinta, el JSON deja de ser una lista
