@@ -98,7 +98,8 @@ binario, no supuesto), y los otros tres son los `WebUi*E2e` de Playwright.
 
 - Los `WebUi*E2e` siguen en rojo. No es el motor: es Playwright sin navegador
   o sin permiso (`EPERM` en el log).
-- `ABDSharedAssets` sale en rojo por un error de sintaxis en
-  `components/skins/index.js`, que es del otro hilo.
+- `ABDSharedAssets` sale en rojo, y por lo MISMO que los tres `WebUi*E2e`: el
+  antivirus de esta maquina no deja leer los `.js` de `node_modules`, y vitest no
+  arranca. El paso 3 (WebUI) tambien, y por lo mismo.
 - La lista de conocidos (`Scripts/known/`) sigue en pie: si un rojo conocido se
   arregla, el propio script avisa con `ARREGLO` y dice los dos pasos.

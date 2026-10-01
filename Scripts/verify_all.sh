@@ -756,7 +756,7 @@ fi
 if [[ " $PASOS " == *" 3 "* ]]; then
     empezar_paso 3 "vitest de WebUI"
     if ejecutar_vitest "$RAIZ/WebUI" "WebUI"; then :; else
-        anotar 3 "WebUI" "vitest de la pagina; los fallos estan arriba"
+        anotar 3 "WebUI" "vitest no arranca: el antivirus de esta maquina no deja leer los .js de node_modules (EPERM). Es el mismo fallo que los tres WebUi*E2e de ctest, y el paso 3 no tiene lista de conocidos a proposito porque no es un test sino un paso entero"
     fi
     terminar_paso
 fi
@@ -772,7 +772,15 @@ if [[ " $PASOS " == *" 4 "* ]]; then
         # cuentan" aqui seria justo lo que este script no debe hacer. Si un
         # rojo aparece, se mira: puede ser del trabajo de al lado, y se anade el
         # motivo aqui en una frase, no se apaga.
-        anotar 4 "ABDSharedAssets" "el componente ABDSharedAssets/components/skins/index.js tiene un error de SINTAXIS (la palabra from declarada dos veces), y todos los tests que lo importan se caen con el. Es del otro hilo: este paso no tiene lista de conocidos a proposito, asi que el rojo sigue pidiendo decision aunque el motivo este escrito"
+        #
+        # El motivo que ponia aqui decia que skins/index.js tenia un error de
+        # sintaxis por un `from` declarado dos veces. Eso era FALSO, y hacia
+        # falta mirar el fichero para saberlo: el error de sintaxis no existe.
+        # Lo que pasa es lo mismo que en el paso 3 y que en los tres WebUi*E2e:
+        # el antivirus de esta maquina no deja leer los .js de node_modules, y
+        # vitest ni arranca ("Cannot read package config .../picocolors/
+        # package.json: operation not permitted"). Medido el 2026-10-01.
+        anotar 4 "ABDSharedAssets" "vitest no arranca: el antivirus de esta maquina no deja leer los .js de node_modules (EPERM). Mismo fallo que el paso 3 y que los tres WebUi*E2e de ctest. Este paso no tiene lista de conocidos a proposito, asi que el rojo sigue pidiendo decision aunque el motivo este escrito"
     fi
     terminar_paso
 fi

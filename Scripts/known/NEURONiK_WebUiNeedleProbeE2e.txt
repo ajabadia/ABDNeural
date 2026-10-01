@@ -1,0 +1,11 @@
+ajeno: entorno de esta maquina: el .js de Playwright no se puede leer (EPERM)
+
+# El mismo fallo que LocalModeE2e y VisualRegression: ctest invoca
+# `node .../@playwright/test/cli.js` y ese fichero no se puede abrir aqui.
+# Es el antivirus bloqueando la lectura de scripts en node_modules, no el probe.
+#
+# Este test tiene una cosa que los otros dos no, y conviene no perderla cuando
+# esto se arregle: el needle probe se AUTO-SALTA cuando el reloj de audio de
+# Chromium no avanza, que es lo que pasa en una maquina sin salida de audio. O
+# sea que este test puede salir verde SINO se ha ejecutado, y por eso el numero
+# de pruebas que se ejecutaron importa mas aqui que el color.

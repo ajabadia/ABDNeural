@@ -1,0 +1,24 @@
+ajeno: entorno de esta maquina: el .js de Playwright no se puede leer (EPERM)
+
+# NO es un fallo de la pagina ni del test. El rojo sale ANTES de arrancar
+# Playwright: ctest invoca `node .../@playwright/test/cli.js`, y ese fichero no
+# se puede abrir. Medido a mano el 2026-10-01:
+#
+#   Error: EPERM: operation not permitted, open '...\node_modules\.pnpm\
+#     @playwright+test@1.63.0\node_modules\@playwright\test\cli.js'
+#
+# Y no es un fichero suelto. En ese mismo directorio, `LICENSE`, `README.md` y
+# `package.json` se leen bien, y los SEIS ficheros `.js` dan Permission denied.
+# Peor: `ls` y el glob de bash los ven, pero `find -name "*.js"` NO los
+# encuentra, e `icacls` no puede ni leer los permisos del fichero. Eso no lo
+# hace Windows con un fichero normal.
+#
+# Es el antivirus de esta maquina bloqueando la lectura de scripts dentro de
+# node_modules. NO es codigo de este repositorio y no se arregla desde aqui:
+# es lo mismo que rompe vitest en el paso 3 y en el paso 4 (los dos dan
+# "Cannot read package config ...picocolors\package.json: operation not
+# permitted"), y los dos son lo unico que hay que mirar para el mismo motivo.
+#
+# Los tres WebUi*E2e de la lista son este mismo fallo. Y los dos vitest de los
+# pasos 3 y 4 tambien, aunque esos dos NO tienen lista de conocidos a
+# proposito: no son tests, son un paso entero.

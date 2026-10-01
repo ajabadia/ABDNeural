@@ -34,7 +34,13 @@
     "desincronizar: antes cada uno tenia su lista, y ya se vio que dan numeros",
     "distintos sobre el mismo build.",
     "",
-    "Los motivos van en UTF-8, sin BOM, y con el prefijo en la PRIMERA linea."
+    "Los motivos van en UTF-8, sin BOM, y con el prefijo en la PRIMERA linea.",
+    "",
+    "Los tres WebUi*E2e de abajo tienen el MISMO motivo y son el MISMO fallo:",
+    "en esta maquina el antivirus no deja leer los .js de node_modules, asi que",
+    "Playwright no arranca. No son tres problemas: es uno. Y es lo mismo que",
+    "rompe vitest en los pasos 3 y 4, que no tienen lista de conocidos a",
+    "proposito porque no son tests sino pasos enteros."
   ],
 
   "_motivos": "known",
@@ -44,6 +50,9 @@
     "NEURONiK_ParameterDescriptorTest",
     "NEURONiK_StatePersistenceTest",
     "NEURONiK_ParameterBridgeTest",
-    "NEURONiK_ParameterRandomizerTest"
+    "NEURONiK_ParameterRandomizerTest",
+    "NEURONiK_WebUiLocalModeE2e",
+    "NEURONiK_WebUiVisualRegression",
+    "NEURONiK_WebUiNeedleProbeE2e"
   ]
 }

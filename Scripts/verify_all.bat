@@ -1057,7 +1057,7 @@ if "%VCOD%"=="0" (
     REM arreglado: un motivo que describe un rojo que ya no existe ensena a
     REM culpar al sitio equivocado. Se deja el generico, que es lo que se
     REM puede decir sin inventar.
-    call :anotar %VSTEP% "%VETI%" "vitest en rojo: los fallos estan arriba. Este paso no tiene lista de conocidos a proposito, asi que el rojo sigue pidiendo decision"
+    call :anotar %VSTEP% "%VETI%" "vitest no arranca: el antivirus de esta maquina no deja leer los .js de node_modules (EPERM). Mismo fallo que los tres WebUi*E2e de ctest. Este paso no tiene lista de conocidos a proposito, asi que el rojo sigue pidiendo decision aunque el motivo este escrito"
 )
 exit /b 0
 
