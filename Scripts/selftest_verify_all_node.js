@@ -454,9 +454,106 @@ seccion ('5. El resumen y la compara');
 }
 
 // ============================================================================
-//  6. LAS DEMAS ORDENES
+//  6. LOS BINARIOS RANCIOS
 // ============================================================================
-seccion ('6. Las demas ordenes');
+seccion ('6. Los binarios rancios');
+
+// Esta orden se escribio porque costs cuatro rojos falsos y varios dias: el
+// paso 1 del verify compila SEIS targets a proposito, no los tests, asi que casi
+// todos los .exe se quedan de una pasada anterior y sus resultados se cuentan
+// como si fueran de ahora. Aqui se monta un arbol de mentira con un
+// CTestTestfile y se comprueba que avisa de lo que tiene que avisar.
+function arbolRuncios (casos) {
+    const dir = fs.mkdtempSync (path.join (TMP, 'b'));
+    const rel = path.join (dir, 'Release');
+    fs.mkdirSync (rel, { recursive: true });
+
+    const lineas = [];
+    for (const c of casos) {
+        if (! c.creaExe) continue;
+        fs.writeFileSync (path.join (rel, c.nombre + '.exe'), 'x');
+        lineas.push ('add_test("' + c.nombre + '" "' + path.join (rel, c.nombre + '.exe') + '")');
+    }
+    // Un test cuyo programa NO esta en este arbol: los de Playwright y los de
+    // contrato se registran con el node.exe del sistema. No lo compila nadie aqui
+    // y no hay binario rancio que mirar.
+    lineas.push ('add_test("NEURONiK_WebUiLocalModeE2e" "C:/Program Files/nodejs/node.exe" "e2e/localMode.spec.js")');
+
+    fs.writeFileSync (path.join (dir, 'CTestTestfile.cmake'), lineas.join ('\n') + '\n');
+    return dir;
+}
+
+// El caso de no-falso-positivo: si el paso 1 dice que los ha construido todos,
+// no puede quedar ninguno marcados. Este es el que hace que el aviso sirva para
+// algo: un aviso que se queja siempre acaba mirandose sin leerse.
+{
+    const dir = arbolRuncios ([{ nombre: 'T1', creaExe: true }, { nombre: 'T2', creaExe: true }]);
+    const r = corre (['rancios', dir, 'Release', '', '', 'T1', 'T2']);
+    igual ('si todo se ha construido, no avisa de ninguno (rc 0)', r.rc, 0);
+    ok   ('...y no dice BINARIO RANCIO', r.outR.indexOf ('BINARIO RANCIO') === -1, 'stdout: ' + r.outR.trim());
+    ok   ('...y cuenta los construidos', r.outR.indexOf ('2 reconstruidos') !== -1, 'stdout: ' + r.outR.trim());
+}
+
+// Y el caso real: solo uno se ha construido, el otro se queda fuera.
+{
+    const dir = arbolRuncios ([{ nombre: 'T1', creaExe: true }, { nombre: 'T2', creaExe: true }]);
+    const r = corre (['rancios', dir, 'Release', '', '', 'T1']);
+    igual ('con uno sin construir avisa (rc 0, es un aviso y no un fallo)', r.rc, 0);
+    ok   ('...y nombra al que falta', r.outR.indexOf ('T2') !== -1, 'stdout: ' + r.outR.trim());
+    ok   ('...y no nombra al que si', r.outR.split ('T1').length - 1 === 0 || !r.outR.split('BINARIO RANCIO')[1].includes('T1'),
+         'stdout: ' + r.outR.trim());
+}
+
+// Sin lista de construidos no se juzga nada: es el caso de llamarlo a mano, y
+// avisar de los cincuenta y tres seria mentir.
+{
+    const dir = arbolRuncios ([{ nombre: 'T1', creaExe: true }]);
+    const r = corre (['rancios', dir, 'Release', '', '']);
+    igual ('sin lista de construidos no avisa de nada', r.outR.indexOf ('BINARIO RANCIO'), -1);
+}
+
+// Un test registrado sin .exe se avisa aparte, porque se esta contando como
+// verde algo que no se ha ejecutado nunca.
+{
+    const dir = fs.mkdtempSync (path.join (TMP, 'b'));
+    fs.writeFileSync (path.join (dir, 'CTestTestfile.cmake'),
+        'add_test("NEURONiK_NoEsta" "' + path.join (dir, 'Release', 'NoEsta.exe') + '")');
+    const r = corre (['rancios', dir, 'Release', '', '', 'NEURONiK_NoEsta']);
+    ok   ('un test sin .exe avisa SIN BINARIO', r.outR.indexOf ('SIN BINARIO') !== -1, 'stdout: ' + r.outR.trim());
+}
+
+// Y el caso de los tests de node: NO tienen que aparecer ni como rancios ni
+// como sin binario. Un aviso que se queja de trece tests que no existen es un
+// aviso que nadie lee.
+{
+    const dir = fs.mkdtempSync (path.join (TMP, 'b'));
+    const rel = path.join (dir, 'Release');
+    fs.mkdirSync (rel, { recursive: true });
+    fs.writeFileSync (path.join (rel, 'T1.exe'), 'x');
+    fs.writeFileSync (path.join (dir, 'CTestTestfile.cmake'),
+        'add_test("T1" "' + path.join (rel, 'T1.exe') + '")' + '\n' +
+        'add_test("NEURONiK_WebUiVisualRegression" "C:/Program Files/nodejs/node.exe" "e2e/visual.spec.js")' + '\n' +
+        'add_test("NEURONiK_WorkletSync" "C:/Program Files/nodejs/node.exe" "x.mjs")' + '\n');
+    const r = corre (['rancios', dir, 'Release', '', '', 'T1']);
+    ok   ('los tests de node no se cuentan como tests nativos',
+         !r.outR.includes ('WebUiVisualRegression') && !r.outR.includes ('WorkletSync') &&
+         !r.outR.includes ('SIN BINARIO'),
+         'stdout: ' + r.outR.trim());
+}
+
+// Un arbol sin CTestTestfile dice que no lo ha encontrado, y sale con 1: sin
+// ese fichero no hay ni un test que mirar, y callarse seria un "todo bien".
+{
+    const dir = fs.mkdtempSync (path.join (TMP, 'b'));
+    const r = corre (['rancios', dir, 'Release', '', '', 'T1']);
+    igual ('sin CTestTestfile sale con 1', r.rc, 1);
+    ok   ('...y dice que no lo ha podido leer', r.errR.indexOf ('CTestTestfile') !== -1, 'stderr: ' + r.errR.trim());
+}
+
+// ============================================================================
+//  7. LAS DEMAS ORDENES
+// ============================================================================
+seccion ('7. Las demas ordenes');
 
 {
     const dir = fs.mkdtempSync(path.join(TMP, 'v'));

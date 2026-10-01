@@ -525,6 +525,11 @@ if [[ " $PASOS " == *" 1 "* ]]; then
     # Los targets de test, no "todo": "todo" arrastra el plugin y lostargets de
     # WASM, que no son de esta verificacion y tardan mas que todo lo demas.
     ok=1
+    # Los que HAN COMPILADO en esta pasada. Lo necesita el aviso de binarios
+    # rancios: la lista de targets es corta a proposito, asi que casi todos los
+    # tests de ctest van a salir aqui, y sin avisar de eso se estan leyendo
+    # resultados de un binario que nadie ha compilado hoy.
+    construidos=()
     for t in NEURONiK_FxExport NEURONiK_ModulationParityDump \
              NEURONiK_ModulationDest17DriveTest NEURONiK_ModulationMatrixTest \
              NEURONiK_FxCatalogueTest NEURONiK_FxSlotsTest; do
@@ -534,6 +539,7 @@ if [[ " $PASOS " == *" 1 "* ]]; then
         registrar "$salida"
         if [ $codigo -eq 0 ]; then
             printf '%sPASA%s\n' "$V" "$N"
+            construidos+=("$t")
         else
             printf '%sROJO%s\n' "$R" "$N"
             printf '%s' "$salida" | grep -E ': error' | head -5 | sed 's/^/          /'
@@ -543,6 +549,14 @@ if [[ " $PASOS " == *" 1 "* ]]; then
     if [ $ok -eq 0 ]; then
         anotar 1 "(build)" "un target no compila; el error esta arriba"
     fi
+
+    # EL AVISO DE LOS BINARIOS RANCIOS. Va aqui, y no mas adelante, porque es
+    # la unica vez que se sabe que targets se han construido: si se espera, el
+    # paso 2 ya ha corrido 53 tests sobre binarios que nadie sabe de cuando son.
+    #
+    # Se imprime siempre que el paso 1 se ha ejecutado. Con --no-build no se dice
+    # nada, porque ahi el aviso seria ruido: uno ha pedido expressly no compilar.
+    node "$NODE_LIB" rancios "$BUILD" "$CONFIG" "$A" "$N" "${construidos[@]+"${construidos[@]}"}"
     terminar_paso
 fi
 

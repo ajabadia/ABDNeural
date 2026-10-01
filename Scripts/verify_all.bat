@@ -153,6 +153,11 @@ REM `:build_target`, con lo que el .bat contaba cinco fallos de build donde el
 REM .sh contaba uno sobre el MISMO build roto, y el check lo senalaba como
 REM divergencia. Medido.
 set "FALLO_BUILD="
+REM Los targets que HA CONSTRUIDO esta pasada. Lo necesita el aviso de
+REM binarios rancios: la lista del paso 1 es corta a proposito, asi que casi
+REM todos los tests de ctest quedan fuera, y sin avisar se leen resultados
+REM de un binario que nadie sabe de cuando es.
+set "CONSTRUIDOS="
 
 REM --- ARGS ------------------------------------------------------------------
 set "HACER_BUILD=1"
@@ -466,6 +471,11 @@ if not errorlevel 1 (
     REM "un target no compila", y son los targets, no los pasos. Los errores de
     REM Los errores de compilacion de cada uno los ha impreso ya `:build_target`.
     if defined FALLO_BUILD call :anotar 1 "(build)" "un target no compila; el error esta arriba"
+    REM EL AVISO DE LOS BINARIOS RANCIOS. Va aqui, y no mas adelante, porque es
+    REM la unica vez que se sabe que targets se han construido: si se espera, el
+    REM paso 2 ya ha corrido la bateria entera sobre binarios que nadie sabe de
+    REM cuando son. Con --no-build no se dice nada, porque ahi el aviso seria ruido.
+    node "%NODELIB%" rancios "%BUILD%" "%CONFIG%" "%A%" "%N%" !CONSTRUIDOS!
 )
 
 REM ============================================================================
@@ -553,6 +563,11 @@ if errorlevel 1 (
     set "SALIR_POR_ROJOS=1"
 ) else (
     echo   %V%PASA%N%
+    if defined CONSTRUIDOS (
+        set "CONSTRUIDOS=!CONSTRUIDOS! %~1"
+    ) else (
+        set "CONSTRUIDOS=%~1"
+    )
 )
 exit /b 0
 

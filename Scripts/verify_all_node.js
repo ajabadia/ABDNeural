@@ -51,6 +51,10 @@
 //    cuenta     <json> [destino]         numero de entradas
 //    motivo     <json> <test> [destino]  el motivo de un rojo, o ""
 //    arreglados <json> <rojos> [a] [n]   el bloque ARREGLO, por pantalla
+//    rancios    <testdir> <config> [a] [n] [construidos...]
+//               tests cuyo .exe es mas viejo que el codigo que se ha escrito.
+//               Ver el aviso: sin esto, un rojo de binario rancio se lee como un
+//               rojo de codigo, y salen cuatro falsos de golpe.
 //
 //  `destino` es SIEMPRE el ultimo argumento y es opcional: si no se pasa, el
 //  resultado sale por stdout. Y el destino NUNCA puede ser uno de los
@@ -975,6 +979,190 @@ function cmdCompara (a, b, nombreA, nombreB) {
     process.exit (1);
 }
 
+// ── LOS BINARIOS RANCIOS ───────────────────────────────────────────────────
+//
+// ESTO CUESTO CUATRO ROJOS FALSOS Y VARIOS DIAS. Medido el 2026-10-01: de los
+// 52 tests que ctest registra, solo 8 tenian el .exe de HOY. Los otros 30 eran
+// del 29/09, porque el paso 1 del verify compila SEIS targets a proposito (los
+// que exportan y los de la matriz de modulacion) y ningun otro. Los 30 que
+// quedan no se recompilaban nunca, y sus resultados se contaban como si fueran
+// de esta corrida: tres tests que llevan dias "en rojo" con el motivo "el APVTS
+// ya declara mas parametros" PASABAN al recompilarse, sin tocar una linea.
+//
+// O sea que la causa comun de un rojo no se mira primero en el codigo, sino en
+// la fecha del binario. Y eso no lo puede decir nadie a ojo en un informe que
+// no lleva fechas.
+//
+// LA REGLA. Un binario mas viejo que el codigo que se acaba de compilar. No se
+// compara con "hoy" porque un test que no se ha tocado lleva dias en su sitio
+// sin que eso sea un problema: lo que delata el problema es que el .exe sea mas
+// ANTIGUO que el fuente del target. Si alguien edita PresetMigrationParity.cpp y
+// el .exe es de ayer, el test que se ejecuta no es el codigo que se ha escrito.
+//
+// Y hay un segundo criterio, mas barato y mas fuerte: lo que el paso 1 ha
+// compilado en ESTA corrida. Un binario que el paso 1 no ha tocado, aqui, es
+// rancio por definicion; ese solo necesita un aviso.
+//
+// Los .exe se buscan por el nombre del test, que es como los llama CMake.
+//
+// `configDe` saca el nombre de la configuracion de una ruta de CMake, que la
+// escribe como .../Release/Nombre.exe. No es una regla nueva: es que la misma
+// palabra se lee en un sitio y se decide en otro, que es como estos dos
+// programas han acabado dando numeros distintos sobre el mismo build.
+function configDe (ruta) {
+    const m = /[\\/](Debug|Release|RelWithDebInfo|MinSizeRel)[\\/]/i.exec (String (ruta || ''));
+    return m ? m[1] : '';
+}
+function cmdRuncios (testdir, config, colorA, colorN, construidos) {
+    const ca = String (colorA || '');
+    const cn = String (colorN || '');
+
+    let texto = '';
+    try { texto = fs.readFileSync (path.join (String (testdir || ''), 'CTestTestfile.cmake'), 'utf8'); }
+    catch (e) {
+        process.stderr.write ('verify_all_node.js: no se ha podido leer el CTestTestfile.cmake de ' +
+                              String (testdir) + '\n');
+        process.exit (1);
+    }
+
+    // CMake escribe el MISMO test cuatro veces, una por configuracion. Aguantarse
+    // de la ultima es meterle una ruta que no existe y luego decir "sin binario"
+    // de 39 tests que si lo tienen. Se elige la del config pedido, y si no esta,
+    // la primera que aparezca.
+    const vistos = new Map ();
+    for (const m of texto.matchAll (/add_test\s*\(\s*"([^"]+)"\s*,?\s*"([^"]*\.exe)"/gi)) {
+        const nombre = m[1];
+        const exe = m[2].replace (/\//g, path.sep);
+        const ya = vistos.get (nombre);
+        if (ya === undefined) { vistos.set (nombre, { exe, config: configDe (exe) }); continue; }
+        if (ya.config !== String (config || 'Release') && configDe (exe) === String (config || 'Release'))
+            vistos.set (nombre, { exe, config: configDe (exe) });
+    }
+
+    if (vistos.size === 0) {
+        process.stdout.write ('  binarios rancios: no se ha encontrado ningun test .exe\n');
+        process.exit (0);
+    }
+
+    // LO QUE EL PASO 1 HA CONSTRUIDO. Esta es la lista que decide, y no la fecha
+    // de un fichero. La fecha miente por dos motivos que ya han pasado aqui: un
+    // `git checkout` o un `cp` pone al dia el mtime de un fuente que no ha
+    // cambiado de verdad, y comparar cada .exe contra el fuente MAS NUEVO del
+    // arbol entero marca los cincuenta y tres rancios en cuanto se toca un
+    // fichero que no tiene nada que ver. Lo que no miente es "¿este paso ha
+    // rebuilding esto?": si no lo ha hecho, el .exe que va a correr es el que
+    // hubiera, con la antiguedad que tenga.
+    const hechos = new Set ((construidos || []).map (s => String (s)));
+
+    let sinConstruir = 0;
+    let sinBinario = 0;
+    const fuera = [];
+    const ausentes = [];
+
+    for (const [nombre, entrada] of vistos) {
+        const ruta = path.isAbsolute (entrada.exe) ? entrada.exe : path.join (String (testdir || ''), entrada.exe);
+
+        // SOLO los tests que son un target de ESTE proyecto. Los de Playwright y
+        // los de contrato se registran con el node.exe del sistema como primer
+        // argumento, asi que su "exe" es .../nodejs/node.exe, fuera del arbol de
+        // build: no lo compila nadie aqui y no hay binario rancio que mirar.
+        // Contarlos como tales seria decir que hay catorce tests rancios que no
+        // existen, y un aviso que se queja de todo no avisa de nada.
+        const raizBuild = path.resolve (String (testdir || ''));
+        if (path.resolve (path.dirname (ruta)).indexOf (raizBuild) !== 0) continue;
+
+        let st;
+        try { st = fs.statSync (ruta); }
+        catch (e) { ++sinBinario; ausentes.push (nombre + '  (registrado en ' + entrada.config + ')'); continue; }
+
+        // El target de CMake se llama como el .exe, sin extension. Es lo que
+        // comprueba el paso 1 al compilar, asi que la comparacion es directa.
+        const target = path.basename (entrada.exe, path.extname (entrada.exe));
+
+        if (hechos.size > 0 && !hechos.has (target)) {
+            ++sinConstruir;
+            fuera.push (nombre);
+            continue;
+        }
+
+        // Y si SI se ha construido en esta pasada, el .exe no puede ser mas viejo
+        // que lo que se acaba de compilar. Si lo es, algo lo ha tocado por
+        // detrás y eso si hay que decirlo.
+        if (hechos.has (target)) {
+            const fuente = fuenteDelTarget (ruta, nombre);
+            if (fuente > st.mtimeMs) {
+                ++sinConstruir;
+                fuera.push (nombre + '  (construido, pero el .exe es anterior al fuente)');
+            }
+        }
+    }
+
+    fuera.sort ();
+    ausentes.sort ();
+
+    process.stdout.write ('  binarios de tests: ' + vistos.size +
+                          ' en la bateria, ' + hechos.size + ' reconstruidos por el paso 1' +
+                          (fuera.length > 0 ? ', ' + fuera.length + ' con el binario de una pasada anterior' : '') + '\n');
+
+    if (fuera.length > 0) {
+        process.stdout.write ('\n  ' + ca + 'BINARIO RANCIO' + cn + '  ' + fuera.length +
+                              ' test(s) se ejecutan con el .exe de una pasada anterior:\n');
+        for (const n of fuera.slice (0, 10)) process.stdout.write ('        ' + n + '\n');
+        if (fuera.length > 10)
+            process.stdout.write ('        ... y ' + (fuera.length - 10) + ' mas (el script los lista todos)\n');
+        process.stdout.write ('\n');
+        process.stdout.write ('          Un rojo de aqui NO es del codigo de ahora, y un verde tampoco: los\n');
+        process.stdout.write ('          dos vienen del binario de la fecha que tenga el .exe. Recompila el\n');
+        process.stdout.write ('          target (`cmake --build ' + String (testdir || '') + ' --config ' +
+                              String (config || 'Release') + ' --target NOMBRE`) y vuelve a mirar\n');
+        process.stdout.write ('          antes de tocar nada.\n');
+        process.stdout.write ('\n');
+        process.stdout.write ('          El paso 1 compila a proposito una lista corta de targets (los que\n');
+        process.stdout.write ('          exportan y los de la matriz de modulacion), no los ' + vistos.size +
+                              ' tests: "todo" arrastra\n');
+        process.stdout.write ('          el plugin y el WASM. Es NORMAL que falten, y por eso esto es un\n');
+        process.stdout.write ('          aviso y no un rojo. Lo que no es normal es leerlos sin saberlo.\n');
+    }
+    if (sinBinario > 0) {
+        process.stdout.write ('\n  ' + ca + 'SIN BINARIO' + cn + '  ' + sinBinario +
+                              ' test(s) registrados sin .exe:\n');
+        for (const n of ausentes.slice (0, 8)) process.stdout.write ('        ' + n + '\n');
+        if (ausentes.length > 8)
+            process.stdout.write ('        ... y ' + (ausentes.length - 8) + ' mas\n');
+        process.stdout.write ('\n          Si alguno deberia estar aqui, se esta contando como verde un test que\n');
+        process.stdout.write ('          no se ha ejecutado nunca.\n');
+    }
+
+    process.exit (0);
+}
+
+// El fuente mas reciente que el target `nombre` pudo usar: los mismos sitios que
+// mira el CMakeLists para ese target. Es una aproximacion a proposito (el
+// CMakeLists real lista ficheros, no carpetas), y por eso solo se usa para el
+// caso de "construido en esta pasada y aun asi mas viejo", que unicamente puede
+// salir mal si alguien toca el arbol por detras.
+function fuenteDelTarget (rutaExe, nombre) {
+    const build = path.dirname (rutaExe);
+    const raiz = path.resolve (path.dirname (build));
+    let masNueva = 0;
+    for (const sub of ['Source', 'Tests', '']) {
+        const d = path.join (raiz, sub);
+        let nombres;
+        try { nombres = fs.readdirSync (d); } catch (e) { continue; }
+        for (const f of nombres) {
+            if (!/\.(cpp|h|hpp)$/i.test (f)) continue;
+            // Del target que nos interesa y de sus vecinos del mismo directorio,
+            // que es lo que comparten la mayoria de estos tests.
+            if (sub === '' && ! f.toLowerCase().includes (nombre.toLowerCase().replace(/^neuronik_/, ''))) continue;
+            try {
+                const t = fs.statSync (path.join (d, f)).mtimeMs;
+                if (t > masNueva) masNueva = t;
+            } catch (e) {}
+        }
+    }
+    return masNueva;
+}
+
 // ── LA ORDEN ───────────────────────────────────────────────────────────────
 
 // `argv` es el resto, SIN el node y SIN el nombre del fichero, y cada orden
@@ -1004,10 +1192,12 @@ switch (orden) {
     case 'cuenta':    cmdCuenta     (argv[1], argv[2]); break;
     case 'motivo':    cmdMotivo     (argv[1], argv[2], argv[3]); break;
     case 'arreglados':cmdArreglados (argv[1], argv[2], argv[3] || '', argv[4] || ''); break;
+    case 'rancios':    cmdRuncios     (argv[1], argv[2], argv[3] || '', argv[4] || '', argv.slice(5)); break;
 
     default:
         process.stderr.write ('verify_all_node.js: orden desconocida: ' + String (orden) + '\n');
         process.stderr.write ('  vivo | limpia | conocidos | cuenta | motivo | arreglados | resumen\n');
+        process.stderr.write ('  rancios <testdir> <config> [a] [n]  tests con el .exe mas viejo que el codigo\n');
         process.stderr.write ('  bateria <json> <testdir> <config>\n');
         process.stderr.write ('  compara | pidpropio | leepid\n');
         process.exit (2);
