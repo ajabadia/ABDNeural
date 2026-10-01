@@ -47,9 +47,17 @@ const std::vector<RandomizeTarget>& getRandomizeTargets()
         // --- FX: congelado de filtro a proposito (no tienen boton propio) -----
         // El drive del hueco 1. Se aleatoriza en NORMALIZADO, que es como lo
         // habla el hueco; el rango 0..0.4 es el que tenia el mando viejo.
+        //
+        // `fxChorusMix` y `fxReverbMix` ESTABIAN AQUI y se han quitado. Los dos
+        // estan declarados `notRouted` en ParameterDescriptors.cpp (con los
+        // otros nueve mandos planos de FX): al migrar los cuatro huecos al bus,
+        // dejo de leerlos el motor, asi que el sorteo los movia sin que suene
+        // nada. RANDOMIZE moviendo mandos muertos es peor que no moverlos: el
+        // knob da la sensacion de que ha pasado algo que no ha pasado. La tabla
+        // solo mete lo que el motor consume, que es lo que
+        // ParameterRandomizerTest exige con "ningun parametro de la tabla es
+        // notRouted".
         { IDs::fx1Param1,          0.00f, 0.40f, FreezeGroup::filter },
-        { IDs::fxChorusMix,       0.00f, 0.50f, FreezeGroup::filter },
-        { IDs::fxReverbMix,       0.00f, 0.40f, FreezeGroup::filter },
 
         // --- envolvente de amplitud y nivel (freezeEnvelopes) ---------------
         { IDs::envAttack,         0.001f, 0.50f, FreezeGroup::envelopes },

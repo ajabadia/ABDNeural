@@ -40,17 +40,26 @@
     "en esta maquina el antivirus no deja leer los .js de node_modules, asi que",
     "Playwright no arranca. No son tres problemas: es uno. Y es lo mismo que",
     "rompe vitest en los pasos 3 y 4, que no tienen lista de conocidos a",
-    "proposito porque no son tests sino pasos enteros."
+    "proposito porque no son tests sino pasos enteros.",
+    "",    "LO QUE SE QUITO EL 2026-10-01, Y POR QUE ESTA TAN EXPLICADO. Los otros",
+    "cuatro (ParameterDescriptor, StatePersistence, ParameterBridge y",
+    "ParameterRandomizer) llevaban el motivo 'espera 79 parametros y el APVTS ya",
+    "declara mas'. Ese motivo era CIERTO y a la vez la prueba de que el binario",
+    "era viejo: el layout tiene 132 parametros, y 79 era lo que tenia hace dias.",
+    "Tres de ellos eran binario rancio y NO CODIGO: recompilados pasan sin tocar",
+    "una linea. El cuarto (ParameterRandomizer) si que tenia un bug de verdad, y",
+    "su arreglo esta en el commit que los quito.",
+    "",
+    "La leccion esta en que los cuatro llevaban el mismo motivo y solo uno lo",
+    "tenia. Un motivo repetido cuatro veces es una pista, no una constancia:",
+    "cuatro fallos que se parecen casi siempre son una sola causa, y si la causa",
+    "es el binario viejo no hay nada que arreglar en el codigo."
   ],
 
   "_motivos": "known",
 
   "entradas": [
     "NEURONiK_PresetMigrationParityTest",
-    "NEURONiK_ParameterDescriptorTest",
-    "NEURONiK_StatePersistenceTest",
-    "NEURONiK_ParameterBridgeTest",
-    "NEURONiK_ParameterRandomizerTest",
     "NEURONiK_WebUiLocalModeE2e",
     "NEURONiK_WebUiVisualRegression",
     "NEURONiK_WebUiNeedleProbeE2e"

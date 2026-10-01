@@ -1,6 +1,0 @@
-ajeno: del turno anterior: mismo origen que ParameterBridgeTest
-
-# El randomizador tambien recorre los parametros declarados y tambien espera el
-# numero de antes. Tres aserciones de este test salen por el mismo sitio que las
-# ocho de ParameterBridgeTest, y por eso los dos motivos dicen lo mismo: no son
-# dos problemas, es uno mirado desde dos tests.
