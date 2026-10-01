@@ -164,6 +164,7 @@ REM binarios rancios: la lista del paso 1 es corta a proposito, asi que casi
 REM todos los tests de ctest quedan fuera, y sin avisar se leen resultados
 REM de un binario que nadie sabe de cuando es.
 set "CONSTRUIDOS="
+set "FALLO_BUILD_LISTA="
 
 REM --- ARGS ------------------------------------------------------------------
 set "HACER_BUILD=1"
@@ -519,21 +520,16 @@ if not errorlevel 1 (
     REM falta decirlo. Antes se callaba ahi, y se leian 53 tests de binarios
     REM que nadie habia compilado creyendo que si.
     if "%HACER_BUILD%"=="1" (
-        call :build_target NEURONiK_FxExport
-        call :build_target NEURONiK_ModulationParityDump
-        call :build_target NEURONiK_ModulationDest17DriveTest
-        call :build_target NEURONiK_ModulationMatrixTest
-        call :build_target NEURONiK_FxCatalogueTest
-        call :build_target NEURONiK_FxSlotsTest
+        call :build_todos
         node "%NODELIB%" rancios "%BUILD%" "%CONFIG%" "%A%" "%N%" !CONSTRUIDOS!
     ) else (
         echo   paso 1 saltado con --no-build: no se ha compilado nada
         node "%NODELIB%" rancios "%BUILD%" "%CONFIG%" "%A%" "%N%" --sin-build
     )
-    REM Un solo rojo para los seis, y fuera del bloque: el nombre del problema es
-    REM "un target no compila", y son los targets, no los pasos. Los errores de
-    REM Los errores de compilacion de cada uno los ha impreso ya `:build_target`.
-    if defined FALLO_BUILD call :anotar 1 "(build)" "un target no compila; el error esta arriba"
+    REM Un solo rojo para todo el build, y fuera del bloque: el nombre del
+    REM problema es "un target no compila", y son los targets, no los pasos. Los
+    REM errores de compilacion los ha impreso ya `:build_todos`.
+    if defined FALLO_BUILD if not defined FALLO_BUILD_LISTA call :anotar 1 "(build)" "un target no compila; el error esta arriba"
 )
 
 REM ============================================================================
@@ -600,33 +596,93 @@ set "QBUSCADO= %~1 "
 if "!QTODOS:%QBUSCADO%=!"=="!QTODOS!" exit /b 1
 exit /b 0
 
-:build_target
-set "TGT=%~1"
-echo   %TGT%
-cmake --build "%BUILD%" --config "%CONFIG%" --target "%TGT%" > "%TEMP%\verify_bt.txt" 2>&1
-if errorlevel 1 (
-    echo   %R%ROJO%N%    %TGT%
-    findstr /c:": error" "%TEMP%\verify_bt.txt" >nul
-    if not errorlevel 1 (
-        findstr /c:": error" "%TEMP%\verify_bt.txt" | findstr /r /v "^$" > "%TEMP%\verify_err.txt"
-        set /a MOSTRAR=0
-        for /f "usebackq delims=" %%L in ("%TEMP%\verify_err.txt") do (
-            if !MOSTRAR! LSS 5 (
-                echo             %%L
-                set /a MOSTRAR+=1
-            )
-        )
-    )
-    set "FALLO_BUILD=1"
-    set "SALIR_POR_ROJOS=1"
-) else (
-    echo   %V%PASA%N%
-    if defined CONSTRUIDOS (
-        set "CONSTRUIDOS=!CONSTRUIDOS! %~1"
-    ) else (
-        set "CONSTRUIDOS=%~1"
+:build_todos
+REM EL PASO 1 ENTERO, EN UNA SOLA INVOCACION. Antes eran seis `call :build_target`,
+REM uno por target, y solo cuatro eran tests: los otros treinta y cinco se
+REM ejecutaban con el .exe de la pasada anterior, y un rojo de un binario rancio
+REM no se distingue de un rojo de codigo (el commit del SIGSEGV de
+REM PresetMigrationParity es esto mismo, medido).
+REM
+REM Una invocacion y no una por target no es un gusto: el generador de Visual
+REM Studio recompila la libreria de JUCE cuando algo la toca, y con cuarenta y
+REM una invocaciones eso se paga cuarenta y una veces. Medido: un target solo, en
+REM frio, 20 s (por `juce_core_CompilationTime.cpp`, que se regenera siempre), y en
+REM caliente 1 s. Los cuarenta y uno juntos, en caliente, del orden de dos
+REM minutos, y ADVERTENCIA: ese tiempo no es compilar, es cargar cuarenta y
+REM un proyectos de MSBuild. Con la cache al dia no se compila ni un fichero.
+REM
+REM LA LISTA NO ESTA ESCRITA AQUI: sale de la orden `targets`, que la lee del
+REM CTestTestfile.cmake, que es donde CMake declara los tests. Anadir un test no
+REM obliga a tocar este script. Los dos que NO son tests si van escritos, porque
+REM no estan en ningun sitio mas: son los programas que el verify usa para sus
+REM fixtures.
+REM NINGUN `echo` DE ESTE BLOQUE LLEVAR UN PARENTESIS SIN ESCAPAR. Para cmd no
+REM es texto: lee el parentesis de cierre de `echo (!LOGB!)` como el cierre del
+REM `if ... (`, y el bloque se acaba ahi. Las tres lineas siguientes, que son
+REM `set FALLO_BUILD=1`, `set SALIR_POR_ROJOS=1` y `exit /b 0`, quedan FUERA
+REM del `if` y se ejecutan siempre: da igual que el build vaya bien o mal, el
+REM paso 1 salia en rojo fijo y sin linea de PASA. Medido con cmake rc 0 y el
+REM log sin un solo error. Por eso la ruta se escribe sin parentesis.
+set "FIXTURES=NEURONiK_FxExport NEURONiK_ModulationParityDump"
+set "TLIST=%TEMP%\verify_targets.txt"
+set "LOGB=%TEMP%\verify_build.log"
+
+node "%NODELIB%" targets "%BUILD%" "%CONFIG%" > "%TLIST%" 2>nul
+if errorlevel 1 goto SIN_TARGETS
+
+set "TARGETS="
+set /a NTARGETS=0
+for /f "usebackq delims=" %%A in ("%TLIST%") do (
+    if not "%%A"=="" (
+        set "TARGETS=!TARGETS! %%A"
+        set /a NTARGETS+=1
     )
 )
+if !NTARGETS! EQU 0 goto SIN_TARGETS
+
+set /a NMAS2=NTARGETS+2
+echo   !NTARGETS! targets nativos de test, mas 2 que no lo son
+cmake --build "%BUILD%" --config "%CONFIG%" --target !TARGETS! !FIXTURES! > "%LOGB%" 2>&1
+if errorlevel 1 (
+    echo   %R%ROJO%N%  el build ha fallado
+    findstr /r /c:": error" /c:"error [A-Z][0-9]" "%LOGB%" > "%TEMP%\verify_err.txt" 2>nul
+    set /a MOSTRAR=0
+    for /f "usebackq delims=" %%L in ("%TEMP%\verify_err.txt") do (
+        if !MOSTRAR! LSS 5 (
+            echo          %%L
+            set /a MOSTRAR+=1
+        )
+    )
+    REM Un build a medias NO es una lista de construidos: no se sabe cuales han
+    REM quedado al dia. Sin lista, el aviso de rancios calla (no juzga), y por eso
+    REM el paso 1 dice aqui, en voz alta, lo que el aviso no puede decir.
+    echo          %A%ATENCION:%N% el build ha fallado a medias, y los .exe que no se han
+    echo          recompilado pueden ser de una pasada anterior. Los rojos del paso 2
+    echo          pueden ser de ahi, no del codigo: mira este log antes de tocar nada
+    echo          log del build: !LOGB!
+    set "FALLO_BUILD=1"
+    set "FALLO_BUILD_LISTA=1"
+    set "SALIR_POR_ROJOS=1"
+    exit /b 0
+)
+
+echo   %V%PASA%N%  !NMAS2! target(s) construidos
+REM Los que HAN COMPILADO en esta pasada, o estaban al dia, que para lo que viene
+REM es lo mismo. Lo necesita el aviso de rancios: son los unicos de los que se
+REM puede decir que son del codigo de ahora.
+set "CONSTRUIDOS=!TARGETS! !FIXTURES!"
+exit /b 0
+
+:SIN_TARGETS
+REM Si no se puede saber que hay que compilar NO se compila nada. Una lista vacia
+REM seria un build que parece bueno y no ha medido nada, que es peor que un build
+REM que se niega a arrancar.
+echo   %R%ROJO%N%  no se ha podido saber que targets compilar
+REM El motivo va aqui y no en el rojo generico de despues: "un target no
+REM compila" seria mentira, porque no se ha intentado compilar ninguno.
+call :anotar 1 "(build)" "no se ha podido leer la lista de targets de ctest; el build no se ha ejecutado"
+set "FALLO_BUILD=1"
+set "SALIR_POR_ROJOS=1"
 exit /b 0
 
 :paso2

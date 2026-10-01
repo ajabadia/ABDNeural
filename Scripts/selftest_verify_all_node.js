@@ -612,9 +612,96 @@ seccion ('7. Las demas ordenes');
 }
 
 // ============================================================================
-//  8. EL PARSEO DE LOS DOS GEMELOS
+//  8. LA LISTA DE TARGETS DEL PASO 1
 // ============================================================================
-seccion ('8. El parseo de los dos gemelos');
+seccion ('8. La lista de targets del paso 1');
+
+// El paso 1 compila lo que esta orden dice, y lo que no diga, no se compila: es
+// la diferencia entre medir el codigo de ahora y medir el .exe de hace dias. Asi
+// que esta orden no puede fallar callada. Se comprueba con un arbol de mentira,
+// porque lo que importa es la REGLA (que entra y que no), no este proyecto.
+
+// El mismo arbol que usa la seccion 6, aqui por lo que importa: de los tests que
+// se registran, entran los nativos y NO entran los de node.
+function arbolTargets (casos) {
+    const dir = fs.mkdtempSync (path.join (TMP, 't'));
+    const rel = path.join (dir, 'Release');
+    fs.mkdirSync (rel, { recursive: true });
+    const lineas = [];
+    for (const c of casos) {
+        if (c.creaExe) fs.writeFileSync (path.join (rel, c.nombre + '.exe'), 'x');
+        lineas.push ('add_test("' + c.nombre + '" "' + path.join (rel, c.nombre + '.exe') + '")');
+    }
+    // Los de node: el node.exe del sistema, fuera del arbol. NO son targets de
+    // este proyecto. Si se colaran, el paso 1 pediria a cmake un target que no
+    // existe y se caeria el build entero.
+    lineas.push ('add_test("NEURONiK_WebUiLocalModeE2e" "C:/Program Files/nodejs/node.exe" "e2e/localMode.spec.js")');
+    lineas.push ('add_test("NEURONiK_WorkletSync" "C:/Program Files/nodejs/node.exe" "x.mjs")');
+    fs.writeFileSync (path.join (dir, 'CTestTestfile.cmake'), lineas.join ('\n') + '\n');
+    return dir;
+}
+
+{
+    const dir = arbolTargets ([{ nombre: 'T1', creaExe: true }, { nombre: 'T2', creaExe: true }]);
+    const r = corre (['targets', dir, 'Release']);
+    igual ('la lista de targets sale con 0', r.rc, 0);
+    igual ('...y son los nativos, ordenados, uno por linea', r.out.trim (), 'T1\nT2');
+}
+
+{
+    // Un test cuyo .exe NO existe tambien entra: es justamente uno que todavia no
+    // se ha compilado, y la lista es la de lo que hay que COMPILAR.
+    const dir = arbolTargets ([{ nombre: 'T1', creaExe: true }, { nombre: 'T2', creaExe: false }]);
+    const r = corre (['targets', dir, 'Release']);
+    igual ('un test sin .exe tambien sale en la lista (hay que compilarlo)', r.out.trim (), 'T1\nT2');
+}
+
+{
+    const dir = arbolTargets ([{ nombre: 'T1', creaExe: true }]);
+    const r = corre (['targets', dir, 'Release']);
+    ok   ('los tests de node NO salen en la lista de targets',
+         !r.out.includes ('WebUiLocalModeE2e') && !r.out.includes ('WorkletSync'),
+         'stdout: ' + r.out.trim ());
+}
+
+// Y lo que NO PUEDE ser: una lista vacia. Seria un paso 1 que compila nada y
+// dice que ha compilado, que es el peor de los dos mundos. Con un arbol que no
+// tiene CTestTestfile, la orden tiene que FALLAR, no devolver una lista vacia.
+{
+    const dir = fs.mkdtempSync (path.join (TMP, 't'));
+    const r = corre (['targets', dir, 'Release']);
+    igual ('sin CTestTestfile la lista sale con 1, no con una vacia', r.rc, 1);
+    ok   ('...y dice cual es el problema', r.errR.indexOf ('CTestTestfile') !== -1, 'stderr: ' + r.errR.trim ());
+}
+
+// Y un arbol con CTestTestfile pero SOLO tests de node: tampoco hay nada que
+// compilar, y tampoco puede ser una lista vacia.
+{
+    const dir = fs.mkdtempSync (path.join (TMP, 't'));
+    fs.writeFileSync (path.join (dir, 'CTestTestfile.cmake'),
+        'add_test("NEURONiK_WebUiLocalModeE2e" "C:/Program Files/nodejs/node.exe" "e2e/x.spec.js")\n');
+    const r = corre (['targets', dir, 'Release']);
+    igual ('un arbol solo con tests de node sale con 1', r.rc, 1);
+    ok   ('...y lo dice', r.errR.indexOf ('nativo') !== -1, 'stderr: ' + r.errR.trim ());
+}
+
+// La lista que sale tiene que ser la MISMA que la que usa el aviso de rancios
+// para contar los nativos, o los dos estan contando cosas distintas y no se
+// ve. Aqui se comprueba con la cuenta que imprime la cabecera del aviso.
+{
+    const dir = arbolTargets ([{ nombre: 'T1', creaExe: true }, { nombre: 'T2', creaExe: true }]);
+    const lista = corre (['targets', dir, 'Release']).out.trim ().split ('\n').filter (s => s).length;
+    const r = corre (['rancios', dir, 'Release', '', '']);
+    const m = /(\d+) nativos/.exec (r.outR);
+    ok   ('la lista de targets y el aviso de rancios cuentan los mismos',
+         m !== null && Number (m[1]) === lista,
+         'lista: ' + lista + '  aviso: ' + (m ? m[1] : '?') + '\nstdout: ' + r.outR.trim ());
+}
+
+// ============================================================================
+//  9. EL PARSEO DE LOS DOS GEMELOS
+// ============================================================================
+seccion ('9. El parseo de los dos gemelos');
 
 // Esta seccion es la unica que lanza los DOS scripts, y por eso es la cara:
 // cada caso son dos procesos de mas, y el unico caso que ejecuta algo de verdad
@@ -729,6 +816,150 @@ for (const c of PARSEO) {
              a.txt.indexOf (frase) !== -1 && b.txt.indexOf (frase) !== -1,
              'sh: ' + JSON.stringify (a.txt.slice (0, 200)));
     }
+}
+
+// ============================================================================
+//  10. EL `echo` CON UN PARENTESIS DENTRO DE UN BLOQUE
+// ============================================================================
+seccion ('10. Los parentesis sueltos en los bloques de batch');
+
+// EL FALLO, MEDIDO. En :build_todos del .bat, el camino de error del build
+// acababa con `echo (!LOGB!)`. Para cmd ese parentesis de cierre no es texto: es
+// el cierre del `if errorlevel 1 (` de cuatro lineas mas arriba. El bloque se
+// acababa ahi, y las tres lineas siguientes -- `set "FALLO_BUILD=1"`,
+// `set "SALIR_POR_ROJOS=1"` y `exit /b 0` -- quedaban FUERA del `if`.
+//
+// O sea que se ejecutaban SIEMPRE, y el paso 1 no podia salir en verde: cmake
+// acababa con rc 0, el log no tenia ni un error, y el paso 1 se quejaba de que
+// "un target no compila". La linea de PASA no salia nunca.
+//
+// POR QUE NO SE PILLABA NADA. No hay sintaxis mal, no hay aviso de cmd, y el
+// .bat entero se ejecutaba de principio a fin. Los casos de la seccion 9 pasan
+// porque el parseo de argumentos va bien; los de la 8, porque la orden `targets`
+// esta en el .js y no en el batch. El fallo estaba en una linea que solo se
+// ejecuta cuando el build falla, y que hacia que el build pareciera que siempre
+// falla. Es la razon de que esta seccion mire el TEXTO y no lance nada.
+//
+// QUE VIGILA. Que en ningun `.bat` haya un `echo` dentro de un bloque
+// `if ... (` con un parentesis sin escapar. Se lee el fichero de arriba abajo
+// llevando un contador de nivel de bloque: por encima de cero, un parentesis
+// suelto en un `echo` se come estructura.
+//
+// El coste es que hay que distinguir un parentesis de TEXTO de uno de SINTAXIS,
+// y el unico que sabe eso es cmd. La regla es conservadora a proposito: se
+// ignoran las comillas (dentro si es texto), los parentesis ya escapados con ^,
+// y las lineas de `for`, que llevan su propio parentesis de constructor. Ante la
+// duda se avisa: revisarlo cuesta un minuto y saltarselo cuesta un rojo que
+// nadie entiende.
+
+// Deja una linea en la forma que le interesa a este detector: sin lo que va
+// entre comillas, que es texto, y sin lo que va escapado con ^, que tampoco
+// cuenta. El escape hay que comerse de dos en dos y no con una sustitucion:
+// `^()` es un parentesis de cierre escapado pegado a uno de apertura, y quitar
+// solo el `^(` dejaria un `)` suelto que el detector contaria como estructura.
+function sinComillasNiEscapados (cruda) {
+    let fuera = '';
+    let dentro = false;
+    for (let i = 0; i < cruda.length; i++) {
+        const c = cruda[i];
+        if (c === '"') { dentro = !dentro; continue; }
+        if (dentro) continue;
+        if (c === '^') { i += 1; continue; }   // el siguiente, sea el que sea
+        fuera += c;
+    }
+    return fuera;
+}
+
+// Devuelve las lineas sospechosas y el nivel de bloque final de un .bat.
+function parentesisSueltos (texto) {
+    const lineas = texto.split (/\r?\n/);
+    const malas = [];
+    let nivel = 0;
+    for (let i = 0; i < lineas.length; i++) {
+        const cruda = lineas[i];
+        if (/^\s*(REM|::)\b/i.test (cruda)) continue;
+        const limpia = sinComillasNiEscapados (cruda);
+        const esEco = /^\s*echo\b/i.test (limpia) || /[&|]\s*echo\b/i.test (limpia);
+        if (nivel > 0 && esEco && /[()]/.test (limpia)) {
+            malas.push ((i + 1) + ': ' + cruda.trim ());
+        }
+        const abre = (limpia.match (/\(/g) || []).length;
+        const cierra = (limpia.match (/\)/g) || []).length;
+        nivel += abre - cierra;
+    }
+    return { malas: malas, nivel: nivel };
+}
+
+for (const nombre of ['verify_all.bat']) {
+    const ruta = path.join (__dirname, nombre);
+    ok (nombre + ' esta para poder leerlo', fs.existsSync (ruta));
+    if (!fs.existsSync (ruta)) continue;
+    const r = parentesisSueltos (fs.readFileSync (ruta, 'utf8'));
+    ok (nombre + ' no tiene `echo` con parentesis dentro de un bloque (' +
+         r.malas.length + ' sospechoso(s))',
+        r.malas.length === 0,
+        r.malas.join ('\n'));
+    // El detector tambien tiene que cerrar lo que abre. Si no, daria "todo en
+    // verde" por no mirar nada, que es la forma mas facil de que un test verde
+    // no mire. Este fichero tiene que dejar el nivel en cero.
+    ok (nombre + ' el detector deja el nivel de bloque en cero',
+        r.nivel === 0,
+        'nivel final: ' + r.nivel);
+}
+
+// Y que el detector NO se coma los parenteses legitimos, que son la mayoria y
+// son la razon de que el aviso sea raro: si los senalara todos, dejaria de
+// mirarse en cuanto saliera el primero de verdad.
+//
+// Ojo con el caso de `^(` pegado a `)`: en batch NO es un parentesis escapado
+// doble, es uno de apertura escapado y uno de cierre de verdad, y el segundo se
+// come el bloque. Por eso el ejemplo los lleva separados, que es la forma en que
+// se escriben de verdad.
+{
+    const r = parentesisSueltos (
+        '@echo off\r\n' +
+        'REM (esto es un parentesis de comentario)\r\n' +
+        'if 1 EQU 1 (\r\n' +
+        '    echo   con ^(escapado^) de verdad\r\n' +
+        '    echo   y entre comillas "(esto tambien)" es texto\r\n' +
+        '    echo   con %%V%% y %%L%% de una variable\r\n' +
+        '    for /f "usebackq delims=" %%L in ("x.txt") do (\r\n' +
+        '        echo   %%L\r\n' +
+        '    )\r\n' +
+        ')\r\n' +
+        'echo   este ni esta dentro de un bloque (asi que no molesta)\r\n');
+    ok ('el detector no senala parenteses legitimos', r.malas.length === 0,
+        r.malas.join ('\n'));
+    ok ('el detector cuenta bien el bloque del ejemplo', r.nivel === 0,
+        'nivel final: ' + r.nivel);
+}
+
+// Y el caso bueno de verdad: el texto que ROMPIO el paso 1 tiene que
+// detectarse, y la version arreglada tiene que salir limpia. Sin esto, el test
+// de arriba pasaria con un detector que no detecta nada, o con uno que senala
+// todo y nadie lee.
+{
+    const roto = [
+        '@echo off',
+        'if errorlevel 1 (',
+        '    echo   el build ha fallado',
+        '    set "FALLO_BUILD=1"',
+        '    echo           (!LOGB!)',
+        '    exit /b 0',
+        ')',
+        'echo   PASA',
+    ].join ('\r\n');
+    const r = parentesisSueltos (roto);
+    ok ('el detector pilla el `echo (!LOGB!)` que rompio el paso 1',
+        r.malas.length === 1 && r.malas[0].indexOf ('LOGB') !== -1,
+        r.malas.join ('\n'));
+
+    // La MISMA estructura con el parentesis quitar, que es como quedo. Si esta
+    // saliera sospechosa, el detector estorbaria mas de lo que ayuda.
+    const arreglado = roto.replace ('echo           (!LOGB!)', 'echo           log del build: !LOGB!');
+    const r2 = parentesisSueltos (arreglado);
+    ok ('la version arreglada no da ninguna alarma', r2.malas.length === 0,
+        r2.malas.join ('\n'));
 }
 
 // ============================================================================

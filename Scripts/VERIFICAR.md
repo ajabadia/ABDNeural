@@ -57,7 +57,7 @@ tarda lo que tardan **dos** verificaciones.
 
 | Paso | Qué hace |
 | --- | --- |
-| 1 | Compila los 6 targets de test (no todo: «todo» arrastra el WASM) |
+| 1 | Compila los 39 tests nativos + 2 programas de apoyo (no todo: «todo» arrastra el WASM) |
 | 2 | `ctest` con timeout, y separa los rojos conocidos de los nuevos |
 | 3 | `vitest` de la WebUI |
 | 4 | `vitest` de ABDSharedAssets |
@@ -140,14 +140,32 @@ fichero de motivo. No los quita él.
 Sale en el paso 1, siempre, y es lo primero que hay que leer antes de fiarse de
 ningún resultado de la batería.
 
-El paso 1 compila **seis targets**, y solo **cuatro** son tests: `FxExport` y
-`ModulationParityDump` son programas que se ejecutan a mano. De los 53 tests que
-ve `ctest`, 39 son nativos (los otros 14 son de Node: Playwright y contratos), y
-con la lista corta del paso 1 se reconstruyen 4. Los 35 restantes se ejecutan
-con el `.exe` que hubiera, y el aviso los va nombrando uno a uno.
+El paso 1 compila **los 39 tests nativos que ve `ctest`**, más los dos
+programas que la propia verificación usa para sus fixtures (`FxExport` y
+`ModulationParityDump`, que no son tests y por eso no salen de la lista). De los
+53 tests que ve `ctest`, 39 son nativos (los otros 14 son de Node: Playwright y
+contratos). Al compilar los 39, **el encabezado dice `39 reconstruidos` y `0
+rancios`**, y el aviso de binarios rancios **no dice nada**: es la señal de que
+la batería ha medido el código de ahora.
 
-La línea de arriba dice las tres cifras, y suma: `39 nativos = 4 reconstruidos +
-35 rancios`. Si no sumara, el aviso estaría contando otra cosa.
+Antes compilaba seis targets, de los que solo cuatro eran tests, y los otros 35
+nativos se ejecutaban con el `.exe` de la pasada anterior. Por eso la cuenta
+tenía tres cifras: `39 nativos = 4 reconstruidos + 35 rancios`. Ahora la cuenta
+es de dos, y si aparece un rancio es que algo se ha compilado por fuera entre
+una verify y otra, que es justo lo que hay que mirar.
+
+La lista de targets **no está escrita en el script**: sale de
+`CTestTestfile.cmake`, que es donde CMake declara los tests. Añadir un test al
+proyecto no obliga a tocar el verify, y si la lista se queda corta el aviso lo
+dice en vez de dejarlo pasar en silencio.
+
+Y los 41 targets van en **una sola invocación** de `cmake --build`, no una por
+target: el generador de Visual Studio recompila la librería de JUCE cuando algo
+la toca, y con 41 invocaciones eso se paga 41 veces. Medido en esta máquina, un
+target solo tarda 20 s en frío (por `juce_core_CompilationTime.cpp`, que se
+regenera siempre) y 1 s en caliente; los 41 juntos, en caliente, son del orden de
+dos minutos, y ese tiempo es de **cargar 41 proyectos de MSBuild**, no de
+compilar: con la caché al día no se compila ni un fichero.
 
 Esto no es un detalle: durante días se leyeron cuatro rojos que eran binarios del
 29/09, y un test que se daba por bueno y no lo estaba. Por eso el aviso es
@@ -187,6 +205,7 @@ el mismo binario rancio.
 - **No compara tiempos.** Dos corridas seguidas dan tiempos distintos, y eso
   haría fallar el check por el motivo equivocado. Solo mira si un test fue
   lento, no cuánto.
-- **No compila «todo»**: solo los 6 targets del paso 1, de los que 4 son tests. El
-  plugin y los targets de WASM no son de esta verificación. Los otros 35 tests
-  nativos salen con el binario de la pasada anterior, y el paso 1 lo dice.
+- **No compila «todo»**: solo los 39 tests nativos del paso 1 y los 2 programas de
+  apoyo. El plugin y los targets de WASM no son de esta verificación. Todos los
+  tests nativos se compilan, así que ninguno sale con el binario de la pasada
+  anterior; lo que no se compila es lo que no es un test.

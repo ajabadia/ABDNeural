@@ -51,6 +51,9 @@
 //    cuenta     <json> [destino]         numero de entradas
 //    motivo     <json> <test> [destino]  el motivo de un rojo, o ""
 //    arreglados <json> <rojos> [a] [n]   el bloque ARREGLO, por pantalla
+//    targets    <testdir> <config>
+//               los targets que hay que compilar para que la bateria mida el
+//               codigo de ahora: uno por cada test nativo, ordenados.
 //    rancios    <testdir> <config> [a] [n] [--sin-build] [construidos...]
 //               tests cuyo .exe es mas viejo que el codigo que se ha escrito.
 //               Ver el aviso: sin esto, un rojo de binario rancio se lee como un
@@ -1013,15 +1016,39 @@ function configDe (ruta) {
     const m = /[\\/](Debug|Release|RelWithDebInfo|MinSizeRel)[\\/]/i.exec (String (ruta || ''));
     return m ? m[1] : '';
 }
-function cmdRuncios (testdir, config, colorA, colorN, construidos, sinBuild) {
-    const ca = String (colorA || '');
-    const cn = String (colorN || '');
+// LOS TESTS DE ESTE PROYECTO, Y EL TARGET QUE LOS COMPILA.
+//
+// Esto no es una añadidura de la orden `rancios`: es la regla de "que es un test
+// nativo" sacada de ahi, porque la necesitan DOS ordenes y porque la respuesta
+// equivocada no es un numero feo, es un numero que miente:
+//
+//   targets   la lista que el paso 1 tiene que compilar para que el paso 2
+//             mida el codigo de ahora. Si aqui se cuela un test que no es de
+//             este proyecto, el paso 1 compila un target que no existe y el
+//             build entero se cae
+//   rancios    cuantos .exe son de una pasada anterior. Si aqui se cuela uno de
+//             node (los de Playwright y los de contrato se registran con el
+//             node.exe del SISTEMA), el aviso diria que hay tests rancios que no
+//             existen
+//
+// Estar en dos sitios era exactamente el fallo del otro dia: el .bat contando
+// una cosa y el .sh otra, cada uno con su lista.
+//
+// LO QUE CUENTA COMO NATIVO: el .exe esta DENTRO del arbol de build. Los de node
+// apuntan a .../nodejs/node.exe, fuera de aqui, y no los compila nadie en este
+// repositorio. Y da igual que el .exe exista o no: la lista es la de los tests
+// que hay que COMPILAR, y un test cuyo .exe no existe es justamente uno que
+// todavia no se ha compilado.
+//
+// El target es el nombre del .exe sin extension, que es como los llama CMake
+// (`add_executable (NEURONiK_FooTest ...)`) y como los pide `--target`.
+function testsNativos (testdir, config) {
+    const dir = String (testdir || '');
 
     let texto = '';
-    try { texto = fs.readFileSync (path.join (String (testdir || ''), 'CTestTestfile.cmake'), 'utf8'); }
+    try { texto = fs.readFileSync (path.join (dir, 'CTestTestfile.cmake'), 'utf8'); }
     catch (e) {
-        process.stderr.write ('verify_all_node.js: no se ha podido leer el CTestTestfile.cmake de ' +
-                              String (testdir) + '\n');
+        process.stderr.write ('verify_all_node.js: no se ha podido leer el CTestTestfile.cmake de ' + dir + '\n');
         process.exit (1);
     }
 
@@ -1030,19 +1057,55 @@ function cmdRuncios (testdir, config, colorA, colorN, construidos, sinBuild) {
     // de 39 tests que si lo tienen. Se elige la del config pedido, y si no esta,
     // la primera que aparezca.
     const vistos = new Map ();
+    const cfg = String (config || 'Release');
     for (const m of texto.matchAll (/add_test\s*\(\s*"([^"]+)"\s*,?\s*"([^"]*\.exe)"/gi)) {
         const nombre = m[1];
         const exe = m[2].replace (/\//g, path.sep);
         const ya = vistos.get (nombre);
         if (ya === undefined) { vistos.set (nombre, { exe, config: configDe (exe) }); continue; }
-        if (ya.config !== String (config || 'Release') && configDe (exe) === String (config || 'Release'))
+        if (ya.config !== cfg && configDe (exe) === cfg)
             vistos.set (nombre, { exe, config: configDe (exe) });
     }
 
-    if (vistos.size === 0) {
-        process.stdout.write ('  binarios rancios: no se ha encontrado ningun test .exe\n');
-        process.exit (0);
+    // SOLO los que son un target de ESTE proyecto: el .exe dentro del arbol.
+    const raizBuild = path.resolve (dir);
+    const nativos = new Map ();
+    for (const [nombre, entrada] of vistos) {
+        const ruta = path.isAbsolute (entrada.exe) ? entrada.exe : path.join (dir, entrada.exe);
+        if (path.resolve (path.dirname (ruta)).indexOf (raizBuild) !== 0) continue;
+        nativos.set (nombre, {
+            nombre,
+            ruta,
+            config: entrada.config,
+            target: path.basename (entrada.exe, path.extname (entrada.exe))
+        });
     }
+    return { nativos, total: vistos.size };
+}
+
+// LA LISTA DE TARGETS DEL PASO 1. Una linea por target, ordenada, y SALIDA CON
+// CODIGO si no se puede saber: una lista vacia aqui significaria "compila
+// nada", que es un build que parece bueno y no ha medido nada.
+function cmdTargets (testdir, config) {
+    const { nativos } = testsNativos (testdir, config);
+    if (nativos.size === 0) {
+        process.stderr.write ('verify_all_node.js: ' + String (testdir) +
+                              ' no tiene ningun test nativo en el CTestTestfile.cmake\n');
+        process.stderr.write ('  Si el proyecto se acaba de cambiar, hay que volver a configurar antes de compilarlo.\n');
+        process.exit (1);
+    }
+    const lista = Array.from (nativos.values ()).map (t => t.target).sort ();
+    process.stdout.write (lista.join ('\n') + '\n');
+    process.exit (0);
+}
+
+function cmdRuncios (testdir, config, colorA, colorN, construidos, sinBuild) {
+    const ca = String (colorA || '');
+    const cn = String (colorN || '');
+
+    const leidos = testsNativos (testdir, config);
+    const vistos = leidos.nativos;
+    const totalBateria = leidos.total;
 
     // LO QUE EL PASO 1 HA CONSTRUIDO. Esta es la lista que decide, y no la fecha
     // de un fichero. La fecha miente por dos motivos que ya han pasado aqui: un
@@ -1068,25 +1131,15 @@ function cmdRuncios (testdir, config, colorA, colorN, construidos, sinBuild) {
     const ausentes = [];
 
     for (const [nombre, entrada] of vistos) {
-        const ruta = path.isAbsolute (entrada.exe) ? entrada.exe : path.join (String (testdir || ''), entrada.exe);
-
-        // SOLO los tests que son un target de ESTE proyecto. Los de Playwright y
-        // los de contrato se registran con el node.exe del sistema como primer
-        // argumento, asi que su "exe" es .../nodejs/node.exe, fuera del arbol de
-        // build: no lo compila nadie aqui y no hay binario rancio que mirar.
-        // Contarlos como tales seria decir que hay catorce tests rancios que no
-        // existen, y un aviso que se queja de todo no avisa de nada.
-        const raizBuild = path.resolve (String (testdir || ''));
-        if (path.resolve (path.dirname (ruta)).indexOf (raizBuild) !== 0) continue;
+        const ruta = entrada.ruta;
         ++nativos;
 
         let st;
         try { st = fs.statSync (ruta); }
         catch (e) { ++sinBinario; ausentes.push (nombre + '  (registrado en ' + entrada.config + ')'); continue; }
 
-        // El target de CMake se llama como el .exe, sin extension. Es lo que
-        // comprueba el paso 1 al compilar, asi que la comparacion es directa.
-        const target = path.basename (entrada.exe, path.extname (entrada.exe));
+        // El target de CMake se llama como el .exe, sin extension (`testsNativos`).
+        const target = entrada.target;
 
         if (sinbuild || (hechos.size > 0 && !hechos.has (target))) {
             ++sinConstruir;
@@ -1113,7 +1166,7 @@ function cmdRuncios (testdir, config, colorA, colorN, construidos, sinBuild) {
     // La cuenta que se imprime es la que cuadra: tests reconstruidos de verdad
     // (NO los targets del paso 1, que incluyen dos que no son tests y se
     // comian dos de la diferencia) + los que se quedan fuera = los nativos.
-    process.stdout.write ('  binarios de tests: ' + vistos.size +
+    process.stdout.write ('  binarios de tests: ' + totalBateria +
                           ' en la bateria, ' + nativos + ' nativos, ' +
                           (sinbuild ? '0 reconstruidos' : reconstruidos + ' reconstruidos') +
                           ' por el paso 1' +
@@ -1140,11 +1193,12 @@ function cmdRuncios (testdir, config, colorA, colorN, construidos, sinBuild) {
             process.stdout.write ('          tampoco. Quita el --no-build, o compila a mano lo que quieras\n');
             process.stdout.write ('          mirar, y vuelve a pasar la bateria.\n');
         } else {
-            process.stdout.write ('          El paso 1 compila a proposito una lista corta de targets (los que\n');
-            process.stdout.write ('          exportan y los de la matriz de modulacion), no los ' + nativos +
-                                  ' tests nativos: "todo" arrastra\n');
-            process.stdout.write ('          el plugin y el WASM. Es NORMAL que falten, y por eso esto es un\n');
-            process.stdout.write ('          aviso y no un rojo. Lo que no es normal es leerlos sin saberlo.\n');
+            process.stdout.write ('          El paso 1 compila los ' + nativos +
+                                  ' tests nativos de este arbol, y no "todo": "todo" arrastra\n');
+            process.stdout.write ('          el plugin y el WASM, que no son de esta verificacion y tardan mas\n');
+            process.stdout.write ('          que todo lo demas. Si un target no compila, el paso 1 lo dice, y el\n');
+            process.stdout.write ('          rojo de mas abajo puede ser suyo: mira el paso 1 antes de tocar\n');
+            process.stdout.write ('          codigo.\n');
         }
     }
     if (sinBinario > 0) {
@@ -1216,6 +1270,8 @@ switch (orden) {
     case 'cuenta':    cmdCuenta     (argv[1], argv[2]); break;
     case 'motivo':    cmdMotivo     (argv[1], argv[2], argv[3]); break;
     case 'arreglados':cmdArreglados (argv[1], argv[2], argv[3] || '', argv[4] || ''); break;
+    case 'targets':   cmdTargets     (argv[1], argv[2]); break;
+
     case 'rancios': {
         // El flag va en medio de la lista, no delante: los dos scripts lo
         // escriben siempre, y separarlo seria una posicion mas que recordar.
@@ -1230,6 +1286,7 @@ switch (orden) {
     default:
         process.stderr.write ('verify_all_node.js: orden desconocida: ' + String (orden) + '\n');
         process.stderr.write ('  vivo | limpia | conocidos | cuenta | motivo | arreglados | resumen\n');
+        process.stderr.write ('  targets <testdir> <config>  los targets de los tests nativos, uno por linea\n');
         process.stderr.write ('  rancios <testdir> <config> [a] [n] [--sin-build] [construidos...]  tests con el .exe mas viejo que el codigo\n');
         process.stderr.write ('  bateria <json> <testdir> <config>\n');
         process.stderr.write ('  compara | pidpropio | leepid\n');

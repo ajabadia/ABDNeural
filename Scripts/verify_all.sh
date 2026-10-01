@@ -598,30 +598,83 @@ if [[ " $PASOS " == *" 1 "* ]]; then
     # contaban los pasos que empiezan viniendo de pantallas distintas: el mismo
     # `--no-build --only=1` decia "PASO 1" en uno y nada en el otro.
     empezar_paso 1 "build de ABDNeural"
-    # Los targets de test, no "todo": "todo" arrastra el plugin y lostargets de
-    # WASM, que no son de esta verificacion y tardan mas que todo lo demas.
+    # LOS TARGETS, Y POR QUE SON TODOS.
+    #
+    # Antes se compilaban seis, cuatro de los cuales son tests, y los otros
+    # treinta y cinco se ejecutaban con el .exe de la pasada anterior. Eso no es
+    # un detalle: cuatro rojos que se leian como “del codigo” eran el binario del 29/09
+    # (ver el commit del SIGSEGV de PresetMigrationParity). Un rojo de un binario
+    # rancio no se distingue de un rojo de codigo, y un VERDE de un binario rancio
+    # tampoco: lo que no ha cambiado se da por bueno sin haberlo medido.
+    #
+    # Ahora se compilan los treinta y nueve tests nativos, mas los dos programas
+    # que el verify necesita para sus fixtures (FxExport y ModulationParityDump,
+    # que NO son tests y por eso no salen de la orden `targets`).
+    #
+    # UNA SOLA invocacion de cmake, con los cuarenta y uno como argumentos. No es
+    # una cuestion de gusto: el generador de Visual Studio recompila la libreria
+    # de JUCE cuando algo la toca, y con cuarenta y una invocaciones eso se paga
+    # cuarenta y una veces. Medido: un target solo tardaba 20 s en frío (por
+    # `juce_core_CompilationTime.cpp`, que se regenera) y 1 s en caliente; los
+    # cuarenta y uno en una sola invocacion, en caliente, del orden de dos
+    # minutos, y ADVERTENCIA: ese tiempo no es compilar, es cargar cuarenta y
+    # un proyectos de MSBuild. Con la cache al dia no se compila ni un fichero.
+    #
+    # Y la lista NO esta escrita aqui: sale de `CTestTestfile.cmake`, que es donde
+    # CMake declara los tests. Anadir un test al proyecto no obliga a tocar este
+    # script, y si la lista se queda corta el aviso de binarios rancios lo dice en
+    # vez de dejarlo pasar en silencio.
     ok=1
-    # Los que HAN COMPILADO en esta pasada. Lo necesita el aviso de binarios
-    # rancios: la lista de targets es corta a proposito, asi que casi todos los
-    # tests de ctest van a salir aqui, y sin avisar de eso se estan leyendo
-    # resultados de un binario que nadie ha compilado hoy.
     if [ $HACER_BUILD -eq 1 ]; then
-        for t in NEURONiK_FxExport NEURONiK_ModulationParityDump \
-                 NEURONiK_ModulationDest17DriveTest NEURONiK_ModulationMatrixTest \
-                 NEURONiK_FxCatalogueTest NEURONiK_FxSlotsTest; do
-            printf '  %-34s ' "$t"
-            salida="$(cmake --build "$BUILD" --config "$CONFIG" --target "$t" 2>&1)"
-            codigo=$?
-            registrar "$salida"
-            if [ $codigo -eq 0 ]; then
-                printf '%sPASA%s\n' "$V" "$N"
-                construidos+=("$t")
+        # Los dos que no son tests. En una sola linea para que se vea que son
+        # una excepcion y no la regla.
+        readonly FIXTURES="NEURONiK_FxExport NEURONiK_ModulationParityDump"
+
+        # Si `targets` falla (no hay CTestTestfile, o no hay tests nativos) no se
+        # compila NADA, porque una lista vacia seria un build que parece bueno y
+        # no ha medido nada. Por eso se comprueba antes de lanzar cmake, y no se
+        # continua como si nada.
+        if ! targets="$(node "$NODE_LIB" targets "$BUILD" "$CONFIG")" || [ -z "$targets" ]; then
+            printf '  %sROJO%s  no se ha podido saber que targets compilar\n' "$R" "$N"
+            anotar 1 "(build)" "no se ha podido leer la lista de targets de ctest; el build no se ha ejecutado"
+            ok=0
+        else
+            n_targets="$(printf '%s\n' "$targets" | grep -c .)"
+            # Las MISMAS lineas que escribe el .bat, sin alinear con %-34s: en
+            # batch no hay printf, y un gemelo que se diferencia en la forma de
+            # contar una cifra se acaba diferenciando en la cifra.
+            printf '  %s targets nativos de test, mas 2 que no lo son\n' "$n_targets"
+
+            # El build entero en un log, y no en una variable: son del orden de
+            # los diez mil bytes y una variable de shell se los come. La ultima
+            # vez que esto se guardo en una variable, el propio bash se mato.
+            log_build="${TMPDIR:-/tmp}/verify_build.$$.log"
+            if cmake --build "$BUILD" --config "$CONFIG" \
+                      --target $targets $FIXTURES > "$log_build" 2>&1; then
+                printf '  %sPASA%s  %s target(s) construidos\n' \
+                    "$V" "$N" "$((n_targets + 2))"
+                # Los que HAN COMPILADO en esta pasada (o estaban al dia, que es
+                # lo mismo para lo que viene). Lo necesita el aviso de rancios:
+                # son los unicos de los que se puede decir que son del codigo de
+                # ahora.
+                while read -r t; do
+                    [ -n "$t" ] && construidos+=("$t")
+                done <<< "$targets"
+                for t in $FIXTURES; do construidos+=("$t"); done
             else
-                printf '%sROJO%s\n' "$R" "$N"
-                printf '%s' "$salida" | grep -E ': error' | head -5 | sed 's/^/          /'
+                printf '  %sROJO%s  el build ha fallado\n' "$R" "$N"
+                grep -E ': error|error [A-Z]+[0-9]+' "$log_build" | head -5 | sed 's/^/          /'
+                # Un build a medias NO es una lista de construidos: no se sabe
+                # cuales han quedado al dia. Sin lista, el aviso de rancios calla
+                # (no juzga), y por eso el paso 1 dice aqui, en voz alta, lo que
+                # el aviso no puede decir: que los .exe pueden ser de antes.
+                printf '          %sATENCION:%s el build ha fallado a medias, y los .exe que no se han\n' "$A" "$N"
+                printf '          recompilado pueden ser de una pasada anterior. Los rojos del paso 2\n'
+                printf '          pueden ser de ahi, no del codigo: mira este log antes de tocar nada\n'
+                printf '          log del build: %s\n' "$log_build"
                 ok=0
             fi
-        done
+        fi
         if [ $ok -eq 0 ]; then
             anotar 1 "(build)" "un target no compila; el error esta arriba"
         fi
@@ -629,7 +682,7 @@ if [[ " $PASOS " == *" 1 "* ]]; then
 
     # EL AVISO DE LOS BINARIOS RANCIOS. Va aqui, y no mas adelante, porque es la
     # unica vez que se sabe que targets se han construido: si se espera, el paso
-    # 2 ya ha corrido 53 tests sobre binarios que nadie sabe de cuando son.
+    # 2 ya ha corrido la bateria entera sobre binarios que nadie sabe de cuando son.
     #
     # Y va en las DOS ramas, y no solo en la que compila. Con --no-build no se
     # ha construido nada, que es justo cuando mas hace falta decirlo: antes ahi
