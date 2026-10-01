@@ -146,6 +146,13 @@ REM es verdad cuando el JSON no se ha podido leer.
 set "HUERFANOS=-"
 
 set "SALIR_POR_ROJOS=0"
+REM Si algun target del paso 1 no compila. El rojo de `(build)` se anota UNA vez,
+REM despues del bucle, y no uno por target: seis targets caidos son un problema,
+REM no seis, y el .sh ya lo hacia asi. Antes se anotaba dentro de
+REM `:build_target`, con lo que el .bat contaba cinco fallos de build donde el
+REM .sh contaba uno sobre el MISMO build roto, y el check lo senalaba como
+REM divergencia. Medido.
+set "FALLO_BUILD="
 
 REM --- ARGS ------------------------------------------------------------------
 set "HACER_BUILD=1"
@@ -307,16 +314,23 @@ if not exist "%CONOCIDOJSON%" (
     set "NCONOCIDOS=0"
     echo   conocidos declarados: 0 entradas ^(%CONOCIDOJSON%^)
 ) else (
-    REM `cuenta` valida Y cuenta en la misma pasada: comprueba que el JSON se
-    REM pueda leer y que el valor de cada entrada sea TEXTO (una entrada con un
-    REM array debajo se clasificaria con un motivo que es "a,b,c"), y sale con
-    REM error 1 si algo de eso falla. El stderr de node va a `nul` a proposito:
-    REM una torre de quince lineas de node en mitad del verify no es un aviso
-    REM del verify, es un node que no arranca, en la linea que mas importa.
+    REM `cuenta` valida Y cuenta en la misma pasada: comprueba que el indice se
+    REM pueda leer, que no haya nombres repetidos y que el fichero de motivo de
+    REM CADA entrada exista, y sale con error 1 si algo de eso falla. El stderr de
+    REM node va a `nul` a proposito: una torre de quince lineas de node en mitad
+    REM del verify no es un aviso del verify, es un node que no arranca, en la
+    REM linea que mas importa.
+    REM
+    REM Y el aviso de este bloque no dice cual es el fallo, a proposito. Antes si,
+    REM y decia "JSON roto, o una entrada cuyo valor no es texto": ese segundo
+    REM motivo dejo de existir al partir los motivos en ficheros, asi que senalaba
+    REM una causa que ya no puede ocurrir y callaba las que si. El motivo concreto
+    REM lo imprime la validacion de mas abajo, que es la unica que lo tiene.
     node "%NODELIB%" cuenta "%CONOCIDOJSON%" "%TEMP%\verify_known.txt" >nul 2>&1
     if errorlevel 1 (
-        echo   %R%Aviso: %CONOCIDOJSON% no se ha podido leer ^(JSON roto, o una entrada cuyo valor no es texto^).%N%
+        echo   %R%Aviso: %CONOCIDOJSON% no se ha podido cargar.%N%
         echo           Sin el, los rojos de ctest salen SIN CLASIFICAR.
+        echo           El motivo sale en la validacion de la lista, aqui abajo.
         set "NCONOCIDOS=0"
         echo   conocidos declarados: 0 entradas ^(%CONOCIDOJSON%^)
     ) else (
@@ -448,6 +462,10 @@ if not errorlevel 1 (
         call :build_target NEURONiK_FxCatalogueTest
         call :build_target NEURONiK_FxSlotsTest
     )
+    REM Un solo rojo para los seis, y fuera del bloque: el nombre del problema es
+    REM "un target no compila", y son los targets, no los pasos. Los errores de
+    REM Los errores de compilacion de cada uno los ha impreso ya `:build_target`.
+    if defined FALLO_BUILD call :anotar 1 "(build)" "un target no compila; el error esta arriba"
 )
 
 REM ============================================================================
@@ -531,7 +549,7 @@ if errorlevel 1 (
             )
         )
     )
-    call :anotar 1 "(build)" "un target no compila; el error esta arriba"
+    set "FALLO_BUILD=1"
     set "SALIR_POR_ROJOS=1"
 ) else (
     echo   %V%PASA%N%
@@ -983,14 +1001,21 @@ if not exist "%FALLOSLOG%" exit /b 0
 node "%NODELIB%" arreglados "%CONOCIDOJSON%" "%FALLOSLOG%" "%A%" "%N%"
 exit /b 0
 :paso3
-call :vitest "!RAIZ!\WebUI" WebUI
+call :vitest "!RAIZ!\WebUI" WebUI 3
 exit /b 0
 
 :paso4
-call :vitest "!ASSETS!" ABDSharedAssets
+call :vitest "!ASSETS!" ABDSharedAssets 4
 exit /b 0
 
 :vitest
+REM El NUMERO DE PASO tambien llega por valor, y antes no llegaba: la subrutina
+REM anotaba con un 3 en un sitio y un 4 en el otro, fijos, siendo la misma
+REM subrutina para los dos pasos de vitest. Medido con el check: sobre el mismo
+REM build el .sh decia "rojo 3 WebUI" y el .bat decia "rojo 4 WebUI" para el
+REM MISMO rojo, y el check los senalaba como divergentes. El numero del paso va
+REM en la llamada, que es donde se sabe, y no dentro de la subrutina, que es
+REM donde no se sabe.
 REM La ruta llega por VALOR, y con expansion retardada: los dos `call` de
 REM arriba viven dentro de `if not errorlevel 1 ( ... )`, y dentro de un
 REM bloque parenthesizado `%VAR%` se expande al MONTAR el bloque, no al
@@ -1001,9 +1026,10 @@ REM ABDNeural/Assets, que no tiene tests, en vez de en ABDSharedAssets, que
 REM tiene 1327. Daba rojo, pero de otra cosa.
 set "VDIR=%~1"
 set "VETI=%~2"
+set "VSTEP=%~3"
 if not exist "%VDIR%" (
     echo   %R%NO HAY%N%  %VETI%: no existe %VDIR%
-    call :anotar 3 "%VETI%" "el directorio no existe"
+    call :anotar %VSTEP% "%VETI%" "el directorio no existe"
     set "SALIR_POR_ROJOS=1"
     exit /b 0
 )
@@ -1031,7 +1057,7 @@ if "%VCOD%"=="0" (
     REM arreglado: un motivo que describe un rojo que ya no existe ensena a
     REM culpar al sitio equivocado. Se deja el generico, que es lo que se
     REM puede decir sin inventar.
-    call :anotar 4 "%VETI%" "vitest en rojo: los fallos estan arriba. Este paso no tiene lista de conocidos a proposito, asi que el rojo sigue pidiendo decision"
+    call :anotar %VSTEP% "%VETI%" "vitest en rojo: los fallos estan arriba. Este paso no tiene lista de conocidos a proposito, asi que el rojo sigue pidiendo decision"
 )
 exit /b 0
 

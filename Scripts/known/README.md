@@ -42,6 +42,12 @@ Un test de la lista de ctest es, por ejemplo, `NEURONiK_StatePersistenceTest`. E
    clasificar, que es lo unico honesto. Si el motivo empieza por otra palabra
    (`Nota:`, `Pendiente:`) no cuenta: el prefijo tiene que ir el primero.
 
+   "El primero" quiere decir el primero de verdad, y con una salvedad: si el
+   fichero empieza con lineas de comentario, el prefijo puede ir en la primera
+   linea que **no** sea comentario, porque los comentarios se quitan antes de
+   mirar. Funciona (comprobado), pero no lo hagas:   la regla 1 y la 3 se contradicen en el papel, y una regla que hay que leer dos veces para saber si
+   se cumple es una regla que se va a cumplir mal. Pon el prefijo en la linea 1.
+
 2. **El resto del texto es libre, y se puede partir en lineas.** Se aplana al
    leer: las lineas se unen con un espacio y los saltos de linea se convierten en
    espacios. En el informe sale **una sola linea por rojo**, asi que un motivo
@@ -50,13 +56,18 @@ Un test de la lista de ctest es, por ejemplo, `NEURONiK_StatePersistenceTest`. E
 
 3. **Las lineas que empiezan por `#` son comentarios y NO salen en el informe.**
    Ese es el sitio para el por que, el contexto y la historia, que es lo que de
-   verdad hay que escribir y lo que no debe ensuciar la linea del rojo. La
-   primera linea tambien puede ser un comentario, siempre que la linea que lleva
-   el prefijo quede la primera de verdad.
+   verdad hay que escribir y lo que no debe ensuciar la linea del rojo. Se
+   quitan ANTES de aplanar y ANTES de buscar el prefijo, asi que un comentario
+   delante del prefijo no lo estropea (ver la salvedad de la regla 1).
 
 4. **UTF-8, sin BOM, con salto de linea final.** Como todos los ficheros de texto
-   del proyecto. Un BOM no se ve y rompe el prefijo de la primera linea, asi que
-   el rojo sale SIN CLASIFICAR sin que se entienda por que.
+   del proyecto. Ojo con el BOM: aqui NO rompe nada, y conviene decir por que
+   para que nadie lo busque como causa de un fallo que no existe. Node no quita
+   el BOM al leer, pero al aplanar el motivo los espacios se convierten en
+   espacios y el BOM se va con ellos, asi que el prefijo sigue en su sitio. Se
+   sigue escribiendo sin BOM por higiene y porque el BOM se ve en algunos
+   editores, pero si alguna vez lo pones, no es lo que hace que un rojo salga SIN
+   CLASIFICAR.
 
 Un fichero de motivo **vacio, o solo con comentarios, es un error**: la carga
 falla ruidosamente y los dos scripts avisan con el motivo concreto. Es
@@ -106,9 +117,12 @@ Junto a estos dos hay dos avisos mas que no son de la carpeta:
 - **AVISO** cuando un motivo no empieza por `MIO:` ni por `ajeno:`. No rompe nada
   (el rojo sale SIN CLASIFICAR, que es lo correcto), pero casi siempre es un
   prefijo olvidado.
-- **ARREGLO** cuando un test de la lista vuelve a pasar. No es un error: un rojo
-  arreglado se quita solo de la lista, con su nombre y su fichero de motivo, en
-  cuanto se comprueba que pasa.
+- **ARREGLO** cuando un test de la lista vuelve a pasar. **No borra nada**: es un
+  aviso que dice que eso ya no falla e imprime los dos pasos que hay que hacer a
+  mano (quitar el nombre del indice y borrar el fichero de motivo). Que avise y
+  que quite son dos cosas distintas, y aqui solo avisa. Y si el log de rojos no
+  se puede leer, no avisa de ARREGLO: un log que no se lee no es un log sin
+  rojos, asi que en ese caso no se puede decir que nadie haya pasado.
 
 ## Por que esta partida en dos, y no todo en el JSON
 

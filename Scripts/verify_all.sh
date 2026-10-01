@@ -143,17 +143,26 @@ leer_conocidos() {
     fi
 
     # La carga, la validacion y el reparto en pares los hace verify_all_node.js,
-    # el MISMO programa que usa el .bat. Que el JSON se pueda leer, y que el
-    # valor de cada entrada sea texto, se comprueba ADENTRO y sale con error 1
-    # si algo falla: aqui no queda una segunda copia de esa regla.
+    # el MISMO programa que usa el .bat. Que el indice se pueda leer, que no
+    # tenga nombres repetidos y que el fichero de motivo de CADA entrada exista
+    # se comprueba ADENTRO y sale con error 1 si algo falla: aqui no queda una
+    # segunda copia de esa regla.
+    #
+    # Y el aviso de este bloque NO dice cual es el fallo, a proposito. Antes si,
+    # y decia "JSON roto, o una entrada cuyo valor no es texto": ese segundo
+    # motivo dejo de existir al partir los motivos en ficheros, asi que el aviso
+    # senalaba una causa que ya no puede ocurrir y callaba las que si. El motivo
+    # concreto lo imprime la validacion de mas abajo, que es la unica que lo
+    # tiene. Anunciar una causa aqui y otra alla es peor que no anunciar ninguna.
     #
     # El dump va a un temporal y no a un `<( )`: lo que se lee de una tuberia
     # depende de que el lector llegue antes que el escritor, y eso ya ha dado un
     # "conocidos declarados: 0" con el JSON perfectamente bueno.
     dump="${TMPDIR:-/tmp}/verify_known.$$"
     if ! node "$NODE_LIB" conocidos "$CONOCIDOJSON" "$dump" > /dev/null 2>&1; then
-        printf '  %sAviso: %s no se ha podido leer (JSON roto, o una entrada cuyo valor no es texto).%s\n' "$R" "$CONOCIDOJSON" "$N"
+        printf '  %sAviso: %s no se ha podido cargar.%s\n' "$R" "$CONOCIDOJSON" "$N"
         printf '          Sin el, los rojos de ctest salen SIN CLASIFICAR.\n'
+        printf '          El motivo sale en la validacion de la lista, aqui abajo.\n'
         rm -f "$dump"
         return 0
     fi

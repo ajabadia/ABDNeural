@@ -37,6 +37,10 @@
 //    vivo       <pid> [destino]          true|false
 //    resumen    <entradas> <destino> <conocidos> <tests> <lentos> <tocoTimeout>
 //               [pasos] [huerfanos]
+//               OJO: `entradas` y `lentos` son FICHEROS (la cuenta sale de
+//               contarlos); `conocidos`, `tests` y `tocoTimeout` son numeros.
+//               Un numero donde toca un fichero no da error: node lo lee como
+//               descriptor. Ver `rutaValida`.
 //    bateria    <json> <testdir> <config> [a] [n] [cuenta]
 //               las entradas de la lista cuyo test ya no esta
 //    compara    <resumenA> <resumenB> [nombreA] [nombreB]  0 si dicen lo mismo
@@ -103,6 +107,39 @@ function run (cmd, args, ms) {
     }
 }
 
+// UN ARGUMENTO QUE ES UN NUMERO NO ES UNA RUTA, Y NODE NO TE AVISA.
+//
+// `fs.existsSync('0')` y `fs.readFileSync('0')` no abren el fichero `0`: leen
+// el descriptor 0, que es la entrada estandar. Es silencioso, y del tipo de
+// fallo que no se ve hasta que alguien mira el repositorio y se encuentra
+// siete ficheros basura en la raiz con un numero de nombre.
+//
+// Y no es teorico: este es el fallo medido en este repo. `vivo <pid>
+// <destino>` con el destino en el argumento equivocado escribe `false` en un
+// fichero llamado como el PID, y `limpia` escribe `sin-pid` en el `0`. En la
+// raiz del proyecto quedaron `0`, `4`, `999999`, `20632`, `25096`, `25228` y
+// `27016`, SIN RASTREAR, que es decir que un `git add -A` los mete en el
+// indice. Se comprueba aqui, en el unico sitio por donde pasa todo.
+//
+// El numero es un dato, no una ruta, y los dos tienen la misma forma. Lo que se
+// distingue es el papel que cumplen, no el tipo: el guard de `destinoEsEntrada`
+// protege de escribir encima, este protege de escribir en la nada.
+const ES_NUMERO = /^[0-9]+$/;
+
+function rutaValida (valor, etiqueta, contexto) {
+    const v = String (valor == null ? '' : valor);
+    if (v !== '' && ES_NUMERO.test (v)) {
+        process.stderr.write (
+            'verify_all_node.js: ' + etiqueta + ' de ' + contexto + ' es "' + v +
+            '", que es un numero, no una ruta.\n' +
+            '          Node lo leeria como el descriptor de fichero ' + v +
+            ' (la entrada estandar), no como un nombre.\n' +
+            '          Medido: asi se escribieron siete ficheros basura en la raiz del proyecto.\n');
+        process.exit (2);
+    }
+    return v;
+}
+
 // El destino no puede ser una entrada. Ver la cabecera: hay un motivo concreto
 // y medido para esta comprobacion (una cuenta escribio su numero sobre el
 // propio JSON de los conocidos y lo dejo en un byte).
@@ -121,6 +158,7 @@ function destinoEsEntrada (destino, entradas) {
 // `> fichero` en windows) tiene el mismo numero de fuentes que puede leer.
 function escribe (destino, valor, entradas) {
     if (destino) {
+        rutaValida (destino, 'el destino', 'una escritura');
         destinoEsEntrada (destino, entradas);
         fs.writeFileSync (destino, valor);
     }
@@ -133,6 +171,7 @@ function escribe (destino, valor, entradas) {
 // el resumen tiene que adivinar cual de las dos lineas es el numero.
 function escribeCuenta (destino, valor, entradas) {
     if (!destino) return;
+    rutaValida (destino, 'el destino de la cuenta', 'una escritura');
     destinoEsEntrada (destino, entradas);
     fs.writeFileSync (destino, valor + '\n');
 }
@@ -408,9 +447,21 @@ function cargar (fichero) {
 
 // Lo que necesitan los cinco que leen la lista. Antes `cargar` devolvia `null`
 // y cada uno ponia su mensaje generico; ahora el fallo trae SU razon.
+// El motivo del fallo va a STDERR, que es donde va un fallo, y no a stdout,
+// que es el RESULTADO y lo leen los dos scripts. Antes salia codigo 1 y nada
+// mas, en las cuatro ordenes que leen la lista: un fallo sin texto obliga a ir
+// a mirar el JSON a proposito para descubrir que lo que faltaba era el fichero
+// de motivo de UN test. Los dos scripts lo tapan a proposito (`2>&1` a `nul`)
+// para que una torre de lineas de node no se coma el banner, asi que esto solo
+// se ve al llamar las ordenes a mano, que es donde hace falta.
 function cargarEntries (fichero) {
     const r = cargar (fichero);
-    return r.entradas === undefined ? null : r;
+    if (r.entradas === undefined) {
+        process.stderr.write ('verify_all_node.js: no se ha podido cargar ' +
+            String (fichero) + ': ' + r.error + '\n');
+        return null;
+    }
+    return r;
 }
 
 // Los ficheros de motivo que NO tienen nombre en el indice. Se leen con
@@ -471,9 +522,30 @@ function cmdArreglados (fichero, logRojos, colorA, colorN) {
     if (r === null) process.exit (1);
     const entradas = r.entradas;
 
-    let rojos = '';
-    try { rojos = fs.existsSync (logRojos) ? fs.readFileSync (logRojos, 'utf8').replace (/\r/g, '') : ''; }
-    catch (e) { rojos = ''; }
+    // Un log que NO SE PUEDE LEER no es un log sin rojos. La diferencia es todo
+    // este bloque: "no estar en la lista de rojos" significa "haber pasado" solo
+    // si la lista de rojos existe, y si no existe no se ha pasado nada: no se ha
+    // ejecutado nada. Sin esta comprobacion, un log ausente o ilegible hacia que
+    // los CINCO conocidos dieran ARREGLO, con el texto de quitar cada entrada del
+    // indice y borrar su fichero de motivo. Es un consejo DESTRUCTIVO nacido de
+    // no saber nada.
+    //
+    // Los dos scripts miran que el log exista antes de llamar, asi que hoy esto
+    // no se alcanza desde ellos. Se comprueba aqui porque `arreglados` es una
+    // orden que se puede llamar a mano, y su salida dice BORRAR.
+    //
+    // Lo que SI es valido es el log VACIO: ctest trunca el fichero cuando todo
+    // pasa, asi que vacio quiere decir de verdad cero rojos, que es justo el
+    // caso que este bloque tiene que avisar.
+    let rojos;
+    try { rojos = fs.readFileSync (logRojos, 'utf8').replace (/\r/g, ''); }
+    catch (e) {
+        process.stderr.write (
+            'verify_all_node.js: no se ha podido leer el log de rojos ' + String (logRojos) + '\n' +
+            '          Sin el no se puede decir que nadie ha pasado, asi que NO se avisa de ARREGLO:\n' +
+            '          un log que no se lee no es un log sin rojos.\n');
+        process.exit (1);
+    }
 
     const setRojos = new Set (rojos.split ('\n')
                                   .map (l => l.split (':').pop())
@@ -725,6 +797,14 @@ function sinComillas (s) {
 }
 
 function cmdResumen (entradas, destino, conocidos, tests, lentos, tocoTimeout, pasos, huerfanos) {
+    // `lentos` es un FICHERO y no un numero, y la cuenta sale de contarlo aqui.
+    // Esta comprobacion es por el nombre: en la cabecera la lista de argumentos
+    // pone `<conocidos> <tests> <lentos> <tocoTimeout>` en fila, y lo natural es
+    // leerla como cuatro cuentas. Pasarle un `0` ahi no da error: node lo lee
+    // como el descriptor 0 y cuenta los lentos de lo que venga por stdin.
+    rutaValida (entradas, 'la entrada de rojos', 'resumen');
+    rutaValida (lentos, 'el fichero de lentos', 'resumen');
+
     const lineas = [];
 
     let rojos = [];
