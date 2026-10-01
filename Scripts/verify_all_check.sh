@@ -77,6 +77,7 @@ set -u
 RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIRSCRIPT="$RAIZ/Scripts"
 NODE_LIB="$DIRSCRIPT/verify_all_node.js"
+SELFTEST="$DIRSCRIPT/selftest_verify_all_node.js"
 SH="$DIRSCRIPT/verify_all.sh"
 BAT="$DIRSCRIPT/verify_all.bat"
 
@@ -119,6 +120,7 @@ falta() {
 [ -f "$NODE_LIB" ] || falta "verify_all_node.js (junto a este script)"
 [ -f "$SH" ]       || falta "verify_all.sh (junto a este script)"
 [ -f "$BAT" ]      || falta "verify_all.bat (junto a este script)"
+[ -f "$SELFTEST" ] || falta "selftest_verify_all_node.js (junto a este script)"
 command -v node > /dev/null 2>&1 || falta "node en el PATH"
 command -v cmd  > /dev/null 2>&1 || falta "cmd en el PATH (para lanzar el .bat)"
 
@@ -163,10 +165,36 @@ while [ $# -gt 0 ]; do
     shift
 done
 
+# ── EL SELFTEST DE verify_all_node.js, ANTES DE GASTAR NADA ────────────────
+#
+# Los dos gemelos comparten la parte de node, asi que un fallo ahi los rompe a
+# los dos IGUAL, y este check sigue en verde: su trabajo es que CUENTEN igual,
+# no que la lista cargue bien. Por eso el selftest va antes, y no es opcional:
+# pagar dos verificaciones enteras (que son minutos) para que las dos se rompan
+# por lo mismo, y encima salir con 0 diciendo que todo coincide, es el peor
+# resultado que puede dar este script.
+#
+# Y va antes de lanzar los gemelos, no despues: si la logica compartida esta
+# rota, el resultado de la comparacion no significa nada y se ha perdido el
+# tiempo para nada. Primero lo barato, que son dos segundos.
+printf '\n%s=== 0 de 2: selftest de verify_all_node.js ===%s\n' "$T" "$N"
+cod_selftest=0
+node "$SELFTEST" > "$DIRCHECK/selftest.txt" 2>&1 || cod_selftest=$?
+if [ "$cod_selftest" -eq 0 ]; then
+    printf '  %sok%s: %s\n' "$V" "$N" "$(grep -c '^  ok' "$DIRCHECK/selftest.txt") comprobaciones de la parte compartida"
+else
+    printf '  %sFALLA%s: la logica compartida esta rota, y los dos gemelos se romperian igual.\n' "$R" "$N"
+    printf '        El check NO puede decir nada sobre el build con esto asi.\n'
+    printf '\n'
+    cat "$DIRCHECK/selftest.txt"
+    exit 1
+fi
+
 # ── MODO --comparar: LOS DOS FICHEROS YA ESTAN ─────────────────────────────
 # No lanza nada. Es el modo para responder "¿coinciden ESTOS dos resumenes?",
 # que es la pregunta que uno se hace al mirar dos logs de ayer, y para
-# comprobar el propio check sin pagar una verificacion entera.
+# comprobar el propio check sin pagar una verificacion entera. El selftest de
+# arriba si se pasa, y a proposito: es lo que no depende del build.
 if [ "$DESDE_FICHEROS" -eq 1 ]; then
     if [ -z "$F_A" ] || [ -z "$F_B" ]; then
         printf '  --comparar necesita LOS DOS ficheros: --comparar resumen.sh resumen.bat\n' >&2

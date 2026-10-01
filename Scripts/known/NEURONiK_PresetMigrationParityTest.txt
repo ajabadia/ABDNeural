@@ -1,4 +1,4 @@
-ajeno: del modulo compartido a medias (otro hilo): SEGFAULT, el motor no llega a imprimir
+ajeno: confirmado con el binario nuevo: rc=139, SIGSEGV, no imprime nada
 
 # El test revienta con un fallo de segmentacion ANTES de que su codigo llegue
 # a escribir nada. Por eso el motivo no puede ser "lo que dice el log": no dice
@@ -6,3 +6,8 @@ ajeno: del modulo compartido a medias (otro hilo): SEGFAULT, el motor no llega a
 #
 # Es de otro hilo: el modulo compartido esta a medias y el motor no se sostiene.
 # Mientras siga asi, este rojo hay que leerlo pero no hay que arreglarlo aqui.
+#
+# CONFIRMADO con el Release del 2026-10-01, ya compilado. Antes el motivo se
+# escribio sin poder mirar nada, porque el build no arrancaba en esta maquina;
+# ahora se ha ejecutado el .exe a mano y sale rc=139 con stdout Y stderr
+# vacios. O sea que el motivo no es una deduccion: es lo que pasa.
