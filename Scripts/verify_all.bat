@@ -141,7 +141,10 @@ REM 0 con tests sin medir es un 0 que no se ha ganado). Son las MISMAS dos
 REM cosas que en el .sh, y con el mismo nombre, para que el check las compare.
 REM
 REM La cuenta se saca del fichero y no de la salida del aviso: el aviso imprime
-REM los diez primeros y un "... y N mas", asi que de ahi no se puede contar.
+REM los diez primeros y un "... y N mas", asi que de ahi no se puede contar. El
+REM fichero lleva una linea por test, con el nombre y un tabulador y el por
+REM que; aqui solo se CUENTAN las lineas, asi que el motivo no lo usa este
+REM script (lo usa el aviso de ARREGLO, que es quien lo muestra).
 REM El nombre lleva `%RANDOM%` como los demas temporales, y el `del` del final
 REM lo recoge con los otros.
 set "NOMEDIDOS=%TEMP%\verify_no_medidos_%RANDOM%.txt"

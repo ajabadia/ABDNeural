@@ -298,10 +298,19 @@ Ahora el aviso de rancios deja una lista con los que **no** se han medido, y
 `arreglados` la lee: los de esa lista salen `SIN MEDIR`, sin pedir borrar nada.
 Y si la lista no ha llegado, no dice `ARREGLO` de ninguno.
 
+Cada uno dice ademas **su** motivo, y aqui se separaron tres casos que antes
+salian con el mismo texto: binario rancio (su `.exe` es de antes), `SIN
+BINARIO` (no tiene `.exe` y no se ha ejecutado nunca) y `--no-build` (no se ha
+compilado nada en esta pasada). El segundo es el que importa: recompilando su
+target el rojo tampoco se va, porque lo que hay que arreglar es por que no se
+construye. Decirle «su `.exe` no se ha compilado» a un test que no tiene `.exe`
+manda al sitio equivocado con seguridad. La seccion 14 del selftest los imprime
+juntos en pantalla.
+
 Ademas el verify sale con **3** si hay no medidos y ningun rojo, y con una linea
-en el informe que los cuenta. Antes salia con 0. Lo cubre la seccion 12 de
-`Scripts/selftest_verify_all_node.js`, y lo miden tres casos: la lista que deja
-`rancios`, el choque montado, y el rc en los dos gemelos.
+en el informe que los cuenta. Antes salia con 0. Lo cubren las secciones 12, 13
+y 14 de `Scripts/selftest_verify_all_node.js`: la lista que deja `rancios`, el
+choque montado, la pantalla con una entrada real, y los motivos distintos.
 
 ## Lo que sigue sin arreglarse
 

@@ -106,7 +106,9 @@ RES_LENTOS="${TMPDIR:-/tmp}/verify_lentos.$$"
 #
 # La cuenta se lee aqui del fichero, no del stdout del aviso: el aviso imprime
 # los diez primeros y un "... y N mas", asi que de su salida no se puede
-# contar. El fichero lleva los nombres pelados, uno por linea.
+# contar. El fichero lleva una linea por test, con el nombre y un tabulador y el
+# por que no se ha medido; aqui solo se CUENTAN las lineas, asi que el motivo no
+# lo usa este script (lo usa el aviso de ARREGLO, que es quien lo muestra).
 NO_MEDIDOS="${TMPDIR:-/tmp}/verify_no_medidos.$$"
 # -1 = todavia no se sabe. Lo pone a cero el paso 1, que es el unico sitio donde
 # se puede saber: si el paso 1 no se ha ejecutado, la cuenta no es de cero, es

@@ -50,14 +50,20 @@
 //    conocidos  <json> [destino]         pares "clave<TAB>motivo<NUL>"
 //    cuenta     <json> [destino]         numero de entradas
 //    motivo     <json> <test> [destino]  el motivo de un rojo, o ""
-//    arreglados <json> <rojos> [a] [n]   el bloque ARREGLO, por pantalla
+//    arreglados <json> <rojos> [a] [n] [no-medidos]
+//               el bloque ARREGLO, por pantalla. Los que estan en la lista de
+//               no medidos salen SIN MEDIR, con el motivo que trae la linea.
 //    targets    <testdir> <config>
 //               los targets que hay que compilar para que la bateria mida el
 //               codigo de ahora: uno por cada test nativo, ordenados.
-//    rancios    <testdir> <config> [a] [n] [--sin-build] [construidos...]
+//    rancios    <testdir> <config> [a] [n] [--sin-build] [--medidos=RUTA] [construidos...]
 //               tests cuyo .exe es mas viejo que el codigo que se ha escrito.
 //               Ver el aviso: sin esto, un rojo de binario rancio se lee como un
 //               rojo de codigo, y salen cuatro falsos de golpe.
+//               Con `--medidos=RUTA` deja en ese fichero los que NO se han
+//               medido, una linea por test: el nombre, un tabulador y el por que.
+//               Los dos scripts solo los CUENTAN (de ahi el 3 de salida);
+//               `arreglados` los lee y muestra el motivo.
 //
 //  `destino` es SIEMPRE el ultimo argumento y es opcional: si no se pasa, el
 //  resultado sale por stdout. Y el destino NUNCA puede ser uno de los
@@ -581,20 +587,45 @@ function cmdArreglados (fichero, logRojos, colorA, colorN, rutaSinMedir) {
     //
     // El fichero que se lee es la lista de los NO MEDIDOS, no la de los medidos:
     // es lo que escribe `rancios`, que es quien sabe que se ha construido.
+    //
+    // Cada linea trae `nombre<TAB>motivo`. El motivo lo escribe quien ha mirado
+    // el .exe, que es `rancios`: aqui no se ha visto ningun binario, asi que no se
+    // puede saber si el de este test no lo tiene o lo tiene de antes. Inventarlo
+    // hacia que los dos casos dijeran lo mismo, y el de SIN BINARIO quedaria
+    // reducido a la mitad de la verdad ("no se ha compilado", que es cierto y no
+    // es lo que hay que hacer).
+    //
+    // Y si la linea no trae motivo (una lista hecha a mano, o de una version
+    // anterior que solo escribia los nombres), el motivo es el de antes: se
+    // degrada al texto generico en vez de no decir nada. Un aviso al que le falta
+    // el motivo sigue siendo un aviso.
     let sinMedidos = null;        // null = no hay lista: no se sabe nada
-    let porque = '';
+    let porqueDefecto = 'no se le ha pasado la lista de binarios reconstruidos';
+    const porqueDe = new Map ();     // nombre -> por que no se ha medido
     if (rutaSinMedir) {
         try {
-            sinMedidos = new Set (fs.readFileSync (String (rutaSinMedir), 'utf8')
-                                            .replace (/\r/g, '')
-                                            .split ('\n').map (s => s.trim ()).filter (Boolean));
-            porque = 'su .exe no se ha compilado en esta pasada, asi que no se sabe si falla';
+            const crudas = fs.readFileSync (String (rutaSinMedir), 'utf8')
+                                 .replace (/\r/g, '')
+                                 .split ('\n').map (s => s.trim ()).filter (Boolean);
+            sinMedidos = new Set ();
+            for (const cruda of crudas) {
+                // El nombre no lleva tabuladores ni espacios, asi que el
+                // PRIMERO es el nombre y todo lo demas es el motivo. Si lo que
+                // viene no trae tabulador, es una linea de las de antes.
+                const corte = cruda.indexOf ('\t');
+                if (corte > 0) {
+                    const nombre = cruda.slice (0, corte);
+                    sinMedidos.add (nombre);
+                    porqueDe.set (nombre, cruda.slice (corte + 1).trim ());
+                } else {
+                    sinMedidos.add (cruda);
+                }
+            }
+            porqueDefecto = 'su .exe no se ha compilado en esta pasada, asi que no se sabe si falla';
         } catch (e) {
             sinMedidos = null;
-            porque = 'no hay lista de binarios reconstruidos (el paso 1 no ha dicho que lo compilara)';
+            porqueDefecto = 'no hay lista de binarios reconstruidos (el paso 1 no ha dicho que lo compilara)';
         }
-    } else {
-        porque = 'no se le ha pasado la lista de binarios reconstruidos';
     }
 
     const noRojos = entradas.filter (([k]) => setRojos.has (k) === false);
@@ -614,6 +645,8 @@ function cmdArreglados (fichero, logRojos, colorA, colorN, rutaSinMedir) {
     }
 
     for (const [clave] of sinMedir) {
+        // El motivo es el que trae la linea; si no trae ninguno, el de defecto.
+        const porque = porqueDe.get (clave) || porqueDefecto;
         process.stdout.write ('  ' + colorA + 'SIN MEDIR' + colorN + '  ' + clave + '\n');
         process.stdout.write ('            ' + porque + ': no se puede decir que este arreglado,\n');
         process.stdout.write ('            y por eso NO hay que quitarlo del indice ni borrar su motivo\n');
@@ -1176,12 +1209,23 @@ function cmdRuncios (testdir, config, colorA, colorN, construidos, sinBuild, rut
 
     let sinConstruir = 0;
     let sinBinario = 0;
-    // Los nombres pelados de los que NO se han medido, para el aviso de
-    // `arreglados`. Se guardan SIN el texto que se imprime: el aviso de rancios
-    // anade el parentesis de por que, y `arreglados` solo necesita el nombre
-    // para comparar. Si se guardara la linea entera, la comparacion fallaria
-    // siempre y todos los conocidos saldrian SIN MEDIR.
+    // Los que NO se han medido, para el aviso de `arreglados`: NOMBRE y POR QUE.
+    //
+    // El motivo viaja con el nombre, separados por un tabulador, y no se inventa
+    // en `arreglados`. Es lo unico que sabe por que: el aviso de rancios ha mirado
+    // el .exe uno por uno y sabe si no lo hay (nunca se ha ejecutado) o si esta
+    // de antes (se ejecutara con el de la fecha que tenga), y `arreglados` no ha
+    // visto ningun .exe. Sin esto los tres casos salian con el mismo texto, y el
+    // caso grave era el de SIN BINARIO: decia "su .exe no se ha compilado", que
+    // es cierto y es la mitad de la verdad. Un test sin .exe no se ha compilado
+    // mal: no se ha ejecutado nunca, y no hay nada suyo que recompilar para
+    // averiguarlo; hay que arreglar lo que impide que se compile.
+    //
+    // El tabulador, y no un espacio, porque el nombre del test no lleva espacios
+    // pero el motivo si, y porque un espacio haria que el motivo pareciese parte
+    // del nombre al comparar.
     const sinMedir = [];
+    const anota = (nombre, motivo) => sinMedir.push (nombre + '\t' + motivo);
     let nativos = 0;        // tests de este arbol, con .exe o sin el
     let reconstruidos = 0;  // los que de verdad son un test de la lista de "hechos"
     const fuera = [];
@@ -1193,7 +1237,12 @@ function cmdRuncios (testdir, config, colorA, colorN, construidos, sinBuild, rut
 
         let st;
         try { st = fs.statSync (ruta); }
-        catch (e) { ++sinBinario; ausentes.push (nombre + '  (registrado en ' + entrada.config + ')'); sinMedir.push (nombre); continue; }
+        catch (e) {
+            ++sinBinario;
+            ausentes.push (nombre + '  (registrado en ' + entrada.config + ')');
+            anota (nombre, 'no tiene .exe, asi que no se ha ejecutado nunca; recompila su target y no solo su .exe');
+            continue;
+        }
 
         // El target de CMake se llama como el .exe, sin extension (`testsNativos`).
         const target = entrada.target;
@@ -1201,7 +1250,9 @@ function cmdRuncios (testdir, config, colorA, colorN, construidos, sinBuild, rut
         if (sinbuild || (hechos.size > 0 && !hechos.has (target))) {
             ++sinConstruir;
             fuera.push (nombre);
-            sinMedir.push (nombre);
+            anota (nombre, sinbuild
+                   ? 'no se ha compilado nada en esta pasada (--no-build), asi que su .exe es el que hubiera'
+                   : 'su .exe no se ha compilado en esta pasada, asi que no se sabe si falla');
             continue;
         }
         if (hechos.has (target)) ++reconstruidos;
@@ -1214,7 +1265,7 @@ function cmdRuncios (testdir, config, colorA, colorN, construidos, sinBuild, rut
             if (fuente > st.mtimeMs) {
                 ++sinConstruir;
                 fuera.push (nombre + '  (construido, pero el .exe es anterior al fuente)');
-                sinMedir.push (nombre);
+                anota (nombre, 'se ha construido en esta pasada, pero su .exe sigue siendo anterior al fuente: algo lo ha tocado por detras');
             }
         }
     }
@@ -1266,10 +1317,13 @@ function cmdRuncios (testdir, config, colorA, colorN, construidos, sinBuild, rut
     // diciendose lo contrario en la misma pantalla, separados por el ctest
     // entero. Medido.
     //
-    // Se escribe SIEMPRE, y con las lineas peladas, una por test. Aunque la
-    // lista este vacia se deja el fichero: su ausencia significa "no se ha
-    // ejecutado el paso 1", que es un caso distinto del de "se ha ejecutado y
-    // no habia nada rancio", y `arreglados` los trata distinto.
+    // Se escribe SIEMPRE, y con una linea por test: NOMBRE, un tabulador, y el
+    // por que. Aunque la lista este vacia se deja el fichero: su ausencia
+    // significa "no se ha ejecutado el paso 1", que es un caso distinto del de
+    // "se ha ejecutado y no habia nada rancio", y `arreglados` los trata distinto.
+    //
+    // Y el por que va aqui, no en el otro aviso, porque el otro aviso no ha
+    // mirado ningun .exe: si lo escribiera el, tendria que inventarlo.
     if (rutaMedidos) {
         try {
             rutaValida (String (rutaMedidos), 'la lista de binarios reconstruidos', 'una escritura');

@@ -120,6 +120,25 @@ function seccion (titulo) {
     process.stdout.write ('\n' + titulo + '\n');
 }
 
+// ── LA LISTA DE LOS NO MEDIDOS, LEIDA ──────────────────────────────────────
+//
+// El fichero que deja `rancios` lleva una linea por test: el nombre, un
+// tabulador y el por que no se ha medido. Casi todos los casos solo miran los
+// nombres, asi que se separa aqui una vez en vez de repetir el corte en cada uno.
+//
+// Y devuelve tambien el POR QUE, que es la mitad de la linea que de verdad se
+// mira en la seccion 14: una comparacion que mirara el nombre con su motivo
+// pegado daria verde con el motivo equivocado, que es justo lo que no se puede
+// hacer con un aviso que dice si hay que recompilar o no.
+function noMedidos (fichero) {
+    const crudas = fs.readFileSync (fichero, 'utf8').replace (/\r/g, '').split ('\n').filter (s => s);
+    return crudas.map (c => {
+        const corte = c.indexOf ('\t');
+        return corte > 0 ? { nombre: c.slice (0, corte), porque: c.slice (corte + 1) }
+                         : { nombre: c, porque: '' };
+    });
+}
+
 // ============================================================================
 //  1. LA LISTA BIEN ESTA
 // ============================================================================
@@ -1081,8 +1100,15 @@ seccion ('12. El aviso de rancios y el de ARREGLO, en el mismo test');
     const fichero = path.join (TMP, 'nom_medidos.txt');
     const r = corre (['rancios', dir, 'Release', '', '', '--medidos=' + fichero, 'T1']);
     igual ('rancios sale con 0 dejando la lista', r.rc, 0);
-    const escrito = fs.readFileSync (fichero, 'utf8').replace (/\r/g, '').split ('\n').filter (s => s);
-    igual ('la lista son los no medidos, y solo ellos', escrito.join (','), 'T2,T3');
+    const escrito = noMedidos (fichero);
+    igual ('la lista son los no medidos, y solo ellos',
+           escrito.map (e => e.nombre).join (','), 'T2,T3');
+    // Y cada uno con SU motivo. La comprobacion del nombre va sola: si el motivo
+    // se pegara al nombre, el nombre ya no seria "T2" y esta comprobacion caeria.
+    ok   ('...y cada uno con el motivo de no haber sido reconstruido',
+         escrito.length === 2 &&
+         escrito.every (e => e.porque.indexOf ('no se ha compilado en esta pasada') !== -1),
+         'escrito: ' + JSON.stringify (escrito));
 }
 
 // Sin construir nada (`--sin-build`), la lista es TODOS. Es el caso limite del
@@ -1094,8 +1120,16 @@ seccion ('12. El aviso de rancios y el de ARREGLO, en el mismo test');
     const fichero = path.join (TMP, 'nom_medidos_sinbuild.txt');
     const r = corre (['rancios', dir, 'Release', '', '', '--medidos=' + fichero, '--sin-build']);
     igual ('con --sin-build sale con 0', r.rc, 0);
-    const escrito = fs.readFileSync (fichero, 'utf8').replace (/\r/g, '').split ('\n').filter (s => s);
-    igual ('...y la lista es la bateria entera', escrito.join (','), 'T1,T2');
+    const escrito = noMedidos (fichero);
+    igual ('...y la lista es la bateria entera',
+           escrito.map (e => e.nombre).join (','), 'T1,T2');
+    // Y el motivo del caso limite es el suyo, no el de "no lo ha compilado el
+    // paso 1": con --no-build no es que estos testsuales .exe sean viejos, es
+    // que no se ha compilado NADA. El texto de los dos es parecido a proposito
+    // para que se confundan si alguien los lee por encima.
+    ok   ('...y el motivo dice que no se ha compilado nada, no que su .exe es viejo',
+         escrito.every (e => e.porque.indexOf ('no se ha compilado nada') !== -1),
+         'escrito: ' + JSON.stringify (escrito));
 }
 
 // Y LA LISTA VACIA ES UNA LISTA, NO UNA AUSENCIA. Con destino pero SIN lista de
@@ -1119,6 +1153,11 @@ seccion ('12. El aviso de rancios y el de ARREGLO, en el mismo test');
 // EL CHOQUE, MONTADO. Dos conocidos, ninguno en el log de rojos (ctest entero
 // en verde) y uno de ellos sin medir: el que se ha ejecutado con el .exe de
 // antes NO puede salir como ARREGLO, y en ningun caso con el consejo de borrar.
+//
+// Y la lista de no medidos aqui se escribe A MANO, como la de la seccion 13
+// pero sin el motivo: es la lista de las de antes, y tiene que seguir valiendo.
+// Un formato que se rompe al cambiarlo deja los avisos mudos en vez de mudar,
+// que es el peor fallo posible de un formato.
 {
     const { fichero } = lista (['T1', 'T2'],
                                { T1: 'MIO: uno\n', T2: 'MIO: dos\n' });
@@ -1427,6 +1466,190 @@ function pantalla (titulo, texto) {
          limpio (conColor.outR) === rArreglados.outR,
          'con color: ' + JSON.stringify (limpio (conColor.outR)) +
          '\nsin color: ' + JSON.stringify (rArreglados.outR));
+
+    // ── Y EL POR QUE DE CADA UNO, QUE NO ES EL MISMO ──────────────────────
+    //
+    // El aviso entero, arriba, tiene los dos motivos ya: los escribe quien
+    // ha mirado el .exe. Aqui se mira el FICHERO, que es donde viven, y se
+    // comprueba que sean distintos entre si. La comparacion es por motivos, no
+    // por nombres: si dos motivos distintos salieran iguales, esta comprobacion
+    // cae; si un nombre cambiara y su motivo se quedara, tambien.
+    const lines = noMedidos (medidos);
+    const porNombre = new Map (lines.map (e => [e.nombre, e.porque]));
+    ok   ('el fichero lleva los dos no medidos, con nombre y motivo, y NO el reconstruido',
+         lines.length === 2 && porNombre.has (MEDIDO) === false &&
+         porNombre.has (RANCIOS) && porNombre.has (SIN_EXE),
+         'escrito: ' + JSON.stringify (lines));
+
+    // El de SIN BINARIO, que es el que se ha arreglado aqui. Decia "su .exe no se
+    // ha compilado en esta pasada", que es cierto y no es lo que hay que hacer:
+    // ese test no se ha ejecutado nunca, no tiene un .exe viejo que recompilar, y
+    // su rojo no desaparecera recompilando su target: hay que arreglar por que no
+    // se construyo. Un texto generico aqui manda a la persona al sitio
+    // equivocado con seguridad, que es peor que no decir nada.
+    ok   ('el que NO tiene .exe no dice que su .exe este viejo',
+         porNombre.get (SIN_EXE).indexOf ('no tiene .exe') !== -1 &&
+         porNombre.get (SIN_EXE).indexOf ('no se ha ejecutado nunca') !== -1,
+         'motivo: ' + JSON.stringify (porNombre.get (SIN_EXE)));
+    // Y el de --no-build, que se parece a proposito al de arriba para que se
+    // confundan si alguien los lee por encima, pero dice otra cosa.
+    ok   ('el que tiene el .exe de antes dice que no se ha compilado en esta pasada',
+         porNombre.get (RANCIOS).indexOf ('no se ha compilado en esta pasada') !== -1,
+         'motivo: ' + JSON.stringify (porNombre.get (RANCIOS)));
+    // Y los dos motivos tienen que ser DISTINTOS entre si. Sin esto, los dos de
+    // arriba pueden estar bien escritos y aun asi ser el mismo texto, que es el
+    // fallo que esto arregla.
+    const unicos = new Set ([...porNombre.values ()]);
+    ok   ('...y los dos motivos son distintos entre si',
+         porNombre.size === 2 && unicos.size === 2,
+         'motivos: ' + JSON.stringify ([...unicos]));
+}
+
+// ============================================================================
+//  14. LOS TRES PORQUES, EN PANTALLA
+// ============================================================================
+seccion ('14. Los tres por que, uno por caso');
+
+// EL QUE SE ENSEÑA, JUNTO. Los tres motivos en tres pantallas seguidas, que es
+// como se leen: uno al lado de otro se ve que son distintos y uno debajo de otro
+// se ven menos. La segunda pasada es con `--sin-build`, que es el caso limite
+// (no se ha compilado nada) y el que mas se confunde con el primero.
+//
+// Y aqui se imprime la lista que deja `rancios`, que es donde estan los motivos:
+// la pantalla del aviso los enseña ya, y verlo aqui es ver de donde salen.
+{
+    const MEDIDO   = 'NEURONiK_DSPReferenceTest';
+    const RANCIOS  = 'NEURONiK_ModulationMatrixTest';
+    const SIN_EXE  = 'NEURONiK_ModulationDest17DriveTest';
+
+    const dir = arbolTargets ([{ nombre: MEDIDO,   creaExe: true  },
+                              { nombre: RANCIOS,  creaExe: true  },
+                              { nombre: SIN_EXE,  creaExe: false }]);
+    const { fichero } = lista ([MEDIDO, RANCIOS, SIN_EXE], {
+        [MEDIDO]:  'MIO: uno\n', [RANCIOS]: 'MIO: dos\n', [SIN_EXE]: 'MIO: tres\n'
+    });
+    const rojos = path.join (TMP, 'rojos14.log');
+    fs.writeFileSync (rojos, '');
+
+    for (const [rotulo, extra] of [['PASA 1, CON BUILD (lo normal): uno reconstruido, uno con el .exe de antes y uno sin .exe',
+                                    [MEDIDO]],
+                                   ['PASA 1, CON --no-build (el caso limite): no se ha compilado nada',
+                                    ['--sin-build']]]) {
+        const medidos = path.join (TMP, 'nom_medidos14_' + extra.join ('_').replace (/\W/g, '') + '.txt');
+        const rRancios = corre (['rancios', dir, 'Release', '', '',
+                                 '--medidos=' + medidos].concat (extra));
+        const rArreglados = corre (['arreglados', fichero, rojos, '', '', medidos]);
+        pantalla (rotulo, rRancios.out + rArreglados.out);
+        ok   (rotulo + ': los dos avisos salen con 0',
+             rRancios.rc === 0 && rArreglados.rc === 0,
+             'rancios: ' + rRancios.rc + '\narreglados: ' + rArreglados.rc +
+             '\nstderr: ' + rArreglados.errR.trim ());
+    }
+
+    // Y LO QUE NO PUEDE PASAR, con el motivo ya en pantalla: que los dos casos
+    // que no se han medido por motivos DISTINTOS digan lo mismo. Con un solo
+    // texto, el que no tiene .exe suena a "recompila", y quien lo lea recompila
+    // un target que no existe y vuelve a ver el mismo rojo, tres dias mas.
+    const medidos = path.join (TMP, 'nom_medidos14_final.txt');
+    corre (['rancios', dir, 'Release', '', '', '--medidos=' + medidos, MEDIDO]);
+    const r = corre (['arreglados', fichero, rojos, '', '', medidos]);
+    // El bloque de un SIN MEDIR son TRES lineas: el nombre, el motivo y el
+    // "no hay que quitarlo". Se cogen las tres: si se cogiera solo la segunda,
+    // la comprobacion de "no hay que borrar nada" miraria una linea donde ese
+    // texto no esta nunca, y pasaria siempre. Un aviso al que se mira una linea
+    // de cada tres se parece a un aviso que no dice nada.
+    const bloqueDe = (nombre) => {
+        const ls = r.outR.split ('\n');
+        const i = ls.findIndex (l => l.indexOf ('SIN MEDIR  ' + nombre) !== -1);
+        if (i < 0) return [];
+        return ls.slice (i, i + 3).map (l => l.trim ());
+    };
+    const motivoDe = (nombre) => { const b = bloqueDe (nombre); return b.length > 1 ? b[1] : ''; };
+    ok   ('los dos SIN MEDIR dicen motivos DISTINTOS',
+         motivoDe (RANCIOS) !== '' && motivoDe (SIN_EXE) !== '' &&
+         motivoDe (RANCIOS) !== motivoDe (SIN_EXE),
+         'rancios: ' + JSON.stringify (motivoDe (RANCIOS)) +
+         '\nsin .exe: ' + JSON.stringify (motivoDe (SIN_EXE)));
+    // Y los dos bloques enteros tienen que decir lo mismo al final: el motivo
+    // cambia, la consecuencia NO. Un motivo distinto con una consecuencia
+    // distinta seria dos reglas, y la regla es una: no se borra nada.
+    ok   ('...y los dos siguen diciendo que NO hay que borrar nada',
+         bloqueDe (RANCIOS).join (' ').indexOf ('NO hay que quitarlo') !== -1 &&
+         bloqueDe (SIN_EXE).join (' ').indexOf ('NO hay que quitarlo') !== -1,
+         'rancios: ' + JSON.stringify (bloqueDe (RANCIOS)) +
+         '\nsin .exe: ' + JSON.stringify (bloqueDe (SIN_EXE)));
+    // Y el texto generico solo cuando NO HAY motivo, que es cuando no hay nadie
+    // que lo sepa. Es el caso de una lista hecha a mano, y no de un binario.
+    const aMano = path.join (TMP, 'nom_medidos14_mano.txt');
+    fs.writeFileSync (aMano, RANCIOS + '\n');
+    const sinMotivo = corre (['arreglados', fichero, rojos, '', '', aMano]);
+    ok   ('una lista sin motivo (hecha a mano) avisa igual, con el texto generico',
+         sinMotivo.outR.indexOf ('SIN MEDIR  ' + RANCIOS) !== -1 &&
+         sinMotivo.outR.indexOf ('no se sabe si falla') !== -1,
+         'stdout: ' + sinMotivo.outR.trim ());
+
+    // ── LOS DOS GEMELOS SEGUEN VIENDO LAS MISMAS LINEAS ─────────────────────
+    //
+    // Anadir el tabulador al formato es el cambio que puede romper el codigo 3 en
+    // silencio, y el modo de romperse es sutil: si un gemelo se quedara contando
+    // una sola linea (o ninguna), el 3 saldria con cualquier cuenta que no sea la
+    // de verdad, y la linea del informe que la cuenta mentiria al que lee. Es el
+    // fallo mas probable de este cambio y el mas dificil de ver sin medirlo.
+    //
+    // Se cuenta cada uno como lo cuenta cada uno: el .sh con `grep -c .` y el .bat
+    // con su `for /f`. El esperado NO es un numero escrito aqui sino la cuenta
+    // real de lineas del fichero, porque un numero fijo se queda viejo en cuanto
+    // el escenario cambia y pasa a comprimir un caso que ya no existe.
+    const CRLF = String.fromCharCode (13) + String.fromCharCode (10);
+    const lineasReales = fs.readFileSync (medidos, 'utf8')
+                             .replace (/\r/g, '').split ('\n').filter (s => s).length;
+    const esperado = String (lineasReales);
+
+    const enShell = cp.spawnSync ('bash', ['-c', 'grep -c . "$1"', 'sh', medidos],
+                                   { encoding: 'utf8' });
+    const cuentaSh = String (enShell.stdout || '').trim ();
+    ok   ('el .sh cuenta con grep las lineas con tabulador',
+         cuentaSh === esperado,
+         'esperado: ' + esperado + '\nobtenido: ' + JSON.stringify (cuentaSh) +
+         '\nstderr: ' + String (enShell.stderr || '').trim ());
+
+    const batConta = path.join (TMP, 'cuenta14.bat');
+    // El .bat con su `for /f` de verdad, y con la ruta de la lista. La ruta se
+    // pasa con barras de windows porque es lo que le llega al .bat, y por eso
+    // se escribe con chr(92) en vez de una barra invertida en el codigo: en un
+    // fichero de este proyecto una barra suelta es un escape silencioso.
+    fs.writeFileSync (batConta, [
+        '@echo off',
+        'setlocal EnableDelayedExpansion',
+        'set "F=' + medidos.split ('/').join (String.fromCharCode (92)) + '"',
+        'set /a N=0',
+        'for /f "usebackq delims=" %%L in ("%F%") do set /a N+=1',
+        'echo !N!',
+        'exit /b 0',
+        ''
+    ].join (CRLF), 'binary');
+    const enBat = cp.spawnSync (process.env.ComSpec || 'cmd.exe', ['/c', batConta],
+                                { encoding: 'utf8' });
+    const cuentaBat = String (enBat.stdout || '').trim ();
+    ok   ('el .bat cuenta con su for /f las mismas lineas',
+         cuentaBat === esperado,
+         'esperado: ' + esperado + '\nobtenido: ' + JSON.stringify (cuentaBat) +
+         '\nstderr: ' + String (enBat.stderr || '').trim ());
+    // Y que los dos den la MISMA cuenta, que es lo que importa: el check de
+    // gemelos compara el informe entero, y si estos dos no coinciden el 3 sale
+    // distinto en cada script.
+    ok   ('los dos gemelos cuentan lo mismo',
+         cuentaSh === cuentaBat && cuentaSh === esperado,
+         'sh: ' + JSON.stringify (cuentaSh) + '  bat: ' + JSON.stringify (cuentaBat) +
+         '  lineas: ' + esperado);
+    // Y el motivo no se ha colado en la cuenta como una linea mas. Con el
+    // tabulador de separador no puede pasar, pero es justo el fallo que daria si
+    // alguien cambiara el separador por un salto de linea "por legibilidad": el
+    // recuento diria que hay mas tests sin medir de los que hay.
+    ok   ('las lineas del fichero siguen siendo las lineas de tests, con un tabulador cada una',
+         fs.readFileSync (medidos, 'utf8').replace (/\r/g, '').split ('\n')
+           .filter (s => s).every (l => l.indexOf (String.fromCharCode (9)) !== -1),
+         'fichero: ' + JSON.stringify (fs.readFileSync (medidos, 'utf8')));
 }
 
 // ============================================================================

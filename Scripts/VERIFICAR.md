@@ -173,6 +173,30 @@ con `--only=2`), **no dice `ARREGLO` de ninguno**: lo que no se sabe no se
 anuncia como bueno, el mismo principio que ya se aplica cuando el log de rojos
 no se puede leer.
 
+Y cada uno dice **por qué** no se ha medido, que no es lo mismo en todos los
+casos y en el peor de ellos cambia lo que hay que hacer:
+
+```
+  SIN MEDIR  NEURONiK_ModulationMatrixTest
+            su .exe no se ha compilado en esta pasada, asi que no se sabe si falla: no se puede decir que este arreglado,
+            y por eso NO hay que quitarlo del indice ni borrar su motivo
+  SIN MEDIR  NEURONiK_ModulationDest17DriveTest
+            no tiene .exe, asi que no se ha ejecutado nunca; recompila su target y no solo su .exe: no se puede decir que este arreglado,
+            y por eso NO hay que quitarlo del indice ni borrar su motivo
+```
+
+El primero tiene el `.exe` de antes: recompilando su target, el rojo se va. El
+segundo **no tiene `.exe`**, así que no se ha ejecutado nunca: recompilando su
+target tampoco desaparece, porque lo que hay que arreglar es por qué no se
+construye. Con un texto único («su .exe no se ha compilado») los dos sonaban
+igual, y quien leyera el segundo iba al sitio equivocado con seguridad.
+
+El motivo lo escribe el aviso de binarios rancios, que es el único que ha
+mirado los `.exe`, y viaja con el nombre en un fichero temporal con una línea
+por test (`nombre`, un tabulador, el motivo). Los dos scripts solo **cuentan**
+las líneas de ese fichero, para lo del código de salida 3; el motivo lo
+muestra el aviso de `ARREGLO`.
+
 ## Cuando algo falla de verdad
 
 | Lo que ves | Lo que casi siempre es |
