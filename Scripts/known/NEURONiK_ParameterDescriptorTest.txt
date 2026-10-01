@@ -1,0 +1,11 @@
+ajeno: los .generated de WebUI estan regenerados por el otro hilo y el test compara
+contra una exportacion que aun no se ha vuelto a hacer
+
+# El test compara dos ficheros: los .generated que hay en WebUI/generated, y una
+# exportacion que produce el NEURONiK_ParameterExport.exe. Los primeros ya estan
+# regenerados (132 parametros) y la segunda sigue sacando 79, porque el
+# ejecutable es de antes del cambio. No es un fallo de codigo: es un ejecutable
+# viejo comparandose con unos ficheros nuevos.
+#
+# Se arregla solo, y en cuanto se arregla este motivo estara obsoleto. Lo que hay
+# que mirar entonces es si el 79 era el numero bueno.

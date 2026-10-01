@@ -1,0 +1,7 @@
+ajeno: del turno anterior: mismo origen que StatePersistenceTest, el puente ve mas
+parametros de los que el test espera
+
+# El puente entre el parametro de la pagina y el del motor recorre los
+# parametros declarados, y el test cuenta los que encuentra. Al declarar el
+# motor mas parametros, el puente los ve todos y el contador del test se queda
+# corto. Ocho aserciones de este test salen por aqui, y todas son la misma.

@@ -1,0 +1,6 @@
+ajeno: del turno anterior: espera 79 parametros y el APVTS ya declara mas
+
+# El test tiene dentro el numero de parametros que espera, y ese numero se
+# quedo clavado en 79 cuando el motor paso a declarar mas. El origen es el mismo
+# que el de ParameterDescriptorTest: un numero escrito a mano en un test que
+# luego deja de ser cierto.

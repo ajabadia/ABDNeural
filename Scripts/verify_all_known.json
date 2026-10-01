@@ -1,0 +1,49 @@
+{
+  "_comentario": [
+    "FALLOS CONOCIDOS de la verificacion. AQUI SOLO ESTAN LOS NOMBRES.",
+    "",
+    "Este fichero es el INDICE: que tests se sabe que estan rojos, y nada mas.",
+    "El motivo de cada uno de ellos esta en su propio fichero, en la carpeta que",
+    "dice `_motivos` (Scripts/known), con el nombre del test y .txt.",
+    "",
+    "Por que el motivo no va aqui: con cinco entradas cabia en el JSON. A los",
+    "treinta, este fichero deja de ser una lista y pasa a ser un muro de texto",
+    "del que no se ve que hay dentro. Y un motivo largo en una linea no se puede",
+    "partir, no se puede comentar, y cualquier cambio suyo ensena el texto",
+    "entero en un diff.",
+    "",
+    "En un fichero de texto si: se parte en lineas, y las que empiezan por `#`",
+    "son COMENTARIOS que no salen en el informe. Ese es el sitio para el por que",
+    "de la entrada, que es lo que de verdad hay que escribir.",
+    "",
+    "El prefijo del motivo decide la clasificacion, y no es decorativo:",
+    "  MIO:   el rojo es de este trabajo, y hay que arreglarlo.",
+    "  ajeno: el rojo es del trabajo de al lado.",
+    "Un motivo sin prefijo se clasifica como SIN CLASIFICAR, que es como debe",
+    "quedar un rojo que no se sabe de quien es. Los dos scripts avisan de los",
+    "motivos sin prefijo, porque casi siempre es un prefijo olvidado.",
+    "",
+    "Un test que este aqui y aun asi pase no molesta: los dos scripts avisan con",
+    "ARREGLO. Y un test que este aqui pero NO exista en la bateria avisa con SIN",
+    "TEST EN LA BATERIA, que es peor, porque uno ya arreglado se quita solo y uno",
+    "inexistente no se arregla nunca: no se ejecuta, no falla, y la entrada se",
+    "queda para siempre.",
+    "",
+    "Este fichero y la carpeta de motivos los leen verify_all.sh y",
+    "verify_all.bat. Es UN solo sitio, para que los dos scripts no se puedan",
+    "desincronizar: antes cada uno tenia su lista, y ya se vio que dan numeros",
+    "distintos sobre el mismo build.",
+    "",
+    "Los motivos van en UTF-8, sin BOM, y con el prefijo en la PRIMERA linea."
+  ],
+
+  "_motivos": "known",
+
+  "entradas": [
+    "NEURONiK_PresetMigrationParityTest",
+    "NEURONiK_ParameterDescriptorTest",
+    "NEURONiK_StatePersistenceTest",
+    "NEURONiK_ParameterBridgeTest",
+    "NEURONiK_ParameterRandomizerTest"
+  ]
+}

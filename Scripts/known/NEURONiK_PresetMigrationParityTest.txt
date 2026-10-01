@@ -1,0 +1,8 @@
+ajeno: del modulo compartido a medias (otro hilo): SEGFAULT, el motor no llega a imprimir
+
+# El test revienta con un fallo de segmentacion ANTES de que su codigo llegue
+# a escribir nada. Por eso el motivo no puede ser "lo que dice el log": no dice
+# nada. Es lo que se sabe del rojo, que es lo unico que se puede decir.
+#
+# Es de otro hilo: el modulo compartido esta a medias y el motor no se sostiene.
+# Mientras siga asi, este rojo hay que leerlo pero no hay que arreglarlo aqui.
