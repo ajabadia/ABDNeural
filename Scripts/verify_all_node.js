@@ -524,7 +524,7 @@ function cmdMotivo (fichero, test, destino) {
 // en la lista de rojos" es exactamente "haber pasado". Y se lee SIN CR: el
 // fichero viene con CRLF y sin quitarlo el nombre del test nunca casa con la
 // clave, con lo que TODO conocido sale como arreglado. Medido.
-function cmdArreglados (fichero, logRojos, colorA, colorN) {
+function cmdArreglados (fichero, logRojos, colorA, colorN, rutaSinMedir) {
     const r = cargarEntries (fichero);
     if (r === null) process.exit (1);
     const entradas = r.entradas;
@@ -558,7 +558,48 @@ function cmdArreglados (fichero, logRojos, colorA, colorN) {
                                   .map (l => l.split (':').pop())
                                   .filter (Boolean));
 
-    const ok = entradas.filter (([k]) => setRojos.has (k) === false);
+    // ── LOS QUE NO SE HAN MEDIDO, Y POR QUE NO PUEDE FINGIR QUE SI ────────
+    //
+    // Este es el aviso que antes se pisaba a si mismo. El de "binario rancio"
+    // dice, del MISMO test, "su .exe es de una pasada anterior, no se sabe si
+    // pasa"; y este decia, un ctest entero despues, "ARREGLO: quita esta
+    // entrada del indice y borra su fichero de motivo". Los dos en la misma
+    // pantalla, del mismo test, y el segundo es un consejo DESTRUCTIVO que
+    // nace de no saber que se ha ejecutado: no estar en el log de rojos solo
+    // quiere decir "ha pasado" si el .exe es de esta pasada.
+    //
+    // Por eso la lista de los NO MEDIDOS no se deduce aqui: la escribe la orden
+    // `rancios`, que es la unica que sabe que se ha construido en esta pasada, y
+    // se pasa tal cual. Un conocido que este en ella no puede decir ARREGLO:
+    // dice SIN MEDIR, y no pide que se borre nada.
+    //
+    // Y si la lista NO esta (no se le ha pasado, o el paso 1 no se ha
+    // ejecutado con --only), entonces no se sabe CUALES se han medido, asi que
+    // no se puede decir ARREGLO de NINGUNO. Es el mismo principio que el log
+    // ilegible de arriba, aplicado al otro lado: lo que no se sabe no se
+    // anuncia como bueno.
+    //
+    // El fichero que se lee es la lista de los NO MEDIDOS, no la de los medidos:
+    // es lo que escribe `rancios`, que es quien sabe que se ha construido.
+    let sinMedidos = null;        // null = no hay lista: no se sabe nada
+    let porque = '';
+    if (rutaSinMedir) {
+        try {
+            sinMedidos = new Set (fs.readFileSync (String (rutaSinMedir), 'utf8')
+                                            .replace (/\r/g, '')
+                                            .split ('\n').map (s => s.trim ()).filter (Boolean));
+            porque = 'su .exe no se ha compilado en esta pasada, asi que no se sabe si falla';
+        } catch (e) {
+            sinMedidos = null;
+            porque = 'no hay lista de binarios reconstruidos (el paso 1 no ha dicho que lo compilara)';
+        }
+    } else {
+        porque = 'no se le ha pasado la lista de binarios reconstruidos';
+    }
+
+    const noRojos = entradas.filter (([k]) => setRojos.has (k) === false);
+    const ok = sinMedidos === null ? [] : noRojos.filter (([k]) => sinMedidos.has (k) === false);
+    const sinMedir = sinMedidos === null ? noRojos : noRojos.filter (([k]) => sinMedidos.has (k));
 
     for (const [clave] of ok) {
         process.stdout.write ('  ' + colorA + 'ARREGLO' + colorN + '  ' + clave + '\n');
@@ -570,6 +611,16 @@ function cmdArreglados (fichero, logRojos, colorA, colorN) {
     }
     if (ok.length > 0) {
         process.stdout.write ('  ---- ' + ok.length + ' de los ' + entradas.length + ' conocidos ya no fallan\n');
+    }
+
+    for (const [clave] of sinMedir) {
+        process.stdout.write ('  ' + colorA + 'SIN MEDIR' + colorN + '  ' + clave + '\n');
+        process.stdout.write ('            ' + porque + ': no se puede decir que este arreglado,\n');
+        process.stdout.write ('            y por eso NO hay que quitarlo del indice ni borrar su motivo\n');
+    }
+    if (sinMedir.length > 0) {
+        process.stdout.write ('  ---- ' + sinMedir.length + ' de los ' + entradas.length +
+                              ' conocidos no se han medido en esta pasada\n');
     }
     process.exit (0);
 }
@@ -1099,7 +1150,7 @@ function cmdTargets (testdir, config) {
     process.exit (0);
 }
 
-function cmdRuncios (testdir, config, colorA, colorN, construidos, sinBuild) {
+function cmdRuncios (testdir, config, colorA, colorN, construidos, sinBuild, rutaMedidos) {
     const ca = String (colorA || '');
     const cn = String (colorN || '');
 
@@ -1125,6 +1176,12 @@ function cmdRuncios (testdir, config, colorA, colorN, construidos, sinBuild) {
 
     let sinConstruir = 0;
     let sinBinario = 0;
+    // Los nombres pelados de los que NO se han medido, para el aviso de
+    // `arreglados`. Se guardan SIN el texto que se imprime: el aviso de rancios
+    // anade el parentesis de por que, y `arreglados` solo necesita el nombre
+    // para comparar. Si se guardara la linea entera, la comparacion fallaria
+    // siempre y todos los conocidos saldrian SIN MEDIR.
+    const sinMedir = [];
     let nativos = 0;        // tests de este arbol, con .exe o sin el
     let reconstruidos = 0;  // los que de verdad son un test de la lista de "hechos"
     const fuera = [];
@@ -1136,7 +1193,7 @@ function cmdRuncios (testdir, config, colorA, colorN, construidos, sinBuild) {
 
         let st;
         try { st = fs.statSync (ruta); }
-        catch (e) { ++sinBinario; ausentes.push (nombre + '  (registrado en ' + entrada.config + ')'); continue; }
+        catch (e) { ++sinBinario; ausentes.push (nombre + '  (registrado en ' + entrada.config + ')'); sinMedir.push (nombre); continue; }
 
         // El target de CMake se llama como el .exe, sin extension (`testsNativos`).
         const target = entrada.target;
@@ -1144,6 +1201,7 @@ function cmdRuncios (testdir, config, colorA, colorN, construidos, sinBuild) {
         if (sinbuild || (hechos.size > 0 && !hechos.has (target))) {
             ++sinConstruir;
             fuera.push (nombre);
+            sinMedir.push (nombre);
             continue;
         }
         if (hechos.has (target)) ++reconstruidos;
@@ -1156,6 +1214,7 @@ function cmdRuncios (testdir, config, colorA, colorN, construidos, sinBuild) {
             if (fuente > st.mtimeMs) {
                 ++sinConstruir;
                 fuera.push (nombre + '  (construido, pero el .exe es anterior al fuente)');
+                sinMedir.push (nombre);
             }
         }
     }
@@ -1201,6 +1260,28 @@ function cmdRuncios (testdir, config, colorA, colorN, construidos, sinBuild) {
             process.stdout.write ('          codigo.\n');
         }
     }
+    // La lista de los NO MEDIDOS, para que el otro aviso no se contradiga con
+    // este. Sin esto, `arreglados` no sabe que se ha reconstruido nada y declara
+    // ARREGLO de tests cuyo .exe es de antes: dos avisos del mismo test
+    // diciendose lo contrario en la misma pantalla, separados por el ctest
+    // entero. Medido.
+    //
+    // Se escribe SIEMPRE, y con las lineas peladas, una por test. Aunque la
+    // lista este vacia se deja el fichero: su ausencia significa "no se ha
+    // ejecutado el paso 1", que es un caso distinto del de "se ha ejecutado y
+    // no habia nada rancio", y `arreglados` los trata distinto.
+    if (rutaMedidos) {
+        try {
+            rutaValida (String (rutaMedidos), 'la lista de binarios reconstruidos', 'una escritura');
+            fs.writeFileSync (String (rutaMedidos),
+                              sinMedir.length > 0 ? sinMedir.join ('\n') + '\n' : '');
+        } catch (e) {
+            process.stderr.write ('verify_all_node.js: no se ha podido escribir la lista de no medidos en ' +
+                                  String (rutaMedidos) + '\n');
+            process.exit (1);
+        }
+    }
+
     if (sinBinario > 0) {
         process.stdout.write ('\n  ' + ca + 'SIN BINARIO' + cn + '  ' + sinBinario +
                               ' test(s) registrados sin .exe:\n');
@@ -1269,7 +1350,7 @@ switch (orden) {
     case 'conocidos': cmdConocidos  (argv[1], argv[2]); break;
     case 'cuenta':    cmdCuenta     (argv[1], argv[2]); break;
     case 'motivo':    cmdMotivo     (argv[1], argv[2], argv[3]); break;
-    case 'arreglados':cmdArreglados (argv[1], argv[2], argv[3] || '', argv[4] || ''); break;
+    case 'arreglados':cmdArreglados (argv[1], argv[2], argv[3] || '', argv[4] || '', argv[5] || ''); break;   // argv[5] = lista de NO medidos
     case 'targets':   cmdTargets     (argv[1], argv[2]); break;
 
     case 'rancios': {
@@ -1277,9 +1358,17 @@ switch (orden) {
         // escriben siempre, y separarlo seria una posicion mas que recordar.
         const resto = argv.slice (5);
         const sinbuild = resto.indexOf ('--sin-build') !== -1;
+        // Y el fichero donde se deja la lista de los NO MEDIDOS va como FLAG, y no
+        // como una posicion mas: la lista de construidos es de longitud variable,
+        // asi que un argumento suelto delante de ella seria la lista entera y uno
+        // detras no tendria forma de saber donde acaba. Con `--medidos=RUTA` la
+        // lista se queda igual de compatible con lo que habia, que es lo que
+        // importa: una orden a la que hay que reordenar los argumentos cada vez
+        // que se le anade uno es una orden que se rompe en algun sitio.
+        const conMedidos = resto.find (s => s.startsWith ('--medidos='));
+        const cola = resto.filter (s => s !== '--sin-build' && !s.startsWith ('--medidos='));
         cmdRuncios (argv[1], argv[2], argv[3] || '', argv[4] || '',
-                    sinbuild ? resto.filter (s => s !== '--sin-build') : resto,
-                    sinbuild);
+                    cola, sinbuild, conMedidos ? conMedidos.slice ('--medidos='.length) : '');
         break;
     }
 
@@ -1287,7 +1376,8 @@ switch (orden) {
         process.stderr.write ('verify_all_node.js: orden desconocida: ' + String (orden) + '\n');
         process.stderr.write ('  vivo | limpia | conocidos | cuenta | motivo | arreglados | resumen\n');
         process.stderr.write ('  targets <testdir> <config>  los targets de los tests nativos, uno por linea\n');
-        process.stderr.write ('  rancios <testdir> <config> [a] [n] [--sin-build] [construidos...]  tests con el .exe mas viejo que el codigo\n');
+        process.stderr.write ('  rancios <testdir> <config> [a] [n] [--sin-build] [--medidos=RUTA] [construidos...]  tests con el .exe mas viejo que el codigo\n');
+        process.stderr.write ('  arreglados <json> <rojos> [a] [n] [no-medidos]  los conocidos que ya no fallan; los no medidos salen SIN MEDIR\n');
         process.stderr.write ('  bateria <json> <testdir> <config>\n');
         process.stderr.write ('  compara | pidpropio | leepid\n');
         process.exit (2);

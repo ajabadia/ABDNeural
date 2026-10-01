@@ -358,11 +358,20 @@ seccion ('4. arreglados');
 
 // El log VACIO es otro caso y NO es un error: ctest trunca el fichero cuando
 // todo pasa, asi que vacio quiere decir de verdad cero rojos.
+//
+// Y aqui se pasa la lista de MEDIDOS, porque en la seccion 12 se explica por que
+// sin lista no se puede decir ARREGLO de nada: lo que sale de "no estar en la
+// lista de rojos" es "ha pasado" solo si el binario es de esta pasada. Esta
+// seccion va de otra cosa (el log), asi que hay que dar por buena esa segunda
+// mitad para poder mirar la primera. Y se pasa una lista de NO MEDIDOS VACIA,
+// que es lo que significa "todos los binarios son de esta pasada".
 {
     const { fichero } = lista (['H'], { H: 'MIO: h\n' });
     const vacio = path.join(TMP, 'vacio.log');
     fs.writeFileSync(vacio, '');
-    const r = corre (['arreglados', fichero, vacio, '', '']);
+    const medidos = path.join(TMP, 'medidos4.txt');
+    fs.writeFileSync(medidos, '');
+    const r = corre (['arreglados', fichero, vacio, '', '', medidos]);
     igual ('con el log vacio sale con 0', r.rc, 0);
     ok   ('...y avisa de ARREGLO', r.out.indexOf('ARREGLO') !== -1, 'stdout: ' + r.out.trim());
 }
@@ -374,7 +383,9 @@ seccion ('4. arreglados');
                                { Falla: 'MIO: este falla\n', Pasa: 'MIO: este ya pasa\n' });
     const log = path.join(TMP, 'rojos.log');
     fs.writeFileSync(log, '12:Falla\r\n');
-    const r = corre (['arreglados', fichero, log, '', '']);
+    const medidos = path.join(TMP, 'medidos4b.txt');
+    fs.writeFileSync(medidos, '');
+    const r = corre (['arreglados', fichero, log, '', '', medidos]);
     ok   ('avisa de ARREGLO solo del que no esta en el log',
          r.out.indexOf('ARREGLO') !== -1 && r.out.indexOf('Pasa') !== -1 &&
          r.out.split('ARREGLO').length - 1 === 1,
@@ -1025,6 +1036,232 @@ seccion ('11. El paso 2 no lee rojos de otra corrida');
     ok ('ningun gemelo culpa al antivirus de los .js de node_modules',
         sh.indexOf ('el antivirus de esta maquina no deja leer') === -1 &&
         bat.indexOf ('el antivirus de esta maquina no deja leer') === -1);
+}
+
+// ============================================================================
+//  12. LOS DOS AVISOS DEL MISMO TEST NO PUEDEN DECIRSE LO CONTRARIO
+// ============================================================================
+seccion ('12. El aviso de rancios y el de ARREGLO, en el mismo test');
+
+// EL FALLO, MEDIDO. Los dos avisos, separados por el ctest entero, se pisaban
+// sin que se vieran. Con el caso real de un solo test (el .exe sin compilar en
+// esta pasada) la pantalla decia:
+//
+//   BINARIO RANCIO / NO SE HA CONSTRUIDO NADA  1 test(s) ... NEURONiK_EjemploTest
+//   ...
+//   ARREGLO  NEURONiK_EjemploTest
+//             quita "NEURONiK_EjemploTest" del indice y borra known/NEURONiK_EjemploTest.txt
+//
+// El primero dice "de este test no se sabe nada: su .exe es de antes". El
+// segundo dice, del MISMO test, "esta arreglado, borra su motivo". Los dos
+// tenian razon por su cuenta y los dos razon a medias: `arreglados` no recibia
+// la lista de lo que se ha construido, asi que para el "no estar en la lista de
+// rojos" no podia mas que leerlo como "haber pasado".
+//
+// Y el segundo aviso es el que MANDO. Pide borrar ficheros, asi que el que se
+// equivoca aqui no dice una cosa falsa: dice que borres una entrada de la lista
+// de conocidos por un test que puede que ni siquiera se haya ejecutado. Con la
+// lista de conocidos de hace unos dias (tres entradas) y `--no-build` la trampa
+// estaba armada.
+//
+// QUE VIGILA. Que `rancios` deje la lista de los no medidos, y que `arreglados`
+// con esa lista NO pueda decir ARREGLO de ninguno de ellos.
+
+// El AVISO DE RANCIOS DEJA LA LISTA. Con tres tests de los que solo uno se ha
+// construido, el fichero tiene que decir los otros dos y NO el construido.
+//
+// Y la lista se pide con un FLAG (`--medidos=RUTA`), no con un argumento mas al
+// final: la lista de construidos es de longitud variable, asi que un argumento
+// suelto no tendria forma de separarse de ella. Que el flag no se cuele como un
+// target lo vigila el caso de `--sin-build` de la seccion 6.
+{
+    const dir = arbolTargets ([{ nombre: 'T1', creaExe: true },
+                              { nombre: 'T2', creaExe: true },
+                              { nombre: 'T3', creaExe: true }]);
+    const fichero = path.join (TMP, 'nom_medidos.txt');
+    const r = corre (['rancios', dir, 'Release', '', '', '--medidos=' + fichero, 'T1']);
+    igual ('rancios sale con 0 dejando la lista', r.rc, 0);
+    const escrito = fs.readFileSync (fichero, 'utf8').replace (/\r/g, '').split ('\n').filter (s => s);
+    igual ('la lista son los no medidos, y solo ellos', escrito.join (','), 'T2,T3');
+}
+
+// Sin construir nada (`--sin-build`), la lista es TODOS. Es el caso limite del
+// aviso, y tambien el de la trampa: con `--no-build` no hay ni un solo binario
+// de esta pasada.
+{
+    const dir = arbolTargets ([{ nombre: 'T1', creaExe: true },
+                              { nombre: 'T2', creaExe: true }]);
+    const fichero = path.join (TMP, 'nom_medidos_sinbuild.txt');
+    const r = corre (['rancios', dir, 'Release', '', '', '--medidos=' + fichero, '--sin-build']);
+    igual ('con --sin-build sale con 0', r.rc, 0);
+    const escrito = fs.readFileSync (fichero, 'utf8').replace (/\r/g, '').split ('\n').filter (s => s);
+    igual ('...y la lista es la bateria entera', escrito.join (','), 'T1,T2');
+}
+
+// Y LA LISTA VACIA ES UNA LISTA, NO UNA AUSENCIA. Con destino pero SIN lista de
+// construidos (un `rancios` llamado a mano) no se puede juzgar nada, y lo que no
+// se puede juzgar no se anade: el fichero sale vacio, que `arreglados` lee como
+// "se ha ejecutado el paso 1 y no habia nada rancio". La confusion importante es
+// la de al reves, y la resuelve el caso siguiente.
+{
+    const dir = arbolTargets ([{ nombre: 'T1', creaExe: true },
+                              { nombre: 'T2', creaExe: true }]);
+    const fichero = path.join (TMP, 'nom_medidos_vacio.txt');
+    const r = corre (['rancios', dir, 'Release', '', '', '--medidos=' + fichero]);
+    igual ('sin lista de construidos sale con 0', r.rc, 0);
+    igual ('...y la lista de no medidos sale VACIA (no juzga nada)',
+           fs.readFileSync (fichero, 'utf8'), '');
+    ok   ('...y no dice que haya ninguno rancio',
+         r.outR.indexOf ('BINARIO RANCIO') === -1,
+         'stdout: ' + r.outR.trim ());
+}
+
+// EL CHOQUE, MONTADO. Dos conocidos, ninguno en el log de rojos (ctest entero
+// en verde) y uno de ellos sin medir: el que se ha ejecutado con el .exe de
+// antes NO puede salir como ARREGLO, y en ningun caso con el consejo de borrar.
+{
+    const { fichero } = lista (['T1', 'T2'],
+                               { T1: 'MIO: uno\n', T2: 'MIO: dos\n' });
+    const rojos = path.join (TMP, 'rojos12.log');
+    fs.writeFileSync (rojos, '');
+    const medidos = path.join (TMP, 'medidos12.txt');
+    fs.writeFileSync (medidos, 'T2\n');
+
+    const r = corre (['arreglados', fichero, rojos, '', '', medidos]);
+    igual ('con la lista de no medidos sale con 0', r.rc, 0);
+
+    // El que SI se ha construido: ARREGLO entero, con su consejo de quitar.
+    ok   ('el conocido MEDIDO sigue avisando de ARREGLO',
+         r.outR.indexOf ('ARREGLO  T1') !== -1,
+         'stdout: ' + r.outR.trim ());
+    // El que NO: SIN MEDIR, y con la razon.
+    ok   ('el conocido SIN MEDIR sale como SIN MEDIR',
+         r.outR.indexOf ('SIN MEDIR  T2') !== -1,
+         'stdout: ' + r.outR.trim ());
+    // Y lo que NO PUEDE pasar: que del T2 diga que esta arreglado, y sobre todo
+    // que le diga que borre su entrada. Esto es el fallo entero en una linea.
+    ok   ('...y del que no se ha medido NO dice ARREGLO',
+         r.outR.split ('ARREGLO').length - 1 === 1,
+         'stdout: ' + r.outR.trim ());
+    ok   ('...y NO le dice que borre su entrada del indice',
+         r.outR.indexOf ('quita "T2"') === -1 &&
+         r.outR.indexOf ('borra known/T2.txt') === -1,
+         'stdout: ' + r.outR.trim ());
+    // Y que el recuento lo diga: sin esto, el SIN MEDIR sale suelto y parece un
+    // aviso mas.
+    ok   ('...y el recuento dice cuantos se han quedado sin medir',
+         /1 de los 2 conocidos no se han medido/.test (r.outR),
+         'stdout: ' + r.outR.trim ());
+}
+
+// Y el caso de mas: SIN LISTA no se puede decir ARREGLO de NINGUNO. Es el
+// principio de la seccion 4 aplicado al otro lado: lo que no se sabe no se
+// anuncia como bueno. Aqui el log de rojos si se ha leido (esta vacio, que es
+// cero rojos de verdad), lo que no se sabe es QUE SE HA EJECUTADO.
+{
+    const { fichero } = lista (['U1', 'U2'],
+                               { U1: 'MIO: uno\n', U2: 'MIO: dos\n' });
+    const rojos = path.join (TMP, 'rojos12b.log');
+    fs.writeFileSync (rojos, '');
+
+    for (const [nombre, extra] of [['sin pasar la lista', []],
+                                   ['con una lista que no existe',
+                                    [path.join (TMP, 'no-existe12.txt')]]]) {
+        const r = corre (['arreglados', fichero, rojos, '', ''].concat (extra));
+        ok   ('sin lista de no medidos (' + nombre + ') sale con 0', r.rc === 0,
+             'rc: ' + r.rc + '\nstderr: ' + r.errR.trim ());
+        ok   ('...y NO dice ARREGLO de nada',
+             r.outR.indexOf ('ARREGLO') === -1,
+             'stdout: ' + r.outR.trim ());
+        ok   ('...y NO pide borrar nada',
+             r.outR.indexOf ('quita "') === -1 &&
+             r.outR.indexOf ('borra known/') === -1,
+             'stdout: ' + r.outR.trim ());
+        ok   ('...y lo dice como SIN MEDIR, que si informa',
+             r.outR.indexOf ('SIN MEDIR') !== -1,
+             'stdout: ' + r.outR.trim ());
+    }
+}
+
+// Y EL CODIGO DE SALIDA. El rc 3 es "sin rojos pero con tests sin medir", y no
+// puede ser 1 porque `--no-build` es legitimo ni 0 porque 0 con 35 sin medir es
+// un 0 que no se ha ganado. Se comprueba en el texto de los dos gemelos: el
+// caso de verdad (treinta y cinco binarios rancios y cero rojos) tarda tres
+// minutos, y lo que importa aqui es que la regla no vuelva a depender solo de
+// la cuenta de fallos.
+{
+    const sh  = fs.readFileSync (path.join (__dirname, 'verify_all.sh'),  'utf8');
+    const bat = fs.readFileSync (path.join (__dirname, 'verify_all.bat'), 'utf8');
+
+    // Los dos tienen que pasar la lista de no medidos al aviso de ARREGLO. Sin
+    // esa llamada, `arreglados` no puede saber nada y degrada a SIN MEDIR todo,
+    // que es este mismo fallo, visto por el otro lado.
+    ok   ('el .sh pasa la lista de no medidos a `arreglados`',
+          /arreglados[^\n]*"\$NO_MEDIDOS"/.test (sh),
+          'linea: ' + (sh.split('\n').find (l => l.indexOf ('arreglados "$CONOCIDOJSON') !== -1) || '?'));
+    ok   ('el .bat pasa la lista de no medidos a `arreglados`',
+          /arreglados[^\n]*"%NOMEDIDOS%"/.test (bat),
+          'linea: ' + (bat.split('\n').find (l => l.indexOf ('arreglados "%CONOCIDOJSON') !== -1) || '?'));
+
+    // Y los dos tienen que salir con 3 cuando hay no medidos y ningun rojo.
+    ok   ('el .sh sale con 3 si hay no medidos',
+          /if \[ "\$n_no_medidos" -gt 0 \]; then exit 3; fi/.test (sh));
+    // Y el 3 del .bat va con `goto` a una etiqueta FUERA del bloque, no con un
+    // `exit /b` dentro. Medido con un .bat de nueve lineas: dentro de un
+    // `if ... ( ... )`, `if !N! GTR 0 exit /b 3` sale con 0 y el `exit` de la
+    // linea siguiente no se ejecuta nunca. Es el mismo problema del
+    // `echo (!LOGB!)` del paso 1, y por eso se mira que el `exit /b 3` este
+    // DESPUES del cierre del bloque y no dentro.
+    const bat3 = bat.indexOf ('goto SIN_MEDIDOS_RC3');
+    // El `exit /b 3` se busca DESPUES de la etiqueta, no en el fichero entero: el
+    // comentario que explica el fallo lo escribe, y buscar la PRIMERA vez que
+    // aparece daria el comentario y no el codigo.
+    const bat3cuerpo = bat.indexOf ('exit /b 3', bat3);
+    ok   ('el .bat sale con 3 si hay no medidos',
+          bat3 !== -1 && bat3cuerpo !== -1 &&
+          bat.slice (bat3, bat3cuerpo).indexOf (':SIN_MEDIDOS_RC3') !== -1,
+          'goto: ' + bat3 + '  exit /b 3: ' + bat3cuerpo);
+    ok   ('...y el 3 esta fuera del bloque del "sin fallos"',
+          bat.indexOf ('if !N_NO_MEDIDOS! GTR 0 exit /b 3') === -1);
+
+    // Y los dos tienen que contarlos, que sin la cuenta el 3 no se puede decidir.
+    ok   ('el .sh cuenta los no medidos',
+          /n_no_medidos="\$\(grep -c \. "\$NO_MEDIDOS"\)"/.test (sh));
+    ok   ('el .bat cuenta los no medidos',
+          /for \/f "usebackq delims=" %%L in \("%NOMEDIDOS%"\) do set \/a N_NO_MEDIDOS\+=1/.test (bat));
+
+    // Y el TERCER caso, que no es ni 0 ni ">0": con `--only=2` el paso 1 no se
+    // ejecuta, y entonces no se sabe NADA de lo que se ha medido. Decir "0 sin
+    // medir" ahi seria mentira, asi que los dos empiezan en -1 ("no lo se") y
+    // el paso 1 es el unico que puede cambiarlo. Sin esto, con `--only` el
+    // informe afirmaria que todo lo ejecutado es de esta pasada, que es
+    // justo lo contrario de lo que se puede saber.
+    ok   ('el .sh empieza la cuenta en "no se sabe", no en 0',
+          /n_no_medidos=-1/.test (sh) &&
+          /if \[ -f "\$NO_MEDIDOS" \]/.test (sh));
+    ok   ('el .bat empieza la cuenta en "no se sabe", no en 0',
+          /set \/a N_NO_MEDIDOS=-1/.test (bat) &&
+          /if not exist "%NOMEDIDOS%" exit \/b 0\r\nset \/a N_NO_MEDIDOS=0/.test (bat));
+    // Y los dos tienen que SAYIRLO: una cuenta que nadie dice no informa de
+    // nada. Es la linea que explica que con --only no se puede saber.
+    ok   ('los dos dicen que con --only no se sabe cuantos se han medido',
+          sh.indexOf ('Sin saber cuantos se han medido') !== -1 &&
+          bat.indexOf ('Sin saber cuantos se han medido') !== -1);
+
+    // Y la salida 3 esta DOCUMENTADA en los tres sitios donde se documentan las
+    // otras: la cabecera del .sh, la cabecera del .bat y su --help. Una salida
+    // sin documentar es una salida que nadie usa.
+    ok   ('el .sh documenta la salida 3', /# Salidas:[\s\S]*?\b3 sin rojos/.test (sh));
+    ok   ('el .bat documenta la salida 3', /REM Salidas:[\s\S]*?3 sin rojos/.test (bat));
+    ok   ('el --help del .bat documenta la salida 3',
+          /echo Salidas:[\s\S]*?3 sin rojos/.test (bat));
+
+    // Y el check de gemelos NO puede romperse con esto. No mira el codigo de
+    // salida de los verify (compara solo el resumen), asi que un 3 no lo hace
+    // fallar: se comprueba porque es la unica razon por la que el 3 es seguro.
+    const chk = fs.readFileSync (path.join (__dirname, 'verify_all_check.sh'), 'utf8');
+    ok   ('el check de gemelos sigue sin mirar el codigo de salida del verify',
+          /El codigo de salida NO se mira/.test (chk));
 }
 
 // ============================================================================

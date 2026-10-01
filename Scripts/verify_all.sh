@@ -38,7 +38,8 @@
 # sigue; un --only que no es un paso del 1 al 5 es un error y sale con 2, porque
 # es el flag que decide QUE se verifica. Un paso por llamada.
 #
-# Salidas: 0 todo en verde; 1 algun paso con fallos; 2 uso incorrecto.
+# Salidas: 0 todo en verde; 1 algun paso con fallos; 2 uso incorrecto;
+#          3 sin rojos, pero con tests sin medir (el .exe no es de esta pasada).
 #
 # Variables de entorno (las dos las leen tambien verify_all.bat):
 #   VERIFY_TIMEOUT  segundos que un test puede tardar antes de que ctest lo mate
@@ -95,6 +96,22 @@ RESUMEN="${VERIFY_RESUMEN:-$BUILD/Testing/Temporary/verify_all_resumen.sh.txt}"
 # un tabulador dentro partido en campos se convierte en dos rojos.
 RES_ENTRADAS="${TMPDIR:-/tmp}/verify_entradas.$$"
 RES_LENTOS="${TMPDIR:-/tmp}/verify_lentos.$$"
+
+# ── LOS QUE NO SE HAN MEDIDO, Y POR QUE CUENTAN PARA LA SALIDA ────────────
+#
+# Lo escribe el aviso de binarios rancios, que es el UNICO que sabe que se ha
+# compilado en esta pasada, y lo leen dos cosas: el aviso de los conocidos que
+# ya no fallan (para no declarar ARREGLO de un test sin medir) y la salida (un
+# 0 con tests sin medir es un 0 que no se ha ganado).
+#
+# La cuenta se lee aqui del fichero, no del stdout del aviso: el aviso imprime
+# los diez primeros y un "... y N mas", asi que de su salida no se puede
+# contar. El fichero lleva los nombres pelados, uno por linea.
+NO_MEDIDOS="${TMPDIR:-/tmp}/verify_no_medidos.$$"
+# -1 = todavia no se sabe. Lo pone a cero el paso 1, que es el unico sitio donde
+# se puede saber: si el paso 1 no se ha ejecutado, la cuenta no es de cero, es
+# de "no lo se". Es la diferencia entre "se ha medido todo" y "no se ha mirado".
+n_no_medidos=-1
 
 # ── SALIDA A COLOR, PERO SOLO SI LA PANTALLA LA AGUANTA ────────────────────
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -586,7 +603,7 @@ fi
 # sesion se cierra a medias, ese padre se lleva por delante y el lock queda sin
 # dueno, que es justo lo que hay que detectar.
 node "$NODE_LIB" pidpropio "$LOCK/pid" > /dev/null 2>&1 || echo $$ > "$LOCK/pid"
-trap 'rm -f "$LOCK/pid" 2>/dev/null; rmdir "$LOCK" 2>/dev/null' EXIT
+trap 'rm -f "$LOCK/pid" "$NO_MEDIDOS" 2>/dev/null; rmdir "$LOCK" 2>/dev/null' EXIT
 
 # ═════════════════════════════════════════════════════════════════════════════
 # PASO 1: BUILD
@@ -688,10 +705,18 @@ if [[ " $PASOS " == *" 1 "* ]]; then
     # ha construido nada, que es justo cuando mas hace falta decirlo: antes ahi
     # no se decia ni una palabra.
     if [ $HACER_BUILD -eq 1 ]; then
-        node "$NODE_LIB" rancios "$BUILD" "$CONFIG" "$A" "$N" "${construidos[@]+"${construidos[@]}"}"
+        node "$NODE_LIB" rancios "$BUILD" "$CONFIG" "$A" "$N" "--medidos=$NO_MEDIDOS" "${construidos[@]+"${construidos[@]}"}"
     else
         printf '  paso 1 saltado con --no-build: no se ha compilado nada\n'
-        node "$NODE_LIB" rancios "$BUILD" "$CONFIG" "$A" "$N" --sin-build
+        node "$NODE_LIB" rancios "$BUILD" "$CONFIG" "$A" "$N" --sin-build "--medidos=$NO_MEDIDOS"
+    fi
+    # La cuenta va DESPUES del aviso y no dentro. Y sale del `if` al reves: si el
+    # aviso no ha podido escribir el fichero (por ejemplo, porque no hay
+    # CTestTestfile), la cuenta se queda en -1, que el informe lee como "no se
+    # ha podido saber". Ponerla a cero antes seria mentir con una cuenta, y
+    # decir "0 sin medir" sin lista seria lo mismo.
+    if [ -f "$NO_MEDIDOS" ]; then
+        n_no_medidos="$(grep -c . "$NO_MEDIDOS")"
     fi
     terminar_paso
 fi
@@ -860,7 +885,7 @@ if [[ " $PASOS " == *" 2 "* ]]; then
             # dos reglas para lo mismo son dos listas, que es justo el problema que
             # este fichero viene a arreglar. El CR de Windows se quita dentro, porque
             # el que se lo quita es el que decide, no el que pregunta.
-            node "$NODE_LIB" arreglados "$CONOCIDOJSON" "$FALLOS" "$A" "$N" || true
+            node "$NODE_LIB" arreglados "$CONOCIDOJSON" "$FALLOS" "$A" "$N" "$NO_MEDIDOS" || true
             # ── LOS QUE TOCARON EL TIMEOUT ──────────────────────────────────────
             #
             # Un rojo por cuelgue no se arregla mirando su salida, asi que se
@@ -1013,7 +1038,29 @@ printf '%s======================================================================
 # un resumen que solo existe cuando todo ha ido bien no se puede comparar
 # con nada, que es justo el caso en el que mas hace falta mirarlo.
 volcar_resumen
-rm -f "$RES_ENTRADAS" "$RES_LENTOS"
+rm -f "$RES_ENTRADAS" "$RES_LENTOS" "$NO_MEDIDOS"
+
+# LA LINEA DE LOS NO MEDIDOS, antes de las dos salidas, y no dentro de la rama
+# de SIN FALLOS: asi los dos caminos del informe la dicen, y asi los dos gemelos
+# dicen lo mismo SIEMPRE.
+#
+# Y hay un TERCER caso, que no es ni 0 ni ">0": con `--only=2` el paso 1 no se ha
+# ejecutado, con lo que no se ha podido saber NADA de lo que se ha medido. La
+# linea no dice "0 sin medir" porque mentiria: lo que no se ha ejecutado el paso
+# 1 es justamente el aviso que lo dice. Y el rc sigue siendo 0 (o 1), porque
+# `--only` es para depurar un paso y su codigo de salida es el del paso.
+if [ "$n_no_medidos" -lt 0 ]; then
+    printf '\n  %sSin saber cuantos se han medido:%s el paso 1 no se ha ejecutado, asi que nadie\n' "$A" "$N"
+    printf '  ha dicho que binarios son de esta pasada. Con --only eso es lo que se ha pedido.\n'
+elif [ "$n_no_medidos" -gt 0 ]; then
+    printf '\n  %s%d test(s) SIN MEDIR:%s no se han compilado en esta pasada, asi que de ellos\n' \
+        "$A" "$n_no_medidos" "$N"
+    printf '  no se puede decir ni que fallen ni que pasan. Si no hay rojos, el comando\n'
+    printf '  sale con 3, no con 0: lo que se ha medido esta en verde, y lo que no,\n'
+    printf '  no se ha mirado. Recompila lo que falte y vuelve a pasar la bateria.\n'
+else
+    printf '\n  %s0 test(s) sin medir:%s todo lo que se ha ejecutado es de esta pasada.\n' "$A" "$N"
+fi
 
 if [ ${#fallos[@]} -eq 0 ]; then
     # "los pasos que se han ejecutado", y no "los cinco": con --only=2 esto
@@ -1021,6 +1068,11 @@ if [ ${#fallos[@]} -eq 0 ]; then
     # gemelos que se despedecen en la unica linea que se lee cuando todo ha
     # ido bien son dos gemelos que se han separado.
     printf '\n  %sSIN FALLOS.%s los pasos que se han ejecutado estan en verde.\n\n' "$V" "$N"
+    # El 3 va DESPUES del 0, no en vez de el: hay una diferencia entre "ha
+    # fallado algo" (1) y "no ha fallado nada, pero no se ha medido todo" (3), y
+    # un 1 seria mentir. Y sale con 0 solo cuando no hay ni rojos ni no medidos,
+    # que es el unico caso en que el 0 significa algo.
+    if [ "$n_no_medidos" -gt 0 ]; then exit 3; fi
     exit 0
 fi
 

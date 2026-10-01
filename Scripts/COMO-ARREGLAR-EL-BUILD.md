@@ -273,6 +273,36 @@ mv node_modules node_modules_roto_v10
 
 Eso devuelve las 199 descargas a su sitio sin tocar nada del store.
 
+## Los dos avisos que se pisaban, y el codigo 3
+
+No es de este atranco, pero sale de aqui: el aviso de binarios rancios y el de
+los conocidos que ya no fallan se contradecian, y el segundo era el que mandaba.
+
+Con `--no-build`, el mismo test salia dos veces en la misma pantalla, separados
+por el `ctest` entero:
+
+```
+  NO SE HA CONSTRUIDO NADA  1 test(s) se ejecutan sin haber sido compilados nunca en esta pasada:
+        NEURONiK_EjemploTest
+  ...
+  ARREGLO  NEURONiK_EjemploTest
+            quita "NEURONiK_EjemploTest" del indice y borra known/NEURONiK_EjemploTest.txt
+```
+
+El primero dice «de este test no se sabe nada». El segundo dice «esta arreglado,
+borra su motivo», y eso es un consejo destructivo nacido de no saber que se ha
+ejecutado. Con la lista de conocidos de hace unos dias y `--no-build` la trampa
+estaba armada.
+
+Ahora el aviso de rancios deja una lista con los que **no** se han medido, y
+`arreglados` la lee: los de esa lista salen `SIN MEDIR`, sin pedir borrar nada.
+Y si la lista no ha llegado, no dice `ARREGLO` de ninguno.
+
+Ademas el verify sale con **3** si hay no medidos y ningun rojo, y con una linea
+en el informe que los cuenta. Antes salia con 0. Lo cubre la seccion 12 de
+`Scripts/selftest_verify_all_node.js`, y lo miden tres casos: la lista que deja
+`rancios`, el choque montado, y el rc en los dos gemelos.
+
 ## Lo que sigue sin arreglarse
 
 Nada de lo de esta pagina. Los `WebUi*E2e` y los dos vitest estan arreglados, y

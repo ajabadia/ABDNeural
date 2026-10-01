@@ -39,7 +39,8 @@ REM  no se reconoce avisa y se sigue; un --only que no es un paso del 1 al 5 es
 REM  un error y sale con 2, porque es el flag que decide QUE se verifica. Un
 REM  paso por llamada. Las mismas reglas, y el mismo texto, que verify_all.sh.
 REM
-REM  Salidas: 0 todo en verde; 1 algun paso con fallos; 2 uso incorrecto.
+REM Salidas: 0 todo en verde; 1 algun paso con fallos; 2 uso incorrecto;
+REM          3 sin rojos, pero con tests sin medir (el .exe no es de esta pasada).
 REM
 REM  Variables de entorno (las dos las leen tambien verify_all.sh):
 REM    VERIFY_TIMEOUT  segundos que un test puede tardar antes de que ctest lo
@@ -130,6 +131,24 @@ REM  segundos se ven en la pantalla, que es donde se necesitan.
 REM ============================================================================
 if defined VERIFY_RESUMEN (set "RESUMEN=%VERIFY_RESUMEN%") else set "RESUMEN=%BUILD%\Testing\Temporary\verify_all_resumen.bat.txt"
 set "LENTOSFILE=%TEMP%\verify_lentos_%RANDOM%.txt"
+
+REM --- LA LISTA DE LOS QUE NO SE HAN MEDIDO ---------------------------------
+REM
+REM La escribe el aviso de binarios rancios, que es el UNICO que sabe que se ha
+REM compilado en esta pasada, y la leen dos cosas: el aviso de los conocidos que
+REM ya no fallan (para no declarar ARREGLO de un test sin medir) y la salida (un
+REM 0 con tests sin medir es un 0 que no se ha ganado). Son las MISMAS dos
+REM cosas que en el .sh, y con el mismo nombre, para que el check las compare.
+REM
+REM La cuenta se saca del fichero y no de la salida del aviso: el aviso imprime
+REM los diez primeros y un "... y N mas", asi que de ahi no se puede contar.
+REM El nombre lleva `%RANDOM%` como los demas temporales, y el `del` del final
+REM lo recoge con los otros.
+set "NOMEDIDOS=%TEMP%\verify_no_medidos_%RANDOM%.txt"
+REM -1 = todavia no se sabe. Lo pone a cero el paso 1, que es el unico sitio
+REM donde se puede saber: si el paso 1 no se ha ejecutado, la cuenta no es de
+REM cero, es de "no lo se". Con `set /a` un "-1" es la misma cosa que un 0.
+set /a N_NO_MEDIDOS=-1
 
 REM --- LO QUE ESTA GUARDANDO -------------------------------------------------
 REM Los fallos van a un fichero temporal, uno por linea: paso TAB test TAB motivo.
@@ -521,11 +540,16 @@ if not errorlevel 1 (
     REM que nadie habia compilado creyendo que si.
     if "%HACER_BUILD%"=="1" (
         call :build_todos
-        node "%NODELIB%" rancios "%BUILD%" "%CONFIG%" "%A%" "%N%" !CONSTRUIDOS!
+        node "%NODELIB%" rancios "%BUILD%" "%CONFIG%" "%A%" "%N%" "--medidos=!NOMEDIDOS!" !CONSTRUIDOS!
     ) else (
         echo   paso 1 saltado con --no-build: no se ha compilado nada
-        node "%NODELIB%" rancios "%BUILD%" "%CONFIG%" "%A%" "%N%" --sin-build
+        node "%NODELIB%" rancios "%BUILD%" "%CONFIG%" "%A%" "%N%" --sin-build "--medidos=!NOMEDIDOS!"
     )
+    REM La cuenta va DESPUES del bloque, y no dentro. Si el aviso no ha podido
+    REM escribir el fichero, la cuenta se queda en -1 ("no se ha podido saber")
+    REM y el aviso ya ha dicho en rojo por que. Ponerla a cero antes seria
+    REM mentir con una cuenta.
+    call :cuenta_no_medidos
     REM Un solo rojo para todo el build, y fuera del bloque: el nombre del
     REM problema es "un target no compila", y son los targets, no los pasos. Los
     REM errores de compilacion los ha impreso ya `:build_todos`.
@@ -1141,7 +1165,34 @@ REM ---------------------------------------------------------------------------
 if not exist "%CONOCIDOJSON%" exit /b 0
 if not exist "%FALLOSLOG%" exit /b 0
 
-node "%NODELIB%" arreglados "%CONOCIDOJSON%" "%FALLOSLOG%" "%A%" "%N%"
+node "%NODELIB%" arreglados "%CONOCIDOJSON%" "%FALLOSLOG%" "%A%" "%N%" "%NOMEDIDOS%"
+exit /b 0
+
+:cuenta_no_medidos
+REM -----------------------------------------------------------------------
+REM  CUANTOS TEST(S) NO SE HAN MEDIDO
+REM
+REM  Cuenta las lineas del fichero que escribe el aviso de binarios rancios. En
+REM  batch no hay `wc -l` ni `grep -c`, pero el `for /f` sobre el fichero cuenta
+REM  lineas igual, y es el MISMO dato que cuenta el .sh con `grep -c .`: sin
+REM  linea vacia de por medio, que no las hay porque el fichero se escribe una
+REM  linea por test.
+REM
+REM  Y va en una subrutina, no en el bloque del paso 1: un `for /f` dentro de
+REM  un `do ( ... )` con `EnableDelayedExpansion` tiene el problema ya medido con
+REM  :arreglados. Ademas asi el `set /a` ve `!` expandido, que en la linea de un
+REM  bucle se expande al entrar.
+REMREM El `if not exist` va ANTES del `set /a` del cero, y eso es lo que hace que
+REM con `--only=2` (donde el paso 1 no se ha ejecutado y el fichero no existe)
+REM la cuenta se quede en -1, que es "no se ha podido saber". Cero significa
+REM "el paso 1 se ha ejecutado y no habia nada rancio", que es otra cosa, asi
+REM que poner el cero antes haria que con `--only` el informe afirmase que todo
+REM lo ejecutado es de esta pasada. Por eso el orden esta al reves del que
+REM parece natural.
+REM -----------------------------------------------------------------------
+if not exist "%NOMEDIDOS%" exit /b 0
+set /a N_NO_MEDIDOS=0
+for /f "usebackq delims=" %%L in ("%NOMEDIDOS%") do set /a N_NO_MEDIDOS+=1
 exit /b 0
 :paso3
 call :vitest "!RAIZ!\WebUI" WebUI 3
@@ -1261,7 +1312,8 @@ echo Las opciones no distinguen mayusculas. Una opcion que no se reconoce avisa 
 echo se sigue; un --only que no es un paso del 1 al 5 es un error y sale con 2,
 echo porque es el flag que decide QUE se verifica. Un paso por llamada.
 echo.
-echo Salidas: 0 todo en verde; 1 algun paso con fallos; 2 uso incorrecto.
+echo Salidas: 0 todo en verde; 1 algun paso con fallos; 2 uso incorrecto;
+echo          3 sin rojos, pero con tests sin medir ^<el .exe no es de esta pasada^>.
 echo.
 echo Variables de entorno (las dos las leen tambien verify_all.sh):
 echo   VERIFY_TIMEOUT  segundos que un test puede tardar antes de que ctest lo
@@ -1345,6 +1397,29 @@ echo %T%========================================================================
 echo %T% INFORME DE FALLOS%N%
 echo %T%================================================================================%N%
 
+REM ---------------------------------------------------------------------------
+REM  LA LINEA DE LOS NO MEDIDOS
+REM
+REM  Sale ANTES de la rama de "sin fallos", y no dentro de ella, asi los dos
+REM  caminos del informe la dicen. Y son `echo` de batch y no lineas del
+REM  PowerShell porque van en los DOS (con fallos y sin ellos), y PowerShell sale
+REM  por `exit 0` en el segundo.
+REM
+REM  LAS LINEAS ESTAN EN SUBRUTINAS Y NO EN UN `if ... (`. No por gusto: el
+REM  texto lleva "test(s)", y un `echo` con parentesis DENTRO de un bloque se
+REM  come el cierre del bloque (el fallo de `echo (!LOGB!)`, medido, y lo caza
+REM  la seccion 10 del selftest). Con subrutinas no hay bloque, asi que los
+REM  parentesis son texto.
+REM
+REM  Y hay un TERCER caso, el mismo que en el .sh: con `--only=2` el paso 1 no se
+REM  ha ejecutado, con lo que no se ha podido saber NADA de lo que se ha medido.
+REM  Decir "0 sin medir" seria mentira. Y el rc sigue siendo el de siempre,
+REM  porque `--only` es para depurar un paso.
+REM ---------------------------------------------------------------------------
+if !N_NO_MEDIDOS! LSS 0 call :mn_desconocido
+if !N_NO_MEDIDOS! GTR 0 call :mn_muchos
+if !N_NO_MEDIDOS! EQU 0 call :mn_ninguno
+
 set "RESULTADO="
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$f='%REPORT%'; $t='%T%'; $n='%N%'; $r='%R%'; $v='%V%'; $a='%A%';" ^
@@ -1391,16 +1466,25 @@ REM Un fichero que esta o no esta no se ensucia con el formato del informe.
 if exist "%TEMP%\verify_sin_fallos" (
     del "%REPORT%" >nul 2>&1
     del "%LENTOSFILE%" >nul 2>&1
+    del "%NOMEDIDOS%" >nul 2>&1
     del "%TEMP%\verify_informe.txt" >nul 2>&1
     del "%TEMP%\verify_sin_fallos" >nul 2>&1
     del "%LOCK%\pid" >nul 2>&1
 del "%TEMP%\verify_mipid.txt" >nul 2>&1
 rmdir "%LOCK%" >nul 2>&1
+    REM El `if` NO puede traer el `exit`: sale con `goto` a una etiqueta de mas
+    REM abajo, ya FUERA del bloque. Medido con un .bat de nueve lineas: dentro
+    REM de un `if ... ( ... )`, `if !N! GTR 0 exit /b 3` sale con 0 y el `exit`
+    REM de la linea siguiente no se ejecuta nunca. Es el mismo problema del
+    REM `echo (!LOGB!)` del paso 1: un parentesis de mas se come el resto del
+    REM bloque. Por eso la decision va en el `if` y el `exit` en la etiqueta.
+    if !N_NO_MEDIDOS! GTR 0 goto SIN_MEDIDOS_RC3
     exit /b 0
 )
 
 del "%REPORT%" >nul 2>&1
 del "%LENTOSFILE%" >nul 2>&1
+del "%NOMEDIDOS%" >nul 2>&1
 del "%TEMP%\verify_informe.txt" >nul 2>&1
 del "%TEMP%\verify_sin_fallos" >nul 2>&1
 del "%LOCK%\pid" >nul 2>&1
@@ -1408,7 +1492,37 @@ del "%TEMP%\verify_mipid.txt" >nul 2>&1
 rmdir "%LOCK%" >nul 2>&1
 exit /b 1
 
+:SIN_MEDIDOS_RC3
+REM El 3 va DESPUES del 0, no en vez de el: hay una diferencia entre "ha
+REM fallado algo" (1) y "no ha fallado nada, pero no se ha medido todo" (3), y
+REM un 1 seria mentir. Sale con 0 solo si no hay ni rojos ni tests sin medir, que
+REM es el unico caso en que el 0 significa algo.
+REM
+REM No se imprime nada aqui: la linea de los no medidos ya salio mas arriba, con
+REM el resto del informe, y repetirla debajo del separador seria la misma frase
+REM dos veces con el informe entero en medio.
+exit /b 3
+
 :muestra
 echo.
 echo     [%%~1] paso %%~2
+exit /b 0
+
+:mn_muchos
+echo.
+echo   %A%!N_NO_MEDIDOS! test(s) SIN MEDIR:%N% no se han compilado en esta pasada, asi que de ellos
+echo   no se puede decir ni quefallen ni que pasan. Si no hay rojos, el comando
+echo   sale con 3, no con 0: lo que se ha medido esta en verde, y lo que no,
+echo   no se ha mirado. Recompila lo que falte y vuelve a pasar la bateria.
+exit /b 0
+
+:mn_ninguno
+echo.
+echo   %A%0 test(s) sin medir:%N% todo lo que se ha ejecutado es de esta pasada.
+exit /b 0
+
+:mn_desconocido
+echo.
+echo   %A%Sin saber cuantos se han medido:%N% el paso 1 no se ha ejecutado, asi que nadie
+echo   ha dicho que binarios son de esta pasada. Con --only eso es lo que se ha pedido.
 exit /b 0

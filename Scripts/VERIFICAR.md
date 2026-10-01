@@ -106,6 +106,35 @@ Y en cada paso, la cuenta de rojos con su clasificación:
 lado: se lee y se decide uno a uno. **`SIN CLASIFICAR` es lo que hay que
 mirar**: un rojo nuevo, o un conocido cuyo motivo se ha quedado sin prefijo.
 
+## Los tres códigos de salida
+
+| Código | Qué significa |
+|---|---|
+| `0` | Todo en verde, y **todo lo que se ha ejecutado es de esta pasada**. |
+| `1` | Hay algún paso con fallos. Sale en rojo aunque los rojos sean del otro trabajo. |
+| `2` | Uso incorrecto (un `--only` que no es un paso, otro verify corriendo). |
+| `3` | **Sin rojos, pero con tests sin medir**: su `.exe` no es de esta pasada. |
+
+El `3` es nuevo. Antes, 35 binarios rancios y cero rojos salían con `0`, y un
+`0` con la mitad de la batería sin medir es un `0` que no se ha ganado. No es
+`1` porque no ha fallado nada, y `--no-build` es una opción legítima: quien la
+usa quiere correr la batería sobre el build que ya hay, y por eso el aviso es el
+más fuerte de los tres en vez de un error.
+
+Sale junto a una línea del informe que también va con `--only=2`, aunque entonces
+la cuenta salga a cero:
+
+```
+  39 test(s) SIN MEDIR: no se han compilado en esta pasada, asi que de ellos
+  no se puede decir ni que fallen ni que pasan. Si no hay rojos, el comando
+  sale con 3, no con 0: lo que se ha medido esta en verde, y lo que no,
+  no se ha mirado. Recompila lo que falte y vuelve a pasar la bateria.
+```
+
+`verify_all_check.sh` **no mira** el código de salida de los dos verify (compara
+solo el resumen), así que un `3` no lo hace fallar: eso es justo lo que lo hace
+seguro.
+
 ## Los rojos conocidos
 
 La lista está partida en dos, y las dos mitades se escriben a mano:
@@ -122,6 +151,27 @@ también qué hacer cuando un test se renombra, se borra o se arregla.
 Un rojo conocido que **pasa** lo avisa el propio script con `ARREGLO`, y dice
 los dos pasos que hay que hacer a mano: quitar el nombre del índice y borrar el
 fichero de motivo. No los quita él.
+
+Y un rojo conocido cuyo `.exe` **no se ha compilado en esta pasada** no puede
+decir `ARREGLO`, porque no se ha ejecutado: sale como `SIN MEDIR`, sin pedir que
+se borre nada. Antes se pisaban los dos avisos, separados por el `ctest`
+entero, y el segundo («borra su motivo») mandaba sobre el primero («no se sabe
+nada de este test»), con lo que un `--no-build` podía hacer borrar entradas de
+la lista de conocidos por tests que nadie había mirado:
+
+```
+  BINARIO RANCIO  1 test(s) se ejecutan con el .exe de una pasada anterior:
+        NEURONiK_EjemploTest
+  ...
+  ARREGLO  NEURONiK_EjemploTest
+            quita "NEURONiK_EjemploTest" del indice y borra known/NEURONiK_EjemploTest.txt
+```
+
+Ahora el primero dice los nombres que no se han medido, y el segundo los
+respeta. Y si la lista no ha llegado (el paso 1 no se ha ejecutado, por ejemplo
+con `--only=2`), **no dice `ARREGLO` de ninguno**: lo que no se sabe no se
+anuncia como bueno, el mismo principio que ya se aplica cuando el log de rojos
+no se puede leer.
 
 ## Cuando algo falla de verdad
 
