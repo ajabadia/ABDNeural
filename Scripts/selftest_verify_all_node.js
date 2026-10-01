@@ -1265,6 +1265,171 @@ seccion ('12. El aviso de rancios y el de ARREGLO, en el mismo test');
 }
 
 // ============================================================================
+//  13. LA PANTALLA DEL AVISO, CON UNA ENTRADA REAL
+// ============================================================================
+seccion ('13. La pantalla del aviso, con una entrada real');
+
+// POR QUE ESTA SECCION, Y POR QUE ESTA AL FINAL. Las doce anteriores comprueban
+// QUE el aviso no se contradiga, con nombres de mentira (T1, T2) que no estan
+// en ninguna bateria. Asi se prueba la regla sin depender de este proyecto, que
+// es lo que toca en una prueba automatica. Pero el aviso no sale NUNCA de verdad:
+// `Scripts/verify_all_known.json` tiene `entradas` vacio, asi que un SIN MEDIR de
+// verdad no sale hasta que vuelva a haber un rojo. Y un aviso que no sale nunca
+// no se puede revisar ni por la ortografia ni por la claridad: se escribe bien,
+// pasa las comprobaciones, y el dia que aparece por primera vez nadie lo ha
+// leido nunca.
+//
+// Aqui se monta el caso COMO SE VERIA EN LA CONSOLA: los nombres de verdad de
+// esta bateria, un motivo escrito como se escribe de verdad (prefijo en la linea 1,
+// texto partido, comentarios con `#`) y la pantalla entera sacada entre lineas,
+// para leerla. Las comprobaciones son las minimas, y no por pereza: lo que se
+// vigila aqui es que la linea exista, se lea y no pierda texto con el color. La
+// ortografia se mira leyendo, que es lo unico que sirve.
+//
+// Y va al final a proposito: es la seccion que enseña la pantalla, y para leerla
+// hace falta que las de arriba hayan pasado. Un fallo de verdad antes dejaria una
+// pantalla vieja en medio del informe, que es peor que no imprimirla.
+
+// La pantalla, tal cual. Un prefijo de dos caracteres y una barra para que se
+// distinga de las comprobaciones, y el texto sin tocar: si aqui se limpiasen los
+// saltos o se cambiase una palabra, la pantalla dejaria de ser la que sale.
+function pantalla (titulo, texto) {
+    const raya = '='.repeat(72);
+    process.stdout.write ('\n' + raya + '\n  ' + titulo + '\n' + raya + '\n');
+    const limpio = String (texto || '').replace (/\r/g, '');
+    if (limpio.length === 0) { process.stdout.write ('  (nada)\n'); return ''; }
+    for (const l of limpio.replace (/\n$/, '').split ('\n'))
+        process.stdout.write ('  | ' + l + '\n');
+    return limpio;
+}
+
+{
+    // ── EL ESCENARIO, CON NOMBRES DE VERDAD ────────────────────────────────
+    //
+    // Tres tests de esta bateria: uno reconstruido en esta pasada y dos que no.
+    // Los nombres salen de verdad del CTestTestfile del proyecto, no se inventan
+    // aqui: el ejercicio consiste en que el aviso se lea IGUAL que se leeria con
+    // la lista de verdad, y un nombre de dos letras (T1) deja fuera justo lo que
+    // hay que mirar, que es si el nombre cabe y si el motivo entero se entiende.
+    const MEDIDO = 'NEURONiK_DSPReferenceTest';
+    const RANCIOS = 'NEURONiK_ModulationMatrixTest';
+    const SIN_EXE = 'NEURONiK_ModulationDest17DriveTest';
+
+    // El arbol de tests. El segundo tiene el .exe de una pasada anterior (el caso
+    // del aviso) y el tercero no tiene .exe, que es el otro camino al mismo SIN
+    // MEDIR: no es que su binario sea viejo, es que no hay binario.
+    const dir = arbolTargets ([{ nombre: MEDIDO,     creaExe: true  },
+                              { nombre: RANCIOS,    creaExe: true  },
+                              { nombre: SIN_EXE,    creaExe: false }]);
+
+    // Y la lista de conocidos, con los dos motivos REDACTADOS como se redactan:
+    // el prefijo decide la clasificacion y va en la primera linea, el resto es
+    // texto libre partido en lineas, y lo que es contexto va con `#`, que no sale
+    // en el informe.
+    const { fichero } = lista ([MEDIDO, RANCIOS, SIN_EXE], {
+        [MEDIDO]: 'MIO: la referencia contra el modulo compartido difiere en tres\n' +
+                  'banos de la curva: el otro hilo todavia no ha movido su parametro.\n\n' +
+                  '# No es codigo roto: las dos mitades miden cosas distintas y el\n' +
+                  '# otro hilo lo sabe. Se queda rojo hasta que elija una.\n',
+        [RANCIOS]: 'ajeno: del modulo compartido a medias (otro hilo): la matriz aun\n' +
+                   'no incluye el destino 17, que es suyo y se anadio el mes pasado.\n\n' +
+                   '# El test revienta ANTES de que su codigo llegue a escribir nada,\n' +
+                   '# asi que el motivo no puede ser "lo que dice el log": no dice nada.\n',
+        [SIN_EXE]: 'MIO: el destino 17 todavia no tiene destino en la matriz: el .exe\n' +
+                   'de este test no se ha compilado desde que se anadio.\n\n' +
+                   '# El binario no es viejo: no hay. El paso 1 no lo compila, asi que\n' +
+                   '# nadie puede saber si este rojo sigue existiendo.\n'
+    });
+
+    // El log de rojos VACIO: la bateria entera en verde. Es el caso dangerouso que
+    // activa el aviso entero, porque sin rojos "no estar en la lista" parece
+    // "haber pasado" y el destino son dos ficheros borrados.
+    const rojos = path.join (TMP, 'rojos13.log');
+    fs.writeFileSync (rojos, '');
+    const medidos = path.join (TMP, 'nom_medidos13.txt');
+
+    // ── LOS DOS AVISOS, EN ORDEN, COMO LOS LLAMA EL SCRIPT ────────────────
+    //
+    // Primero el de binarios rancios, que es quien deja la lista de lo que NO se
+    // ha medido; despues el de ARREGLO, que la lee. El orden no es el del
+    // informe del script (que va entre un ctest entero y otro), pero es el que
+    // importa para entender la pantalla: el segundo aviso no puede decir ARREGLO
+    // sin lo que escribio el primero.
+    const rRuncios = corre (['rancios', dir, 'Release', '', '',
+                            '--medidos=' + medidos, MEDIDO]);
+    const rArreglados = corre (['arreglados', fichero, rojos, '', '', medidos]);
+
+    pantalla ('PASO 1: el aviso de binarios rancios, que deja la lista de los no medidos',
+              rRuncios.out);
+    pantalla ('PASO 2 (ctest entero en verde) y el aviso de ARREGLO, que lee esa lista',
+              rArreglados.out);
+    pantalla ('LO QUE SE PIDE EN PANTALLA, tal cual, con los colores de verdad',
+              corre (['arreglados', fichero, rojos,
+                      String.fromCharCode (27) + '[33m',
+                      String.fromCharCode (27) + '[0m',
+                      medidos]).out);
+
+    // ── LO QUE SE COMPRUEBA ───────────────────────────────────────────────
+    //
+    // Pocas, y todas de las que un fallo tiene que ser visible en la pantalla
+    // de arriba. La logica esta en la seccion 12; aqui se vigila que con nombres
+    // de verdad y un motivo de verdad el aviso siga saliendo entero.
+    ok   ('los dos avisos salen con 0',
+         rRuncios.rc === 0 && rArreglados.rc === 0,
+         'rancios: ' + rRuncios.rc + '\narreglados: ' + rArreglados.rc +
+         '\nstderr: ' + rArreglados.errR.trim ());
+    ok   ('el conocido de verdad sin binario sale como SIN MEDIR',
+         rArreglados.outR.indexOf ('SIN MEDIR  ' + RANCIOS) !== -1,
+         'stdout: ' + rArreglados.outR.trim ());
+    ok   ('...y el que no tiene ni .exe tambien, con su nombre',
+         rArreglados.outR.indexOf ('SIN MEDIR  ' + SIN_EXE) !== -1,
+         'stdout: ' + rArreglados.outR.trim ());
+    ok   ('el reconstruido sale como ARREGLO, con los dos pasos para quitarlo',
+         rArreglados.outR.indexOf ('ARREGLO  ' + MEDIDO) !== -1 &&
+         rArreglados.outR.indexOf ('quita "' + MEDIDO + '"') !== -1 &&
+         rArreglados.outR.indexOf ('borra known/' + MEDIDO + '.txt') !== -1,
+         'stdout: ' + rArreglados.outR.trim ());
+    // Lo que NO PUEDE salir, con el nombre de verdad: el consejo de borrar los
+    // dos motivos de los que no se ha medido nada. Es el fallo entero, aqui con
+    // los nombres por los que se llega a ejecutar el paso.
+    ok   ('...y NO pide borrar ninguno de los dos que no se han medido',
+         rArreglados.outR.indexOf ('quita "' + RANCIOS + '"') === -1 &&
+         rArreglados.outR.indexOf ('borra known/' + RANCIOS + '.txt') === -1 &&
+         rArreglados.outR.indexOf ('quita "' + SIN_EXE + '"') === -1 &&
+         rArreglados.outR.indexOf ('borra known/' + SIN_EXE + '.txt') === -1,
+         'stdout: ' + rArreglados.outR.trim ());
+    ok   ('...y el recuento dice los dos',
+         /2 de los 3 conocidos no se han medido/.test (rArreglados.outR),
+         'stdout: ' + rArreglados.outR.trim ());
+    // Y que el motivo de verdad llegue entero al que lo lee. `arreglados` no
+    // imprime los motivos (eso lo hace el informe, que es otra pantalla y ya
+    // esta probada en la seccion 1), asi que aqui se mira por la orden que los
+    // carga: aplanado en una linea, y sin los comentarios, que si se colaran
+    // ensuciarian la linea del rojo en el informe de verdad.
+    const motivo = corre (['motivo', fichero, RANCIOS]);
+    ok   ('el motivo de verdad llega entero y en una linea',
+         motivo.out.indexOf ('el destino 17, que es suyo') !== -1 &&
+         motivo.out.indexOf ('\n') === -1,
+         'stdout: ' + JSON.stringify (motivo.out));
+    ok   ('...y sin los comentarios de contexto',
+         motivo.out.indexOf ('#') === -1 &&
+         motivo.out.indexOf ('no dice nada') === -1,
+         'stdout: ' + JSON.stringify (motivo.out));
+    // El color no puede cambiar el texto. Es la unica comprobacion de esta
+    // seccion que no es de la regla: si el color se comiera parte de una linea
+    // al pintarla, el aviso en la consola de verdad estaria corrotto y las once
+    // comprobaciones de arriba (que van sin color) no lo verian.
+    const conColor = corre (['arreglados', fichero, rojos,
+                             String.fromCharCode (27) + '[33m',
+                             String.fromCharCode (27) + '[0m', medidos]);
+    const limpio = (s) => s.replace (new RegExp (String.fromCharCode (27) + '\\[[0-9;]*m', 'g'), '');
+    ok   ('con color el texto es el MISMO que sin color',
+         limpio (conColor.outR) === rArreglados.outR,
+         'con color: ' + JSON.stringify (limpio (conColor.outR)) +
+         '\nsin color: ' + JSON.stringify (rArreglados.outR));
+}
+
+// ============================================================================
 //  EL RESULTADO
 // ============================================================================
 process.stdout.write ('\n' + '-'.repeat(72) + '\n');
