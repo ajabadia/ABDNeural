@@ -121,22 +121,52 @@ fichero de motivo. No los quita él.
 | `AVISO` sobre un prefijo | Un motivo sin `MIO:` ni `ajeno:`; el rojo sale `SIN CLASIFICAR` |
 | Los dos gemelos NO coinciden | Uno de los dos se ha tocado y el otro no. El `diff` de arriba da el nombre del rojo que difiere |
 | `AVISO: ... no se ha podido cargar` | La lista no se puede cargar; el motivo concreto sale en la validación de más abajo |
+| `BINARIO RANCIO` | El test se está ejecutando con el `.exe` de una pasada anterior, no con el código de ahora. Ver abajo |
+
+## El aviso de binarios rancios
+
+Sale en el paso 1, siempre, y es lo primero que hay que leer antes de fiarse de
+ningún resultado de la batería.
+
+El paso 1 compila **seis targets**, y solo **cuatro** son tests: `FxExport` y
+`ModulationParityDump` son programas que se ejecutan a mano. De los 53 tests que
+ve `ctest`, 39 son nativos (los otros 14 son de Node: Playwright y contratos), y
+con la lista corta del paso 1 se reconstruyen 4. Los 35 restantes se ejecutan
+con el `.exe` que hubiera, y el aviso los va nombrando uno a uno.
+
+La línea de arriba dice las tres cifras, y suma: `39 nativos = 4 reconstruidos +
+35 rancios`. Si no sumara, el aviso estaría contando otra cosa.
+
+Esto no es un detalle: durante días se leyeron cuatro rojos que eran binarios del
+29/09, y un test que se daba por bueno y no lo estaba. Por eso el aviso es
+**fuerte**, y por eso **no se calla con `--no-build`**: con `--no-build` no se ha
+compilado nada, así que los 39 nativos van con el binario de la fecha que tengan,
+y el encabezado pasa a ser `NO SE HA CONSTRUIDO NADA`.
+
+Si un rojo sale de la lista de rancios, recompila ese target y vuelve a mirar
+antes de tocar código:
+
+```bash
+cmake --build build-reference --config Release --target NOMBRE
+```
 
 ## Lo que hoy está rojo, y por qué
 
-Ocho rojos, y **no son ocho problemas**. Los míos son cinco, del motor; los
-otros tres son una sola causa de entorno.
+Tres rojos, y **no son tres problemas**: son uno solo.
 
-**Cinco del motor**, todos `ajeno`, con el motivo verificado sobre el binario
-recién compilado: `PresetMigrationParity` (rc=139, SIGSEGV), y los otros cuatro
-(`ParameterDescriptor`, `StatePersistence`, `ParameterBridge`,
-`ParameterRandomizer`) que leen estado o parámetros con una forma que el motor
-ya no tiene.
+**Tres `WebUi*E2e`.** En esta máquina el antivirus no deja leer los `.js` de
+`node_modules`, así que Playwright no arranca. Y lo mismo rompe `vitest` en los
+pasos 3 y 4, que no tienen lista de conocidos a propósito porque no son tests
+sino pasos enteros.
 
-**Tres `WebUi*E2e`, que son uno solo.** En esta máquina el antivirus no deja
-leer los `.js` de `node_modules`, así que Playwright no arranca. Y lo mismo
-rompe `vitest` en los pasos 3 y 4, que no tienen lista de conocidos a propósito
-porque no son tests sino pasos enteros.
+Hubo ocho, y aquí está el resto de la historia porque es el ejemplo de para qué
+existe el aviso de binarios rancios: cinco del motor (`PresetMigrationParity`,
+`ParameterDescriptor`, `StatePersistence`, `ParameterBridge`,
+`ParameterRandomizer`). Cuatro estaban **bien**: sus `.exe` eran del 29/09, y al
+recompilarlos pasaron sin tocar una línea. Uno era un bug de verdad
+(`ParameterRandomizer`: RANDOMIZE movía `fxChorusMix` y `fxReverbMix`, que no
+están cableados a nada). `PresetMigrationParity` con rc=139 no era un SIGSEGV: era
+el mismo binario rancio.
 
 ## Lo que este verify NO hace
 
@@ -145,5 +175,6 @@ porque no son tests sino pasos enteros.
 - **No compara tiempos.** Dos corridas seguidas dan tiempos distintos, y eso
   haría fallar el check por el motivo equivocado. Solo mira si un test fue
   lento, no cuánto.
-- **No compila «todo»**: solo los 6 targets de test del paso 1. El plugin y
-  los targets de WASM no son de esta verificación.
+- **No compila «todo»**: solo los 6 targets del paso 1, de los que 4 son tests. El
+  plugin y los targets de WASM no son de esta verificación. Los otros 35 tests
+  nativos salen con el binario de la pasada anterior, y el paso 1 lo dice.

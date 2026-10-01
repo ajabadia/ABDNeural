@@ -512,6 +512,42 @@ function arbolRuncios (casos) {
     igual ('sin lista de construidos no avisa de nada', r.outR.indexOf ('BINARIO RANCIO'), -1);
 }
 
+// PERO --sin-build si avisa, y con otro encabezado. Es el caso de `--no-build`:
+// el paso 1 no se ha ejecutado, no hay lista que mandar, y el silencio de
+// antes hacia leer 53 tests de binarios que nadie habia compilado creyendose
+// que si. Aqui el aviso tiene que ser el mas fuerte de los tres.
+{
+    const dir = arbolRuncios ([{ nombre: 'T1', creaExe: true }, { nombre: 'T2', creaExe: true }]);
+    const r = corre (['rancios', dir, 'Release', '', '', '--sin-build']);
+    igual ('--sin-build avisa (rc 0, sigue siendo un aviso)', r.rc, 0);
+    ok   ('...con su propio encabezado', r.outR.indexOf ('NO SE HA CONSTRUIDO NADA') !== -1, 'stdout: ' + r.outR.trim());
+    ok   ('...y dice que no hay ninguno reconstruido', r.outR.indexOf ('0 reconstruidos') !== -1, 'stdout: ' + r.outR.trim());
+    ok   ('...y no usa el encabezado de rancio', r.outR.indexOf ('BINARIO RANCIO') === -1, 'stdout: ' + r.outR.trim());
+    ok   ('...y el flag no se cuela como un target', r.outR.indexOf ('--sin-build') === -1, 'stdout: ' + r.outR.trim());
+    ok   ('...y cuenta los dos', /2 nativos/.test (r.outR) && /2 con el binario de una pasada anterior/.test (r.outR),
+         'stdout: ' + r.outR.trim());
+}
+
+// La linea de cabecera tiene que CUADRAR: los reconstruidos mas los que se
+// quedan fuera son los tests nativos del arbol. Antes contaba los targets del
+// paso 1, y dos de los seis no son tests, asi que la suma no salia y el aviso
+// parecia estar contando cosas que no son.
+{
+    const casos = [{ nombre: 'T1', creaExe: true }, { nombre: 'T2', creaExe: true },
+                   { nombre: 'T3', creaExe: true }, { nombre: 'T4', creaExe: true }];
+    const dir = arbolRuncios (casos);
+    // Dos tests, y en la lista un target de mas que no es test (FxExport) y otro
+    // que no esta ni en la lista ni en la bateria.
+    const r = corre (['rancios', dir, 'Release', '', '', 'T1', 'T2', 'NoEsUnTest']);
+    const m = /(\d+) nativos, (\d+) reconstruidos por el paso 1(?:, (\d+) con el binario)?/.exec (r.outR);
+    ok   ('la cabecera se puede sumar', m !== null, 'stdout: ' + r.outR.trim());
+    if (m) {
+        igual ('nativos = reconstruidos + rancios',
+               Number (m[1]), Number (m[2]) + Number (m[3] || 0));
+        igual ('cuenta los tests, no los targets', Number (m[2]), 2);
+    }
+}
+
 // Un test registrado sin .exe se avisa aparte, porque se esta contando como
 // verde algo que no se ha ejecutado nunca.
 {

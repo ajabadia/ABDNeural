@@ -459,6 +459,11 @@ call :QUIERE 1
 if not errorlevel 1 (
     echo.
     echo %T%=== PASO 1: build de ABDNeural ===%N%
+    REM EL AVISO DE LOS BINARIOS RANCIOS va DENTRO de cada rama y no despues:
+    REM es la unica vez que se sabe que targets se han construido, y con
+    REM --no-build no se ha construido ninguno, que es justo cuando mas hace
+    REM falta decirlo. Antes se callaba ahi, y se leian 53 tests de binarios
+    REM que nadie habia compilado creyendo que si.
     if "%HACER_BUILD%"=="1" (
         call :build_target NEURONiK_FxExport
         call :build_target NEURONiK_ModulationParityDump
@@ -466,16 +471,15 @@ if not errorlevel 1 (
         call :build_target NEURONiK_ModulationMatrixTest
         call :build_target NEURONiK_FxCatalogueTest
         call :build_target NEURONiK_FxSlotsTest
+        node "%NODELIB%" rancios "%BUILD%" "%CONFIG%" "%A%" "%N%" !CONSTRUIDOS!
+    ) else (
+        echo   paso 1 saltado con --no-build: no se ha compilado nada
+        node "%NODELIB%" rancios "%BUILD%" "%CONFIG%" "%A%" "%N%" --sin-build
     )
     REM Un solo rojo para los seis, y fuera del bloque: el nombre del problema es
     REM "un target no compila", y son los targets, no los pasos. Los errores de
     REM Los errores de compilacion de cada uno los ha impreso ya `:build_target`.
     if defined FALLO_BUILD call :anotar 1 "(build)" "un target no compila; el error esta arriba"
-    REM EL AVISO DE LOS BINARIOS RANCIOS. Va aqui, y no mas adelante, porque es
-    REM la unica vez que se sabe que targets se han construido: si se espera, el
-    REM paso 2 ya ha corrido la bateria entera sobre binarios que nadie sabe de
-    REM cuando son. Con --no-build no se dice nada, porque ahi el aviso seria ruido.
-    node "%NODELIB%" rancios "%BUILD%" "%CONFIG%" "%A%" "%N%" !CONSTRUIDOS!
 )
 
 REM ============================================================================

@@ -51,7 +51,7 @@
 //    cuenta     <json> [destino]         numero de entradas
 //    motivo     <json> <test> [destino]  el motivo de un rojo, o ""
 //    arreglados <json> <rojos> [a] [n]   el bloque ARREGLO, por pantalla
-//    rancios    <testdir> <config> [a] [n] [construidos...]
+//    rancios    <testdir> <config> [a] [n] [--sin-build] [construidos...]
 //               tests cuyo .exe es mas viejo que el codigo que se ha escrito.
 //               Ver el aviso: sin esto, un rojo de binario rancio se lee como un
 //               rojo de codigo, y salen cuatro falsos de golpe.
@@ -1013,7 +1013,7 @@ function configDe (ruta) {
     const m = /[\\/](Debug|Release|RelWithDebInfo|MinSizeRel)[\\/]/i.exec (String (ruta || ''));
     return m ? m[1] : '';
 }
-function cmdRuncios (testdir, config, colorA, colorN, construidos) {
+function cmdRuncios (testdir, config, colorA, colorN, construidos, sinBuild) {
     const ca = String (colorA || '');
     const cn = String (colorN || '');
 
@@ -1053,9 +1053,17 @@ function cmdRuncios (testdir, config, colorA, colorN, construidos) {
     // rebuilding esto?": si no lo ha hecho, el .exe que va a correr es el que
     // hubiera, con la antiguedad que tenga.
     const hechos = new Set ((construidos || []).map (s => String (s)));
+    // `--sin-build` es el caso limite: el paso 1 no se ha ejecutado, asi que no
+    // hay lista que enviar y el silencio pareceria que todo esta al dia. Es justo
+    // el caso donde mas hace falta el aviso, porque con --no-build NADA de esto
+    // se ha compilado. Sin lista y sin el flag (llamado a mano) no se juzga
+    // nada, que es otra cosa.
+    const sinbuild = sinBuild === true;
 
     let sinConstruir = 0;
     let sinBinario = 0;
+    let nativos = 0;        // tests de este arbol, con .exe o sin el
+    let reconstruidos = 0;  // los que de verdad son un test de la lista de "hechos"
     const fuera = [];
     const ausentes = [];
 
@@ -1070,6 +1078,7 @@ function cmdRuncios (testdir, config, colorA, colorN, construidos) {
         // existen, y un aviso que se queja de todo no avisa de nada.
         const raizBuild = path.resolve (String (testdir || ''));
         if (path.resolve (path.dirname (ruta)).indexOf (raizBuild) !== 0) continue;
+        ++nativos;
 
         let st;
         try { st = fs.statSync (ruta); }
@@ -1079,11 +1088,12 @@ function cmdRuncios (testdir, config, colorA, colorN, construidos) {
         // comprueba el paso 1 al compilar, asi que la comparacion es directa.
         const target = path.basename (entrada.exe, path.extname (entrada.exe));
 
-        if (hechos.size > 0 && !hechos.has (target)) {
+        if (sinbuild || (hechos.size > 0 && !hechos.has (target))) {
             ++sinConstruir;
             fuera.push (nombre);
             continue;
         }
+        if (hechos.has (target)) ++reconstruidos;
 
         // Y si SI se ha construido en esta pasada, el .exe no puede ser mas viejo
         // que lo que se acaba de compilar. Si lo es, algo lo ha tocado por
@@ -1100,13 +1110,19 @@ function cmdRuncios (testdir, config, colorA, colorN, construidos) {
     fuera.sort ();
     ausentes.sort ();
 
+    // La cuenta que se imprime es la que cuadra: tests reconstruidos de verdad
+    // (NO los targets del paso 1, que incluyen dos que no son tests y se
+    // comian dos de la diferencia) + los que se quedan fuera = los nativos.
     process.stdout.write ('  binarios de tests: ' + vistos.size +
-                          ' en la bateria, ' + hechos.size + ' reconstruidos por el paso 1' +
+                          ' en la bateria, ' + nativos + ' nativos, ' +
+                          (sinbuild ? '0 reconstruidos' : reconstruidos + ' reconstruidos') +
+                          ' por el paso 1' +
                           (fuera.length > 0 ? ', ' + fuera.length + ' con el binario de una pasada anterior' : '') + '\n');
 
     if (fuera.length > 0) {
-        process.stdout.write ('\n  ' + ca + 'BINARIO RANCIO' + cn + '  ' + fuera.length +
-                              ' test(s) se ejecutan con el .exe de una pasada anterior:\n');
+        process.stdout.write ('\n  ' + ca + (sinbuild ? 'NO SE HA CONSTRUIDO NADA' : 'BINARIO RANCIO') + cn + '  ' + fuera.length +
+                              (sinbuild ? ' test(s) se ejecutan sin haber sido compilados nunca en esta pasada:\n'
+                                        : ' test(s) se ejecutan con el .exe de una pasada anterior:\n'));
         for (const n of fuera.slice (0, 10)) process.stdout.write ('        ' + n + '\n');
         if (fuera.length > 10)
             process.stdout.write ('        ... y ' + (fuera.length - 10) + ' mas (el script los lista todos)\n');
@@ -1117,11 +1133,19 @@ function cmdRuncios (testdir, config, colorA, colorN, construidos) {
                               String (config || 'Release') + ' --target NOMBRE`) y vuelve a mirar\n');
         process.stdout.write ('          antes de tocar nada.\n');
         process.stdout.write ('\n');
-        process.stdout.write ('          El paso 1 compila a proposito una lista corta de targets (los que\n');
-        process.stdout.write ('          exportan y los de la matriz de modulacion), no los ' + vistos.size +
-                              ' tests: "todo" arrastra\n');
-        process.stdout.write ('          el plugin y el WASM. Es NORMAL que falten, y por eso esto es un\n');
-        process.stdout.write ('          aviso y no un rojo. Lo que no es normal es leerlos sin saberlo.\n');
+        if (sinbuild) {
+            process.stdout.write ('          Ha ido con --no-build: el paso 1 no se ha ejecutado, asi que esto\n');
+            process.stdout.write ('          no es que los binarios sean viejos, es que no se ha compilado\n');
+            process.stdout.write ('          nada. Un rojo de aqui no es del codigo de ahora, y un verde\n');
+            process.stdout.write ('          tampoco. Quita el --no-build, o compila a mano lo que quieras\n');
+            process.stdout.write ('          mirar, y vuelve a pasar la bateria.\n');
+        } else {
+            process.stdout.write ('          El paso 1 compila a proposito una lista corta de targets (los que\n');
+            process.stdout.write ('          exportan y los de la matriz de modulacion), no los ' + nativos +
+                                  ' tests nativos: "todo" arrastra\n');
+            process.stdout.write ('          el plugin y el WASM. Es NORMAL que falten, y por eso esto es un\n');
+            process.stdout.write ('          aviso y no un rojo. Lo que no es normal es leerlos sin saberlo.\n');
+        }
     }
     if (sinBinario > 0) {
         process.stdout.write ('\n  ' + ca + 'SIN BINARIO' + cn + '  ' + sinBinario +
@@ -1192,12 +1216,21 @@ switch (orden) {
     case 'cuenta':    cmdCuenta     (argv[1], argv[2]); break;
     case 'motivo':    cmdMotivo     (argv[1], argv[2], argv[3]); break;
     case 'arreglados':cmdArreglados (argv[1], argv[2], argv[3] || '', argv[4] || ''); break;
-    case 'rancios':    cmdRuncios     (argv[1], argv[2], argv[3] || '', argv[4] || '', argv.slice(5)); break;
+    case 'rancios': {
+        // El flag va en medio de la lista, no delante: los dos scripts lo
+        // escriben siempre, y separarlo seria una posicion mas que recordar.
+        const resto = argv.slice (5);
+        const sinbuild = resto.indexOf ('--sin-build') !== -1;
+        cmdRuncios (argv[1], argv[2], argv[3] || '', argv[4] || '',
+                    sinbuild ? resto.filter (s => s !== '--sin-build') : resto,
+                    sinbuild);
+        break;
+    }
 
     default:
         process.stderr.write ('verify_all_node.js: orden desconocida: ' + String (orden) + '\n');
         process.stderr.write ('  vivo | limpia | conocidos | cuenta | motivo | arreglados | resumen\n');
-        process.stderr.write ('  rancios <testdir> <config> [a] [n]  tests con el .exe mas viejo que el codigo\n');
+        process.stderr.write ('  rancios <testdir> <config> [a] [n] [--sin-build] [construidos...]  tests con el .exe mas viejo que el codigo\n');
         process.stderr.write ('  bateria <json> <testdir> <config>\n');
         process.stderr.write ('  compara | pidpropio | leepid\n');
         process.exit (2);

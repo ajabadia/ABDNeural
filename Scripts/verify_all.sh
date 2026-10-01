@@ -29,7 +29,9 @@
 # ── USO ────────────────────────────────────────────────────────────────────
 #
 #   ./Scripts/verify_all.sh              # los cinco pasos
-#   ./Scripts/verify_all.sh --no-build   # salta el paso 1 (build ya hecho)
+#   ./Scripts/verify_all.sh --no-build   # salta el paso 1 (build ya hecho). El aviso de
+#                                        # binarios rancios sale igual, y mas fuerte:
+#                                        # no se ha compilado NADA
 #   ./Scripts/verify_all.sh --only=3     # un solo paso, para depurar
 #
 # Salidas: 0 todo en verde; 1 algun paso con fallos; 2 uso incorrecto.
@@ -520,7 +522,8 @@ trap 'rm -f "$LOCK/pid" 2>/dev/null; rmdir "$LOCK" 2>/dev/null' EXIT
 # ═════════════════════════════════════════════════════════════════════════════
 # PASO 1: BUILD
 # ═════════════════════════════════════════════════════════════════════════════
-if [[ " $PASOS " == *" 1 "* ]]; then
+construidos=()
+if [[ " $PASOS " == *" 1 "* && $HACER_BUILD -eq 1 ]]; then
     empezar_paso 1 "build de ABDNeural"
     # Los targets de test, no "todo": "todo" arrastra el plugin y lostargets de
     # WASM, que no son de esta verificacion y tardan mas que todo lo demas.
@@ -529,7 +532,6 @@ if [[ " $PASOS " == *" 1 "* ]]; then
     # rancios: la lista de targets es corta a proposito, asi que casi todos los
     # tests de ctest van a salir aqui, y sin avisar de eso se estan leyendo
     # resultados de un binario que nadie ha compilado hoy.
-    construidos=()
     for t in NEURONiK_FxExport NEURONiK_ModulationParityDump \
              NEURONiK_ModulationDest17DriveTest NEURONiK_ModulationMatrixTest \
              NEURONiK_FxCatalogueTest NEURONiK_FxSlotsTest; do
@@ -550,14 +552,23 @@ if [[ " $PASOS " == *" 1 "* ]]; then
         anotar 1 "(build)" "un target no compila; el error esta arriba"
     fi
 
-    # EL AVISO DE LOS BINARIOS RANCIOS. Va aqui, y no mas adelante, porque es
-    # la unica vez que se sabe que targets se han construido: si se espera, el
-    # paso 2 ya ha corrido 53 tests sobre binarios que nadie sabe de cuando son.
-    #
-    # Se imprime siempre que el paso 1 se ha ejecutado. Con --no-build no se dice
-    # nada, porque ahi el aviso seria ruido: uno ha pedido expressly no compilar.
-    node "$NODE_LIB" rancios "$BUILD" "$CONFIG" "$A" "$N" "${construidos[@]+"${construidos[@]}"}"
     terminar_paso
+fi
+
+# EL AVISO DE LOS BINARIOS RANCIOS. Va aqui, y no mas adelante, porque es la
+# unica vez que se sabe que targets se han construido: si se espera, el paso 2 ya
+# ha corrido 53 tests sobre binarios que nadie sabe de cuando son.
+#
+# Y va FUERA del if del paso 1, que es lo que hace que tambien salga con
+# --no-build. Antes se callaba ahi, y --no-build era justo el caso de mirar
+# resultados de binarios que nadie ha compilado: el aviso, ahi, no es ruido.
+if [[ " $PASOS " == *" 1 "* ]]; then
+    if [ $HACER_BUILD -eq 1 ]; then
+        node "$NODE_LIB" rancios "$BUILD" "$CONFIG" "$A" "$N" "${construidos[@]+"${construidos[@]}"}"
+    else
+        printf '  paso 1 saltado con --no-build: no se ha compilado nada\n'
+        node "$NODE_LIB" rancios "$BUILD" "$CONFIG" "$A" "$N" --sin-build
+    fi
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -847,7 +858,11 @@ volcar_resumen
 rm -f "$RES_ENTRADAS" "$RES_LENTOS"
 
 if [ ${#fallos[@]} -eq 0 ]; then
-    printf '\n  %sSIN FALLOS.%s Los cinco pasos en verde.\n\n' "$V" "$N"
+    # "los pasos que se han ejecutado", y no "los cinco": con --only=2 esto
+    # es verdad y lo otro no. Ademas es la frase que dice el .bat, y dos
+    # gemelos que se despedecen en la unica linea que se lee cuando todo ha
+    # ido bien son dos gemelos que se han separado.
+    printf '\n  %sSIN FALLOS.%s los pasos que se han ejecutado estan en verde.\n\n' "$V" "$N"
     exit 0
 fi
 
