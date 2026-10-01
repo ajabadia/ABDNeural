@@ -182,12 +182,36 @@ cmake --build build-reference --config Release --target NOMBRE
 
 ## Lo que hoy está rojo, y por qué
 
-Tres rojos, y **no son tres problemas**: son uno solo.
+**Nada. La batería está entera en verde: 53 de 53**, y la lista de conocidos
+(`Scripts/verify_all_known.json`) tiene `entradas` vacío.
 
-**Tres `WebUi*E2e`.** En esta máquina el antivirus no deja leer los `.js` de
-`node_modules`, así que Playwright no arranca. Y lo mismo rompe `vitest` en los
-pasos 3 y 4, que no tienen lista de conocidos a propósito porque no son tests
-sino pasos enteros.
+Hubo tres, y están arreglados. Lo que interesa es **por qué estaban**, porque
+son dos fallos encimados y el segundo estaba tapado por el primero:
+
+**Los `.js` de `node_modules` que no se abrían.** Eran 199 ficheros que daban
+`EPERM` (error 5 de Win32, `ACCESS_DENIED`), y rompían a la vez los tres
+`WebUi*E2e` y los dos `vitest` de los pasos 3 y 4.
+
+Estaba escrito que era el antivirus, y **no lo era**: `Get-MpThreatDetection` y
+`Get-MpThreat` salían vacíos, el ACL del directorio era idéntico al de un paquete
+que se leía bien, y en la misma carpeta se podía crear y leer un fichero nuevo. El
+bloqueo estaba en el inodo, no en la ruta: los mismos inodos, bloqueados a la vez
+en el store de pnpm y en los tres repos que lo comparten por hardlink. La causa
+era el store `v10`, de marzo, que ya no deja leer; el `v11` se lee entero. Todo
+el diagnóstico y el rodeo están en
+[`COMO-ARREGLAR-EL-BUILD.md`](COMO-ARREGLAR-EL-BUILD.md).
+
+**Y el navegador de Playwright, que nadie sabía que faltaba.** Con los `.js`
+arreglados, los tres tests seguían en rojo y el motivo escrito ya no tenía nada
+que ver: no había **ningún** navegador instalado (`Executable doesn't exist at
+...ms-playwright/chromium_headless_shell-1243/...`).
+
+Eso es lo que hace dangerous un motivo de rojo conocido: es una hipótesis sobre
+por qué falla, y si está equivocada **tapa la causa real**. El arreglo hecho a
+partir de la hipótesis equivocada no quita el rojo, y entonces parece que no tiene
+arranjo. Por eso los motivos se comprueban antes de apuntarlos, y por eso los
+pasos 3 y 4 (que no son tests sino pasos enteros) no tienen lista: un rojo ahí
+pide decisión aunque el motivo esté escrito.
 
 Hubo ocho, y aquí está el resto de la historia porque es el ejemplo de para qué
 existe el aviso de binarios rancios: cinco del motor (`PresetMigrationParity`,

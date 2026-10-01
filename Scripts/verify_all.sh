@@ -705,12 +705,29 @@ fi
 # paso se iba de diez minutos sin llegar nunca al informe. Un verify que no
 # termina no avisa de nada.
 #
-# EL RESULTADO SE LEE DE `LastTestsFailed.log`, que ctest escribe siempre y trae
-# los rojos como "N:Nombre", uno por linea. La primera version de este paso
-# buscaba `LastTest.xml`, que es donde el propio mensaje de ctest dice que estan
-# los resultados, y no existe: ese XML solo se escribe con `--output-junit`, que
-# no estaba. Los dos ficheros de los que si se puede depender siempre son este y
-# `LastTest.log`, que tiene la salida de cada test para extraer el motivo.
+# EL RESULTADO SE LEE DE `LastTestsFailed.log`, que trae los rojos como
+# "N:Nombre", uno por linea. La primera version de este paso buscaba
+# `LastTest.xml`, que es donde el propio mensaje de ctest dice que estan los
+# resultados, y no existe: ese XML solo se escribe con `--output-junit`, que no
+# estaba. Los dos ficheros de los que se puede depender son este y `LastTest.log`,
+# que tiene la salida de cada test para extraer el motivo.
+#
+# PERO `LastTestsFailed.log` SOLO SE ESCRIBE CUANDO HAY ALGO QUE FALLA, y aqui
+# estaba escrito lo contrario. Es un error que produce rojos que no existen, y se
+# ve de dos maneras, medidas el 2026-10-01 con la bateria entera en verde:
+#
+#   - si el fichero NO existe, el paso decia "no se genero LastTestsFailed.log"
+#     y lo anotaba como rojo;
+#   - si el fichero SI existe pero es de una corrida VIEJA, lo leia entero y
+#     listaba esos rojos, que pueden ser de ayer.
+#
+# Las dos son el mismo fallo mirando por lados distintos: un fichero que no es de
+# esta corrida se lee como si lo fuera. Y un rojo que no es de esta corrida es el
+# peor rojo posible, porque no se arregla: no hay nada que arreglar todavia.
+#
+# El codigo de salida de ctest es lo que dice la verdad (0 si todo ha pasado), y
+# es el mismo que usa el propio ctest. Asi que decide el, y el fichero de fallos
+# solo se lee cuando el codigo dice que hay algo que mirar.
 # ═════════════════════════════════════════════════════════════════════════════
 if [[ " $PASOS " == *" 2 "* ]]; then
     empezar_paso 2 "ctest -C $CONFIG"
@@ -753,14 +770,21 @@ if [[ " $PASOS " == *" 2 "* ]]; then
         # portatil lento un test de DSP puede tardar mas de lo que tarda en la
         # maquina de al lado. `ctest --help` lo llama TIMEOUT.
         ctest --test-dir "$BUILD" -C "$CONFIG" -j --timeout "$TIMEOUT_CTEST" > /dev/null 2>&1
+        rc_ctest=$?
 
         FALLOS="$BUILD/Testing/Temporary/LastTestsFailed.log"
         LOG="$BUILD/Testing/Temporary/LastTest.log"
 
-        if [ ! -f "$FALLOS" ]; then
-            printf '  %sctest no dejo LastTestsFailed.log%s: no se puede leer que fallo.\n' "$R" "$N"
+        # El codigo de salida decide si hay rojos. El fichero de fallos solo se
+        # lee cuando ese codigo dice que los hay, porque si no esta del bucle
+        # anterior y contaria rojos de otra corrida (ver el bloque de arriba).
+        if [ $rc_ctest -eq 0 ]; then
+            printf '  %s%s tests, 0 en rojo%s\n' "$V" "$total" "$N"
+        elif [ ! -f "$FALLOS" ]; then
+            printf '  %sctest salio con %s pero no dejo LastTestsFailed.log%s: no se puede leer que fallo.\n' \
+                "$R" "$rc_ctest" "$N"
             printf '          Se ejecutaron %s tests.\n' "$total"
-            anotar 2 "(ctest)" "no se genero LastTestsFailed.log; no se puede saber que fallo"
+            anotar 2 "(ctest)" "ctest salio con $rc_ctest pero no dejo LastTestsFailed.log; no se puede saber que fallo"
         else
             rojos="$(grep -c . "$FALLOS" 2>/dev/null || echo 0)"
 
@@ -906,7 +930,7 @@ fi
 if [[ " $PASOS " == *" 3 "* ]]; then
     empezar_paso 3 "vitest de WebUI"
     if ejecutar_vitest "$RAIZ/WebUI" "WebUI"; then :; else
-        anotar 3 "WebUI" "vitest no arranca: el antivirus de esta maquina no deja leer los .js de node_modules (EPERM). Es el mismo fallo que los tres WebUi*E2e de ctest, y el paso 3 no tiene lista de conocidos a proposito porque no es un test sino un paso entero"
+        anotar 3 "WebUI" "vitest no arranca. La causa medida hasta ahora es el node_modules: en esta maquina hay .js que dan EPERM al abrirlos (error 5 de Win32), y el rodeo esta en Scripts/COMO-ARREGLAR-EL-BUILD.md"
     fi
     terminar_paso
 fi
@@ -926,11 +950,20 @@ if [[ " $PASOS " == *" 4 "* ]]; then
         # El motivo que ponia aqui decia que skins/index.js tenia un error de
         # sintaxis por un `from` declarado dos veces. Eso era FALSO, y hacia
         # falta mirar el fichero para saberlo: el error de sintaxis no existe.
-        # Lo que pasa es lo mismo que en el paso 3 y que en los tres WebUi*E2e:
-        # el antivirus de esta maquina no deja leer los .js de node_modules, y
-        # vitest ni arranca ("Cannot read package config .../picocolors/
-        # package.json: operation not permitted"). Medido el 2026-10-01.
-        anotar 4 "ABDSharedAssets" "vitest no arranca: el antivirus de esta maquina no deja leer los .js de node_modules (EPERM). Mismo fallo que el paso 3 y que los tres WebUi*E2e de ctest. Este paso no tiene lista de conocidos a proposito, asi que el rojo sigue pidiendo decision aunque el motivo este escrito"
+        #
+        # Y el siguiente motivo tampoco era verdad, aunque mas cerca: decia que
+        # el antivirus no dejaba leer los .js de node_modules. Medido el
+        # 2026-10-01: Get-MpThreatDetection y Get-MpThreat salen VACIOS, no hay
+        # ninguna deteccion. Lo que hay es que algunos .js de node_modules dan
+        # EPERM al abrirlos (error 5 de Win32) y vitest ni arranca ("Cannot read
+        # package config .../picocolors/package.json: operation not permitted").
+        # La causa es el store v10 de pnpm, no el antivirus: el diagnostico y el
+        # rodeo estan en Scripts/COMO-ARREGLAR-EL-BUILD.md.
+        #
+        # Los dos motivos falsos seguidos son el motivo de mirar el fichero
+        # antes de escribir: un motivo de rojo es una hipotesis, y basta con que
+        # sea plausible para que el rojo parezca que no tiene arreglo.
+        anotar 4 "ABDSharedAssets" "vitest no arranca. Misma causa que el paso 3: .js de node_modules que dan EPERM al abrirlos, con el rodeo en Scripts/COMO-ARREGLAR-EL-BUILD.md. Este paso no tiene lista de conocidos a proposito, asi que el rojo sigue pidiendo decision aunque el motivo este escrito"
     fi
     terminar_paso
 fi

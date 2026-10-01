@@ -963,6 +963,71 @@ for (const nombre of ['verify_all.bat']) {
 }
 
 // ============================================================================
+//  11. EL PASO 2 DECIDE CON EL CODIGO DE SALIDA DE CTEST
+// ============================================================================
+seccion ('11. El paso 2 no lee rojos de otra corrida');
+
+// EL FALLO, MEDIDO. El paso 2 leia `LastTestsFailed.log` y lo daba por bueno,
+// con el comentario de que "ctest escribe siempre". No lo escribe: ese fichero
+// SOLO aparece cuando hay algo que falla. Y eso producia rojos que no existian
+// de dos maneras, ambas vistas el 2026-10-01 con la bateria entera en verde
+// (53 de 53):
+//
+//   - fichero ausente -> "no se genero LastTestsFailed.log; no se puede saber
+//     que fallo", anotado como rojo;
+//   - fichero de una corrida vieja -> se leia entero y listaba esos rojos.
+//
+// Las dos son el mismo fallo por los dos lados: un fichero que no es de ESTA
+// corrida leido como si lo fuera. Y es justo lo que el paso 2 lleva unas lineas
+// mas arriba avisando de que hacia mal. Se avisaba del caso de que ctest no
+// estuviera en el PATH, y no del caso de que ctest no escribiera el fichero.
+//
+// QUE VIGILA. Que los dos scripts decidan los rojos con el codigo de salida de
+// ctest, y no leyendo el fichero a pelo. Se comprueba en el texto porque el
+// caso de verdad (una bateria entera) tarda tres minutos y aqui lo que importa
+// es que la decision no vuelva a depender del fichero.
+
+// Las dos lineas que deciden, tal cual estan en cada gemelo.
+{
+    const sh = fs.readFileSync (path.join (__dirname, 'verify_all.sh'), 'utf8');
+    const bat = fs.readFileSync (path.join (__dirname, 'verify_all.bat'), 'utf8');
+
+    // El codigo de salida tiene que estar GUARDADO en los dos.
+    ok ('el .sh guarda el codigo de salida de ctest',
+        /ctest --test-dir[^\n]*\n\s*rc_ctest=\$\?/.test (sh));
+    ok ('el .bat guarda el codigo de salida de ctest',
+        /ctest --test-dir[^\n]*\n\s*set "RC_CTEST=!ERRORLEVEL!"/.test (bat));
+
+    // Y la rama de "todo en verde" tiene que existir en los dos, y tiene que
+    // salir ANTES de leer el fichero. Sin eso, con la bateria en verde se sigue
+    // leyendo un log que no es de esta corrida.
+    const shVerde = sh.indexOf ('tests, 0 en rojo');
+    const batVerde = bat.indexOf ('tests, 0 en rojo');
+    ok ('los dos tienen la rama de "0 en rojo"', shVerde !== -1 && batVerde !== -1);
+    ok ('los dos deciden por el codigo de salida y no por el fichero',
+        shVerde !== -1 && shVerde < sh.indexOf ('rojos="$(grep -c .') &&
+        batVerde !== -1 && batVerde < bat.indexOf ('in ("%FALLOSLOG%") do'));
+
+    // Y el comentario viejo, que es lo que convencio de que estaba bien.
+    ok ('ningun gemelo afirma que ctest escriba siempre ese fichero',
+        sh.indexOf ('que ctest escribe siempre') === -1 &&
+        bat.indexOf ('ctest escribe siempre') === -1);
+}
+
+// Y que el motivo de un rojo conocido no senale una causa comprobada que no lo
+// era. El caso concreto: los tres WebUi*E2e se quitaron de la lista cuando
+// pasaron, pero eso no sirve de nada si un rojo NUEVO vuelve a llevar el
+// antivirus en el motivo, porque el antivirus no era la causa: no habia ninguna
+// deteccion de Defender, y el bloqueo estaba en el store de pnpm.
+{
+    const sh = fs.readFileSync (path.join (__dirname, 'verify_all.sh'), 'utf8');
+    const bat = fs.readFileSync (path.join (__dirname, 'verify_all.bat'), 'utf8');
+    ok ('ningun gemelo culpa al antivirus de los .js de node_modules',
+        sh.indexOf ('el antivirus de esta maquina no deja leer') === -1 &&
+        bat.indexOf ('el antivirus de esta maquina no deja leer') === -1);
+}
+
+// ============================================================================
 //  EL RESULTADO
 // ============================================================================
 process.stdout.write ('\n' + '-'.repeat(72) + '\n');

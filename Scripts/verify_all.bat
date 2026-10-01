@@ -735,15 +735,29 @@ REM delante. Sin el, un cuelgue se ve igual que un verify lento: nada,
 REM durante diez minutos. Con el, ctest mata ese test y lo marca como
 REM fallido, que es lo que hay que saber para no ir a buscar un fallo de
 REM logica donde lo que hay es un cuelgue.
+REM EL CODIGO DE SALIDA DE CTEST DECIDE SI HAY ROJOS, no el fichero. Antes
+REM se leia `LastTestsFailed.log` sin mas, y ese fichero SOLO SE ESCRIBE
+REM CUANDO HAY ALGO QUE FALLA: si no existe, el paso decia que no se podia
+REM saber que fallo y lo anotaba como rojo; si existia de una corrida
+REM VIEJA, lo leia entero y listaba rojos que pueden ser de ayer. Las dos
+REM son el mismo fallo por los dos lados: un fichero que no es de esta
+REM corrida leido como si lo fuera. Medido el 2026-10-01 con la bateria
+REM entera en verde (53 de 53), que daba un rojo inventado.
 ctest --test-dir "%BUILD%" -C "%CONFIG%" -j --timeout "!TIMEOUT_CTEST!" > nul 2>&1
+set "RC_CTEST=!ERRORLEVEL!"
 set "FALLOSLOG=%BUILD%\Testing\Temporary\LastTestsFailed.log"
 set "LOG=%BUILD%\Testing\Temporary\LastTest.log"
 set "ROJOS=0"
 
+if "!RC_CTEST!"=="0" (
+    echo   %V%!TOTAL! tests, 0 en rojo%N%
+    exit /b 0
+)
+
 if not exist "%FALLOSLOG%" (
-    echo   %R%ctest no dejo LastTestsFailed.log: no se puede leer que fallo%N%
-    echo             Se ejecutaron !TOTAL! tests.
-    call :anotar 2 "(ctest)" "no se genero LastTestsFailed.log; no se puede saber que fallo"
+    echo   %R%ctest salio con !RC_CTEST! pero no dejo LastTestsFailed.log: no se puede leer que fallo%N%
+    echo          Se ejecutaron !TOTAL! tests.
+    call :anotar 2 "(ctest)" "ctest salio con !RC_CTEST! pero no dejo LastTestsFailed.log; no se puede saber que fallo"
     exit /b 0
 )
 
@@ -1181,12 +1195,15 @@ if "%VCOD%"=="0" (
     )
     REM Este paso NO tiene lista de conocidos, y es deliberado: es la suite
     REM entera del repositorio de contratos, y una lista de "tests que no cuentan"
-    REM aqui seria justo lo que este script no debe hacer. El motivo anterior
-    REM apuntava a skins/index.js, del otro hilo, que puede que ya este
-    REM arreglado: un motivo que describe un rojo que ya no existe ensena a
-    REM culpar al sitio equivocado. Se deja el generico, que es lo que se
-    REM puede decir sin inventar.
-    call :anotar %VSTEP% "%VETI%" "vitest no arranca: el antivirus de esta maquina no deja leer los .js de node_modules (EPERM). Mismo fallo que los tres WebUi*E2e de ctest. Este paso no tiene lista de conocidos a proposito, asi que el rojo sigue pidiendo decision aunque el motivo este escrito"
+    REM aqui seria justo lo que este script no debe hacer.
+    REM
+    REM El motivo ya no culpa al antivirus, porque medido no era el antivirus.
+    REM Get-MpThreatDetection y Get-MpThreat salian VACIOS: no habia ninguna
+    REM deteccion. Lo que hay es que algunos .js de node_modules no se pueden
+    REM abrir (error 5 de Win32, ACCESS_DENIED) en esta maquina, y el rodeo esta
+    REM en Scripts/COMO-ARREGLAR-EL-BUILD.md. Un motivo que senala la causa
+    REM equivocada es peor que uno generico: ensena a mirar donde no esta.
+    call :anotar %VSTEP% "%VETI%" "vitest no arranca. La causa medida son .js de node_modules que dan EPERM al abrirlos; el rodeo esta en Scripts/COMO-ARREGLAR-EL-BUILD.md. Este paso no tiene lista de conocidos a proposito, asi que el rojo sigue pidiendo decision aunque el motivo este escrito"
 )
 exit /b 0
 
