@@ -32,6 +32,12 @@ REM
 REM    Scripts\verify_all.bat              :: los cinco pasos
 REM    Scripts\verify_all.bat --no-build   :: salta el paso 1
 REM    Scripts\verify_all.bat --only=3     :: un solo paso, para depurar
+REM                                          (tambien --only 3)
+REM
+REM  Las opciones no distinguen mayusculas (se comparan con /i). Una opcion que
+REM  no se reconoce avisa y se sigue; un --only que no es un paso del 1 al 5 es
+REM  un error y sale con 2, porque es el flag que decide QUE se verifica. Un
+REM  paso por llamada. Las mismas reglas, y el mismo texto, que verify_all.sh.
 REM
 REM  Salidas: 0 todo en verde; 1 algun paso con fallos; 2 uso incorrecto.
 REM
@@ -225,23 +231,71 @@ shift
 set "ESTE=--only=%~1"
 
 :CLASIFICAR
-if /i "!ESTE!"=="--no-build" set "HACER_BUILD=0"
+REM Cada comprobacion va en su propio parentesis y con su `goto`, y no en una
+REM linea con `&`: en `set "PASOS=1" & goto X` el goto se ejecuta SIEMPRE, y el
+REM `--only=1` caia tambien en el error del `--only=2`. Por eso el bloque, y no
+REM la linea con `&`.
+if /i "!ESTE!"=="--no-build" (
+    set "HACER_BUILD=0"
+    goto ARG_SIGUIENTE
+)
 if /i "!ESTE!"=="-h" goto AYUDA
 if /i "!ESTE!"=="--help" goto AYUDA
-if /i "!ESTE!"=="--only=1" set "PASOS=1"
-if /i "!ESTE!"=="--only=2" set "PASOS=2"
-if /i "!ESTE!"=="--only=3" set "PASOS=3"
-if /i "!ESTE!"=="--only=4" set "PASOS=4"
-if /i "!ESTE!"=="--only=5" set "PASOS=5"
+if /i "!ESTE:~0,7!"=="--only=" goto SOLO_PASO
+REM Lo que no se reconoce AVISA y se sigue. El .sh hacia lo contrario (salia con
+REM 2 y se negaba a arrancar) y el .bat hacia esto, pero sin decir nada. Un flag
+REM de mas no puede tumbar un verify; un flag de mas que no dice nada se lleva
+REM un paso entero por delante sin que nadie se entere.
+REM
+REM Y `--algo=valor` se vuelve a PEGAR para el aviso. Aqui todo lo que lleva un
+REM `=` llega partido en dos (`--solo` y `1`, segun lo que explica el bloque de
+REM ARGS mas arriba), asi que sin esto el .bat dice "--solo" y "1" en dos
+REM lineas donde el .sh dice "--solo=1" en una. Medido. Los dos gemelos tienen
+REM que dar el mismo aviso, no el mismo comportamiento y dos frases.
+set "QMSG=%~1"
+set "Q2=%~2"
+if /i "!ESTE:~0,2!"=="--" if not "!Q2!"=="" if not "!Q2:~0,2!"=="--" (
+    set "QMSG=%~1=%~2"
+    shift
+)
+echo   Aviso: opcion no reconocida: !QMSG!  (se sigue)
+goto ARG_SIGUIENTE
+
+:SOLO_PASO
+REM El valor tiene que ser UN paso del 1 al 5. Medido lo que hacia cada gemelo
+REM con un valor que no era un paso: el .sh no ejecutaba nada y salia con 0
+REM diciendo "todo en verde", y el .bat se iba a los cinco pasos. Setenta
+REM segundos de bateria por un typo, o un verde falso: las dos cosas que no se
+REM pueden dejar. Con las dos convertidas en error, las dos se ven.
+set "QPASO=!ESTE:~7!"
+if "!QPASO!"=="1" ( set "PASOS=1" & goto ARG_SIGUIENTE )
+if "!QPASO!"=="2" ( set "PASOS=2" & goto ARG_SIGUIENTE )
+if "!QPASO!"=="3" ( set "PASOS=3" & goto ARG_SIGUIENTE )
+if "!QPASO!"=="4" ( set "PASOS=4" & goto ARG_SIGUIENTE )
+if "!QPASO!"=="5" ( set "PASOS=5" & goto ARG_SIGUIENTE )
+REM Y si lo que ha llegado NO era un paso pero detras hay otro token suelto que
+REM no empieza por `--`, es que el valor traia un espacio y aqui ha llegado
+REM partido: `--only=1 3` son tres tokens, no uno. El .sh lo ve entero y sale
+REM con 2; sin esto el .bat se lo comia como `--only=1` mas un token
+REM desconocido y se ponia a compilar, que es justo lo que se quiere evitar.
+REM Medido: 50 segundos y una bateria entera por un `--only` con un espacio.
+set "QDESPUES=%~2"
+if not "!QDESPUES!"=="" if not "!QDESPUES:~0,2!"=="--" (
+    call :error_uso "--only=%~1 %~2 no es un paso: los pasos son del 1 al 5"
+)
+call :error_uso "--only=!QPASO! no es un paso: los pasos son del 1 al 5"
+
+:ARG_SIGUIENTE
 shift
 goto LEER_UN_ARG
 
 :FIN_ARGS
-REM Lo que no se reconoce se ignora en vez de fallar. Un verify que se niega a
-REM arrancar por un flag de mas es un verify que nadie ejecuta.
-if not defined PASOS (
-    echo   aviso: no se ha entendido ningun --only=N, se hacen los cinco pasos
-)
+REM Aqui no queda nada que avisar. `PASOS` se pone al principio del script y solo
+REM lo cambian los cinco `--only=N` de arriba, que ademas o valen o salen con 2.
+REM La rama que decia "no se ha entendido ningun --only=N, se hacen los cinco
+REM pasos" no se podia disparar nunca, porque `PASOS` ya venia puesto: era de
+REM cuando el paso 1 se elegia de otra manera. Un aviso que no se puede ver es
+REM un sitio donde una regla parece estar puesta y no lo esta.
 :ARGS_FIN
 
 REM --- EMPEZAR --------------------------------------------------------------
@@ -1127,14 +1181,35 @@ echo verify_all -- los cinco pasos de la verificacion de los dos repos.
 echo.
 echo   Scripts\verify_all.bat              los cinco pasos
 echo   Scripts\verify_all.bat --no-build   salta el paso 1
-echo   Scripts\verify_all.bat --only=3     un solo paso
+echo   Scripts\verify_all.bat --only=3     un solo paso, para depurar
+echo                                         (tambien --only 3)
 echo.
-echo Salidas: 0 todo en verde; 1 algun fallo; 2 uso incorrecto.
+echo Las opciones no distinguen mayusculas. Una opcion que no se reconoce avisa y
+echo se sigue; un --only que no es un paso del 1 al 5 es un error y sale con 2,
+echo porque es el flag que decide QUE se verifica. Un paso por llamada.
+echo.
+echo Salidas: 0 todo en verde; 1 algun paso con fallos; 2 uso incorrecto.
+echo.
+echo Variables de entorno (las dos las leen tambien verify_all.sh):
+echo   VERIFY_TIMEOUT  segundos que un test puede tardar antes de que ctest lo
+echo                    mate (600 por defecto). Sube el TECHO, no los avisos.
+echo   VERIFY_LENTO    segundos a partir de los cuales un test que pasa se avisa
+echo                    por lento (60 por defecto).
 echo.
 echo Salir en rojo con fallos de otro trabajo es INTENCIONAL: un verify que
 echo dice "ok" con rojos dentro ensena a mirar el codigo de salida sin mirar la
 echo salida. El informe del final dice de quien es cada fallo.
 exit /b 0
+
+:error_uso
+REM Las mismas DOS lineas que escribe verify_all.sh, para que un error de uso se
+REM lea igual en los dos. Y `exit` sin /b: desde una subrutina llamada con
+REM `call`, `exit /b` sale solo de la subrutina y el script seguiria hacia
+REM adelante con un --only que no se ha entendido, que es justo lo que se
+REM quiere evitar.
+>&2 echo verify_all: %~1
+>&2 echo   Opciones: --no-build ^| --only=N (de 1 a 5) ^| --help
+exit 2
 
 REM ============================================================================
 REM  ANOTAR UN FALLO

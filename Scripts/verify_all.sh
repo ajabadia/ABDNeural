@@ -32,7 +32,11 @@
 #   ./Scripts/verify_all.sh --no-build   # salta el paso 1 (build ya hecho). El aviso de
 #                                        # binarios rancios sale igual, y mas fuerte:
 #                                        # no se ha compilado NADA
-#   ./Scripts/verify_all.sh --only=3     # un solo paso, para depurar
+#   ./Scripts/verify_all.sh --only=3     # un solo paso, para depurar (tambien --only 3)
+#
+# Las opciones no distinguen mayusculas. Una opcion que no se reconoce avisa y se
+# sigue; un --only que no es un paso del 1 al 5 es un error y sale con 2, porque
+# es el flag que decide QUE se verifica. Un paso por llamada.
 #
 # Salidas: 0 todo en verde; 1 algun paso con fallos; 2 uso incorrecto.
 #
@@ -293,8 +297,63 @@ ejecutar_contrato() {
 }
 
 # ── USO ────────────────────────────────────────────────────────────────────
+#
+# LO QUE ACEPTA, Y LO QUE HACE CON LO QUE NO. Las dos reglas estan escritas
+# aqui y en el .bat, y son las mismas, porque lo que se ve al medirlas es que
+# cada uno hacia lo suyo y los dos tenian razon en su mitad:
+#
+#   --no-build            no compila el paso 1
+#   --only=N, o --only N  un solo paso, N de 1 a 5
+#   -h, --help            esto
+#   --NO-BUILD, --Only=1  iguales: las opciones no distinguen mayusculas, como
+#                         en el .bat, que compara con /i
+#   --solo=1, --quiere=2  AVISO y se sigue. Un flag de mas no tumba el verify:
+#                         si lo para un wrapper de CI, no hay ni un dato
+#   --only=9, --only=,    ERROR y rc 2. Esta es la diferencia de fondo: --only
+#   --only=1 --only=9     decide QUE se verifica, y medido lo que hacia cada
+#                         uno con un valor que no es un paso era lo contrario
+#                         de lo que dice el uso: el .sh no ejecutaba nada y
+#                         salia con 0 diciendo que todo estaba en verde, y el
+#                         .bat se iba a los cinco pasos. Uno miente y el otro# se come 70 s: los dos callan
+#   --only="1 3"          ERROR tambien. Varios pasos en una llamada solo los
+#                         aceptaba el .sh, y no estaba escrito en ningun sitio.
+#                         Un paso por llamada, y se ejecuta dos veces
 HACER_BUILD=1
 PASOS="1 2 3 4 5"
+
+# El texto de la ayuda es la cabecera del script entero, y se saca HASTA LA
+# PRIMERA LINEA DE CODIGO. Con un rango fijo (`sed -n '2,43p'`) cualquier
+# linea que se anadiera a la cabecera se comia el final de la ayuda sin que
+# nadie se enterase: ya habia pasado, y --help no enseñaba la ultima variable
+# de entorno. Un numero magico en un rango no se nota cuando sobra nada; esto
+# se nota en cuanto se escribe una linea.
+ayuda() {
+    awk 'NR==1 { next }
+         /^#/ || /^[[:space:]]*$/ { sub(/^# ?/, ""); print; next }
+         { exit }' "$0"
+}
+
+# Un error de uso dice QUE esta mal y como se escribe, y sale con 2. El .bat
+# dice exactamente lo mismo: son las mismas dos lineas de texto.
+error_uso() {
+    printf 'verify_all: %s\n' "$1" >&2
+    printf '  Opciones: --no-build | --only=N (de 1 a 5) | --help\n' >&2
+    exit 2
+}
+
+# El valor de --only tiene que ser UN paso. Se valida en un sitio y se llama
+# desde los dos caminos (--only=N y --only N), para que la forma con espacio no
+# pueda ser la que se olvide de validar.
+poner_paso() {
+    case "$1" in
+        1|2|3|4|5) PASOS="$1" ;;
+        # Un solo mensaje para los tres fallos: valor que no es un numero, valor
+        # que no es un paso, y --only sin nada detras. Si son tres mensajes, el
+        # .bat tiene que escribir los tres tambien, y basta uno que se quede sin
+        # escribir para que los gemelos digan cosas distintas.
+        *)          error_uso "--only=$1 no es un paso: los pasos son del 1 al 5" ;;
+    esac
+}
 
 # ── LOS DOS NUMEROS DEL PASO 2 ────────────────────────────────────────────
 #
@@ -315,16 +374,26 @@ TIMEOUT_CTEST="${VERIFY_TIMEOUT:-600}"
 LENTO_CTEST="${VERIFY_LENTO:-60}"
 
 while [ $# -gt 0 ]; do
-    case "$1" in
+    # `${1,,}` es para que las opciones no dependan de como se escriban. No es
+    # cosmetica: el .bat ya comparaba con /i, y con esto --NO-BUILD construia
+    # en el .bat y no en el .sh, sin que ninguno de los dos se quejara.
+    opcion="${1,,}"
+    case "$opcion" in
         --no-build) HACER_BUILD=0 ;;
-        --only=*)   PASOS="${1#--only=}" ;;
+        --only=*)   poner_paso "${opcion#--only=}" ;;
+        --only)
+            shift
+            if [ $# -ge 1 ]; then poner_paso "${1,,}"; else poner_paso ""; fi
+            ;;
         -h|--help)
-            sed -n '2,43p' "$0" | sed 's/^# \{0,1\}//'
+            ayuda
             exit 0
             ;;
         *)
-            printf 'opcion desconocida: %s (prueba --help)\n' "$1" >&2
-            exit 2
+            # Aviso, y se sigue. Antes el .sh salia con 2 aqui, y el .bat no
+            # decia ni una palabra. Lo de en medio es lo unico que se puede
+            # hacer sin que un typo se lleve un paso entero por delante.
+            printf '  %sAviso:%s opcion no reconocida: %s  (se sigue)\n' "$A" "$N" "$1"
             ;;
     esac
     shift
@@ -523,7 +592,11 @@ trap 'rm -f "$LOCK/pid" 2>/dev/null; rmdir "$LOCK" 2>/dev/null' EXIT
 # PASO 1: BUILD
 # ═════════════════════════════════════════════════════════════════════════════
 construidos=()
-if [[ " $PASOS " == *" 1 "* && $HACER_BUILD -eq 1 ]]; then
+if [[ " $PASOS " == *" 1 "* ]]; then
+    # La cabecera del paso se imprime SIEMPRE, tambien con --no-build, que es lo
+    # que hace el .bat. Antes solo salia si se compilaba, y los dos gemelos
+    # contaban los pasos que empiezan viniendo de pantallas distintas: el mismo
+    # `--no-build --only=1` decia "PASO 1" en uno y nada en el otro.
     empezar_paso 1 "build de ABDNeural"
     # Los targets de test, no "todo": "todo" arrastra el plugin y lostargets de
     # WASM, que no son de esta verificacion y tardan mas que todo lo demas.
@@ -532,43 +605,42 @@ if [[ " $PASOS " == *" 1 "* && $HACER_BUILD -eq 1 ]]; then
     # rancios: la lista de targets es corta a proposito, asi que casi todos los
     # tests de ctest van a salir aqui, y sin avisar de eso se estan leyendo
     # resultados de un binario que nadie ha compilado hoy.
-    for t in NEURONiK_FxExport NEURONiK_ModulationParityDump \
-             NEURONiK_ModulationDest17DriveTest NEURONiK_ModulationMatrixTest \
-             NEURONiK_FxCatalogueTest NEURONiK_FxSlotsTest; do
-        printf '  %-34s ' "$t"
-        salida="$(cmake --build "$BUILD" --config "$CONFIG" --target "$t" 2>&1)"
-        codigo=$?
-        registrar "$salida"
-        if [ $codigo -eq 0 ]; then
-            printf '%sPASA%s\n' "$V" "$N"
-            construidos+=("$t")
-        else
-            printf '%sROJO%s\n' "$R" "$N"
-            printf '%s' "$salida" | grep -E ': error' | head -5 | sed 's/^/          /'
-            ok=0
+    if [ $HACER_BUILD -eq 1 ]; then
+        for t in NEURONiK_FxExport NEURONiK_ModulationParityDump \
+                 NEURONiK_ModulationDest17DriveTest NEURONiK_ModulationMatrixTest \
+                 NEURONiK_FxCatalogueTest NEURONiK_FxSlotsTest; do
+            printf '  %-34s ' "$t"
+            salida="$(cmake --build "$BUILD" --config "$CONFIG" --target "$t" 2>&1)"
+            codigo=$?
+            registrar "$salida"
+            if [ $codigo -eq 0 ]; then
+                printf '%sPASA%s\n' "$V" "$N"
+                construidos+=("$t")
+            else
+                printf '%sROJO%s\n' "$R" "$N"
+                printf '%s' "$salida" | grep -E ': error' | head -5 | sed 's/^/          /'
+                ok=0
+            fi
+        done
+        if [ $ok -eq 0 ]; then
+            anotar 1 "(build)" "un target no compila; el error esta arriba"
         fi
-    done
-    if [ $ok -eq 0 ]; then
-        anotar 1 "(build)" "un target no compila; el error esta arriba"
     fi
 
-    terminar_paso
-fi
-
-# EL AVISO DE LOS BINARIOS RANCIOS. Va aqui, y no mas adelante, porque es la
-# unica vez que se sabe que targets se han construido: si se espera, el paso 2 ya
-# ha corrido 53 tests sobre binarios que nadie sabe de cuando son.
-#
-# Y va FUERA del if del paso 1, que es lo que hace que tambien salga con
-# --no-build. Antes se callaba ahi, y --no-build era justo el caso de mirar
-# resultados de binarios que nadie ha compilado: el aviso, ahi, no es ruido.
-if [[ " $PASOS " == *" 1 "* ]]; then
+    # EL AVISO DE LOS BINARIOS RANCIOS. Va aqui, y no mas adelante, porque es la
+    # unica vez que se sabe que targets se han construido: si se espera, el paso
+    # 2 ya ha corrido 53 tests sobre binarios que nadie sabe de cuando son.
+    #
+    # Y va en las DOS ramas, y no solo en la que compila. Con --no-build no se
+    # ha construido nada, que es justo cuando mas hace falta decirlo: antes ahi
+    # no se decia ni una palabra.
     if [ $HACER_BUILD -eq 1 ]; then
         node "$NODE_LIB" rancios "$BUILD" "$CONFIG" "$A" "$N" "${construidos[@]+"${construidos[@]}"}"
     else
         printf '  paso 1 saltado con --no-build: no se ha compilado nada\n'
         node "$NODE_LIB" rancios "$BUILD" "$CONFIG" "$A" "$N" --sin-build
     fi
+    terminar_paso
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════

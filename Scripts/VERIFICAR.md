@@ -63,7 +63,19 @@ tarda lo que tardan **dos** verificaciones.
 | 4 | `vitest` de ABDSharedAssets |
 | 5 | Contratos cruzados entre los dos repositorios |
 
-Sirve con `--only=2`, `--no-build` y `--help`.
+Sirve con `--only=2`, `--no-build` y `--help`. Las dos cosas dan lo mismo en
+Windows y en bash, y se puede comprobar:
+
+| Lo que escribes | Lo que hace | Por qué |
+| --- | --- | --- |
+| `--no-build` o `--NO-BUILD` | salta la compilación del paso 1 | las opciones no distinguen mayúsculas |
+| `--only=2` o `--only 2` | un solo paso, de 1 a 5 | las dos formas funcionan en los dos scripts |
+| `--solo=1` (typo) | avisa y se sigue | un flag de más no puede tumbar un verify |
+| `--only=9`, `--only=`, `--only=1 --only=9` | **error, sale con 2** | es el flag que decide *qué* se verifica |
+
+Lo último estaba mal antes, y en las dos direcciones: `verify_all.sh --only=9`
+no ejecutaba **nada** y salía con 0 diciendo que todo estaba en verde, y
+`verify_all.bat --only=9` se iba a los **cinco pasos** (70 s) por un typo.
 
 ## El resultado: qué significa cada cosa
 

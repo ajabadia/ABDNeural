@@ -612,6 +612,126 @@ seccion ('7. Las demas ordenes');
 }
 
 // ============================================================================
+//  8. EL PARSEO DE LOS DOS GEMELOS
+// ============================================================================
+seccion ('8. El parseo de los dos gemelos');
+
+// Esta seccion es la unica que lanza los DOS scripts, y por eso es la cara:
+// cada caso son dos procesos de mas, y el unico caso que ejecuta algo de verdad
+// (paso 1) tarda unos segundos. Se paga porque lo que vigila aqui no se puede
+// mirar de otra manera.
+//
+// QUE VIGILA. Que los dos gemelos decidan LO MISMO con los MISMOS argumentos:
+// el mismo codigo de salida, los mismos pasos, y el mismo aviso. El check de
+// gemelos (verify_all_check.sh) no lo pilla: ese compara el RESUMEN del final, y
+// un parseo que se equivoca se equivoca antes de llegar al resumen. Medido lo
+// que hacia cada uno, con los mismos argumentos:
+//
+//   --only=9          el .sh no ejecutaba nada y salia con 0 ("todo en verde");
+//                     el .bat se iba a los CINCO pasos, 70 s
+//   --solo=1          el .sh se negaba a arrancar (rc 2); el .bat lo ignoraba
+//                     sin decir ni una palabra
+//   --NO-BUILD        construia en el .bat y no en el .sh
+//   --only 1          la forma con espacio solo existia en el .bat
+//
+// O sea que un flag mal escrito hacia una de dos cosas muy distintas segun con
+// que terminal se lanzara. Ahora los dos dicen lo mismo, y estos casos lo
+// comprueban ejecutandolos de verdad en vez de leyendo el codigo.
+
+// Corre un gemelo. El .bat va por `cmd /c` porque en Windows un .bat no es un
+// ejecutable: hay que lanzarlo con la consola.
+function gemelo (cual, args) {
+    const esSh = cual === 'sh';
+    const guion = path.join (__dirname, esSh ? 'verify_all.sh' : 'verify_all.bat');
+    const r = esSh
+        ? cp.spawnSync ('bash', [guion].concat (args), { encoding: 'utf8' })
+        : cp.spawnSync ('cmd', ['/c', guion].concat (args), { encoding: 'utf8' });
+    const todo = String (r.stdout || '') + String (r.stderr || '');
+    return {
+        rc:   r.status,
+        txt:  todo.replace(/\r/g, ''),
+        // Los pasos que empiezan. Es lo que de verdad dice si han aplicado la
+        // misma lista, y no se parece a nada que comparen los dos al imprimirlo:
+        // rutas, colores y el reloj ya se llevarían la comparacion.
+        pasos: (todo.match (/PASO ([0-9])/g) || []).join (' ')
+    };
+}
+
+// Un caso = una lista de argumentos, y lo que tienen que dar los dos.
+const PARSEO = [
+    // Un --only que no es un paso: ERROR y rc 2 en los dos. Antes uno no hacia
+    // nada y salia en verde, y el otro se comia la bateria entera.
+    { args: ['--only=9'],                      rc: 2, pasos: '',           texto: 'no es un paso' },
+    { args: ['--only='],                       rc: 2, pasos: '',           texto: 'no es un paso' },
+    { args: ['--only=1', '--only=9'],          rc: 2, pasos: '',           texto: 'no es un paso' },
+    { args: ['--only', '9'],                   rc: 2, pasos: '',           texto: 'no es un paso' },
+    // Un token con un espacio DENTRO: `--only="1 3"`. Es la forma de varios
+    // pasos, y aqui es un error, porque un paso por llamada. Al .bat le llega
+    // partido en tres (`--only`, `1 3`) por la capa de argumentos, que esta
+    // misma se explica mas arriba en el bloque ARGS, asi que sin el aviso de
+    // "el valor venia partido" se lo comia como `--only=1` y se ponia a
+    // compilar. Medido: 50 segundos y la bateria entera.
+    { args: ['--only=1 3'],                    rc: 2, pasos: '',           texto: 'no es un paso' },
+    // Un flag que no se reconoce: AVISO y se sigue. Y el aviso lleva el token
+    // entero, `--solo=1` y no `--solo` partido en dos lineas.
+    { args: ['--solo=1', '--only=9'],          rc: 2, pasos: '',           texto: 'opcion no reconocida: --solo=1' }
+];
+
+for (const c of PARSEO) {
+    const a = gemelo ('sh', c.args);
+    const b = gemelo ('bat', c.args);
+    const etq = '[' + c.args.join (' ') + ']';
+    igual (etq + ' el .sh sale con ' + c.rc, a.rc, c.rc);
+    igual (etq + ' el .bat sale con ' + c.rc, b.rc, c.rc);
+    igual (etq + ' los dos dicen los mismos pasos', a.pasos, b.pasos);
+    ok   (etq + ' ninguno se salta ningun paso', a.pasos === c.pasos && b.pasos === c.pasos,
+         'sh: ' + JSON.stringify (a.pasos) + '  bat: ' + JSON.stringify (b.pasos));
+    ok   (etq + ' los dos avisan de lo mismo (' + c.texto + ')',
+         a.txt.indexOf (c.texto) !== -1 && b.txt.indexOf (c.texto) !== -1,
+         'sh: ' + JSON.stringify (a.txt.slice (0, 160)) + '\nbat: ' + JSON.stringify (b.txt.slice (0, 160)));
+}
+
+// Y el caso que ejecuta de verdad, que es el que no se puede comprobar sin
+// arrancar algo: `--only=1` tiene que arrancar SOLO el paso 1, y --no-build
+// tiene que saltarse la compilacion sin quitar la cabecera del paso. Con la
+// cabecera dentro del `if` de la compilacion, el .sh no imprimia "PASO 1" y el
+// .bat si: los dos hacian lo mismo y parecian dos medidas distintas.
+//
+// Y va en MAYUSCULAS a proposito, por una razon: es el unico caso que
+// comprueba que las opciones no distinguen mayusculas. Si el .sh dejara de pasar
+// el token por `${1,,}`, `--NO-BUILD` pasaria a ser una opcion desconocida (que
+// avisa y se sigue), el paso 1 compilaria, y la linea de "no se ha compilado
+// nada" no saldria. En minuscula el caso pasaria igual con o sin la conversion,
+// o sea que no comprobaria nada: una comprobacion que no puede fallar no es una
+// comprobacion.
+{
+    const a = gemelo ('sh', ['--NO-BUILD', '--only=1']);
+    const b = gemelo ('bat', ['--NO-BUILD', '--only=1']);
+    igual ('--only=1 arranca solo el paso 1 (sh)', a.pasos, 'PASO 1');
+    igual ('--only=1 arranca solo el paso 1 (bat)', b.pasos, 'PASO 1');
+    ok   ('--no-build no quita la cabecera del paso, en los dos',
+         a.txt.indexOf ('PASO 1: build') !== -1 && b.txt.indexOf ('PASO 1: build') !== -1);
+    ok   ('--no-build en mayusculas salta la compilacion en los dos',
+         a.txt.indexOf ('no se ha compilado nada') !== -1 &&
+         b.txt.indexOf ('no se ha compilado nada') !== -1,
+         'sh: ' + JSON.stringify (a.txt.slice (0, 200)));
+}
+
+// Y la ayuda, que es donde se lee cuando alguien ha escribido mal un flag. No se
+// compara entera: cada uno imprime su nombre de script. Se compara que los dos
+// digan las tres reglas, que es donde se separaban.
+{
+    const a = gemelo ('sh', ['--help']);
+    const b = gemelo ('bat', ['--help']);
+    igual ('--help sale con 0 en los dos', a.rc + '/' + b.rc, '0/0');
+    for (const frase of ['no distinguen mayusculas', 'no se reconoce avisa', 'del 1 al 5', 'VERIFY_LENTO']) {
+        ok   ('los dos --help dicen "' + frase + '"',
+             a.txt.indexOf (frase) !== -1 && b.txt.indexOf (frase) !== -1,
+             'sh: ' + JSON.stringify (a.txt.slice (0, 200)));
+    }
+}
+
+// ============================================================================
 //  EL RESULTADO
 // ============================================================================
 process.stdout.write ('\n' + '-'.repeat(72) + '\n');
