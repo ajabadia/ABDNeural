@@ -35,6 +35,33 @@ const allHidden = (needles) => Object.values(needles).every((needle) => !needle.
 const allVisible = (needles) => Object.values(needles).every((needle) => needle.visible);
 
 /**
+ * El corte de "pinta nivel" y el margen de las comparaciones de nivel.
+ *
+ * El margen no es cosmetico, y no es por gusto: el nivel no se lee del motor, se
+ * DERIVA del `y` que la aguja escribe en el DOM, y ese `y` va con dos decimales
+ * (`toFixed(2)`). El sustain del filtro lo empuja ESTA MISMA pagina a 0.2, asi
+ * que y = 37.20 y el nivel sale (46 - 37.2) / 44 = 0.19999999999999993: una ULP
+ * por DEBAJO de 0.2. Un `toBeGreaterThan(0.2)` caia ahi. El fallo no lo arregla ni
+ * el motor ni la pagina: es la asercion pidiendo mas de lo que el propio test
+ * acaba de pedir, y el numero que recibia lo decia sin dejar lugar a dudas.
+ *
+ * MEDIDO el 2026-10-02: fallo con ese numero exacto en el
+ * NEURONiK_WebUiNeedleProbeE2e del check de gemelos, y 3/3 verde en las tres
+ * vueltas siguientes. Salta cuando la lectura cae sobre el sustain ya asentado,
+ * que es lo que pasa con la maquina cargada; por eso el `poll` de `settled` no
+ * lo evita: espera a que las needles sean visibles y esten en el sustain, y en
+ * ese momento ya estan en el valor que luego se va a medir.
+ *
+ * El margen es el MISMO que usan las dos aserciones de gemelidad de abajo (no
+ * dos reglas para lo mismo), y no se come nada de lo que este test comprueba:
+ * entre "pinta nivel" y "no pinta nada" hay un salto de 0.2 a 0, y 0.18 sigue de
+ * sobra por encima de 0. Los valores concretos estan fijados despues (amp > 0.6,
+ * filtro < 0.4, separacion > 0.3).
+ */
+const NIVEL_MIN = 0.2;      // el corte de "pinta nivel"
+const TOLERANCIA = 0.02;    // el margen, en los dos sentidos
+
+/**
  * Las cuatro visibles Y las dos envolventes ya en su SUSTAIN (amp 0.8, filtro
  * 0.2). Importa la segunda mitad: el primer frame visible es el pico del
  * attack, donde las dos needles valen ~1.0 y no distinguen nada — leer ahi dio
@@ -78,15 +105,16 @@ test('SOUND ON + nota: las cuatro agujas se VEN, pintan nivel y son GEMELAS entr
   const needles = await readNeedles(page);
 
   // Nivel alto (el sustain de amp vive en 0.8 tras el push del ADSR: una aguja
-  // pintando la cola del attack no pasa este corte).
+  // pintando la cola del attack no pasa este corte). El corte lleva la tolerancia
+  // porque el nivel del filtro llega en 0.19999999999999993: ver NIVEL_MIN.
   for (const [name, needle] of Object.entries(needles)) {
-    expect(needle.level, `nivel de ${name}`).toBeGreaterThan(0.2);
+    expect(needle.level, `nivel de ${name}`).toBeGreaterThan(NIVEL_MIN - TOLERANCIA);
   }
 
   // GEMELIDAD entre vistas: misma envolvente, mismo frame, mismo setLevel —
   // el desacuerdo solo podria salir del re-parseo del path (redondeo del 'd').
-  expect(Math.abs(needles.canvasAmp.level - needles.blocksAmp.level)).toBeLessThanOrEqual(0.02);
-  expect(Math.abs(needles.canvasFilter.level - needles.blocksFilter.level)).toBeLessThanOrEqual(0.02);
+  expect(Math.abs(needles.canvasAmp.level - needles.blocksAmp.level)).toBeLessThanOrEqual(TOLERANCIA);
+  expect(Math.abs(needles.canvasFilter.level - needles.blocksFilter.level)).toBeLessThanOrEqual(TOLERANCIA);
 
   // Y AHORA SI: las dos envolventes MIDEN lo que la pagina les pidio, no lo
   // que el motor traia de C++. Los sustains empujados son 0.8 (amp) y 0.2
