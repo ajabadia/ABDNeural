@@ -565,10 +565,49 @@ jobs:
         run: |
           set -euo pipefail
           cd ABDNeural
+
           # `cygpath -m` porque el CMake de Windows y el bash de Git no cuentan
-          # igual: la variable lleva barras invertidas y el `file(GLOB)` de
-          # JUCE las mezcla con las suyas.
-          cmake -S . -B build-reference -A x64 -DJUCE_PATH="$JUCE_PATH" -DJUCE_WEBVIEW2_PACKAGE_LOCATION="$(cygpath -m "$GITHUB_WORKSPACE")/webview2"
+          # igual: `$(pwd)` devuelve `/d/a/...` y Windows lo lee como `\d\a\...`
+          # desde la unidad actual. MEDIDO: con `$(pwd)` a secas las tres rutas
+          # salian en el `.vcxproj` como `\d\tmp\...`, que aqui daba la
+          # casualidad de ser el mismo sitio y en el runner habria sido otra
+          # unidad.
+          _WEBVIEW2="$(cygpath -m "$GITHUB_WORKSPACE")/webview2"
+          _BD="$(cygpath -m "$(pwd)")/build-reference"
+
+          # LOS INCLUDE DE LOS CABECEROS GENERADOS, Y POR QUE SON UN PARCHE.
+          # Los tres `juce_add_binary_data` de este repo se declaran al FINAL del
+          # CMakeLists, despues de que los targets que los enlazan los hayan
+          # enlazado POR NOMBRE. CMake no ve ahi ninguna dependencia: un nombre
+          # que todavia no es un target se resuelve como una libreria, o sea que
+          # no se aporta ni el orden de compilacion ni el `include` que el target
+          # daria con `target_include_directories(... INTERFACE ...)`.
+          #
+          # MEDIDO, no deducido. Sobre un clon limpio, con el CMakeLists de
+          # `master`, `NEURONiK.vcxproj` sale con 22 `include` y NINGUNO de
+          # `juce_binarydata`. Con estos `-I` salen los tres, y el rojo de
+          #
+          #   error C1083: Cannot open include file: 'NeuronikFactoryModels.h'
+          #
+          # se va. Que en la maquina de trabajo no salga, y eso es lo que lo hace
+          # pasar por una broma del runner, es que `build-reference` conserva la
+          # configuracion de una corrida anterior: un arbol recien clonado no ha
+          # estado nunca.
+          #
+          # Se pasan los TRES, y no solo los dos que existen en esta
+          # configuracion, porque `NEURONiK_WebUIAssets` depende de
+          # `WebUI/dist`. Un `-I` a una carpeta que no esta no molesta al
+          # preprocesador, y asi, el dia que este job construya la WebUI, el
+          # include ya esta y no vuelve a romperse.
+          #
+          # El arreglo de raiz es declarar esos tres `juce_add_binary_data`
+          # ANTES de los targets que los enlazan. No se ha puesto en el
+          # CMakeLists porque ese fichero tiene trabajo sin commitear de otra
+          # sesion.
+          cmake -S . -B build-reference -A x64 \
+            -DJUCE_PATH="$JUCE_PATH" \
+            -DJUCE_WEBVIEW2_PACKAGE_LOCATION="$_WEBVIEW2" \
+            -DCMAKE_CXX_FLAGS="-I${_BD}/juce_binarydata_NEURONiK_FactoryModels/JuceLibraryCode -I${_BD}/juce_binarydata_NEURONiK_SelftestAssets/JuceLibraryCode -I${_BD}/juce_binarydata_NEURONiK_WebUIAssets/JuceLibraryCode"
 
       # Se compila TODO lo que hay configurado, plugin incluido. El target
       # NEURONiK es un VST3 y `cmake --build` sin `--target` lo construye igual:
