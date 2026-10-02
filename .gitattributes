@@ -1,0 +1,89 @@
+# Normalizar line endings. C++ cross-platform.
+# Copiado de ABDSharedCode/.gitattributes, con las extensiones que este
+# repositorio tiene y ese no: la WebUI es JS/CSS/JSON, y los presets y
+# modelos de Assets/ son JSON con extension propia.
+#
+# POR QUE `* text=auto` Y ADEMAS UNA LISTA EXPLICITA. `text=auto` deja que git
+# decida por contenido, lo cual es lo correcto para lo que no se enumerate.
+# La lista explicita fija `eol=lf` en el sitio donde la decision automatico
+# importaria de verdad: un `.h` de JUCE que llega de Windows con CRLF, o un
+# `.js` de la pagina. Sin ella, cada checkout en Windows devuelve el fichero
+# con CRLF y el siguiente commit lo guarda con CR duplicado de forma silenciosa.
+* text=auto
+
+# Build
+*.cmake text eol=lf
+CMakeLists.txt text eol=lf
+
+# C++
+*.cpp text eol=lf
+*.h text eol=lf
+*.hpp text eol=lf
+*.inl text eol=lf
+
+# La WebUI y sus pruebas. Sin esto, el arbol de trabajo de la pagina depende
+# de la maquina que hizo el checkout.
+*.js text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.ts text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+
+# Datos: contratos, esquemas, tokens y los assets que son JSON con
+# extension propia. Todos van en LF para que un `diff` entre dos maquinas
+# enseje el cambio y no el fin de linea.
+*.json text eol=lf
+*.neuronikpreset text eol=lf
+*.neuronikmodel text eol=lf
+*.xml text eol=lf
+*.rels text eol=lf
+*.rc text eol=lf
+
+# Documentacion
+*.md text eol=lf
+
+# Herramientas
+*.py text eol=lf
+*.sh text eol=lf
+# Batch: CRLF, y POR SEPARADO del resto de "Herramientas".
+#
+# `*.bat` NO puede ir en la lista de arriba con eol=lf. El indice guarda LF
+# (normalizacion, que es lo correcto y lo que hay que hacer en un repo), pero el
+# ARBOL DE TRABAJO tiene que devolverlo con CRLF: un .bat con LF es un .bat que
+# cmd.exe se come de otra manera, y el fallo aparece como "el script no hace
+# nada" o "goto no encuentra la etiqueta", no como un problema de finales de
+# linea.
+#
+# Aqui no es una teoria. Con la regla puesta a eol=lf, un checkout en Windows
+# devolvia los cuatro .bat (build, build_wasm, start, sync_wasm) con LF. Se
+# probaron las construcciones que usan --`goto`, bloques `if (...)`, `for %%A in
+# (%*)`, `errorlevel`-- con un .bat en LF y cmd.exe las ejecuto bien, asi que el
+# riesgo real era bajo. Baja no es cero: hay fallos documentados de batch con
+# LF, y la gracia de esto es que no hay que confiar en que esta version de
+# cmd.exe sea la que no falla. CRLF es lo que han tenido siempre estos ficheros
+# y lo que espera el resto de la casa.
+#
+# Ojo al detalle de POR QUE hace falta esto aqui: core.autocrlf=true ya daba
+# CRLF en el arbol. El problema es que eso depende de la configuracion de CADA
+# maquina. La regla lo fija en el repo, que es donde se fija el contrato. Y el
+# indice sigue en LF, que es lo que se quiere: el diff entre dos maquinas
+# enseja el cambio y no el fin de linea.
+*.bat text eol=crlf
+*.ps1 text eol=lf
+*.yml text eol=lf
+*.txt text eol=lf
+
+# Los dos ficheros que se auto-referencian
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# Binarios
+*.lib binary
+*.a binary
+*.so binary
+*.dll binary
+*.dylib binary
+*.exe binary
+*.pdb binary
+*.ilk binary
