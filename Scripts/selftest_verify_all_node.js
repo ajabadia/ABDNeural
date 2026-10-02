@@ -71,9 +71,14 @@ function igual (nombre, obtenido, esperado) {
 // ESTE proceso. Ademas hay que poder mirar el codigo de salida, y eso solo se ve
 // desde fuera. Y el temporal va en MSYS o en nativo segun como se invoque, asi
 // que se pasa con `path.resolve`.
+//
+// `op.lib` cambia QUE PROGRAMA se corre, y existe solo para las mutaciones: una
+// copia del programa con una regla rota en el sitio de este. Sin eso, comprobar
+// que una regla existe de verdad habria que hacerlo con un script aparte que
+// nadie ejecuta cuando toca, que es como se pierden estas comprobaciones.
 function corre (args, opciones) {
     const op = opciones || {};
-    const r = cp.spawnSync (process.execPath, [LIB].concat (args),
+    const r = cp.spawnSync (process.execPath, [op.lib || LIB].concat (args),
                             { encoding: 'utf8', cwd: op.cwd });
     return {
         rc:     r.status,
@@ -1719,7 +1724,7 @@ const SINCLAS = 'SIN CLASIFICAR: no esta en la lista de conocidos de este script
 // El cuerpo de base es un resumen real: 53 tests, un rojo SIN CLASIFICAR, y sin
 // lentos. Los recuentos van ESCRITOS a mano en cada caso, no calculados: un
 // generador que hiciera la cuenta por nosotros comprobaria que la cuenta cuadra
-// con la cuenta que queremos, y no que el codigo sabecjuzgar una que no cuadra.
+// con la cuenta que queremos, y no que el codigo sepa juzgar una que no cuadra.
 const BASE = 'v\t1\npasos\t5\nconocidos\t0\ntests\t53\n' +
              'fallos\t1\nmios\t0\najenos\t0\nsinClasificar\t1\n' +
              'lentos\t0\ntocoTimeout\t0\nhuerfanos\t0\n' +
@@ -1803,11 +1808,14 @@ const CON_E2E = BASE.replace ('fallos\t1', 'fallos\t2')
     // (d) Un recuento que NO cuenta rojos se ha movido tambien. Con un rojo
     // intermitente de por medio, eso es otra causa, y el texto lo dice por su
     // cuenta para que no haya que adivinarlo.
-    const timeoutMal = CON_E2E.replace ('tocoTimeout\t0', 'tocoTimeout\t1');
-    const rTimeout = compara ('timeout', timeoutMal);
-    igual ('un tocoTimeout que se ha movido sale con 1', rTimeout.rc, 1);
-    ok   ('...y el texto nombra los recuentos que no cuentan rojos',
-         rTimeout.outR.indexOf ('tocoTimeout') !== -1, 'salida: ' + rTimeout.outR);
+    //
+    // ESTE CASO HA CAMBIADO DE NUMERO CON LA SECCION 16, y por eso lo dice aqui:
+    // antes que un `tocoTimeout` que se habia movido sale con 1, y ahora sale con
+    // 4. No es un redenominado, es que la respuesta correcta cambio: un timeout
+    // de mas no es una cuenta rota, es una maquina que fue peor, y confundirlas
+    // era justo el agujero que el 4 tapa. La seccion 16 mide el caso DEGRADADO
+    // entero, con lentos y sin, y este de aqui queda como el recordatorio de que
+    // el 1 de antes ya no es lo que hay aqui.
     const huerfanosMal = CON_E2E.replace ('huerfanos\t0', 'huerfanos\t3');
     igual ('unos huerfanos distintos salen con 1', compara ('huerf', huerfanosMal).rc, 1);
 
@@ -1819,6 +1827,279 @@ const CON_E2E = BASE.replace ('fallos\t1', 'fallos\t2')
            corre (['compara', ref, par ('v.txt', BASE.replace ('v\t1', 'v\t2')), 'A', 'B']).rc, 1);
     igual ('un resumen ilegible sigue dando 2',
            corre (['compara', ref, path.join (d, 'no-existe.txt'), 'A', 'B']).rc, 2);
+}
+
+// ============================================================================
+//  16. LA DEGRADACION DEL ENTORNO FRENTE A LA DIVERGENCIA DE VERDAD
+// ============================================================================
+seccion ('16. Una vuelta que ha ido peor no es una divergencia');
+
+// EL CASO QUE MOTIVA ESTO TAMBIEN ESTA MEDIDO (2026-10-02, en HANDOFF.md), y es
+// el hermano del de la seccion 15. Alli un test salia rojo a veces y aqui un
+// test se pasa de tiempo: el check entero tardo 28 min 52 s, el .sh corrio los
+// cinco pasos con `tocoTimeout 0` y el .bat con `tocoTimeout 2`, y los dos tests
+// web que el .bat mato por tiempo le salieron LENTOS al .bat y no al .sh.
+// Los dos scripts CUENTABAN IGUAL, y el check salia con 1 y un "mire el diff de
+// los dos scripts", que era un consejo falso de principio a fin.
+//
+// LA DIFERENCIA CON EL INTERMITENTE, que es lo que hace que sean dos veredictos:
+// el rojo intermitente tiene una sola causa posible y una sola accion (relanzar el
+// test). El degradado tiene DOS causas indistinguibles con dos vueltas -- la
+// maquina fue mas lenta, o al gemelo que fue mas lento le cambiaron el umbral de
+// "lento" -- y la segunda es justo el bug que este check existe para cazar. Por
+// eso el 4 no dice "es la maquina": dice que hay un timeout que lo respalda y que
+// hay que REPETIR el check.
+//
+// Y POR QUE UN TIMEOUT PERDONA Y UN `lento` NO. Un test que ctest mata por tiempo
+// es un hecho de AQUELLA vuelta: no hay ningun umbral escrito en estos dos
+// scripts que lo produzca o lo quite. Un `lento` de mas, en cambio, tiene las dos
+// causas de arriba. Perdonar el `lento` sin el timeout seria una tautologia --
+// "los lentos no cuadran, asi que los lentos no cuentan" -- y dejaria pasar
+// justamente el umbral cambiado que se quiere cazar. Eso se comprueba mas abajo
+// con una mutacion: quitar el "solo si hay timeout" tiene que dar FALLA.
+const DEGRADADO_SH = 'v\t1\npasos\t5\nconocidos\t0\ntests\t53\n' +
+                     'fallos\t1\nmios\t0\najenos\t0\nsinClasificar\t1\n' +
+                     'lentos\t0\ntocoTimeout\t0\nhuerfanos\t0\n' +
+                     'rojo\t2\t' + SYNC + '\tSIN CLASIFICAR\n';
+// El .bat de aquella corrida: el rojo que el .sh tambien vio, mas dos del que no
+// vio, los recuentos subidos en la misma proporcion, DOS E2E como lentos (que es
+// lo que dice `lentos 2`) y dos timeouts.
+//
+// Los recuentos van ESCRITOS A MANO y no calculados, por lo mismo que en la
+// seccion 15: un generador que hiciera la cuenta comprobaria que la cuenta cuadra
+// con la cuenta que queremos, y no que el codigo sepa juzgar una que no cuadra.
+// La primera version de este caso decia `lentos 2` con un solo `lento`, y el
+// selftest se puso en rojo con "los lentos no cuadran con las lineas": la cuenta
+// estaba mal, no el codigo. Se queda escrito para que el caso no se "arregle"
+// mas adelante poveiendo el numero en vez de la linea.
+const DEGRADADO_BAT = 'v\t1\npasos\t5\nconocidos\t0\ntests\t53\n' +
+                      'fallos\t3\nmios\t0\najenos\t0\nsinClasificar\t3\n' +
+                      'lentos\t2\ntocoTimeout\t2\nhuerfanos\t0\n' +
+                      'rojo\t2\t' + SYNC + '\tSIN CLASIFICAR\n' +
+                      'rojo\t2\t' + E2E + '\tSIN CLASIFICAR\n' +
+                      'rojo\t4\tNEURONiK_WebUiNeedleProbeE2e\tSIN CLASIFICAR\n' +
+                      'lento\t' + E2E + '\n' +
+                      'lento\tNEURONiK_WebUiNeedleProbeE2e\n';
+
+{
+    const d = fs.mkdtempSync (path.join (TMP, 'r16'));
+    const par = (nombre, texto) => {
+        const f = path.join (d, nombre);
+        fs.writeFileSync (f, texto);
+        return f;
+    };
+    const ref = par ('sh.txt', DEGRADADO_SH);
+    const compara = (nombre, otro, extra) =>
+        corre (['compara', ref, par (nombre + '.txt', otro), 'el .sh', 'el .bat']
+               .concat (extra || []));
+
+    // (a) EL CASO DE VERDAD, ENTERO. Sale con 4, no con 1 y no con 3, y el texto
+    // tiene que decir las tres cosas que lo hacen accionable: el LADO que fue
+    // peor, los TIMEOUTS, y que hay que repetir el check.
+    const real = compara ('bat', DEGRADADO_BAT);
+    const txt = pantalla ('EL CASO REAL: dos timeouts y dos lentos solo en el .bat', real.out);
+    igual ('el caso real sale con 4, no con 1', real.rc, 4);
+    ok   ('...y NO dice que los dos scripts no dicen lo mismo',
+         txt.indexOf ('NO DICEN LO MISMO') === -1, 'salida: ' + txt);
+    ok   ('...y nombra el LADO que ha ido peor',
+         txt.indexOf ('el .bat') !== -1 && /peor/i.test (txt), 'salida: ' + txt);
+    ok   ('...y dice cuantos tests mato el tiempo',
+         txt.indexOf ('MATO por tiempo 2') !== -1, 'salida: ' + txt);
+    ok   ('...y pone los DOS numeros de tocoTimeout, para que se vea de donde sale',
+         txt.indexOf ('tocoTimeout: 2 contra 0') !== -1, 'salida: ' + txt);
+    ok   ('...y nombra los tests que perdona por el timeout',
+         txt.indexOf (E2E) !== -1, 'salida: ' + txt);
+    ok   ('...y DICE QUE HAY QUE REPETIR EL check (esto no es un "pasa")',
+         txt.indexOf ('REPETIR el check') !== -1, 'salida: ' + txt);
+    ok   ('...y dice que con dos vueltas no se puede distinguir de un umbral',
+         txt.indexOf ('no hay forma de') !== -1, 'salida: ' + txt);
+    ok   ('...y avisa de que el lent se perdona por el timeout y solo por eso',
+         txt.indexOf ('solo por eso') !== -1, 'salida: ' + txt);
+
+    // Y el mismo caso al reves: la degradacion en el otro lado tiene que salir
+    // con 4 igual. Una regla que solo funciona en un sentido es una regla que
+    // deja pasar la mitad de los casos, y aqui los dos lados son el mismo
+    // fichero con los papeles cambiados.
+    igual ('la degradacion en el otro lado tambien sale con 4',
+           corre (['compara', par ('bat2.txt', DEGRADADO_BAT), ref, 'el .sh', 'el .bat']).rc, 4);
+
+    // (b) CON --ESTRICTO, EL 4 VUELVE AL 1. Es la via para no depender de la
+    // buena fe, y por eso tiene que existir: si --estricto se olvidara de mirar el
+    // 4, el digesto del script no podria distinguirlo de un intermitente y el
+    // digesto se lleva por delante toda la garantia del 3.
+    const estricto = compara ('bat', DEGRADADO_BAT, ['--estricto']);
+    igual ('con --estricto el mismo caso sale con 1', estricto.rc, 1);
+    ok   ('...y el texto dice de que veredicto venia',
+         estricto.outR.indexOf ('habria salido con 4') !== -1,
+         'salida: ' + estricto.outR);
+
+    // (c) UN LENTO DE MAS SIN NINGUN TIMEOUT. Esto es la mitad del 4 y la que
+    // mas facilmente se rompe: si el codigo perdonara los lentos siempre que
+    // cuadren, el umbral de "lento" podria cambiar en un solo script y pasaria
+    // desapercibido. Aqui NO hay timeout, asi que sale con 1, igual que antes de
+    // que existiera el 4.
+    const sinTimeout = DEGRADADO_BAT.replace ('tocoTimeout\t2', 'tocoTimeout\t0');
+    const rSin = compara ('sintimeout', sinTimeout);
+    igual ('lentos de mas SIN ningun timeout salen con 1', rSin.rc, 1);
+    ok   ('...y el texto dice que los lentos no se perdonan',
+         rSin.outR.indexOf ('LENTOS') !== -1 && rSin.outR.indexOf ('no se perdona') !== -1,
+         'salida: ' + rSin.outR);
+
+    // (d) UNA CUENTA QUE NO CUADRA SIGUE SIENDO UNA DIVERGENCIA, aunque haya un
+    // timeout que la podria excusar. Un timeout de mas perdona los LENTOS; no
+    // perdona un `fallos` que no es la diferencia de las lineas, porque eso no lo
+    // ha hecho la maquina. Es la regla que mas caro sale si se quita: seria el
+    // camino a que el check deje de mirar los dos scripts.
+    const timeoutMal = DEGRADADO_BAT.replace ('fallos\t3', 'fallos\t5');
+    igual ('recuentos que no cuadran salen con 1 aunque haya timeouts',
+           compara ('fallos', timeoutMal).rc, 1);
+    const lentosMal = DEGRADADO_BAT.replace ('lentos\t2', 'lentos\t5');
+    igual ('unos lentos que no cuadran con las lineas salen con 1',
+           compara ('lentos', lentosMal).rc, 1);
+
+    // (e) UN TIMEOUT SIN NINGUN LENTO QUE LO RESPALDE. Salia con 1 y sigue
+    // saliendo con 4, porque el timeout ES la evidencia y los lentos son
+    // consecuencia: si solo hubiera `tocoTimeout` de mas, lo que ha ido peor es la
+    // maquina igual, y la accion es la misma (repetir el check).
+    const soloTimeout = DEGRADADO_BAT.replace ('lentos\t2', 'lentos\t0')
+                                     .replace ('lento\t' + E2E + '\n', '')
+                                     .replace ('lento\tNEURONiK_WebUiNeedleProbeE2e\n', '');
+    const rSolo = compara ('solotimeout', soloTimeout);
+    igual ('un timeout sin lentos que lo respalden sale con 4', rSolo.rc, 4);
+    ok   ('...y el texto lo dice, para que no se busque un lento que no hay',
+         rSolo.outR.indexOf ('No hay ningun `lento` de mas') !== -1,
+         'salida: ' + rSolo.outR);
+
+    // (f) MISMOS TIMEOUTS EN LOS DOS, Y SIN LENTOS DE MAS. `tocoTimeout` es un
+    // dato que se compara, asi que si los dos cuentan lo mismo no hay nada que
+    // excusar: lo que queda es el intermitente de la seccion 15 y sale con 3.
+    // Sin esta comprobacion, un `tocoTimeout` que se hubiera colado mal haria que
+    // un 3 de verdad pareciera un 4, que es el error en la direccion contraria y
+    // por eso Tambien hay que cazar.
+    //
+    // OJO al caso: NO vale con poner los dos timeouts a 0 y dejar los lentos,
+    // porque eso es exactamente (c) y sale con 1. Para que sea el intermitente
+    // los lentos tienen que IRSE de verdad, en el recuento y en las lineas: es
+    // lo unico que deja el caso limpio de "algo que perdonar".
+    const mismoTimeout = DEGRADADO_BAT.replace ('tocoTimeout\t2', 'tocoTimeout\t0')
+                                     .replace ('lentos\t2', 'lentos\t0')
+                                     .replace ('lento\t' + E2E + '\n', '')
+                                     .replace ('lento\tNEURONiK_WebUiNeedleProbeE2e\n', '');
+    igual ('timeouts iguales y sin lentos deja el intermitente como estaba (3)',
+           compara ('igualtimeout', mismoTimeout).rc, 3);
+
+    // (g) UN RECUENTO QUE NO ESTA. `tocoTimeout` ausente en uno de los dos
+    // resumenes no es un timeout de cero: es que no se sabe. Aqui hay lentos de
+    // mas, asi que sin el recuento no hay ni intermitente ni degradado, y sale con
+    // 1. Si en vez de esto se tratara como 0, un resumen viejo o truncado
+    // entraria por la puerta del 4 sin haber medido nada.
+    const sinCampo = DEGRADADO_BAT.replace ('tocoTimeout\t2\n', '');
+    igual ('un tocoTimeout ausente en un resumen sale con 1 (no se perdona nada)',
+           compara ('sincampo', sinCampo).rc, 1);
+
+    // (h) Y QUE LO NUEVO NO HAYA MOVIDO NADA DE LO VIEJO. El 0, el 1 y el 3 se
+    // comprueban aqui otra vez con el mismo arbol del principio, y no es
+    // redundante: el juez es codigo NUEVO que decide lo mismo que decidia el
+    // viejo, y la unica forma de saber que no ha cambiado de sitio es mirar los
+    // tres numeros viejos con el mismo caso.
+    igual ('dos resumenes iguales siguen dando 0 (16)', compara ('igual', DEGRADADO_SH).rc, 0);
+    igual ('el intermitente de la 15 sigue dando 3 (16)', compara ('inter', CON_E2E).rc, 3);
+    igual ('y con --estricto sigue dando 1 (16)',
+           compara ('inter-estricto', CON_E2E, ['--estricto']).rc, 1);
+    igual ('unas lineas que sobran en los dos siguen dando 1 (16)',
+           compara ('doslados', CON_E2E + 'rojo\t2\tNEURONiK_Otro\tMIO\n').rc, 1);
+}
+
+// LAS MUTACIONES DE ESTA SECCION. Lo de arriba comprueba que el 4 sale con 4; lo
+// que sigue comprueba que sale con 4 POR LO QUE DICE, y para eso hay que romper
+// el codigo a proposito y ver que el caso se pone rojo.
+//
+// El fallo de un selftest que no distingue "hecho" de "hecho por el motivo
+// equivocado" es el mismo que el del check de gemelos que no distingue una
+// divergencia de una maquina lenta: los dos estan en verde mientras lo que se
+// mide no es lo que el nombre dice que se mide.
+{
+    const original = fs.readFileSync (LIB, 'utf8');
+    const d = fs.mkdtempSync (path.join (TMP, 'r16mut'));
+
+    // Cada variante trae el texto a mutar Y el caso con el que se caza. El caso
+    // se escribe aqui al lado y no se reutiliza el de arriba a proposito: un
+    // mutante puede romper una regla sin tocar el caso que la hacia pasar, y si
+    // el caso fuera el mismo el selftest no tendria nada que decir.
+    // El caso con el que se caza cada mutante: un `lento` de mas SIN ningun
+    // timeout que lo respalde. Con el codigo entero sale con 1 (seccion 16 (c)),
+    // y con la regla rota tiene que dejar de salir con 1.
+    //
+    // Para el segundo mutante el caso es el MISMO pero con el campo `tocoTimeout`
+    // BORRADO del resumen del .bat. Asi el recuento falta, y la regla de "si no
+    // se sabe el recuento no se perdona nada" es justo la que hay rota. Con el
+    // campo puesto a 0 el mutante no haria nada, porque a==b y no hay nada que
+    // inventar: por eso el caso del segundo tiene que ser el que NO tiene el
+    // campo, y no el mismo que el primero.
+    const casoMutante = (sinCampo) => sinCampo
+        ? DEGRADADO_BAT.replace ('tocoTimeout\t2\n', '')
+        : DEGRADADO_BAT.replace ('tocoTimeout\t2', 'tocoTimeout\t0');
+
+    const variantes = [
+        // El primer mutante no devuelve un 4: devuelve un 3. La razon es que el
+        // caso que se caza tiene ademas un rojo que SII cuadra, asi que al
+        // quitar la regla de los lentos cae al intermitente de la seccion 15. Es
+        // el 4 que se quiere cazar en cualquier caso --deja de ser 1--, y el 3
+        // dice algo mucho peor que un 4: perdona los lentos SIN ningun timeout y
+        // aun encima lo presenta como el caso de siempre.
+        { nombre: 'un lento de mas se perdona sin ningun timeout que lo respalde',
+          de: 'if (hayLentosDeMas) {',
+          a: 'if (false) {',
+          sinCampo: false,
+          senal: 'ROJO INTERMITENTE' },
+
+        { nombre: 'un timeout se inventa cuando falta el recuento',
+          de: "if (a === null || b === null) return { hay: false, timeoutsMas: 0, lado: '', sinRecuento: true };",
+          a: "if (a === null || b === null) return { hay: true, timeoutsMas: 7, lado: 'A', sinRecuento: true };",
+          sinCampo: true,
+          senal: 'MATO por tiempo 7' }
+    ];
+
+    for (const v of variantes) {
+        // Y el mutante TIENE que ser distinto del original. Si el `.replace` no
+        // encuentra su texto, mutado === original, el caso pasa entero y las
+        // comprobaciones de abajo darian verde POR NO HABER ROTO NADA: es el
+        // fallo mas caro de un arnes de mutaciones, y por eso se mira antes de
+        // mirar nada mas.
+        //
+        // Y NO ES TEORICO: aqui paso. El ancla de la segunda mutacion se
+        // escribio con `TimeoutsMas` (mayuscula de mas) y el fichero de verdad
+        // tenia `timeoutsMas`. El `.replace` no encontraba nada, el mutante era
+        // el original, la mutacion no hacia nada, y el selftest daba verde
+        // callado: 264 comprobaciones en verde con una de ellas muerta. Por eso
+        // esta comprobacion esta ANTES de la del numero, y no se puede quitar
+        // por "que si el numero cambia ya se ve".
+        const mutado = original.replace (v.de, v.a);
+        ok   ('el mutante de "' + v.nombre + '" cambia de verdad el fichero',
+             mutado !== original, 'no se ha encontrado este texto en el fichero:\n' + v.de);
+        if (mutado === original) continue;
+
+        const copia = path.join (d, 'm-' + v.nombre.length + '.js');
+        fs.writeFileSync (copia, mutado);
+
+        const a = path.join (d, 'sh-' + v.nombre.length + '.txt');
+        const b = path.join (d, 'bat-' + v.nombre.length + '.txt');
+        fs.writeFileSync (a, DEGRADADO_SH);
+        fs.writeFileSync (b, casoMutante (v.sinCampo));
+
+        const r = corre (['compara', a, b, 'el .sh', 'el .bat'], { lib: copia });
+
+        // Y lo que se mira NO es "el mutante falla", sino el numero. Con el
+        // codigo entero este caso sale con 1; con la regla rota tiene que dejar
+        // de salir con 1, y el numero al que se va dice QUAL se ha roto: un
+        // mutante que se rompe por otra causa (un error de sintaxis, digamos)
+        // tambien cumpliria "distinto de 1", y por eso se mira el numero exacto.
+        ok   ('el mutante de "' + v.nombre + '" saca el caso de 1 (ha salido con ' +
+              String (r.rc) + ')',
+             r.rc !== 1, 'salida: ' + r.outR);
+        ok   ('...y el veredicto que sale es el de ' + v.senal + ', no otro',
+             r.outR.indexOf (v.senal) !== -1, 'salida: ' + r.outR);
+    }
 }
 
 // ============================================================================

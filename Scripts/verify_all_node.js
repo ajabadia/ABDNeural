@@ -1107,15 +1107,24 @@ function diferencia (A, B) {
     };
 }
 
-// El codigo de salida de "solo se ha movido un rojo intermitente". Es un 3 y no
-// un 0 a proposito: quien llama tiene que poder distinguirlo del "dicen lo
-// mismo" sin leer el texto, que es lo mismo que se hizo con el 3 del paso 2
-// (lo que no se ha medido no es que este en verde).
-const RC_INTERMITENTE = 3;
+// Los codigos de salida de "NO es una divergencia", que son DOS y no uno. Cada
+// uno con su numero para que quien llama los distinga del "dicen lo mismo" sin
+// leer el texto, que es lo mismo que se hizo con el 3 del paso 2 (lo que no se
+// ha medido no es que este en verde).
+const RC_INTERMITENTE = 3;   // solo se ha movido un rojo que va a veces
+const RC_DEGRADADO = 4;      // una vuelta ha ido PEOR: timeouts (y lentos) de mas
 
 // Los cuatro recuentos que dependen de QUE TESTES HAN SALIDO ROJO, y nada mas.
-// Los demas no se mueven por un rojo intermitente, y si se mueven hay otra cosa.
 const CLAVES_DE_ROJO = { fallos: true, mios: true, ajenos: true, sinClasificar: true };
+// El que cuenta los LENTOS. Se mira aparte porque un `lento` de mas no es un
+// rojo que va a veces: es una vuelta que ha ido mas lenta, o un umbral movido,
+// que es justo lo que NO se puede distinguir (y por eso hace falta un timeout
+// que lo respalde antes de perdonarlo).
+const CLAVES_DE_LENTO = { lentos: true };
+// El numero de tests que ctest MATO por tiempo. Es la firma de una vuelta que ha
+// ido peor y no hay ningun umbral que mover para que aparezca o desaparezca:
+// por eso es la unica evidencia que perdona los `lento` de mas.
+const CLAVES_DE_MAQUINA = { tocoTimeout: true };
 // El recuento y la etiqueta que pone el `resumen` en cada linea `rojo`. Sin este
 // mapa habria que escribir 'MIO' a pelo en dos sitios, y en cuanto uno se aparta
 // del otro el intermitente se pasa por cuadrar y la divergencia real se tapa.
@@ -1125,64 +1134,215 @@ const ETIQUETA_DE_CLAVE = {
     sinClasificar: ETIQUETAS.desconocido
 };
 
-// La comprobacion del intermitente. Devuelve `null` cuando NO lo es, que es el
-// camino de siempre: entonces el rojo es una divergencia y se dice con 1.
-function comoIntermitente (A, B, d) {
-    // (1) Lineas que sobran en UN SOLO lado, y en UNO. En los dos a la vez no hay un
-    // rojo que se ha escapado: hay dos scripts que cuentan distinto. Y si no
-    // sobra ninguna en ninguno, la diferencia es de recuento y ya se ha visto
-    // antes de llegar aqui. La comparacion es "uno vacio y el otro no": con un
-    // `||` al reves esto devolvia null justo en el caso que queria cazar.
-    if ((d.soloA.length === 0) === (d.soloB.length === 0)) return null;
-    const enA = d.soloA.length > 0;
-    const sobran = (enA ? d.soloA : d.soloB).slice ();
+// EL JUEZ. Una sola funcion que decide, y decide por CATEGORIAS: los rojos por
+// un lado, los lentos por otro, y los recuentos de la maquina por otro. Antes
+// era una regla plana ("si solo sobran rojas y cuadran, es un intermitente"), y
+// al meter los lentos en el mismo saco habia que decidir con una sola regla si
+// un `lento` de mas era una maquina lenta o un umbral movido. Con las categorias
+// cada mitad lleva su aritmetica y el veredicto sale de la combinacion:
+//
+//   IGUALES       0  no hay ni una linea de diferencia
+//   INTERMITENTE  3  los rojos cuadran como un rojo que va a veces, y NO hay
+//                      ninguna evidencia de que la maquina fuera peor
+//   DEGRADADO     4  los rojos cuadran igual y ADEMAS hay un timeout de mas en
+//                      una vuelta (y sus lentos de mas, que tambien cuadran)
+//   DIVERGENCIA   1  todo lo demas, y es el camino de siempre
+//
+// POR QUE UN TIMEOUT ES LA EVIDENCIA Y UN `lento` NO. Un test que ctest mata
+// por tiempo es un hecho de AQUELLA vuelta: no hay ningun umbral que mover para
+// que aparezca. Un `lento` de mas, en cambio, tiene dos causas indistinguibles
+// con dos corridas —la maquina fue mas lenta, o el umbral de lento se toco en
+// un gemelo— y la segunda es justo el bug que este script existe para cazar. Por
+// eso un `lento` de mas SOLO se perdona si viene con un timeout que lo respalde, y
+// solo: medido el 2026-10-02, el caso de verdad fue `.sh` con 0 timeouts y
+// `.bat` con 2, mas los dos E2E como lentos que el otro no vio.
+//
+// Y LO QUE NO SE PUEDE SABER, escrito para que no se piense lo contrario: con
+// dos vueltas no hay forma de distinguir "la segunda fue mas lenta" de "al
+// segundo le cambiaron el umbral y por eso cuenta mas lentos". Por eso el 4 dice
+// REPETIR EL CHECK en vez de darlo por bueno: si sale igual otra vez, ya no es la
+// maquina. Y `--estricto` lo devuelve al 1, que es la via para no perder el
+// diente sin depender de la buena fe.
+function repartir (d) {
+    const esRojo = (l) => l.startsWith ('rojo' + '\t');
+    const esLento = (l) => l.startsWith ('lento' + '\t');
 
-    // (2) Solo `rojo`. Un `lento` que solo ve uno de los dos es el umbral de
-    // lento movido, y el umbral es una regla.
-    if (sobran.some (l => !l.startsWith ('rojo' + '\t'))) return null;
+    return {
+        rojosA: d.soloA.filter (esRojo),
+        rojosB: d.soloB.filter (esRojo),
+        lentosA: d.soloA.filter (esLento),
+        lentosB: d.soloB.filter (esLento),
+        // `leerResumen` solo deja entrar `rojo` y `lento`, asi que esta caja
+        // deberia ir vacia siempre. Que no vaya vacia significa que el formato
+        // del resumen cambio y que este codigo ya no sabe lo que lee: eso es un
+        // 1 de cabeza y no un veredicto, que es lo contrario de adivinar.
+        otrosA: d.soloA.filter (l => !esRojo (l) && !esLento (l)),
+        otrosB: d.soloB.filter (l => !esRojo (l) && !esLento (l))
+    };
+}
 
-    // (3) Solo los cuatro recuentos que cuentan rojos.
-    for (const r of d.recuentos) if (!CLAVES_DE_ROJO[r.clave]) return null;
+const numeroDe = (res, clave) => {
+    if (!res.cabecera.has (clave)) return null;
+    const n = Number (res.cabecera.get (clave));
+    return Number.isFinite (n) ? n : null;
+};
 
-    // Cuantas de las lineas que sobran son de cada clasificacion. El cuarto
-    // campo de una linea `rojo` es la etiqueta, y es la misma que escribe
-    // `resumen` con `clasifica()`.
+// LA MITAD DE LOS ROJOS. Es la misma aritmetica de siempre, con las lineas
+// separadas por categoria: `fallos` tiene que ser la diferencia de lineas y cada
+// clasificacion tiene que subir lo que sube su numero de lineas. Si no cuadra,
+// no hay intermitente ni degradado: hay una cuenta rota en un gemelo.
+function rojosCuadran (A, B, r) {
+    if ((r.rojosA.length === 0) === (r.rojosB.length === 0)) {
+        return { ok: true, enA: null, sobran: [] };
+    }
+
+    const enA = r.rojosA.length > 0;
+    const sobran = enA ? r.rojosA : r.rojosB;
+    const masRojos = enA ? A : B;
+    const menosRojos = enA ? B : A;
+
+    const fMas = numeroDe (masRojos, 'fallos');
+    const fMenos = numeroDe (menosRojos, 'fallos');
+
+    if (fMas === null || fMenos === null) return { ok: false, enA: enA, sobran: sobran };
+    if (fMas - fMenos !== sobran.length) return { ok: false, enA: enA, sobran: sobran };
+
+    // El cuarto campo de una linea `rojo` es la etiqueta, y es la misma que
+    // escribe `resumen` con `clasifica()`.
     const porEtiqueta = new Map ();
     for (const l of sobran) {
         const etiqueta = l.split ('\t').slice (3).join ('\t');
         porEtiqueta.set (etiqueta, (porEtiqueta.get (etiqueta) || 0) + 1);
     }
 
-    const numero = (res, clave) => {
-        if (!res.cabecera.has (clave)) return null;
-        const n = Number (res.cabecera.get (clave));
-        return Number.isFinite (n) ? n : null;
-    };
-
-    const masRojos = enA ? A : B;
-    const menosRojos = enA ? B : A;
-
-    // `fallos` tiene que ser exactamente la diferencia de lineas. Si el numero
-    // de rojos no se mueve lo mismo que las lineas, los recuentos no estan
-    // contando lo que dicen las lineas, y eso ya no es una maquina inestable:
-    // es una cuenta rota en un gemelo.
-    const fMas = numero (masRojos, 'fallos');
-    const fMenos = numero (menosRojos, 'fallos');
-    if (fMas === null || fMenos === null) return null;
-    if (fMas - fMenos !== sobran.length) return null;
-
-    // Y cada clasificacion tiene que subir lo que le toca. Se mira TODAS, no
-    // solo las que difieren: si de las lineas que sobran hay una MIO y el
-    // `mios` no ha subido, la cuenta no cuadra aunque el `fallos` si.
     for (const clave of Object.keys (ETIQUETA_DE_CLAVE)) {
-        const cMas = numero (masRojos, clave);
-        const cMenos = numero (menosRojos, clave);
-        if (cMas === null || cMenos === null) return null;
-        const esperado = cMenos + (porEtiqueta.get (ETIQUETA_DE_CLAVE[clave]) || 0);
-        if (cMas !== esperado) return null;
+        const cMas = numeroDe (masRojos, clave);
+        const cMenos = numeroDe (menosRojos, clave);
+
+        if (cMas === null || cMenos === null) return { ok: false, enA: enA, sobran: sobran };
+        if (cMas !== cMenos + (porEtiqueta.get (ETIQUETA_DE_CLAVE[clave]) || 0)) {
+            return { ok: false, enA: enA, sobran: sobran };
+        }
     }
 
-    return { enA: enA, sobran: sobran, porEtiqueta: porEtiqueta };
+    return { ok: true, enA: enA, sobran: sobran };
+}
+
+// LA MITAD DE LOS LENTOS. Igual que los rojos, en un solo lado y con el recuento
+// moviendose lo mismo que las lineas. Un `lento` de mas con el recuento igual es
+// una cuenta rota, y por eso aqui no se perdona aunque haya timeouts: el timeout
+// perdona a la maquina, no a la aritmetica.
+function lentosCuadran (A, B, r) {
+    const enA = r.lentosA.length > 0;
+    const hayA = enA;
+    const hayB = r.lentosB.length > 0;
+
+    // Lentos de mas en LOS DOS lados: no hay "el lado que no los vio" a quien
+    // summingarselos, asi que no hay nada que comprobar. Es una cuenta rota.
+    if (hayA && hayB) return { ok: false, enA: enA, sobran: r.lentosA.concat (r.lentosB) };
+
+    if (!hayA && !hayB) return { ok: true, enA: null, sobran: [] };
+
+    // `|lentos(mas) - lentos(menos)|` tiene que ser exactamente el numero de
+    // lineas `lento` que sobran, igual que `fallos` con los rojos. Aqui solo se
+    // comprueba que CUADREN: que haya timeouts que lo respalden lo decide `juzgar`,
+    // que es quien mira la maquina, y meterlo aqui meteria una regla mas en
+    // una funcion que solo sabe contar.
+    const lMas = numeroDe (hayA ? A : B, 'lentos');
+    const lMenos = numeroDe (hayA ? B : A, 'lentos');
+
+    const sobran = hayA ? r.lentosA : r.lentosB;
+
+    if (lMas === null || lMenos === null) return { ok: false, enA: enA, sobran: sobran };
+    if (Math.abs (lMas - lMenos) !== sobran.length) return { ok: false, enA: enA, sobran: sobran };
+
+    return { ok: true, enA: enA, sobran: sobran };
+}
+
+// LA MAQUINA. `tocoTimeout` es lo unico que perdona sin cuadrar nada: que ctest
+// haya matado mas tests en una vuelta no lo decide ninguna regla de estos dos
+// scripts, lo decide lo que tardo cada test. Se exige que el recuento este en los
+// dos resumenes, y se distingue una cosa de la otra con `sinRecuento`: si falta
+// en uno, no se perdona nada, porque no se sabe lo que paso en esa vuelta y un
+// resumen viejo o truncado tiene justo esa forma. Un timeout inventado a partir
+// de un campo ausente seria perdonar por sorpresa, que es lo contrario de decir la
+// verdad del caso. Que el que mira vea tambien POR QUE no se ha perdonado.
+function timeoutsDe (A, B) {
+    const a = numeroDe (A, 'tocoTimeout');
+    const b = numeroDe (B, 'tocoTimeout');
+
+    if (a === null || b === null) return { hay: false, timeoutsMas: 0, lado: '', sinRecuento: true };
+    if (a === b) return { hay: false, timeoutsMas: 0, lado: '', sinRecuento: false };
+
+    return { hay: true, timeoutsMas: Math.max (a, b), lado: a > b ? 'A' : 'B', sinRecuento: false };
+}
+
+function juzgar (A, B, d) {
+    if (d.vacio) return { tipo: 'IGUALES' };
+
+    const r = repartir (d);
+    if (r.otrosA.length > 0 || r.otrosB.length > 0) {
+        return { tipo: 'DIVERGENCIA', porque: 'lineas de detalle que no son ni rojo ni lento' };
+    }
+
+    const otros = d.recuentos.filter (c => !CLAVES_DE_ROJO[c.clave]
+                                     && !CLAVES_DE_LENTO[c.clave]
+                                     && !CLAVES_DE_MAQUINA[c.clave]);
+
+    if (otros.length > 0) {
+        return { tipo: 'DIVERGENCIA', porque: 'recuentos que no cuentan rojos ni lentos', otros: otros };
+    }
+
+    const rojos = rojosCuadran (A, B, r);
+    const lentos = lentosCuadran (A, B, r);
+    const maquina = timeoutsDe (A, B);
+
+    // El rojo manda: si no cuadra, no hay nada que perdonar, aunque haya un
+    // timeout. Un rojo que no cuadra es una cuenta rota, y una cuenta rota no la
+    // arregla una maquina lenta.
+    if (!rojos.ok) return { tipo: 'DIVERGENCIA', porque: 'los rojos no cuadran con las lineas' };
+    if (!lentos.ok) return { tipo: 'DIVERGENCIA', porque: 'los lentos no cuadran con las lineas' };
+
+    // Un `lento` de mas en los dos lados ya ha salido arriba como `lentos.ok`
+    // falso, asi que aqui `lentos.enA` no es null solo cuando sobran en UNO.
+    const hayLentosDeMas = lentos.sobran.length > 0;
+
+    // UN RECUENTO QUE SE HA MOVIDO SIN NINGUNA LINEA DETRAS. Es el hueco que
+    // dejan los dos `Cuadran` de arriba: si sobran cero lineas de rojos, ellos
+    // dicen "ok" sin mirar nada, y entonces un `fallos` 3 contra 4 -- que es una
+    // cuenta rota y la divergencia mas clara que hay -- se iria como "dicen lo
+    // mismo". Solo se aplica cuando NO sobra ninguna linea de ninguna de las dos
+    // mitades: si sobran, los recuentos ya se han comprobado una a una contra
+    // ellas y Repetirlo seria decir que un intermitente cuadra, que es justo lo
+    // contrario. Y `tocoTimeout` queda fuera a proposito: no tiene lineas que lo
+    // respalden por definicion, porque lo que se movio es lo que tardo cada test.
+    const sueltos = (rojos.sobran.length === 0 && lentos.sobran.length === 0)
+        ? d.recuentos.filter (c => CLAVES_DE_ROJO[c.clave] || CLAVES_DE_LENTO[c.clave])
+        : [];
+    if (sueltos.length > 0) {
+        return { tipo: 'DIVERGENCIA',
+                 porque: 'recuentos que se han movido sin ninguna linea que los respalde',
+                 otros: sueltos };
+    }
+
+    // ESTA ES LA REGLA NUEVA, y es la que separa "la maquina fue peor" de "los dos
+    // scripts no cuentan igual". Un timeout de mas es lo UNICO que perdona los
+    // `lento` de mas, porque es lo unico que depende de lo que tardo cada test y
+    // no de una regla escrita en uno de los dos scripts.
+    if (maquina.hay) {
+        return { tipo: 'DEGRADADO', rojos: rojos, lentos: lentos, maquina: maquina };
+    }
+
+    // Sin timeouts, un `lento` de mas NO se perdona: su causa mas probable es el
+    // umbral, y el umbral es una regla. Esta es la linea que hace falta y que no
+    // hacia falta antes (no habia `lentos` en la ecuacion).
+    if (hayLentosDeMas) {
+        return { tipo: 'DIVERGENCIA', porque: 'lentos de mas sin ningun timeout que los respalde',
+                 lentos: lentos, maquina: maquina };
+    }
+
+    if (rojos.enA !== null) return { tipo: 'INTERMITENTE', rojos: rojos, lentos: lentos, maquina: maquina };
+    return { tipo: 'IGUALES' };
 }
 
 function cmdCompara (a, b, nombreA, nombreB, estricto) {
@@ -1218,41 +1378,121 @@ function cmdCompara (a, b, nombreA, nombreB, estricto) {
         process.exit (0);
     }
 
+    // EL JUEZ decide una sola vez y el texto solo IMPRIME lo que ha decidido. Que
+    // las dos mitades esten en el mismo sitio es lo que hace que este check
+    // sirva: si el texto dijera una cosa y el codigo de salida otra, el que lo
+    // lee learns la que le gusta y el otro pasa por alto el rojo.
+    //
+    // `--estricto` no se le pasa al juez: se aplica DESPUES, y solo a los dos
+    // veredictos que lo admiten. El juez es el mismo con y sin la opcion, que es
+    // como se puede comprobar que la opcion no cambia lo que se mide y solo
+    // cambia lo que se perdona.
+    const j = juzgar (A, B, d);
+
+    if (estricto && (j.tipo === 'INTERMITENTE' || j.tipo === 'DEGRADADO')) {
+        // El tipo original se guarda ANTES de cambiarlo, porque el mensaje de
+        // abajo tiene que decir cual era: "sale como divergencia por --estricto"
+        // sin decir de que veredicto venia deja al que lo lee sin saber si
+        // habia una maquina de por medio o solo un rojo que va a veces.
+        j.estrictoDe = j.tipo;
+        j.tipo = 'DIVERGENCIA';
+        j.porque = 'con --estricto esto no se perdona, asi que sale como divergencia';
+    }
+
     // ── EL TERCER VEREDICTO: SOLO SE HA MOVIDO UN ROJO INTERMITENTE ─────────
     // Va antes del bloque de "NO DICEN LO MISMO" porque es el caso que hay que
     // EXPLIAR, no el que hay que avisar: un rojo que sale a veces no es una
     // divergencia y el mensaje de la divergencia manda a mirar un `diff` que no
     // tiene nada que ver. Y va antes a proposito tambien porque el 1 se queda
     // exactamente como estaba: lo que no cuadra sigue siendo lo que no cuadra.
-    if (!estricto) {
-        const inter = comoIntermitente (A, B, d);
-        if (inter) {
-            const enQuien = inter.enA ? etA : etB;
-            const enCual  = inter.enA ? etB : etA;
-            process.stdout.write ('\n  ' + etA + ' y ' + etB +
-                                  ' DICEN LO MISMO salvo en un ROJO INTERMITENTE.\n');
-            process.stdout.write ('\n  Estos tests han salido rojos en una de las dos pasadas y verdes\n');
-            process.stdout.write ('  en la otra. Solo en ' + enQuien + ':\n');
-            for (const l of inter.sobran) {
-                const p = l.split ('\t');
-                process.stdout.write ('        ' + (p[2] || l) + '   (paso ' + (p[1] || '?') +
-                                      ', ' + (p[3] || '?') + ')\n');
-            }
-            // El nombre va entre parentesis y NO pegado a una preposicion, porque los dos
-            // nombres que se usan llevan articulo ("el .sh", "el .bat", "el
-            // primero") y sale "a el .bat" en cuanto se le pone algo delante.
-            process.stdout.write ('\n  Por que no cuenta como divergencia: sumadas al lado que no las vio (' +
-                                  enCual + '),\n');
-            process.stdout.write ('  las lineas que sobran hacen que los dos resumenes coincidan linea a linea, y\n');
-            process.stdout.write ('  los recuentos CUADRAN con esas lineas. Un rojo a veces es la maquina; una\n');
-            process.stdout.write ('  regla tocada en un gemelo no cuadra, y sale por la puerta de al lado.\n');
-            process.stdout.write ('\n  Que hacer: relanza esos tests (ctest -R <nombre>, sin el build entero). Si\n');
-            process.stdout.write ('  vuelven a salir verdes, era eso. Si vuelven a salir rojos, ya no es\n');
-            process.stdout.write ('  intermitente: es un fallo de verdad, y lo que hay que arreglar es el test.\n');
-            process.stdout.write ('\n  Esto sale con ' + RC_INTERMITENTE + ', no con 0, para que se distinga del "dicen lo\n');
-            process.stdout.write ('  mismo" sin leer el texto. Con --estricto se ve esto mismo como 1.\n');
-            process.exit (RC_INTERMITENTE);
+    if (j.tipo === 'INTERMITENTE') {
+        const enQuien = j.rojos.enA ? etA : etB;
+        const enCual  = j.rojos.enA ? etB : etA;
+        process.stdout.write ('\n  ' + etA + ' y ' + etB +
+                              ' DICEN LO MISMO salvo en un ROJO INTERMITENTE.\n');
+        process.stdout.write ('\n  Estos tests han salido rojos en una de las dos pasadas y verdes\n');
+        process.stdout.write ('  en la otra. Solo en ' + enQuien + ':\n');
+        for (const l of j.rojos.sobran) {
+            const p = l.split ('\t');
+            process.stdout.write ('        ' + (p[2] || l) + '   (paso ' + (p[1] || '?') +
+                                  ', ' + (p[3] || '?') + ')\n');
         }
+        // El nombre va entre parentesis y NO pegado a una preposicion, porque los dos
+        // nombres que se usan llevan articulo ("el .sh", "el .bat", "el
+        // primero") y sale "a el .bat" en cuanto se le pone algo delante.
+        process.stdout.write ('\n  Por que no cuenta como divergencia: sumadas al lado que no las vio (' +
+                              enCual + '),\n');
+        process.stdout.write ('  las lineas que sobran hacen que los dos resumenes coincidan linea a linea, y\n');
+        process.stdout.write ('  los recuentos CUADRAN con esas lineas. Un rojo a veces es la maquina; una\n');
+        process.stdout.write ('  regla tocada en un gemelo no cuadra, y sale por la puerta de al lado.\n');
+        process.stdout.write ('\n  Que hacer: relanza esos tests (ctest -R <nombre>, sin el build entero). Si\n');
+        process.stdout.write ('  vuelven a salir verdes, era eso. Si vuelven a salir rojos, ya no es\n');
+        process.stdout.write ('  intermitente: es un fallo de verdad, y lo que hay que arreglar es el test.\n');
+        process.stdout.write ('\n  Esto sale con ' + RC_INTERMITENTE + ', no con 0, para que se distinga del "dicen lo\n');
+        process.stdout.write ('  mismo" sin leer el texto. Con --estricto se ve esto mismo como 1.\n');
+        process.exit (RC_INTERMITENTE);
+    }
+
+    // ── EL CUARTO VEREDICTO: UNA VUELTA HA IDO PEOR ─────────────────────────
+    //
+    // Este es el caso que se ha MEDIDO el 2026-10-02 en el check de gemelos de
+    // verdad: el .sh corrio los cinco pasos con 0 timeouts y el .bat con 2, y los
+    // dos tests web que el .bat mato por tiempo le salieron LENTOS al .bat y no
+    // al .sh. Los dos scripts CUENTAN IGUAL, y sin este veredicto eso salia con
+    // 1 y un "mire el diff de los dos scripts", que es un consejo que en este
+    // caso era falso de principio a fin: no habia ninguna regla tocada, habia una
+    // maquina que en la segunda vuelta iba peor.
+    //
+    // La diferencia con el intermitente, y por que son dos veredictos y no uno: el
+    // rojo intermitente se explica con una sola causa posible (el test va a
+    // veces) y la accion es relanzar el test. El degradado tiene DOS causas
+    // indistinguibles con dos vueltas -- la maquina fue mas lenta, o al gemelo
+    // que fue mas lento le cambiaron el umbral de "lento" -- y la segunda es
+    // justo el bug que este check existe para cazar. Por eso el 4 no dice "es la
+    // maquina": dice que hay un timeout que lo respalda y que hay que REPETIR el
+    // check. Si sale igual otra vez, ya no es la maquina.
+    if (j.tipo === 'DEGRADADO') {
+        const ladoPeor = j.maquina.lado === 'A' ? etA : etB;
+        const ladoBueno = j.maquina.lado === 'A' ? etB : etA;
+
+        process.stdout.write ('\n  ' + etA + ' y ' + etB + ' CUENTAN IGUAL, pero una de las dos vueltas\n');
+        process.stdout.write ('  ha ido PEOR: es una degradacion del entorno, no una regla distinta.\n');
+        process.stdout.write ('\n  ctest MATO por tiempo ' + String(j.maquina.timeoutsMas) + ' test(s) mas en ' +
+                              ladoPeor + '\n');
+        process.stdout.write ('  (tocoTimeout: ' + String(numeroDe (j.maquina.lado === 'A' ? A : B, 'tocoTimeout')) +
+                              ' contra ' + String(numeroDe (j.maquina.lado === 'A' ? B : A, 'tocoTimeout')) + ').\n');
+
+        if (j.lentos.sobran.length > 0) {
+            process.stdout.write ('\n  Y por eso se perdonan los tests que ahi salieron LENTOS y en ' + ladoBueno + ' no:\n');
+            for (const l of j.lentos.sobran) {
+                const p = l.split ('\t');
+                process.stdout.write ('        ' + (p[1] || l) + '\n');
+            }
+            process.stdout.write ('  Estan perdonados por EL TIMEOUT DE ARRIBA, y solo por eso. Un `lento` de\n');
+            process.stdout.write ('  mas sin un timeout que lo respalde NO se perdona: sale con 1.\n');
+        } else {
+            process.stdout.write ('\n  No hay ningun `lento` de mas junto al timeout: lo que se ha movido son\n');
+            process.stdout.write ('  los recuentos, y sale igualmente por aqui.\n');
+        }
+
+        process.stdout.write ('\n  Por que no cuenta como divergencia: sumadas al lado que no las vio (' +
+                              ladoBueno + '),\n');
+        process.stdout.write ('  las lineas que sobran hacen que los dos resumenes coincidan linea a linea, y los\n');
+        process.stdout.write ('  recuentos CUADRAN con esas lineas. Un timeout es un hecho de AQUELLA vuelta: no\n');
+        process.stdout.write ('  hay ninguna regla escrita en estos dos scripts que lo produzca o lo quite.\n');
+
+        process.stdout.write ('\n  OJO, y esto es lo que hay que leer: con DOS vueltas no hay forma de\n');
+        process.stdout.write ('  distinguir "la maquina fue mas lenta" de "le cambiaron el umbral de lento a\n');
+        process.stdout.write ('  ' + ladoPeor + '". La segunda es una divergencia de verdad y seria la segunda vez que\n');
+        process.stdout.write ('  se cuela. Por eso esto NO sale con 0.\n');
+
+        process.stdout.write ('\n  Que hacer: REPETIR el check entero (./Scripts/verify_all_check.sh) con la maquina\n');
+        process.stdout.write ('  descargada. Si sale igual otra vez, ya no es la maquina: es el umbral, y hay\n');
+        process.stdout.write ('  que mirar la regla que escribe la lista de lentos en los dos scripts.\n');
+
+        process.stdout.write ('\n  Esto sale con ' + RC_DEGRADADO + ', no con 0, para que se distinga del "dicen lo\n');
+        process.stdout.write ('  mismo" sin leer el texto. Con --estricto se ve esto mismo como 1.\n');
+        process.exit (RC_DEGRADADO);
     }
 
     process.stdout.write ('\n  ' + etA + ' y ' + etB + ' NO DICEN LO MISMO sobre el mismo build.\n');
@@ -1271,30 +1511,55 @@ function cmdCompara (a, b, nombreA, nombreB, estricto) {
         for (const l of d.soloB) process.stdout.write ('        ' + l.replace (/\t/g, '  ') + '\n');
     }
 
+    // POR QUE NO CUADRA, y lo dice el juez y no el texto. Es una linea y es la
+    // que mas se lee de este bloque: el mensaje entero son las lineas que sobran
+    // (util para el `diff`), pero lo que hay que arreglar sale de aqui. Sin esto
+    // el bloque obliga a hacer la aritmetica a mano para saber si lo que se ve
+    // es una cuenta rota o un test que va a veces.
+    if (j.porque) {
+        process.stdout.write ('\n  Por que no cuadra: ' + j.porque + '.\n');
+    }
+
     // Lo que se ha movido y NO se perdona, dicho por el nombre del campo. Un
-    // rojo intermitente queda fuera del bloque de arriba a proposito, asi que
-    // esto solo sale cuando hay algo mas, y lo que sale es una pista de por
-    // donde mirar. La mas importante es la de los LENTOS: un `lento` que solo ve
-    // uno de los dos NO se perdona, porque el umbral de lento es una regla y este
-    // script existe justo para ver si las dos reglas son iguales.
+    // rojo intermitente y un entorno degradado quedan fuera del bloque de arriba
+    // a proposito, asi que esto solo sale cuando hay algo mas, y lo que sale es
+    // una pista de por donde mirar. La mas importante es la de los LENTOS: un
+    // `lento` que solo ve uno de los dos NO se perdona sin un timeout que lo
+    // respalde, porque el umbral de lento es una regla y este script existe
+    // justo para ver si las dos reglas son iguales.
     const movidos = d.soloA.concat (d.soloB).filter (l => l.startsWith ('lento' + '\t'));
     if (movidos.length > 0) {
+        // Aqui NO se dice que los lentos estan perdonados aunque haya un timeout:
+        // este bloque es el de la divergencia, y en el se han perdido todos los
+        // perdones a proposito. Decir "perdonada" y a la vez salir con 1 seria
+        // un bloque que se contradice solo, que es peor que no decir nada.
         process.stdout.write ('\n  Y ADEMAS se ha movido la lista de LENTOS, que no se perdona: el umbral de\n');
         process.stdout.write ('  "lento" es una REGLA, y comparar reglas distintas es justo lo que este\n');
         process.stdout.write ('  script existe. Un test puede salir rojo a veces, que es la maquina; si sale\n');
         process.stdout.write ('  lento a veces, lo que se ha movido es el umbral, y eso hay que verlo.\n');
     }
-    const otros = d.recuentos.filter (r => !CLAVES_DE_ROJO[r.clave]).map (r => r.clave);
+    const otros = d.recuentos.filter (r => !CLAVES_DE_ROJO[r.clave]
+                                       && !CLAVES_DE_LENTO[r.clave]
+                                       && !CLAVES_DE_MAQUINA[r.clave]).map (r => r.clave);
     // El `lentos` ya lo ha dicho el bloque de arriba, linea por linea: repetirlo
     // aqui seria decir dos veces lo mismo, y un bloque que repite se lee como
     // dos avisos en lugar de como uno.
     if (otros.length > 0 && movidos.length === 0) {
-        process.stdout.write ('\n  Y ademas los recuentos que NO cuentan rojos tampoco cuadran (' +
+        process.stdout.write ('\n  Y ademas hay recuentos que no cuentan NI rojos NI lentos y tampoco cuadran (' +
                               otros.join(', ') + '). Un rojo intermitente no los toca:\n');
         process.stdout.write ('  eso es otra causa, y hay que mirarla antes que el nombre del rojo.\n');
     }
     process.stdout.write ('\n  Los dos scripts tienen que decir lo mismo del MISMO build. Si uno tiene\n');
     process.stdout.write ('  mas rojos, no es que el otro no los vea: es que cada uno lleva su cuenta.\n');
+
+    // El aviso de `--estricto` sale aqui y no en los otros dos bloques porque el
+    // 1 es el bloque "pasa igual": quien lo ha pedido ya lo sabe, y quien no lo ha
+    // pedido no tiene nada que hacer con el.
+    if (j.estrictoDe) {
+        process.stdout.write ('\n  Esto habria salido con ' +
+                              (j.estrictoDe === 'DEGRADADO' ? RC_DEGRADADO : RC_INTERMITENTE) +
+                              ' sin --estricto.\n');
+    }
     process.exit (1);
 }
 

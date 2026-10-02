@@ -78,16 +78,27 @@
 # mensaje que sale es peor que un rojo falso, porque dice una causa que no es la
 # causa y entrena a ignorar el bloque entero.
 #
-# Asi que hay un TERCER veredicto, y sale con 0 para que el check no se rompa:
+# Asi que hay TRES veredictos mas alla del rojo, y salen con 0 para que el check
+# no se rompa:
 #
-#   0  dicen lo mismo (o solo se ha movido un rojo intermitente: ver abajo)
+#   0  dicen lo mismo (o solo se ha movido un rojo intermitente / una vuelta ha
+#      ido peor: ver abajo)
 #   1  NO dicen lo mismo: una regla esta en un gemelo y no en el otro
+#   3  INTERMITENTE: solo se ha movido un rojo que sale a veces
+#   4  DEGRADADO: cuentan igual, pero una vuelta ha ido PEOR (timeouts de mas)
 #
-# El 3 lo pone `compara`, no este script, para que quien llame a la orden por
-# separado pueda distinguirlo del 0 sin leer el texto. Aqui se traduce a un
-# bloque propio que nombra los tests que se han movido y dice que hacer con
-# ellos, y el check sale en 0 a proposito: comparar dos corridas de un test que
-# a veces falla no dice nada de los dos scripts, solo de la maquina.
+# El 3 y el 4 los pone `compara`, no este script, para que quien llame a la orden
+# por separado pueda distinguirlos del 0 sin leer el texto. Aqui se traducen a
+# bloques propios que nombran lo que se ha movido y dicen que hacer, y el check
+# sale en 0 a proposito: comparar dos vueltas en las que la maquina ha ido
+# distinta no dice nada de los dos scripts, solo de la maquina.
+#
+# EL 4 ES NUEVO, y viene de un caso medido el 2026-10-02: el .sh corrio los cinco
+# pasos con 0 timeouts y el .bat con 2, y los dos tests web que el .bat mato por
+# tiempo le salieron LENTOS al .bat y no al .sh. Los dos scripts CUENTAN IGUAL, y
+# sin este veredicto eso salia con 1 y un "mire el diff de los dos scripts", que
+# era un consejo falso de principio a fin: no habia ninguna regla tocada, habia
+# una maquina que en la segunda vuelta iba peor.
 #
 # COMO SE SABE QUE ES ESO Y NO UNA DIVERGENCIA. La pregunta es una: si se le
 # suman al lado que no vio el rojo las lineas que le sobran, los dos vuelven a
@@ -95,9 +106,23 @@
 # aritmetica de siempre, y por eso no es una opinion: si los RECUENTOS no
 # cuadran con las lineas que sobran (un `fallos` que no es la diferencia, un
 # `mios` que no sube lo que sube el numero de lineas MIO) no cuenta, y sale
-# con 1 como antes. Un `lento` que solo ve uno de los dos tampoco cuenta: el
-# umbral de lento es una REGLA, y este script existe para ver si las dos reglas
-# son la misma.
+# con 1 como antes.
+#
+# Y UN `lento` DE MAS NO SE PERDONA POR SU CUENTA. El umbral de lento es una
+# REGLA, y este script existe para ver si las dos reglas son la misma: perdonarlo
+# sin mas seria una tautologia ("los lentos no cuadran, asi que los lentos no cuentan").
+# Solo se perdona cuando lo RESPALDA un timeout de mas, porque un timeout es un
+# hecho de aquella vuelta y no hay ninguna regla escrita aqui que lo produzca o
+# lo quite. Sin ese timeout, un `lento` de mas sale con 1, que es lo que hacia
+# antes de que existiera el 4.
+#
+# LO QUE EL 4 NO PUEDE DECIR. Con dos vueltas no hay forma de distinguir "la
+# maquina fue mas lenta" de "al gemelo que fue mas lento le cambiaron el umbral":
+# la segunda es una divergencia de verdad. Por eso el 4 no dice "es la maquina" ni
+# sale con 0 sin mas: sale con 0 PERO DICE QUE HAY QUE REPETIR EL CHECK, y con
+# `--estricto` sale con 1, que es la via para no depender de la buena fe. Un 3 se
+# resuelve relanzando los tests que nombra; un 4 solo se resuelve relanzando el
+# check entero.
 #
 # LO QUE NO SE PUEDE SABER, y por eso el bloque no dice "es intermitente" sino
 # "este test se ha movido": con dos corridas no hay forma de distinguir un rojo
@@ -350,6 +375,35 @@ if [ "$rc" -eq 0 ]; then
     printf '  Salidas de los verify: .sh %s, .bat %s (a proposito no se comparan: el codigo\n' \
         "$cod_sh" "$cod_bat"
     printf '  de salida es de cada uno, y lo que se comprueba aqui es que CUENTEN igual.)\n'
+    exit 0
+fi
+
+# rc = 4: los dos scripts CUENTAN IGUAL, pero una de las dos vueltas ha ido PEOR
+# (timeouts de mas, y los lentos que los acompanhan). Sale en 0 a proposito, por
+# el mismo motivo que el 3 y no por generosidad: comparar dos vueltas en las que
+# la maquina ha ido distinta no dice nada de los dos scripts. Pero sale MUY
+# visible y DICE QUE HAY QUE REPETIR EL CHECK, porque con dos vueltas no hay
+# forma de distinguir "la maquina fue mas lenta" de "al gemelo que fue mas lento
+# le cambiaron el umbral de lento", y la segunda es justo el bug que este check
+# existe para cazar.
+#
+# Por eso este bloque NO es un "pasa": es un "vuelve a lanzarlo". Un 3 se
+# resuelve relanzando los tests que nombra; un 4 solo se resuelve relanzando el
+# check entero, y si sale igual otra vez ya no es la maquina.
+if [ "$rc" -eq 4 ]; then
+    # OJO con los `%s`: el `printf` de bash vuelve a imprimir el formato por cada
+    # argumento que le sobra, asi que un formato con un `%s` y dos argumentos
+    # escribe el bloque DOS veces (medido). Los dos van en la misma linea.
+    printf '\n  %sDEGRADADO: los dos scripts cuentan igual, pero una vuelta ha ido PEOR.%s\n' "$A" "$N"
+    printf '  ctest ha matado tests por tiempo en una de las dos vueltas. Eso no lo decide\n'
+    printf '  ninguna regla escrita en estos dos scripts, asi que los tests que ahi salieron\n'
+    printf '  lentos y en la otra no quedan perdonados por ella.\n'
+    printf '\n  Los tests afectados, el lado que los vio y los timeouts estan en el bloque de\n'
+    printf '  arriba. Salidas de los verify: .sh %s, .bat %s.\n' "$cod_sh" "$cod_bat"
+    printf '\n  ESTO NO ES UN VEREDICTO DE "PASA": hay que REPETIR el check entero, con la\n'
+    printf '  maquina descargada. Si sale igual otra vez ya no es la maquina, y lo que hay\n'
+    printf '  que mirar es la regla que escribe la lista de lentos en los dos scripts.\n'
+    printf '\n  Con --estricto este mismo caso sale con 1.\n'
     exit 0
 fi
 

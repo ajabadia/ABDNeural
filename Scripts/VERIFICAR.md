@@ -43,7 +43,7 @@ node Scripts/selftest_verify_all_node.js
 
 ## Qué mira cada uno, y cuál es el que quieres
 
-**`selftest_verify_all_node.js`** (el tercero) es el rápido: 238 comprobaciones
+**`selftest_verify_all_node.js`** (el tercero) es el rápido: 265 comprobaciones
 sobre la lista de conocidos y sobre lo que se rompe en silencio, sin compilar
 nada. Tarda unos minutos. Si has tocado la lista, `Scripts/known/` o
 `verify_all_node.js`, **este es el que quieres**.
@@ -132,42 +132,64 @@ la cuenta salga a cero:
 ```
 
 `verify_all_check.sh` **no mira** el código de salida de los dos verify (compara
-solo el resumen), así que un `3` no lo hace fallar: eso es justo lo que lo hace
-seguro.
+solo el resumen), así que un `3` o un `4` no lo hacen fallar: eso es justo lo que
+los hace seguros.
 
-### Los tres veredictos del check de gemelos
+### Los cuatro veredictos del check de gemelos
 
 El check lanza los dos scripts uno detrás de otro sobre el mismo build y compara
-sus resumenes. La comparación tiene **tres** salidas, no dos, y la tercera se
-añadió el 2026-10-02 porque la de antes mintía en un caso real:
+sus resumenes. La comparación tiene **cuatro** salidas, no dos. Las dos últimas se
+añadieron el 2026-10-02 porque las de antes mentian en casos reales:
 
 | Veredicto | Qué ha pasado | Qué hacer |
 |---|---|---|
 | `0` | Dicen lo mismo. | Nada. |
 | `3` | Dicen lo mismo **salvo en un rojo intermitente**: algún test ha salido rojo en una de las dos pasadas y verde en la otra. | Relanzar ese test (`ctest -R <nombre>`). Si sale verde otra vez, era eso. |
+| `4` | **Cuentan igual, pero una vuelta ha ido peor**: ctest ha matado tests por tiempo en una de las dos, y los tests que salieron lentos en esa vuelta y no en la otra. | **Repetir el check entero** con la máquina descargada. Si sale igual otra vez, ya no es la máquina: es el umbral. |
 | `1` | **No** dicen lo mismo: hay una regla en un gemelo y no en el otro. | Mirar el `diff` que imprime el check y cambiar la regla en los dos. |
 
-El `3` del check sale como **`0`** a propósito: comparar dos corridas de un test
-que a veces falla no dice nada de los dos scripts, solo de la máquina. Y sale
-**muy visible**: nombra los tests que se han movido y por qué lado. La orden suelta
-(`node Scripts/verify_all_node.js compara ...`) sí devuelve `3`, para que quien
-la llame desde otro script lo distinga del `0` sin leer el texto.
+El `3` y el `4` del check salen como **`0`** a propósito: comparar dos vueltas en
+las que la máquina ha ido distinta no dice nada de los dos scripts, solo de la
+máquina. Y salen **muy visible**: el `3` nombra los tests que se han movido y por
+qué lado, y el `4` nombra el lado que fue peor, cuántos timeouts hubo en cada
+vuelta y los tests que perdona por eso. La orden suelta
+(`node Scripts/verify_all_node.js compara ...`) sí devuelve `3` y `4`, para que
+quien la llame desde otro script los distinga del `0` sin leer el texto.
 
-**Por qué no es una lista de nombres.** El intermitente es una prueba
-aritmética: si se le suman al lado que no vio el rojo las líneas que le sobran,
-los dos resúmenes tienen que coincidir línea a línea **y los recuentos tienen que
-cuadrar con esas líneas**. Si no cuadran, sale con `1` como siempre. Eso es lo que
-impide que un error de conteo en un gemelo se esconda de intermitente: si un
-gemelo contara mal, los números no saldrían cuadrados.
+**Por qué no es una lista de nombres.** Los dos veredictos son una prueba
+aritmética: si se le suman al lado que no vio las líneas que le sobran, los dos
+resúmenes tienen que coincidir línea a línea **y los recuentos tienen que cuadrar
+con esas líneas**. Si no cuadran, sale con `1` como siempre. Eso es lo que impide
+que un error de conteo en un gemelo se esconda: si un gemelo contara mal, los
+números no saldrían cuadrados.
 
-Dos cosas que **no** se perdonan, aunque el otro test cuadre:
+**Por qué son dos veredictos y no uno.** El intermitente tiene una sola causa
+posible (el test va a veces) y una sola acción (relanzar el test). El degradado
+tiene **dos** causas indistinguibles con dos vueltas: la máquina fue más lenta, o
+al gemelo que fue más lento le cambiaron el umbral de «lento». La segunda es
+justo el bug que este check existe para cazar. Por eso el `4` no dice «es la
+máquina»: dice que hay un timeout que lo respalda y que **hay que repetir el
+check**. Un `3` se resuelve relanzando los tests que nombra; un `4` solo se
+resuelve relanzando el check entero.
 
-- **Un `lento` que solo ve uno de los dos.** El umbral de «lento» es una regla, y
-  el check existe para cazar reglas distintas. Un test puede ir rojo a veces, que
-  es la máquina; si va lento a veces, lo que se ha movido es el umbral.
-- **Un recuento que no cuenta rojos** (`lentos`, `tocoTimeout`, `huerfanos`,
+**Por qué un timeout perdona y un `lento` no.** Un test que ctest mata por tiempo
+es un hecho de *aquella* vuelta: no hay ningún umbral escrito en estos dos
+scripts que lo produzca o lo quite. Un `lento` de más, en cambio, tiene las dos
+causas de arriba. Perdonar el `lento` sin el timeout sería una tautología («los
+lentos no cuadran, así que los lentos no cuentan») y dejaría pasar justo el
+umbral cambiado que se quiere cazar.
+
+Tres cosas que **no** se perdonan, aunque lo otro cuadre:
+
+- **Un `lento` que solo ve uno de los dos sin ningún timeout que lo respalde.** El
+  umbral de «lento» es una regla, y el check existe para cazar reglas distintas.
+- **Un recuento que no cuenta rojos ni lentos** (`tocoTimeout`, `huerfanos`,
   `pasos`, `conocidos`, `tests`). Un rojo intermitente no los toca: si se mueven,
   hay otra causa, y el texto dice cuál.
+- **Una cuenta rota** (un `fallos` que no es la diferencia de las líneas, una
+  clasificación que no sube lo que sube su número de líneas), aunque haya un
+  timeout de por medio. Un timeout de más perdona los lentos; no perdona una
+  aritmética que no cuadra.
 
 ### `--estricto`: el mismo caso, juzgado como divergencia
 
@@ -175,26 +197,33 @@ Dos cosas que **no** se perdonan, aunque el otro test cuadre:
 bash Scripts/verify_all_check.sh --estricto
 ```
 
-Quita el tercer veredicto: todo lo que no cuadra sale con `1`, como antes del
-2026-10-02. Es para cuando el `3` te parece generoso y quieres el rojo de verdad.
+Quita los dos veredictos que perdonan: todo lo que no cuadra sale con `1`, como
+antes del 2026-10-02. Es para cuando el `3` o el `4` te parecen generosos y
+quieres el rojo de verdad. Es también la única vía para no depender de la buena
+fe con el `4`, que por su propia construcción no puede saber si la máquina fue
+más lenta o si le movieron el umbral.
+
 El flag **no se pasa a los dos verify** (no lo entenderían y se negaría a
 arrancar): cambia cómo se juzga la diferencia, y ese juicio es del check.
 
 Con `--comparar` (que compara dos resúmenes ya escritos, sin lanzar nada) el `3`
-**se propaga tal cual**, sin pasarlo a `0`: ese modo es el que se usa para mirar
-dos logs viejos y preguntar por código.
+y el `4` **se propagan tal cual**, sin pasarlos a `0`: ese modo es el que se usa
+para mirar dos logs viejos y preguntar por código.
 
 ### Cómo se prueba un veredicto que sale una vez de cada mil
 
 La sección 15 del selftest monta el caso con los datos del fallo real
 (`NEURONiK_WorkletSync` rojo en los dos, `NEURONiK_WebUiLocalModeE2e` rojo en
-uno) y, sobre todo, los casos que **no** pueden salir con `3`. Eso de que una
-prueba de una regla que casi nunca se dispara tiene que ser sobre todo una lista
-de lo que tiene que seguir saliendo con `1`: la regla nueva es una puerta que se
-abre, y lo que hay que vigilar es que no se abra de más.
+uno) y, sobre todo, los casos que **no** pueden salir con `3`. La sección 16 hace
+lo mismo con el `4`, con los datos del otro fallo real del mismo día (el `.sh` con
+`tocoTimeout 0` y el `.bat` con `tocoTimeout 2`, y los dos E2E como lentos solo
+en el `.bat`). Eso de que una prueba de una regla que casi nunca se dispara tiene
+que ser sobre todo una lista de lo que tiene que seguir saliendo con `1`: la
+regla nueva es una puerta que se abre, y lo que hay que vigilar es que no se abra
+de más.
 
 Las reglas se han medido una a una, rompiéndolas en `verify_all_node.js` y
-contando cuántas comprobaciones caen. Tabla del 2026-10-02 (238 comprobaciones
+contando cuántas comprobaciones caen. Tabla del 2026-10-02 (265 comprobaciones
 en verde sin mutar):
 
 | Mutación | Comprobaciones que caen | Lee |
@@ -205,8 +234,26 @@ en verde sin mutar):
 | Ignorar `--estricto` | 1 | **Muerde**. |
 | La condición de «un solo lado» escrita al revés | 6 | **Muerde** (fue el fallo del primer intento). |
 | Salir con `0` en vez de con `3` | 3 | **Muerde**. |
-| Perdonar también los `lento` | 0 | **Redundante**: ya los descarta la cuenta de `fallos`. |
+| Perdonar un `lento` de más sin timeout que lo respalde | 11 | **Muerde** (sección 16). |
+| Inventar un timeout cuando falta el recuento | 6 | **Muerde** (sección 16). |
+| Tratar la ausencia del recuento como si fuera un cero | 5 | **Muerde** (sección 16). |
+| Dejar que la máquina excuse un rojo que no cuadra | 11 | **Muerde** (sección 16). |
+| Perdonar también los `lento` sin mirar los timeouts | 0 | **Redundante**: ya los descarta la cuenta de `fallos`. |
 | Perdonar líneas que sobran en los dos lados | 0 | **Redundante**, y por aritmética. |
+
+Los números de la tabla son de 2026-10-02 y **varían** entre mutaciones, y no es
+un error: cada una cambia el número de comprobaciones que el propio selftest llega
+a ejecutar (una aserción cuyo valor cambia puede leerse de otra forma), así
+que el denominador no es el mismo. Lo que se compara es cuántas caen, no el
+denominador.
+
+Dos de estas mutaciones están **en el propio selftest** (sección 16): se copia el
+programa, se rompe la regla en el fichero copiado y se corre el caso. Se comprueba
+también que el mutante ha cambiado de verdad el fichero, porque un `.replace` que
+no encuentra su texto deja el fichero intacto y las comprobaciones siguientes darían
+verde por no haber roto nada — que es un fallo que ya pasó aquí: el ancla de la
+mutación del timeout tenía un `TimeoutsMas` con mayúscula de más y el `.replace`
+no encontraba nada.
 
 Las dos últimas se quedan en el código igualmente: son la **explicación en voz
 alta** de lo que la aritmética ya implica. Una regla que se deduce de otra
