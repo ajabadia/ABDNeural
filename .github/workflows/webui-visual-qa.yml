@@ -251,6 +251,28 @@ jobs:
           repository: ajabadia/ABDSharedAssets
           path: ABDSharedAssets
 
+      # CUARTO HERMANO, Y NO ES OPCIONAL. MEDIDO: sin este checkout el job sale
+      # con 11 tests en rojo, todos con el mismo motivo:
+      #
+      #   ENOENT: no such file or directory,
+      #   open '...ABDAudioLab...src...MeasurementSerialization.cpp'
+      #
+      # Los tests de ABDSharedAssets localizan el laboratorio como
+      # `path.resolve(RAIZ, '..', 'ABDAudioLab')`, o sea "el hermano de al lado",
+      # que es como esta en la suite. Aqui no lo estaba, y el test no tiene la
+      # guarda que si tiene el script `--check` (que sale con 0 sin comprobar
+      # nada cuando el hermano falta): el script y el test discrepaban sobre que
+      # pasa cuando ABDAudioLab no esta.
+      #
+      # Se clona en vez de hacer que el test se salte porque el propio test dice
+      # que lo que importa es leer el `.cpp`: un `--check` en verde no dice que el
+      # C++ deje de teclear literales.
+      - name: Checkout ABDAudioLab (el laboratorio que leen esos tests)
+        uses: actions/checkout@v4
+        with:
+          repository: ajabadia/ABDAudioLab
+          path: ABDAudioLab
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -427,6 +449,22 @@ jobs:
       # Release, y no Debug: es la configuracion en la que se compila el `.wasm`,
       # y los hashes de bytes de la red de paridad de la matriz SOLO son
       # comparables dentro de una misma configuracion.
+      # MEDIDO: sin este paso el configure sale con 1 y con este motivo, que no
+      # es del codigo de este repo:
+      #
+      #   CMake Error at CMakeLists.txt:2 (project):
+      #     Generator
+      #       Visual Studio 17 2022
+      #     could not find any instance of Visual Studio.
+      #
+      # Los runners de `windows-latest` traen las BUILD TOOLS, no una instancia
+      # de Visual Studio, y CMake busca la instancia para el generador de
+      # Visual Studio. El patron que ya usa el resto de la suite para esto es
+      # `microsoft/setup-msbuild`, que es justo lo que hace ABDEep antes de su
+      # `cmake -G "Visual Studio 17 2022"`.
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
       - name: Configure (Release)
         shell: bash
         run: |
