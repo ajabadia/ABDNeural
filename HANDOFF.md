@@ -9112,3 +9112,72 @@ navegacion pero no el contenido.
 un lado y otra en el otro, sin que nada las compare, cuesta un commit entero. Ha
 pasado cinco veces seguidas. Las dos reglas que salen de ahi estan en el bloque de
 arriba, y las dos se pueden comprobar.
+
+---
+
+## 2026-10-02 -- los dos rojos del check completo son de `WebUI/`: uno esta desincronizado y el otro sigue flaky
+
+El check completo (`verify_all_check.sh`) termino en **rc=1 en 375 s** con
+`53 tests, 2 en rojo`. Ninguno de los dos lo ha tocado el arnes de `Scripts/`: los dos son de
+`WebUI/`, que es donde esta escribiendo el otro hilo, asi que desde aqui no se arreglan y no
+conviene taparlos. Se dejan anotados con las medidas de esta corrida para que el proximo que
+mire el rojo sepa de quien es y no lo investigue dos veces.
+
+### `NEURONiK_WorkletSync` -- el worklet de `public/` no es el de `build-wasm/`
+
+Sale dos veces, con el mismo par de hashes y el mismo desfase de tamano:
+
+```
+[FAIL] neuronik_dsp.js: public/worklet desincronizado de build-wasm -- build-wasm ec8222f67231 (14454 bytes) != public c6b5a5b2ec52 (14452 bytes) (ejecuta WebUI/scripts/sync-wasm.mjs o build_wasm.bat)
+[FAIL] neuronik_dsp.js: dist/worklet desincronizado de build-wasm -- build-wasm ec8222f67231 != dist c6b5a5b2ec52 (14452 bytes) (ejecuta pnpm build en WebUI/)
+```
+
+Los dos ficheros que se comparan son `build-wasm/neuronik_dsp.js` (**14454 B**, del 29-sep
+19:49) y `WebUI/public/worklet/neuronik_dsp.js` (**14452 B**, del 2-oct 00:32). El `.wasm` si
+esta sincronizado: en `build-wasm/` y en `dist/worklet/` es el mismo fichero de 162881 B del
+29-sep. Lo que se ha movido es el worklet: el otro hilo reconstruyo `public/` y `dist/` a las
+00:32 de hoy con su `WebUI/scripts/sync-wasm.mjs` modificado y **sin commitear** (+61/-5),
+mientras que `build-wasm/` sigue en la copia del 29-sep.
+
+**Arreglo, y es del otro hilo:** `pnpm build` en `WebUI/`, o `WebUI/scripts/sync-wasm.mjs`, o
+`build_wasm.bat` para reconstruir `build-wasm/` y dejar que las dos copias digan lo mismo. Desde
+`Scripts/` no se toca nada, y el rojo no es del arnes.
+
+### `NEURONiK_WebUiLocalModeE2e` -- sigue flaky (6 verdes de 8, no "uno que a veces falla")
+
+Ocho relanzamientos seguidos con `-R WebUiLocalModeE2e`: **`vvvvRvRv`**, o sea **6 verdes y 2
+rojos**. En otros lotes de la misma sesion salio 3/3 y 4/4 verde, asi que no es un test roto
+sino uno con ventana: cuando cae, cae siempre en el mismo sitio.
+
+- Test: el sexto del fichero, `el conmutador de la ruta del pad apaga y cambia el LFO (y el anillo responde)`, en `WebUI/e2e/localMode.spec.js:362`.
+- Asercion que falla: la linea **402**, `expect(new Set(quieto.map((sample) => \`${sample.start}|${sample.span}\`)).size).toBe(1)`, con **`Expected: 1 / Received: 2`**. Es decir: de los 90 frames que saca `sampleRingFrames(page, 90)` para el anillo quieto, ha visto dos tramos `start|span` distintos en vez de uno.
+- **No es de este hilo:** la linea 402 es identica en `HEAD` y en el arbol de trabajo, y `git diff -- WebUI/e2e/localMode.spec.js` no da nada. Lo unico modificado de esa zona es `WebUI/scripts/sync-wasm.mjs`.
+
+### El `rc=1` lo causo el flaky, no una divergencia entre los gemelos
+
+Este es el punto que mas confunde al leer el log: el bloque final dice que el `.sh` y el `.bat`
+"NO DICEN LO MISMO sobre el mismo build". Es cierto, pero **no es una divergencia de codigo**:
+
+```
+fallos              2  (el .sh)   1  (el .bat)
+sinClasificar       2  (el .sh)   1  (el .bat)
+solo en el .sh (1):
+      rojo  2  NEURONiK_WebUiLocalModeE2e  SIN CLASIFICAR
+```
+
+El `.sh` corrio con el E2e en rojo y el `.bat` con el E2e en verde: el rojo cae o no cae, y
+esta vez cayo en una sola de las dos vueltas. `NEURONiK_WorkletSync` lo ven **los dos** igual,
+que es la comprobacion que si importa. El rc=1 de esta corrida es del flaky del E2E; el codigo
+de `Scripts/` sigue de acuerdo entre los dos gemelos.
+
+### Que hacer con ellos
+
+`Scripts/verify_all_known.json` tiene `entradas: []`, asi que los dos salen **`SIN CLASIFICAR`** y
+hay dos salidas honestas: sincronizar el worklet y arreglar el flaky en `WebUI/` (lo natural, y
+es del otro hilo), o meterlos en la lista de conocidos mientras tanto (que tapa el rojo y hace
+que un rojo nuevo de verdad no se vea). **No se ha hecho ninguna de las dos**, asi que el check
+sigue en rojo por esto y solo por esto.
+
+> Canon: cuando un rojo es de otro hilo, la anotacion que vale es la MEDIDA que lo declara
+> suyo (hashes, bytes, fechas, relanzamientos), no el "ya lo mirara quien lo puso". Con eso el
+> rojo se puede ignorar sin volver a abrirlo.
