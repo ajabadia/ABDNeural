@@ -1253,11 +1253,18 @@ if "%VCOD%"=="0" (
     REM
     REM El motivo ya no culpa al antivirus, porque medido no era el antivirus.
     REM Get-MpThreatDetection y Get-MpThreat salian VACIOS: no habia ninguna
-    REM deteccion. Lo que hay es que algunos .js de node_modules no se pueden
+    REM deteccion. Lo que habia era que algunos .js de node_modules no se podian
     REM abrir (error 5 de Win32, ACCESS_DENIED) en esta maquina, y el rodeo esta
-    REM en Scripts/COMO-ARREGLAR-EL-BUILD.md. Un motivo que senala la causa
-    REM equivocada es peor que uno generico: ensena a mirar donde no esta.
-    call :anotar %VSTEP% "%VETI%" "vitest no arranca. La causa medida son .js de node_modules que dan EPERM al abrirlos; el rodeo esta en Scripts/COMO-ARREGLAR-EL-BUILD.md. Este paso no tiene lista de conocidos a proposito, asi que el rojo sigue pidiendo decision aunque el motivo este escrito"
+    REM en Scripts/COMO-ARREGLAR-EL-BUILD.md.
+    REM
+    REM Y despues ese mismo motivo quedo viejo: era el texto de la rama `else`,
+    REM o sea que salia con CUALQUIER rc distinto de cero, tambien cuando
+    REM vitest arranca y falla un solo test (medido el 2026-10-02: 1735 en verde,
+    REM 1 en rojo, y el motivo de EPERM que ya no era la causa de nada).
+    REM Un motivo que senala la causa equivocada es peor que uno generico:
+    REM ensena a mirar donde no esta. Asi que el texto de abajo ya no afirma
+    REM ninguna causa y manda a leer el log del paso.
+    call :anotar %VSTEP% "%VETI%" "vitest sale con rc distinto de cero. Puede ser que no arranque o que tenga tests en rojo: el motivo esta en el log del paso, y un motivo escrito es una hipotesis hasta que se mira. Este paso no tiene lista de conocidos a proposito, asi que el rojo sigue pidiendo decision aunque el motivo este escrito"
 )
 exit /b 0
 

@@ -957,7 +957,7 @@ fi
 if [[ " $PASOS " == *" 3 "* ]]; then
     empezar_paso 3 "vitest de WebUI"
     if ejecutar_vitest "$RAIZ/WebUI" "WebUI"; then :; else
-        anotar 3 "WebUI" "vitest no arranca. La causa medida hasta ahora es el node_modules: en esta maquina hay .js que dan EPERM al abrirlos (error 5 de Win32), y el rodeo esta en Scripts/COMO-ARREGLAR-EL-BUILD.md"
+        anotar 3 "WebUI" "vitest sale con rc distinto de cero. Puede ser que no arranque o que tenga tests en rojo: el motivo está en el log del paso, y un motivo escrito es una hipótesis hasta que se mira. Si vuelve a ser el node_modules, el rodeo está en Scripts/COMO-ARREGLAR-EL-BUILD.md"
     fi
     terminar_paso
 fi
@@ -990,7 +990,18 @@ if [[ " $PASOS " == *" 4 "* ]]; then
         # Los dos motivos falsos seguidos son el motivo de mirar el fichero
         # antes de escribir: un motivo de rojo es una hipotesis, y basta con que
         # sea plausible para que el rojo parezca que no tiene arreglo.
-        anotar 4 "ABDSharedAssets" "vitest no arranca. Misma causa que el paso 3: .js de node_modules que dan EPERM al abrirlos, con el rodeo en Scripts/COMO-ARREGLAR-EL-BUILD.md. Este paso no tiene lista de conocidos a proposito, asi que el rojo sigue pidiendo decision aunque el motivo este escrito"
+        #
+        # Y HAY UN TERCERO, que es el que se acaba de quitar (2026-10-02). Este
+        # texto era el de la rama `else` de `ejecutar_vitest`, o sea que salia
+        # con CUALQUIER rc distinto de cero: tambien cuando vitest arranca,
+        # corre 40 ficheros y falla UNO. Medido: con el paso 4 recien instalado,
+        # `pnpm test` da 1735 tests en verde y 1 en rojo, y el verify seguia
+        # diciendo "vitest no arranca" con el EPERM de fondo, que ya no era la
+        # causa de nada (0 .js ilegibles). Dos redis y ni una palabra de que el
+        # motivo estaba equivocado es peor que no ponerlo: el que lo lee
+        # descarta el rojo entero por una causa que ya no existe. El texto de
+        # arriba ahora no afirma ninguna causa, y manda a leer el log del paso.
+        anotar 4 "ABDSharedAssets" "vitest sale con rc distinto de cero. Puede ser que no arranque o que tenga tests en rojo: el motivo está en el log del paso, y un motivo escrito es una hipótesis hasta que se mira. Este paso no tiene lista de conocidos a propósito, así que el rojo sigue pidiendo decisión aunque el motivo esté escrito"
     fi
     terminar_paso
 fi

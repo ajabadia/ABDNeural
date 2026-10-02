@@ -148,6 +148,20 @@ añadieron el 2026-10-02 porque las de antes mentian en casos reales:
 | `4` | **Cuentan igual, pero una vuelta ha ido peor**: ctest ha matado tests por tiempo en una de las dos, y los tests que salieron lentos en esa vuelta y no en la otra. | **Repetir el check entero** con la máquina descargada. Si sale igual otra vez, ya no es la máquina: es el umbral. |
 | `1` | **No** dicen lo mismo: hay una regla en un gemelo y no en el otro. | Mirar el `diff` que imprime el check y cambiar la regla en los dos. |
 
+**Lo que el `0` NO quiere decir (medido el 2026-10-02).** Que los dos digan lo
+mismo es una cosa; que lo que dicen sea verdad es otra, y el check solo mira la
+primera. En la primera pasada contra un build completo salió **`0`** con los dos
+gemelos de acuerdo... y los dos de acuerdo en que el paso 4 estaba en rojo. Los
+dos verify salen con `1`, y el check lo dice sin alarma: «a proposito no se
+comparan: el codigo de salida es de cada uno, y lo que se comprueba aqui es que
+**CUENTEN igual**».
+
+Es decir: **el `0` del check no es «la bateria esta en verde».** Es «los dos
+scripts coinciden». Para lo segundo esta el rc de cada verify, que es `0` con
+`0 rojos` dentro y `1` en cuanto hay uno. El `0` del check y el `0` del verify
+son dos ceros que no significan lo mismo, y confundirlos es como se lee mal todo
+lo demas de esta pagina.
+
 El `3` y el `4` del check salen como **`0`** a propósito: comparar dos vueltas en
 las que la máquina ha ido distinta no dice nada de los dos scripts, solo de la
 máquina. Y salen **muy visible**: el `3` nombra los tests que se han movido y por
@@ -442,11 +456,42 @@ cmake --build build-reference --config Release --target NOMBRE
 
 ## Lo que hoy está rojo, y por qué
 
-**Nada. La batería está entera en verde: 53 de 53**, y la lista de conocidos
-(`Scripts/verify_all_known.json`) tiene `entradas` vacío.
+**El paso 4: `vitest` de ABDSharedAssets. Uno de 1736 tests.** Los otros cuatro
+pasos están en verde: 41 targets, los 53 de ctest, el vitest de WebUI y los tres
+contratos cruzados. La lista de conocidos (`Scripts/verify_all_known.json`) sigue
+vacía, y eso no es que no haya rojos: es que el paso 4 **no tiene lista**, a
+propósito, porque su rojo pide decisión aunque el motivo esté escrito.
 
-Hubo tres, y están arreglados. Lo que interesa es **por qué estaban**, porque
-son dos fallos encimados y el segundo estaba tapado por el primero:
+**Medido el 2026-10-02**, y la causa no es la que el verify escribe:
+
+- `ABDSharedAssets/node_modules` era un **symlink POSIX** a
+  `node_modules_ok/node_modules`, una copia del proyecto entero, no la carpeta
+  de módulos. Node lo leía como `D:\...` y ahí **no estaba vitest**: no existía
+  ni la carpeta ni `.pnpm/vitest*`, aunque `.bin/vitest` sí. Instalación
+  incompleta, no bloqueada: **0 `.js` ilegibles**, que es la comprobación del
+  cuarto atranco.
+- El rojo que queda **no es de este repo**: `check:guardas no esta en ningun
+  inventario del preflight`. El `package.json` de ABDSharedAssets declara
+  `check:guardas` (modificado sin commitear) y el preflight exige que todo
+  `check:` del manifiesto esté en `CONTRATOS`, en `GENERADOS_FUERA` o sea un
+  agregado. **Pendiente de quien lo añadió**, no arreglado aqui.
+
+**Y el motivo que escribe el verify es FALSO**, y conviene saberlo porque es el
+tercer motivo falso seguido que lleva este proyecto. `verify_all.sh:993` dice,
+para cualquier rc distinto de cero del paso 4:
+
+> `vitest no arranca. Misma causa que el paso 3: .js de node_modules que dan EPERM`
+
+Ese texto es el de la rama `else` de `ejecutar_vitest`, así que sale **también
+cuando vitest arranca y falla un test**. Con el paso 4 ya instalado, `pnpm test`
+corre 40 ficheros y falla 1, y el verify sigue diciendo que no arranca. El
+comentario de 20 líneas que hay justo encima en el mismo fichero cuenta los dos
+motivos falsos anteriores; este es el tercero, y repite exactamente el fallo que
+allí se denuncia: un motivo escrito es una hipótesis, y basta con que sea
+plausible para que el rojo parezca que no tiene arreglo.
+
+Los otros tres están arreglados. Lo que interesa de ellos es **por qué estaban**,
+porque eran dos fallos encimados y el segundo estaba tapado por el primero:
 
 **Los `.js` de `node_modules` que no se abrían.** Eran 199 ficheros que daban
 `EPERM` (error 5 de Win32, `ACCESS_DENIED`), y rompían a la vez los tres
