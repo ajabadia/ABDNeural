@@ -234,6 +234,25 @@ jobs:
       CI: true
 
     steps:
+      # LOS FINALES DE LINEA, ANTES DE CLONAR NADA. MEDIDO: el git de
+      # `windows-latest` trae `core.autocrlf=true`, asi que un clon limpio deja
+      # `ABDAudioLab/src/measurement/MeasurementExportKeys.generado.h` con 340
+      # CRLF donde el blob tiene 340 LF. Los tests de ABDSharedAssets comparan
+      # ese fichero byte a byte contra lo que genera el catalogo, y con CRLF no
+      # hay nada que comparar: dos de ellos salen en rojo diciendo que la
+      # cabecera esta DESFASADA, cuando lo unico que ha cambiado es el fin de
+      # linea.
+      #
+      # Es el mismo motivo por el que `ABDAudioLab/.gitattributes` existe: sin
+      # el, git en Windows convierte los LF a CRLF al volver a escribir el
+      # fichero y el snapshot deja de coincidir con su origen sin que nadie haya
+      # tocado un contrato. Ahi se arreglo para los JSON. Aqui no se puede, porque
+      # el fichero problematico es un `.h` y ese repositorio no toca los finales
+      # de linea de codigo a proposito.
+      - name: Pin the line endings of the clone
+        shell: bash
+        run: git config --global core.autocrlf false
+
       - name: Checkout ABDNeural (este repo)
         uses: actions/checkout@v4
         with:
@@ -250,6 +269,34 @@ jobs:
         with:
           repository: ajabadia/ABDSharedAssets
           path: ABDSharedAssets
+
+      # QUINTO Y SEXTO HERMANO, Y TAMPOCO SON OPCIONALES. MEDIDO: sin ellos el
+      # job sale con 6 tests en rojo, y no por lo que dicen:
+      #
+      #   - "el catalogo de verdad tiene toda fuente en su sitio": 8 fuentes que
+      #     no existen, porque son de estos dos repos.
+      #   - "cada evidencia declarada existe": ABDEep declara una evidencia
+      #     (`deepmind_fx_modmatrix.md`) y el fichero no esta a mano.
+      #   - "una salida sin marca de generado se reporta como problema": y
+      #     "una salida que no esta en el disco es un FALLO", porque la cuenta
+      #     sale de los generadores de los hermanos y sin generador no hay
+      #     salida que contar.
+      #
+      # El `check-generated-contracts.mjs` de ABDSharedAssets tiene una funcin
+      # `hermanoDisponible` que salta al generador cuando el repositorio no
+      # esta, y con ella estos tests pasarian en verde SIN comprobar nada. Un
+      # verde que no ha mirado nada es peor que un rojo, asi que se clonan.
+      - name: Checkout ABDEep (generador de presets y registro)
+        uses: actions/checkout@v4
+        with:
+          repository: ajabadia/ABDEep
+          path: ABDEep
+
+      - name: Checkout ABDMS2000 (generador de registro y contratos)
+        uses: actions/checkout@v4
+        with:
+          repository: ajabadia/ABDMS2000
+          path: ABDMS2000
 
       # CUARTO HERMANO, Y NO ES OPCIONAL. MEDIDO: sin este checkout el job sale
       # con 11 tests en rojo, todos con el mismo motivo:
@@ -457,11 +504,18 @@ jobs:
       #       Visual Studio 17 2022
       #     could not find any instance of Visual Studio.
       #
-      # Los runners de `windows-latest` traen las BUILD TOOLS, no una instancia
-      # de Visual Studio, y CMake busca la instancia para el generador de
-      # Visual Studio. El patron que ya usa el resto de la suite para esto es
-      # `microsoft/setup-msbuild`, que es justo lo que hace ABDEep antes de su
-      # `cmake -G "Visual Studio 17 2022"`.
+      # `microsoft/setup-msbuild` NO es lo que arregla el configure, aunque lo
+      # parezca. MEDIDO en el log de la corrida: el paso sale con 0 y `vswhere`
+      # responde `C:\Program Files\Microsoft Visual Studio\18\Enterprise`, y
+      # un paso mas abajo el configure sigue con `could not find any instance of
+      # Visual Studio` porque el generador que se le pide es "Visual Studio 17
+      # 2022" y esa version no esta. El runner trae VS 18, la 2026.
+      #
+      # Por eso el `-G` no se fija: sin el, CMake usa el generador de Visual
+      # Studio mas reciente que haya instalado, que es justo el que existe. Y no
+      # hay que adivinar que hay mas de uno: `vswhere -latest` devuelve el ultimo.
+      # Fijar la version aqui es lo que hacia que este paso se rompiera solo,
+      # cada vez que el runner avanza una version.
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
@@ -470,7 +524,7 @@ jobs:
         run: |
           set -euo pipefail
           cd ABDNeural
-          cmake -S . -B build-reference -G "Visual Studio 17 2022" -A x64 -DJUCE_PATH="$JUCE_PATH"
+          cmake -S . -B build-reference -A x64 -DJUCE_PATH="$JUCE_PATH"
 
       # Se compila TODO lo que hay configurado, plugin incluido. El target
       # NEURONiK es un VST3 y `cmake --build` sin `--target` lo construye igual:
