@@ -130,27 +130,94 @@ async function sampleRingUntil(page, want = 8, budgetMs = 20000) {
 }
 
 /**
- * Muestrea el arco durante un numero FIJO de frames de dibujo, para comprobar
- * que NO se mueve. Aqui la cuenta de frames es lo que da determinismo: si la
- * maquina va lenta, cada frame tarda mas y la muestra dura mas de reloj de
- * pared —que es lo correcto para "el anillo sigue quieto"—, pero siempre se
- * miran los mismos 90 frames en vez de "los que quepan en 1,5 s".
+ * Muestrea el arco HASTA QUE SE ESTABILIZA, y despues mide una ventana de
+ * `ventana` frames. Es el espejo de `sampleRingUntil`, que espera a que el
+ * anillo se MUEVA: este espera a que se QUEDE.
+ *
+ * POR QUE NO "90 frames de golpe". Medido el 2026-10-02: con la maquina cargada
+ * este test caia en `Expected: 1 / Received: 2` una de cada cuatro veces
+ * (8 relanzamientos: 6 verdes, 2 rojos). La causa no era el anillo, era la
+ * FRONTERA. Al apagar la ruta hay dos relojes distintos: los parametros salen
+ * hacia el worklet en el siguiente frame de AUDIO, y el anillo se redibuja en el
+ * siguiente frame de DIBUJO. Los 90 frames empiezan en el instante de la
+ * llamada, asi que los primeros son todavia los de un anillo que se movia, y la
+ * ventana sale con dos estados: el de antes y el de despues. El fallo caia
+ * siempre en la misma linea (la 402) y siempre con la misma forma, que es la
+ * firma de un problema de ventana y no de logica.
+ *
+ * ASI QUE SE ESPERA A LA ESTABILIZACION, y luego se mide exactamente lo de
+ * antes: los `ventana` frames de la ventana de pruebas tienen que ser todos
+ * iguales. La cuenta de frames sigue siendo la misma (90), que es lo que da
+ * determinismo: si la maquina va lenta, cada frame tarda mas y la ventana dura
+ * mas de reloj de pared —que es lo correcto para "el anillo sigue quieto"—.
+ *
+ * ESTABILIZAR NO ES "UNOS POCOS FRAMES IGUALES", y por eso son dos condiciones
+ * a la vez:
+ *   - `quietos` frames de dibujo SEGUIDOS con el mismo `start|span`, y
+ *   - al menos `minMs` de reloj de pared entre el primero y el ultimo.
+ * Con solo la primera, un anillo que pasa por un extremo del LFO (donde la
+ * senoidal va mas despacio) puede dar la impresion de estar quieto durante unos
+ * cuantos frames sin estarlo. El segundo reloj quita ese falso positivo, y
+ * cuesta unos 250 ms.
+ *
+ * Si no llega a estabilizarse dentro de `budgetMs` NO se lanza nada desde aqui:
+ * se devuelve `estable: false` con cuantos cambios hubo, y lo afirma el test con
+ * mensaje. Un timeout dentro de un `evaluate` sale como fallo de Playwright sin
+ * decir NADA de que el arco se estaba moviendo.
  */
-async function sampleRingFrames(page, frames = 90) {
-  return page.evaluate(async (ticks) => {
-    const muestras = [];
-
-    for (let i = 0; i < ticks; i += 1) {
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-
+async function sampleRingSettled(page, { quietos = 12, ventana = 90, minMs = 250, budgetMs = 4000 } = {}) {
+  const r = await page.evaluate(async (cfg) => {
+    // El lector del arco va DENTRO del evaluate a proposito: la funcion se
+    // serializa y no puede cerrar sobre nada de este modulo.
+    const read = () => {
       const arc = document.querySelector('.zring-mod');
       const span = Number((arc?.getAttribute('stroke-dasharray') ?? '0').split(' ')[0] ?? 0);
 
-      muestras.push({ start: Number(arc?.getAttribute('stroke-dashoffset') ?? 0), span });
+      return { start: Number(arc?.getAttribute('stroke-dashoffset') ?? 0), span };
+    };
+
+    const clave = (muestra) => `${muestra.start}|${muestra.span}`;
+
+    const t0 = performance.now();
+    let anterior = null;
+    let seguidos = 1;
+    let cambios = 0;
+    let desdeElCambio = t0;
+
+    // FASE 1: esperar a que el arco se quede quieto de verdad.
+    while (performance.now() - t0 < cfg.techo) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+
+      const ahora = read();
+
+      if (anterior !== null && clave(ahora) !== clave(anterior)) {
+        cambios += 1;
+        seguidos = 1;
+        desdeElCambio = performance.now();
+      } else {
+        seguidos += 1;
+      }
+
+      anterior = ahora;
+
+      if (seguidos >= cfg.quietos && performance.now() - desdeElCambio >= cfg.minMs) break;
     }
 
-    return muestras;
-  }, frames);
+    const estable = seguidos >= cfg.quietos && performance.now() - desdeElCambio >= cfg.minMs;
+    const ms = Math.round(performance.now() - t0);
+
+    // FASE 2: la ventana de pruebas, la de antes, ya con el arco estabilizado.
+    const muestras = [];
+
+    for (let i = 0; i < cfg.ventana; i += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      muestras.push(read());
+    }
+
+    return { muestras, cambios, estable, ms };
+  }, { quietos, ventana, minMs, techo: budgetMs });
+
+  return { samples: r.muestras, cambios: r.cambios, estable: r.estable, ms: r.ms };
 }
 
 /** El pad del lienzo (el unico `.xy-pad` montado: el del cajon solo existe al abrirlo). */
@@ -397,10 +464,19 @@ test('el conmutador de la ruta del pad apaga y cambia el LFO (y el anillo respon
   await expect(source).toBeDisabled();
   await expect.poll(filaEnMotor).toEqual([[28, 0], [29, 0], [30, 0]]);
 
-  const quieto = await sampleRingFrames(page, 90);
+  // Y el arco se queda QUIETO. La ventana empieza DESPUES de que el anillo se
+  // haya quedado parado (ver `sampleRingSettled`): los 90 frames de siempre,
+  // pero sin los de la transicion, que es lo que hacia caer este test.
+  const quieto = await sampleRingSettled(page);
 
-  expect(new Set(quieto.map((sample) => `${sample.start}|${sample.span}`)).size).toBe(1);
-  expect(Math.max(...quieto.map((sample) => sample.span))).toBe(0);
+  expect(quieto.estable,
+    `el arco no se ha quedado quieto: se ha movido ${quieto.cambios} vez/veces en ${quieto.ms} ms. Con la ruta apagada GetMod(28) es 0 exacto y deberia quedarse parado`)
+    .toBe(true);
+
+  expect(new Set(quieto.samples.map((sample) => `${sample.start}|${sample.span}`)).size,
+    'tras quedarse quieto, el arco se ha vuelto a mover dentro de la ventana')
+    .toBe(1);
+  expect(Math.max(...quieto.samples.map((sample) => sample.span))).toBe(0);
 
   // Volver a encenderla: el anillo vuelve a bailar y el LFO elegido se recuerda
   // (el selector se rehabilita con el que habia).
