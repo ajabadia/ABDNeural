@@ -1,5 +1,11 @@
 name: WebUI Visual QA
 
+# El `name:` de arriba se queda como esta a proposito. Renombrar el workflow
+# cambia el nombre de los REQUIRED STATUS CHECKS, y las reglas de proteccion de
+# rama que lo nombran se quedan apuntando a un check que ya no existe: la rama
+# deja de proteger en silencio. Si se quiere renombrar, es un paso aparte y
+# deliberado, con las reglas de proteccion actualizadas a la vez.
+
 on:
   workflow_dispatch:
   pull_request:
@@ -7,6 +13,7 @@ on:
     branches:
       - master
     paths:
+      # ── Regresion visual (lo que cubria este workflow antes) ────────────────
       - "WebUI/e2e/**"
       - "WebUI/src/**"
       - "WebUI/index.html"
@@ -14,6 +21,20 @@ on:
       - "WebUI/package.json"
       - "WebUI/pnpm-lock.yaml"
       - "WebUI/pnpm-workspace.yaml"
+      # ── vitest ─────────────────────────────────────────────────────────────
+      - "WebUI/tests/**"
+      # ── ctest ──────────────────────────────────────────────────────────────
+      - "Tests/**"
+      - "Source/**"
+      - "CMakeLists.txt"
+      - "wasm/**"
+      - "build_wasm.bat"
+      - "build.bat"
+      - "start.bat"
+      - "sync_wasm.bat"
+      - "watch_then_rebuild_wasm.sh"
+      - "watch_tree_quiet.sh"
+      - ".gitattributes"
       - ".github/workflows/webui-visual-qa.yml"
 
 permissions:
@@ -24,6 +45,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ==========================================================================
+  # 1. REGRESION VISUAL. Sin cambios: es lo que hacia este workflow y ya
+  #    funciona. Lo que se anade son los otros dos jobs, no este.
+  # ==========================================================================
   visual-regression:
     name: Playwright visual regression (Chromium)
     # Las referencias de WebUI/e2e/snapshots/ se generaron en Chromium/Windows: la
@@ -121,6 +146,34 @@ jobs:
           done
           echo "Workspace listo: ${#linked[@]} paquete(s) @abdsynths/* enlazados."
 
+      # Que el enlace EXISTA no dice que el arbol tenga dentro lo que la WebUI
+      # importa. Este es el hueco que el runner de CI puede seccionar y el arbol
+      # local no: ABDSharedAssets puede tener ficheros en el disco que no estan en
+      # NINGUN commit (medido el 2026-09-29 con envelopeCurve.js, envelopeGestures.js,
+      # envelopePad.js y envelope.css), y entonces el clon limpio se queda sin ellos,
+      # `pnpm install` sale en verde y el fallo aparece en Vite, sin mencionar nada
+      # del hermano.
+      #
+      # Se ejecuta el MISMO guard que la suite (`e2e/support/sharedPackage.js`), no
+      # una comprobacion paralela: dos reglas para lo mismo divergen, y el runner
+      # acaba en verde con una version del guard que ya no es la del test.
+      - name: Verify the shared package is complete
+        shell: bash
+        working-directory: ABDNeural/WebUI
+        run: |
+          set -euo pipefail
+
+          node --input-type=module -e "
+            import { compruebaPaqueteCompartido, mensajeDelGuard } from './e2e/support/sharedPackage.js';
+            const guard = await compruebaPaqueteCompartido();
+            for (const aviso of guard.avisos ?? []) console.warn('AVISO: ' + aviso);
+            if (!guard.ok) {
+              console.error('::error::' + mensajeDelGuard(guard));
+              process.exit(1);
+            }
+            console.log('Paquete compartido completo: ' + guard.raiz);
+          "
+
       - name: Install Playwright Chromium
         shell: bash
         working-directory: ABDNeural/WebUI
@@ -129,10 +182,10 @@ jobs:
       # SOLO la regresion visual (11 capturas). El `webServer` del config construye
       # `dist` antes de servirlo, asi que el job mide el bundle de verdad.
       #
-      # Lo que NO entra, y por que (esclusion y no olvido):
+      # Lo que NO entra, y por que (exclusion y no olvido):
       #   - `Tests/workletSyncTest.mjs` y los demas guards de node: comparan el
       #     WASM de `build-wasm/`, que en el runner no existe sin compilarlo
-      #     (emscripten). Salen en el ctest local, no aqui.
+      #     (emscripten). Los corre el job `native-tests`, que si lo compila.
       #   - `e2e/localMode.spec.js` (el smoke del MODO LOCAL): comparte la
       #     pagina y el motor con esta suite y mide el canal del worklet, que
       #     depende del reloj del AudioContext; entra en cuanto el runner tenga
@@ -157,5 +210,269 @@ jobs:
           path: |
             ABDNeural/WebUI/playwright-report/
             ABDNeural/WebUI/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ==========================================================================
+  # 2. VITEST. La puerta rapida: segundos, sin compilador, y es la que mas
+  #    veces atrapa un cambio roto antes de gastar un build de C++.
+  #
+  #    Cubre LOS DOS lados de la frontera Zero-Copy, que es donde esta el
+  #    riesgo de verdad: los tests de la WebUI importan `@abdsynths/shared`, y
+  #    si el hermano y el consumidor se desincronizan, el 504 verde de la WebUI
+  #    no dice nada porque esta leyendo el arbol del hermano, no el que el CI
+  #    acaba de descargar. Por eso se ejecutan los dos, y en el mismo job: si
+  #    uno de los dos falla, el otro tampoco se ejecuta y no da un segundo
+  #    "verde" misleading encima del primero.
+  # ==========================================================================
+  js-tests:
+    name: vitest (WebUI + ABDSharedAssets)
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    env:
+      CI: true
+
+    steps:
+      - name: Checkout ABDNeural (este repo)
+        uses: actions/checkout@v4
+        with:
+          path: ABDNeural
+
+      - name: Checkout ABDSharedCode (@abdsynths/midi-keyb)
+        uses: actions/checkout@v4
+        with:
+          repository: ajabadia/ABDSharedCode
+          path: ABDSharedCode
+
+      - name: Checkout ABDSharedAssets (@abdsynths/shared)
+        uses: actions/checkout@v4
+        with:
+          repository: ajabadia/ABDSharedAssets
+          path: ABDSharedAssets
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '10'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # El workspace de la WebUI lista a los dos hermanos como miembros
+      # (`WebUI/pnpm-workspace.yaml`), asi que este install basta para que
+      # `WebUI/node_modules/@abdsynths/*` quede enlazado.
+      - name: Install WebUI dependencies
+        shell: bash
+        working-directory: ABDNeural/WebUI
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: '1'
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+
+      # ABDSharedAssets tiene SU PROPIO lock (pnpm-lock.yaml) y NO es miembro del
+      # workspace de la WebUI: es un paquete de la suite, no una dependencia de
+      # este repo. Por eso necesita su install separado, o sus 1327 tests no
+      # tendrian ni el vitest que los corre.
+      - name: Install ABDSharedAssets dependencies
+        shell: bash
+        working-directory: ABDSharedAssets
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+
+      # ── La WebUI ───────────────────────────────────────────────────────────
+      # 504 tests, 32 ficheros. Corre contra el arbol de ABDSharedAssets que se
+      # acaba de descargar, que es justo el punto: si el hermano no exporta lo
+      # que la pagina importa, esto falla aqui y no en la maquina de alguien.
+      - name: vitest (WebUI)
+        shell: bash
+        working-directory: ABDNeural/WebUI
+        run: pnpm exec vitest run --reporter=dot
+
+      # ── El hermano ─────────────────────────────────────────────────────────
+      # 1327 tests, 30 ficheros. Los que cubren el `EnvelopePad`, el knob bipolar
+      # y el boton LED, que son justo los componentes que ABDNeural todavia no
+      # versiona.
+      - name: vitest (ABDSharedAssets)
+        shell: bash
+        working-directory: ABDSharedAssets
+        run: pnpm exec vitest run --reporter=dot
+
+  # ==========================================================================
+  # 3. CTEST. La bateria de C++: el motor, los presets, la matriz de
+  #    modulacion, el DSP compartido. 53 tests, y es la unica que puede
+  #    detectar que un cambio de DSP rompio el sonido.
+  #
+  #    POR QUE ESTE JOB ES CARO Y AUN ASI ESTA. Configurar el proyecto exige
+  #    JUCE, y JUCE no esta en ningun repo de la suite -- ni como submodulo, ni
+  #    por FetchContent, ni por CMakePresets. CMakeLists solo mira $JUCE_PATH, el
+  #    fallback `C:/JUCE` de Windows, o `find_package(JUCE CONFIG REQUIRED)`,
+  #    que falla. ABDSharedCode, en cambio, SI tiene FetchContent a GitHub
+  #    (CMakeLists.txt:72-78), asi que ese no es un problema; JUCE si lo es, y
+  #    por eso este bloque lo trae el mismo en vez de darlo por supuesto.
+  #
+  #    Y EL .wasm. Los guards de artefacto (NEURONiK_WorkletSync,
+  #    NEURONiK_WasmLayoutFingerprint) comparan el binario de `build-wasm/` con
+  #    el que sirve la pagina. Sin compilarlo, esos dos tests no se pueden
+  #    ejecutar de ninguna manera que signifique algo, asi que este job tambien
+  #    instala emsdk y compila el modulo.
+  # ==========================================================================
+  native-tests:
+    name: ctest (motor nativo + guards del .wasm)
+    runs-on: windows-latest
+    # El build nativo con JUCE y despues emscripten es largo. 60 min es margen
+    # de sobra para hoy y el sitio donde Mirar si alguna vez se queda corto.
+    timeout-minutes: 60
+
+    env:
+      CI: true
+      # Donde se deja JUCE si hay que descargarla. Es una variable de ENTORNO y
+      # no una constante escrita a pelo en el cmake de mas abajo, para que
+      # cambiarla no sea editar el workflow.
+      JUCE_DOWNLOAD_DIR: 'C:\JUCE'
+
+    steps:
+      - name: Checkout ABDNeural (este repo)
+        uses: actions/checkout@v4
+        with:
+          path: ABDNeural
+
+      - name: Checkout ABDSharedCode (@abdsynths/midi-keyb)
+        uses: actions/checkout@v4
+        with:
+          repository: ajabadia/ABDSharedCode
+          path: ABDSharedCode
+
+      - name: Checkout ABDSharedAssets (@abdsynths/shared)
+        uses: actions/checkout@v4
+        with:
+          repository: ajabadia/ABDSharedAssets
+          path: ABDSharedAssets
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '10'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Los guards de ctest que son de node (los .mjs de Tests/) y el modulo WASM
+      # necesitan `node` en el PATH. Sin esto, los que hoy se registrarian aqui
+      # serian un "Not Run" con codigo 0 y el job pasaria sin comprobar nada.
+      - name: Install WebUI dependencies
+        shell: bash
+        working-directory: ABDNeural/WebUI
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: '1'
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        shell: bash
+        working-directory: ABDNeural/WebUI
+        run: pnpm exec playwright install chromium
+
+      # ── JUCE ───────────────────────────────────────────────────────────────
+      # Tres caminos, en este orden: la variable de entorno, el `C:/JUCE` que ya
+      # mira CMakeLists, y el mirror publico. La version va FIJADA a 8.0.12, que
+      # es la que hay en la maquina de desarrollo: sin fijar, `master` del mirror
+      # puede mover un `juce::` bajo los pies y el fallo se lee como si fuera
+      # del codigo de este repo.
+      - name: Resolve JUCE
+        shell: bash
+        run: |
+          set -euo pipefail
+          JUCE_VERSION='8.0.12'
+
+          if [ -n "${JUCE_PATH:-}" ] && [ -f "${JUCE_PATH}/CMakeLists.txt" ]; then
+            echo "JUCE desde la variable de entorno: ${JUCE_PATH}"
+          elif [ -f "C:\\JUCE\\CMakeLists.txt" ]; then
+            echo "JUCE desde el fallback de CMakeLists: C:\\JUCE"
+            echo "JUCE_PATH=C:\\JUCE" >> "$GITHUB_ENV"
+          else
+            echo "JUCE no esta en el runner: se descarga el mirror ${JUCE_VERSION}"
+            git clone --depth 1 --branch "${JUCE_VERSION}" https://github.com/juce-framework/JUCE.git "$JUCE_DOWNLOAD_DIR"
+            echo "JUCE_PATH=${JUCE_DOWNLOAD_DIR}" >> "$GITHUB_ENV"
+          fi
+
+          echo "--- comprobacion: la version que se va a usar"
+          grep -m1 'project(JUCE' "${JUCE_PATH:-C:\\JUCE}\\CMakeLists.txt" || true
+
+      # ── emsdk ──────────────────────────────────────────────────────────────
+      # Mismo criterio: si ya esta, se usa; si no, se instala. `emsdkup` es el
+      # instalador oficial y el que ya se usa en la maquina de desarrollo.
+      - name: Resolve emsdk
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -f "C:\\emsdk\\emsdk_env.bat" ]; then
+            echo "emsdk desde C:\\emsdk"
+            echo "EMSDK_ROOT=C:\\emsdk" >> "$GITHUB_ENV"
+          else
+            echo "emsdk no esta en el runner: se instala"
+            git clone --depth 1 https://github.com/emscripten-core/emsdk.git C:\\emsdk
+            cmd //c "C:\\emsdk\\emsdk.bat install latest"
+            cmd //c "C:\\emsdk\\emsdk.bat activate latest"
+            echo "EMSDK_ROOT=C:\\emsdk" >> "$GITHUB_ENV"
+          fi
+
+      # ── Configure ──────────────────────────────────────────────────────────
+      # Release, y no Debug: es la configuracion en la que se compila el `.wasm`,
+      # y los hashes de bytes de la red de paridad de la matriz SOLO son
+      # comparables dentro de una misma configuracion.
+      - name: Configure (Release)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd ABDNeural
+          cmake -S . -B build-reference -G "Visual Studio 17 2022" -A x64 -DJUCE_PATH="$JUCE_PATH"
+
+      # Se compila TODO lo que hay configurado, plugin incluido. El target
+      # NEURONiK es un VST3 y `cmake --build` sin `--target` lo construye igual:
+      # suprimirlo exigiria listar los 38 targets de test a mano, y esa lista se
+      # quedaria vieja en cuanto se anada uno. Pagar el plugin es el precio de no
+      # tener un segundo sitio donde anadir un test y olvidarlo.
+      - name: Build test targets (Release)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd ABDNeural
+          cmake --build build-reference --config Release --parallel
+
+      # ── El .wasm ───────────────────────────────────────────────────────────
+      # build_wasm.bat es el unico camino que produce el binario que la pagina
+      # sirve, y ademas es el que regenera la firma del layout y comprueba que
+      # el binario y la tabla cuadran. Los guards de mas abajo comparan contra
+      # ESA salida, asi que tienen que ver el resultado de este paso y no un
+      # binario de otra pasada.
+      - name: Build the .wasm
+        shell: cmd
+        working-directory: ABDNeural
+        run: build_wasm.bat nopause
+
+      # ── ctest ──────────────────────────────────────────────────────────────
+      # `-C Release` NO es opcional: sin el, los tests multi-config dan "Not Run"
+      # y ctest los cuenta como ... verdes, que es el peor fallo posible en una
+      # bateria. En local hay 52 tests y sin esta bandera se quedan sin correr.
+      - name: ctest
+        shell: bash
+        working-directory: ABDNeural/build-reference
+        run: ctest -C Release --output-on-failure --timeout 300
+
+      - name: Upload ctest log
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctest-log
+          path: |
+            ABDNeural/build-reference/Testing/**
+            ABDNeural/wasm-last-run.log
           if-no-files-found: ignore
           retention-days: 14
