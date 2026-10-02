@@ -566,6 +566,24 @@ jobs:
           set -euo pipefail
           cd ABDNeural
 
+          # MSYS NO PUEDE TOCAR LOS ARGUMENTOS DE ESTE PASO. MEDIDO: sin esto,
+          # `/EHsc` llegaba a `cmake` como `C:\Program Files\Git\EHsc`, y la
+          # cache del `configure` guardaba
+          #
+          #   CMAKE_CXX_FLAGS: C:\Program Files\Git\DWIN32 \D_WINDOWS \EHsc
+          #
+          # o sea los `/` de las flags de MSVC convertidos en rutas de Windows,
+          # que es lo que hace MSYS2 con cualquier cosa que parece un path
+          # POSIX. El sintoma era de C, dos capas mas abajo:
+          #
+          #   juce_BasicNativeHeaders.h(92,4): error C1189:
+          #   "You're compiling without exceptions enabled"
+          #
+          # porque `/EHsc` nunca llego. Lo mismo pasaba con los `-I` de abajo y
+          # con `JUCE_WEBVIEW2_PACKAGE_LOCATION`, aunque ahi el camino mas corto
+          # de ver el fallo era el rojo de antes.
+          export MSYS2_ARG_CONV_EXCL='*'
+
           # `cygpath -m` porque el CMake de Windows y el bash de Git no cuentan
           # igual: `$(pwd)` devuelve `/d/a/...` y Windows lo lee como `\d\a\...`
           # desde la unidad actual. MEDIDO: con `$(pwd)` a secas las tres rutas
@@ -604,10 +622,20 @@ jobs:
           # ANTES de los targets que los enlazan. No se ha puesto en el
           # CMakeLists porque ese fichero tiene trabajo sin commitear de otra
           # sesion.
+          # `/DWIN32 /D_WINDOWS /EHsc` no son inventos: son lo que tiene
+          # `build-reference/CMakeCache.txt` en la maquina donde este proyecto
+          # compila, y sin `/EHsc` JUCE no compila (el `#error` de arriba).
+          # CMake 4.4 ya no los pone por su cuenta en MSVC.
+          #
+          # MEDIDO sobre un clon limpio, con este bloque tal cual: el target
+          # `NEURONiK_AudioBufferParityTest` compila y enlaza, exit 0. Con los
+          # `-I` solos y sin `MSYS2_ARG_CONV_EXCL` el mismo target sale con
+          # cuatro `error C1083` de "no se puede abrir el archivo origen
+          # C:\Program" y el `C1189` de excepciones.
           cmake -S . -B build-reference -A x64 \
             -DJUCE_PATH="$JUCE_PATH" \
             -DJUCE_WEBVIEW2_PACKAGE_LOCATION="$_WEBVIEW2" \
-            -DCMAKE_CXX_FLAGS="-I${_BD}/juce_binarydata_NEURONiK_FactoryModels/JuceLibraryCode -I${_BD}/juce_binarydata_NEURONiK_SelftestAssets/JuceLibraryCode -I${_BD}/juce_binarydata_NEURONiK_WebUIAssets/JuceLibraryCode"
+            -DCMAKE_CXX_FLAGS="/DWIN32 /D_WINDOWS /EHsc -I${_BD}/juce_binarydata_NEURONiK_FactoryModels/JuceLibraryCode -I${_BD}/juce_binarydata_NEURONiK_SelftestAssets/JuceLibraryCode -I${_BD}/juce_binarydata_NEURONiK_WebUIAssets/JuceLibraryCode"
 
       # Se compila TODO lo que hay configurado, plugin incluido. El target
       # NEURONiK es un VST3 y `cmake --build` sin `--target` lo construye igual:
