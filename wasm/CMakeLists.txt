@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.22)
-project(NEURONiK_WASM LANGUAGES CXX)
+# LANGUAGES C y no solo CXX: JUCE exige un compilador C para los targets que
+# dependan de el, y aborta el configure si no esta declarado. Medido el 2026-10-02
+# con JUCE 8.0.12 (la version que espera este proyecto): "A C compiler is required
+# to build targets that depend on JUCE. Add 'C' to your project's LANGUAGES", en el
+# CMakeLists de JUCE, no en este. El proyecto solo tiene C++, asi que esto no anade
+# ningun fichero .c: solo le dice a CMake que active el chequeo del toolchain de C.
+project(NEURONiK_WASM LANGUAGES C CXX)
 
 # ============================================================================
 # NEURONiK DSP -> WebAssembly (Fase 5)
