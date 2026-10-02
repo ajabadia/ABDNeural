@@ -1800,6 +1800,18 @@ if(NEURONIK_NODE_EXECUTABLE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/WebUI/node_m
         # supuesto—. Este candado impide que se solapen y NO serializa el resto de
         # ctest: los otros 39 siguen en paralelo.
         RESOURCE_LOCK "neuronik_webui_dist"
+        # Y un puerto PROPIO, como el visual y la aguja. El de por defecto (5236)
+        # es el que se lleva un `pnpm test:e2e` a mano, que no tiene este candado:
+        # los dos con `--strictPort` se pelean por el mismo y el que pierde sale
+        # con "Process from config.webServer was not able to start" en 25 s, sin
+        # decir nada de puertos (medido el 2026-10-02 en el NEURONiK_WebUiLocalModeE2e
+        # del check de gemelos). Ver la nota de E2E_PORT en WebUI/playwright.config.js.
+        #
+        # LOS DOS puertos, no solo el del preview: el `webServer` del config es una
+        # lista y SIEMPRE levanta los dos servidores (el de dist y el de la pagina
+        # de la aguja), asi que poner solo este dejaria el segundo en el 5237 de por
+        # defecto, que es justo el otro que se lleva la corrida a mano.
+        ENVIRONMENT "NEURONIK_E2E_PORT=5242;NEURONIK_E2E_PROBE_PORT=5243"
     )
 else()
     message(STATUS "playwright not installed: NEURONiK_WebUiLocalModeE2e test skipped")

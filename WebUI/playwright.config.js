@@ -6,8 +6,22 @@ import { defineConfig, devices } from '@playwright/test';
  * `NEURONiK_WebUiVisualRegression` son dos tests de ctest que se pueden LANZAR A
  * LA VEZ (`ctest -j6`, que es como corre la casa), y los dos montan su servidor
  * con `--strictPort`: con el mismo puerto, el segundo se come un EADDRINUSE y
- * falla en 13 s con un error que no habla de pintura. Cada test lleva su puerto
- * (5236 el smoke, 5239 la regresion visual) y asi conviven.
+ * falla en 13 s con un error que no habla de pintura.
+ *
+ * POR QUE EL DE POR DEFECTO ES EL DE UNA CORRIDA A MANO (cambiado el 2026-10-02).
+ * Antes los tres tests de ctest (smoke 5236, visual 5239, aguja 5240) y el de por
+ * defecto coincidian en el 5236, porque aqui no ponia nada: seUsaba el que
+ * hubiera. O sea que un `pnpm test:e2e` a mano (que es como se corre esto cuando
+ * se esta Depurando, y no lleva el candado de `dist` de ctest) se peleaba con el
+ * E2E del smoke por el 5236, y el que perdia salia con "Process from
+ * config.webServer was not able to start. Exit code: 1" a los 25 s: un rojo que
+ * no habla de puertos ni de la maquina. Medido en el NEURONiK_WebUiLocalModeE2e del
+ * check de gemelos.
+ *
+ * Ahora los de ctest llevan el suyo (5242 el smoke, 5239 el visual, 5240 la
+ * aguja) y ESTOS dos numeros se quedan para la corrida a mano, que es la que no
+ * tiene un puerto asignado por ningun sitio. Es la unica reparticion que hace
+ * que las dos formas documentadas de correr estos tests convivan.
  */
 const E2E_PORT = Number(process.env.NEURONIK_E2E_PORT ?? 5236);
 
@@ -18,6 +32,12 @@ const E2E_PORT = Number(process.env.NEURONIK_E2E_PORT ?? 5236);
  * este puerto estaba escrito a pelo en el `webServer` y en la URL de los specs,
  * de modo que dos tests que necesitaran la pagina de la aguja no podian
  * coexistir; ahora ambos lo leen de aqui (`NEURONIK_E2E_PROBE_PORT`).
+ *
+ * Y por el mismo motivo que el de arriba, el smoke tambien lleva el suyo por
+ * separado (5243): el `webServer` de este fichero es una LISTA y SIEMPRE levanta
+ * los dos servidores, aunque el spec no use la pagina de la aguja. Poner solo el
+ * puerto del preview dejaria este en el de por defecto, que es el otro que se
+ * lleva la corrida a mano.
  */
 const PROBE_PORT = Number(process.env.NEURONIK_E2E_PROBE_PORT ?? 5237);
 
