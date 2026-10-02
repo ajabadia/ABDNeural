@@ -3906,21 +3906,28 @@ private:
      */
     static juce::String scriptBackJump (int slot)
     {
-        const auto open = juce::String ("'.") + SelftestPage::openDrawerClass + "'";
         const auto veil = juce::String ("'.") + SelftestPage::visibleBackdropClass + "'";
 
         return "(() => { try {"
                "  const trigger = document.querySelector('[data-drawer-trigger=\"envelopes\"]');"
                "  if (!trigger) return JSON.stringify({ error: 'NO_EDIT_TRIGGER' });"
                "  trigger.click();"
-               "  const origin = document.querySelector(" + open + ");"
-               "  if (!origin || origin.dataset.drawer !== 'drawer-envelopes')"
+               // EL CAJON SE BUSCA POR SU NOMBRE, no por "el primero abierto". Varios
+               // cajones pueden estar a la vez con la clase puesta (la anterior
+               // ENV-RUTAS deja el de la matriz abierto), y el primero que sale en el
+               // documento depende del orden en que la pagina los monta: medido el
+               // 2026-10-02, ese orden cambio al migrar la curva al paquete
+               // compartido y el VOLVER paso a leer NO_ENV_DRAWER con la pagina
+               // abriendo el cajon correcto. Preguntar por el que se quiere deja de
+               // depender de ese orden.
+               "  const origin = document.querySelector('.drawer--open[data-drawer=\"drawer-envelopes\"]');"
+               "  if (!origin)"
                "    return JSON.stringify({ error: 'NO_ENV_DRAWER' });"
                "  const goto = Array.from(origin.querySelectorAll('.env-block__goto'))"
                "    .find((b) => !b.disabled && (b.title || '').includes('RUTA " + juce::String (slot) + "'));"
                "  if (!goto) return JSON.stringify({ error: 'NO_GOTO_FOR_SLOT' });"
                "  goto.click();"
-               "  const matrix = document.querySelector(" + open + ");"
+               "  const matrix = document.querySelector('.drawer--open[data-drawer=\"drawer-modMatrix\"]');"
                "  const veil = document.querySelector(" + veil + ");"
                "  return JSON.stringify({"
                "    opened: matrix ? matrix.dataset.drawer : '',"
@@ -4245,9 +4252,16 @@ private:
      *
      * El envoltorio de la vista es `.env-curves` (lienzo) y `.env-blocks`
      * (cajon), con una columna/bloque `[data-envelope=env|filter]` por ADSR y
-     * SU aguja como path `.envelope-curve__level` con data-visible y el 'd' que
+     * SU aguja como path `.abd-envpad__needle` con data-visible y el 'd' que
      * pinta el nivel (`M0,y Lwidth,y`: y menor = nivel mas alto). El orden del
      * frame es [amp, filter] = [ENV 1 ('env'), ENV 2 ('filter')].
+     *
+     * EL NOMBRE DE LA AGUJA lo fijo la vista COMPARTIDA (`@abdsynths/shared`,
+     * components/envelopeCurve.js), que sustituyo a la copia local borrada: antes
+     * el path se llamaba `.envelope-curve__level` y el arnes se quedo con el nombre
+     * viejo, asi que la direccion AGUJA leia "sin aguja" con la pagina pintando la
+     * suya. Medido el 2026-10-02: needles ILEGIBLE y curvas del cajon -1.00. El
+     * viewbox (100x48) no cambio, de ahi que la escala de abajo siga siendo valida.
      */
     static juce::String scriptReadNeedles()
     {
@@ -4257,7 +4271,7 @@ private:
                "    if (!host) return null;"
                "    const column = host.querySelector('[data-envelope=\"' + prefix + '\"]');"
                "    if (!column) return null;"
-               "    const needle = column.querySelector('.envelope-curve__level');"
+               "    const needle = column.querySelector('.abd-envpad__needle');"
                "    if (!needle) return null;"
                "    const d = needle.getAttribute('d') ?? '';"
                "    const match = d.match(/[Ll]\\s*([0-9.]+)\\s*,\\s*([0-9.]+)/);"

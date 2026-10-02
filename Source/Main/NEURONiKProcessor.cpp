@@ -149,7 +149,25 @@ juce::File NEURONiKProcessor::factoryModelsDirectory()
 }
 
 NEURONiKProcessor::NEURONiKProcessor()
-    : apvts(*this, nullptr, "Parameters", createParameterLayout()),
+    // EL BUS DE SALIDA, y por que se declara aqui y no antes.
+    //
+    // Sin esto, `getMainBusNumOutputChannels()` vale CERO (JUCE no inventa buses: sale
+    // de `getChannelCountOfBus`, que es null si no hay bus). Y de ahi salia el mudo del
+    // Standalone, medido el 2026-10-02: el `StandalonePluginHolder` pide al
+    // AudioDeviceManager exactamente `processor->getMainBusNumOutputChannels()`
+    // salidas, o sea 0, y `deviceManager.initialise (0, 0, ...)` no abre NINGUN
+    // dispositivo. Sin device no hay processBlock, y sin processBlock el motor no
+    // suena: el nivel de las agujas se quedaba en 0, la nota MIDI no arrancaba
+    // ninguna voz y el arco del LFO sobre Morph Z no se movia. El sintoma era
+    // "tres direcciones del selftest no se mueven" sin de donde.
+    //
+    // No es un apaño de una versión: un synth que no declara buses es un synth que
+    // no tiene contrato de canales con el host, y el Standalone es el host que lo lee
+    // de verdad (el VST3 lo toma de `JucePlugin_ChannelConfigurations`, que es
+    // distinto). Es stereo de salida y SIN entrada, que es lo que es un IS_SYNTH.
+    : AudioProcessor (BusesProperties()
+                          .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+      apvts(*this, nullptr, "Parameters", createParameterLayout()),
       midiFifo(1024),
       commandQueue(std::make_unique<Command[]>(32)),   // Fase 11.1: 32 x ~25 KB = 800 KB fuera de la pila
       commandFifo(32)

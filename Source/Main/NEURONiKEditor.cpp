@@ -161,6 +161,47 @@ void NEURONiKEditor::startSelftestIfRequested()
     logSelftestLine ("[selftest] pedido (--selftest o NEURONIK_SELFTEST=1); log: "
                      + selftestLogFile().getFullPathName());
 
+   #if JucePlugin_Build_Standalone
+    // POR QUE ESTA LINEA: todo lo que depende de processBlock se queda quieto si el
+    // motor no suena —el nivel de las agujas, la nota que entra, el arco del LFO— y
+    // el transcript decia solo "no se movio", sin decir si era que no habia audio.
+    // Con el dato aqui, un rojo de audio se distingue de un rojo de logica a la
+    // primera lectura, sin tener que instrumentar el motor para averiguarlo.
+    // El Standalone es el que tiene que decirlo: el VST3 lo pone el DAW y la
+    // bancada lleva su propio AudioDeviceManager (WebPilotHost).
+    if (auto* holder = juce::StandalonePluginHolder::getInstance())
+    {
+        auto& dm = holder->deviceManager;
+
+        if (auto* device = dm.getCurrentAudioDevice())
+        {
+            logSelftestLine (juce::String ("[selftest] AUDIO: dispositivo \"")
+                                 + device->getName() + "\", "
+                                 + juce::String (device->getCurrentSampleRate()) + " Hz, "
+                                 + juce::String (device->getActiveOutputChannels().countNumberOfSetBits())
+                                 + " salida(s) activas, "
+                                 + juce::String (device->getLastError()) + " de error");
+        }
+        else
+        {
+            juce::String tipo = "sin tipo de dispositivo";
+
+            if (auto* tipoDevice = dm.getCurrentDeviceTypeObject())
+                tipo = tipoDevice->getTypeName();
+
+            logSelftestLine ("[selftest] AUDIO: SIN dispositivo abierto, el motor no va a procesar; "
+                                 + juce::String (holder->getNumOutputChannels())
+                                 + " salida(s) pedidas, tipo \"" + tipo + "\", "
+                                 + juce::String (dm.getAvailableDeviceTypes().size())
+                                 + " tipo(s) de dispositivo en la maquina");
+        }
+    }
+    else
+    {
+        logSelftestLine ("[selftest] AUDIO: sin StandalonePluginHolder (no se puede mirar)");
+    }
+   #endif
+
     // Sin `PageCapabilities`: el defecto del arnes es la capacidad COMPLETA, y este es
     // el dueno que la tiene entera — esta pagina SI publica la ficha MODELOS A-D, asi
     // que las ocho direcciones son obligatorias aqui. Declarar el omitido esta
