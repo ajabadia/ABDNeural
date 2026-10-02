@@ -575,6 +575,44 @@ jobs:
       # suprimirlo exigiria listar los 38 targets de test a mano, y esa lista se
       # quedaria vieja en cuanto se anada uno. Pagar el plugin es el precio de no
       # tener un segundo sitio donde anadir un test y olvidarlo.
+      # LOS CABECEROS GENERADOS, ANTES DE COMPILAR NADA. MEDIDO en la corrida
+      # 37075288609: el build para a los once segundos con
+      #
+      #   Source/Main/NEURONiKProcessor.cpp(8,10): error C1083:
+      #   Cannot open include file: 'NeuronikFactoryModels.h'
+      #
+      # Ese header lo escribe `juce_add_binary_data`, y los tres de este repo se
+      # declaran al FINAL del CMakeLists, despues de que los targets que los
+      # enlazan los hayan enlazado POR NOMBRE. CMake no ve por eso ninguna
+      # dependencia de orden, y con `--parallel` el plugin entra a compilar
+      # NEURONiKProcessor.cpp antes de que el target que genera el header haya
+      # llegado a generarlo. El log lo dice: solo salen los
+      # `Generating ..._resources.rc` de los dos formatos, y ninguna cabecera.
+      #
+      # Que en local no salga es justo lo que hace que parezca cosa de maquina:
+      # `build-reference` ya tenia los cabeceres de una corrida anterior. En un
+      # arbol recien clonado, que es lo unico que ve el runner, no estan, y el
+      # rojo sale como error de C, que es la ultima capa.
+      #
+      # El arreglo de raiz es un `add_dependencies` en el CMakeLists, y no se ha
+      # puesto aqui a proposito: ese fichero tiene trabajo sin commitear de otra
+      # sesion y tocarlo era mezclarse en el. Esto mide lo mismo y no invade.
+      - name: Generate the binary-data headers (el orden que CMake no ve)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd ABDNeural
+          for _t in NEURONiK_WebUIAssets NEURONiK_SelftestAssets NEURONiK_FactoryModels; do
+            # `NEURONiK_WebUIAssets` no existe en esta configuracion: depende de
+            # `WebUI/dist`, que este job no construye. Por eso se avisa y se
+            # sigue en vez de romper la lista entera.
+            if cmake --build build-reference --config Release --target "$_t"; then
+              echo "::notice::$_t generado antes de compilar"
+            else
+              echo "::warning::el target $_t no existe en esta configuracion"
+            fi
+          done
+
       - name: Build test targets (Release)
         shell: bash
         run: |
