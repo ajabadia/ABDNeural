@@ -519,12 +519,56 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
+      # EL SDK DE WEBVIEW2. El plugin declara `NEEDS_WEBVIEW2 TRUE`, y eso hace
+      # que `FindWebView2.cmake` busque el paquete NuGet `Microsoft.Web.WebView2`.
+      # MEDIDO: sin este paso el configure sale con
+      #
+      #   Could NOT find WebView2 (missing: WebView2_include_dir WebView2_library)
+      #
+      # que es un `CMake Error`, no un aviso, asi que el job para antes de
+      # compilar nada. El runner no lo trae, y el paquete NO esta en la imagen.
+      #
+      # Se descarga el `.nupkg` (que es un zip) y se descomprime en vez de usar
+      # `Install-Package` por dos razones que se han medido en el propio paquete:
+      # `Install-Package` escribe en `AppData/Local/PackageManagement/NuGet/Packages`
+      # y deja el resultado en un sitio que depende de como este configurado el
+      # PowerShell del runner, y no hace falta esa indireccion porque la variable
+      # `JUCE_WEBVIEW2_PACKAGE_LOCATION` dice donde esta. Lo que hay dentro se ha
+      # comprobado: `build/native/include/WebView2.h` y
+      # `build/native/x64/WebView2LoaderStatic.lib`, que es exactamente lo que
+      # busca el `find`.
+      #
+      # Y el nombre de la carpeta lleva la version porque el `find` de JUCE no
+      # recibe el directorio del paquete sino el que lo CONTIENE, y lo localiza
+      # con un glob `*Microsoft.Web.WebView2*`. Con la version en el nombre (que
+      # es como NuGet lo nombra) el glob casa. Sin ella, no.
+      - name: Fetch the WebView2 SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '1.0.3485.44'
+          $root = Join-Path $env:GITHUB_WORKSPACE 'webview2'
+          $dest = Join-Path $root "Microsoft.Web.WebView2.$version"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          # `Expand-Archive` no acepta la extension `.nupkg`, y con PowerShell 5.1
+          # el error que da no dice nada de la extension. Se descarga como `.zip`.
+          $zip = Join-Path $env:RUNNER_TEMP 'webview2.zip'
+          Invoke-WebRequest -Uri "https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/$version" -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $dest -Force
+          if (-not (Test-Path (Join-Path $dest 'build/native/include/WebView2.h'))) {
+            Write-Error "el paquete se ha descargado pero no trae build/native/include/WebView2.h; revisa la version $version"
+          }
+          Write-Host "WebView2 $version en $dest"
+
       - name: Configure (Release)
         shell: bash
         run: |
           set -euo pipefail
           cd ABDNeural
-          cmake -S . -B build-reference -A x64 -DJUCE_PATH="$JUCE_PATH"
+          # `cygpath -m` porque el CMake de Windows y el bash de Git no cuentan
+          # igual: la variable lleva barras invertidas y el `file(GLOB)` de
+          # JUCE las mezcla con las suyas.
+          cmake -S . -B build-reference -A x64 -DJUCE_PATH="$JUCE_PATH" -DJUCE_WEBVIEW2_PACKAGE_LOCATION="$(cygpath -m "$GITHUB_WORKSPACE")/webview2"
 
       # Se compila TODO lo que hay configurado, plugin incluido. El target
       # NEURONiK es un VST3 y `cmake --build` sin `--target` lo construye igual:
