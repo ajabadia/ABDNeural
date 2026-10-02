@@ -1841,11 +1841,28 @@ if(NEURONIK_NODE_EXECUTABLE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/WebUI/node_m
     set_tests_properties(NEURONiK_WebUiVisualRegression PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/WebUI"
         TIMEOUT 600
-        # Mismo candado de `dist` que el E2E de arriba, y un puerto PROPIO: con
-        # `--strictPort` compartirlo haria que el segundo servidor no arrancara
-        # (EADDRINUSE). Ver la nota de E2E_PORT en WebUI/playwright.config.js.
+        # Mismo candado de `dist` que el E2E de arriba, y PUERTOS PROPIOS los
+        # dos, por el motivo medido que ya evita el E2E de smoke: con
+        # `--strictPort` dos servidores en el mismo se comen un EADDRINUSE y el
+        # fallo aparece a los 13 s hablando de puertos, no de pintura. Ver la
+        # nota de E2E_PORT en WebUI/playwright.config.js.
+        #
+        # EL SEGUNDO (el probe) LE FALTABA, y por eso este test era el Ãºnico que
+        # se caÃ­a en una corrida en la que nada mÃ¡s estaba roto. El `webServer`
+        # de `playwright.config.js` es una LISTA y SIEMPRE levanta los dos
+        # servidores, use o no este spec la pÃ¡gina de la aguja: poniendo solo el
+        # del preview, el de la aguja se quedaba en el 5237 de POR DEFECTO, que es
+        # el de la corrida `pnpm test:e2e` a mano. Con `reuseExistingServer` (que
+        # estÃ¡ activo salvo en CI) el visual se enganchaba ahÃ­ al servidor de
+        # quien estuviera probando a mano, y su fallo no era suyo.
+        #
+        # El reparto, medido: 5236/5237 son de la corrida A MANO y no se tocan;
+        # de ahÃ­ para arriba, un par por test de ctest â€” localMode 5242/5243,
+        # visual 5239/5244, aguja 5240/5241. El 5238 se deja libre a propÃ³sito:
+        # queda pegado al 5237 de la corrida manual, que es justo el par que este
+        # arreglo querÃ­a dejar intacto.
         RESOURCE_LOCK "neuronik_webui_dist"
-        ENVIRONMENT "NEURONIK_E2E_PORT=5239"
+        ENVIRONMENT "NEURONIK_E2E_PORT=5239;NEURONIK_E2E_PROBE_PORT=5244"
     )
 else()
     message(STATUS "playwright not installed: NEURONiK_WebUiVisualRegression test skipped")

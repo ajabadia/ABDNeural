@@ -18,10 +18,24 @@ import { defineConfig, devices } from '@playwright/test';
  * no habla de puertos ni de la maquina. Medido en el NEURONiK_WebUiLocalModeE2e del
  * check de gemelos.
  *
- * Ahora los de ctest llevan el suyo (5242 el smoke, 5239 el visual, 5240 la
- * aguja) y ESTOS dos numeros se quedan para la corrida a mano, que es la que no
- * tiene un puerto asignado por ningun sitio. Es la unica reparticion que hace
- * que las dos formas documentadas de correr estos tests convivan.
+ * Ahora los de ctest llevan el suyo y ESTOS dos numeros se quedan para la
+ * corrida a mano, que es la que no tiene un puerto asignado por ningun sitio.
+ * Es la unica reparticion que hace que las dos formas documentadas de correr
+ * estos tests convivan.
+ *
+ * EL REPARTO COMPLETO, para no tener que reconstruirlo de la memoria (cambiado
+ * el 2026-10-02, cuando se le anadio el que le faltaba al visual):
+ *
+ *   5236 / 5237  la corrida A MANO (esta corrida de aqui: el de por defecto de
+ *                cada uno). No los toca ningun test de ctest.
+ *   5242 / 5243  NEURONiK_WebUiLocalModeE2e   (preview / probe)
+ *   5239 / 5244  NEURONiK_WebUiVisualRegression (preview / probe)
+ *   5240 / 5241  NEURONiK_WebUiNeedleProbeE2e  (preview / probe)
+ *
+ * El visual tenia el 5239 del preview y NADA para el probe, que se caia al
+ * 5237 de por defecto, o sea al de la corrida a mano. Con `reuseExistingServer`
+ * eso no es un simple solape: el visual se enganchaba al servidor de quien
+ * estuviera probando a mano, y el fallo que salia no era de este repo.
  */
 const E2E_PORT = Number(process.env.NEURONIK_E2E_PORT ?? 5236);
 
