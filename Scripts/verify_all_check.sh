@@ -52,6 +52,8 @@
 #   ./Scripts/verify_all_check.sh                  # los cinco pasos, dos veces
 #   ./Scripts/verify_all_check.sh --only=2         # solo el paso 2 (ctest)
 #   ./Scripts/verify_all_check.sh --no-build       # salta el build en los dos
+#   ./Scripts/verify_all_check.sh --estricto       # un rojo intermitente tambien
+#                                                 # cuenta como divergencia
 #   ./Scripts/verify_all_check.sh --comparar A B   # compara dos resumenes que ya
 #                                                 # hay, sin lanzar nada
 #
@@ -64,6 +66,45 @@
 #
 # Salidas: 0 dicen lo mismo; 1 no dicen lo mismo; 2 uso incorrecto o no se ha
 # podido lanzar uno de los dos (falta node, falta bash, falta el build, ...).
+#
+# ── UN ROJO INTERMITENTE NO ES UNA DIVERGENCIA ──────────────────────────────
+#
+# Lo de arriba miente en un caso, y el caso es real: un test que sale rojo unas
+# veces y verdes otras. Se ha MEDIDO el 2026-10-02: el .sh corrio con
+# NEURONiK_WebUiLocalModeE2e en rojo y el .bat en verde de la misma corrida (8
+# relanzamientos: 6 verdes, 2 rojos), y el bloque de "no dicen lo mismo" salio
+# con 1 mandando a mirar un `diff` de los dos scripts. No habia ninguna regla
+# tocada en ningun gemelo: lo que habia era un test que va a veces, y el
+# mensaje que sale es peor que un rojo falso, porque dice una causa que no es la
+# causa y entrena a ignorar el bloque entero.
+#
+# Asi que hay un TERCER veredicto, y sale con 0 para que el check no se rompa:
+#
+#   0  dicen lo mismo (o solo se ha movido un rojo intermitente: ver abajo)
+#   1  NO dicen lo mismo: una regla esta en un gemelo y no en el otro
+#
+# El 3 lo pone `compara`, no este script, para que quien llame a la orden por
+# separado pueda distinguirlo del 0 sin leer el texto. Aqui se traduce a un
+# bloque propio que nombra los tests que se han movido y dice que hacer con
+# ellos, y el check sale en 0 a proposito: comparar dos corridas de un test que
+# a veces falla no dice nada de los dos scripts, solo de la maquina.
+#
+# COMO SE SABE QUE ES ESO Y NO UNA DIVERGENCIA. La pregunta es una: si se le
+# suman al lado que no vio el rojo las lineas que le sobran, los dos vuelven a
+# decir exactamente lo mismo? La comprobacion la hace `compara` con la misma
+# aritmetica de siempre, y por eso no es una opinion: si los RECUENTOS no
+# cuadran con las lineas que sobran (un `fallos` que no es la diferencia, un
+# `mios` que no sube lo que sube el numero de lineas MIO) no cuenta, y sale
+# con 1 como antes. Un `lento` que solo ve uno de los dos tampoco cuenta: el
+# umbral de lento es una REGLA, y este script existe para ver si las dos reglas
+# son la misma.
+#
+# LO QUE NO SE PUEDE SABER, y por eso el bloque no dice "es intermitente" sino
+# "este test se ha movido": con dos corridas no hay forma de distinguir un rojo
+# a veces de un rojo real que a uno de los dos no le ha salido. La salida es
+# relanzar esos tests, y si vuelven a salir rojos ya no son intermitentes. Con
+# `--estricto` se quita el tercero de los veredictos y todo lo que no cuadra
+# sale con 1, que es la via para no perder el diente.
 #
 # El codigo de salida de cada verify NO se propaga. Un verify en rojo por un
 # fallo de este trabajo es lo normal y no es lo que este script comprueba: lo
@@ -136,9 +177,15 @@ fi
 # de dos cosas que no vinieron del mismo sitio. Se rechazan los que no son de
 # verify_all, porque un flag mal understood que se le pase a uno y no al otro
 # es exactamente la divergencia que este script existe para cazar.
+#
+# `--estricto` es la excepcion, y por una sola razon: no cambia lo que se mide,
+# cambia COMO se juzga la diferencia, y ese juicio es de este script y no de los
+# gemelos. Pasarselo a los dos verify seria pasarselo a uno que no lo entiende y
+# que se negaria a arrancar.
 HACER_BUILD=1
 PASOS=""
 DESDE_FICHEROS=0
+ESTRICTO=0
 F_A=""
 F_B=""
 
@@ -146,6 +193,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --no-build)   HACER_BUILD=0 ;;
         --only=*)     PASOS="${1#--only=}" ;;
+        --estricto)   ESTRICTO=1 ;;
         --comparar)   DESDE_FICHEROS=1
                       F_A="${2:-}"; F_B="${3:-}"
                       [ -n "$F_A" ] && [ -n "$F_B" ] && shift 2 || shift $# ;;
@@ -164,6 +212,16 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
+
+# El flag para `compara`, montado UNA vez y usado en los dos sitios donde se
+# compara (el modo normal y el `--comparar`). Va con `${arr[@]+"${arr[@]}"}` y no
+# con `${arr[@]}` porque en bash 3 un array vacio con `set -u` casca, y el flag
+# opcional es justo el caso de array vacio.
+if [ "$ESTRICTO" -eq 1 ]; then
+    COMPARA_ESTRICTO=(--estricto)
+else
+    COMPARA_ESTRICTO=()
+fi
 
 # ── EL SELFTEST DE verify_all_node.js, ANTES DE GASTAR NADA ────────────────
 #
@@ -201,7 +259,12 @@ if [ "$DESDE_FICHEROS" -eq 1 ]; then
         exit 2
     fi
     printf '\n%s COMPARANDO DOS RESUMENES YA ESCRITOS %s\n' "$T" "$N"
-    node "$NODE_LIB" compara "$F_A" "$F_B" "el primero" "el segundo"
+    # Ahi el 3 se propaga tal cual, sin pasarlo a 0 como en el modo normal: este
+    # modo es el que se usa para mirar dos logs de ayer y preguntar por codigo,
+    # y quien lo lance desde otro script quiere distinguir el 3 del 0. El texto
+    # que sale es el mismo en los dos modos, asi que no hay nada que aprender.
+    node "$NODE_LIB" compara "$F_A" "$F_B" "el primero" "el segundo" \
+         ${COMPARA_ESTRICTO[@]+"${COMPARA_ESTRICTO[@]}"}
     exit $?
 fi
 
@@ -279,7 +342,7 @@ done
 # vez lo mismo de otra forma: el numero que sale de aqui tiene que salir de la
 # misma regla que ha salido el de los dos, o el check no esta comparando los
 # dos scripts sino comparando uno con una cuenta propia.
-node "$NODE_LIB" compara "$RES_SH" "$RES_BAT" "el .sh" "el .bat"
+node "$NODE_LIB" compara "$RES_SH" "$RES_BAT" "el .sh" "el .bat" ${COMPARA_ESTRICTO[@]+"${COMPARA_ESTRICTO[@]}"}
 rc=$?
 
 if [ "$rc" -eq 0 ]; then
@@ -287,6 +350,28 @@ if [ "$rc" -eq 0 ]; then
     printf '  Salidas de los verify: .sh %s, .bat %s (a proposito no se comparan: el codigo\n' \
         "$cod_sh" "$cod_bat"
     printf '  de salida es de cada uno, y lo que se comprueba aqui es que CUENTEN igual.)\n'
+    exit 0
+fi
+
+# rc = 3: lo UNICO que se ha movido es un rojo intermitente. Sale en 0 a
+# proposito (ver la cabecera): comparar dos corridas de un test que a veces
+# falla no dice nada de los dos scripts. Pero sale MUY visible, porque pasar por
+# alto un test que a veces sale rojo es peor que verlo: lo que se hace aqui es
+# dejarlo escrito en el sitio donde se lee el resultado del check.
+if [ "$rc" -eq 3 ]; then
+    # OJO con los `%s`: el `printf` de bash vuelve a imprimir el formato por cada
+    # argumento que le sobra, asi que un formato con un `%s` y dos argumentos
+    # escribe el bloque DOS veces (medido). Los dos van en la misma linea.
+    printf '\n  %sINTERMITENTE: los dos scripts cuentan igual, y lo unico que se ha movido%s\n' "$A" "$N"
+    printf '  es un test que sale rojo a veces. El check sale en 0 a proposito: eso no\n'
+    printf '  dice nada de los dos scripts, solo de la maquina.\n'
+    printf '\n  Los tests que se han movido estan en el bloque de arriba, con el lado que\n'
+    printf '  los vio. Salidas de los verify: .sh %s, .bat %s.\n' "$cod_sh" "$cod_bat"
+    printf '\n  Que hacer: relanza esos tests (ctest -R <nombre>, sin el build entero). Si\n'
+    printf '  vuelven a salir verdes, era intermitente. Si vuelven a salir rojos, ya no lo\n'
+    printf '  es: es un fallo de verdad, y lo que hay que arreglar es el test.\n'
+    printf '\n  Con --estricto este mismo caso sale con 1, que es la via para no perder el\n'
+    printf '  diente del check.\n'
     exit 0
 fi
 

@@ -116,6 +116,13 @@ El paso 1 del verify tiene que dar los seis `PASA`. Antes daba cinco `ROJO` de
 cada target caído contaba como un fallo. El `check` acaba en 0 y los dos
 gemelos dicen lo mismo.
 
+Si el `check` sale en 0 pero en medio pone `INTERMITENTE`, no es que el build
+esté mal: es que algún test (los `WebUi*E2e` de Playwright, casi siempre) ha
+salido rojo en una de las dos pasadas y verde en la otra. Salen los nombres
+justo encima. Si se sospecha que sea de verdad, `--estricto` lo vuelve a juzgar
+como divergencia y sale en 1. Está en
+[VERIFICAR.md](VERIFICAR.md#los-tres-veredictos-del-check-de-gemelos).
+
 Con el build arreglado, la batería corre en serio: **53 tests, 8 rojos**. Los
 cinco conocidos siguen rojos (y ahora con el motivo verificado sobre el
 binario, no supuesto), y los otros tres son los `WebUi*E2e` de Playwright.

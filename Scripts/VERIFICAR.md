@@ -43,7 +43,7 @@ node Scripts/selftest_verify_all_node.js
 
 ## Qué mira cada uno, y cuál es el que quieres
 
-**`selftest_verify_all_node.js`** (el tercero) es el rápido: 214 comprobaciones
+**`selftest_verify_all_node.js`** (el tercero) es el rápido: 238 comprobaciones
 sobre la lista de conocidos y sobre lo que se rompe en silencio, sin compilar
 nada. Tarda unos minutos. Si has tocado la lista, `Scripts/known/` o
 `verify_all_node.js`, **este es el que quieres**.
@@ -134,6 +134,85 @@ la cuenta salga a cero:
 `verify_all_check.sh` **no mira** el código de salida de los dos verify (compara
 solo el resumen), así que un `3` no lo hace fallar: eso es justo lo que lo hace
 seguro.
+
+### Los tres veredictos del check de gemelos
+
+El check lanza los dos scripts uno detrás de otro sobre el mismo build y compara
+sus resumenes. La comparación tiene **tres** salidas, no dos, y la tercera se
+añadió el 2026-10-02 porque la de antes mintía en un caso real:
+
+| Veredicto | Qué ha pasado | Qué hacer |
+|---|---|---|
+| `0` | Dicen lo mismo. | Nada. |
+| `3` | Dicen lo mismo **salvo en un rojo intermitente**: algún test ha salido rojo en una de las dos pasadas y verde en la otra. | Relanzar ese test (`ctest -R <nombre>`). Si sale verde otra vez, era eso. |
+| `1` | **No** dicen lo mismo: hay una regla en un gemelo y no en el otro. | Mirar el `diff` que imprime el check y cambiar la regla en los dos. |
+
+El `3` del check sale como **`0`** a propósito: comparar dos corridas de un test
+que a veces falla no dice nada de los dos scripts, solo de la máquina. Y sale
+**muy visible**: nombra los tests que se han movido y por qué lado. La orden suelta
+(`node Scripts/verify_all_node.js compara ...`) sí devuelve `3`, para que quien
+la llame desde otro script lo distinga del `0` sin leer el texto.
+
+**Por qué no es una lista de nombres.** El intermitente es una prueba
+aritmética: si se le suman al lado que no vio el rojo las líneas que le sobran,
+los dos resúmenes tienen que coincidir línea a línea **y los recuentos tienen que
+cuadrar con esas líneas**. Si no cuadran, sale con `1` como siempre. Eso es lo que
+impide que un error de conteo en un gemelo se esconda de intermitente: si un
+gemelo contara mal, los números no saldrían cuadrados.
+
+Dos cosas que **no** se perdonan, aunque el otro test cuadre:
+
+- **Un `lento` que solo ve uno de los dos.** El umbral de «lento» es una regla, y
+  el check existe para cazar reglas distintas. Un test puede ir rojo a veces, que
+  es la máquina; si va lento a veces, lo que se ha movido es el umbral.
+- **Un recuento que no cuenta rojos** (`lentos`, `tocoTimeout`, `huerfanos`,
+  `pasos`, `conocidos`, `tests`). Un rojo intermitente no los toca: si se mueven,
+  hay otra causa, y el texto dice cuál.
+
+### `--estricto`: el mismo caso, juzgado como divergencia
+
+```bash
+bash Scripts/verify_all_check.sh --estricto
+```
+
+Quita el tercer veredicto: todo lo que no cuadra sale con `1`, como antes del
+2026-10-02. Es para cuando el `3` te parece generoso y quieres el rojo de verdad.
+El flag **no se pasa a los dos verify** (no lo entenderían y se negaría a
+arrancar): cambia cómo se juzga la diferencia, y ese juicio es del check.
+
+Con `--comparar` (que compara dos resúmenes ya escritos, sin lanzar nada) el `3`
+**se propaga tal cual**, sin pasarlo a `0`: ese modo es el que se usa para mirar
+dos logs viejos y preguntar por código.
+
+### Cómo se prueba un veredicto que sale una vez de cada mil
+
+La sección 15 del selftest monta el caso con los datos del fallo real
+(`NEURONiK_WorkletSync` rojo en los dos, `NEURONiK_WebUiLocalModeE2e` rojo en
+uno) y, sobre todo, los casos que **no** pueden salir con `3`. Eso de que una
+prueba de una regla que casi nunca se dispara tiene que ser sobre todo una lista
+de lo que tiene que seguir saliendo con `1`: la regla nueva es una puerta que se
+abre, y lo que hay que vigilar es que no se abra de más.
+
+Las reglas se han medido una a una, rompiéndolas en `verify_all_node.js` y
+contando cuántas comprobaciones caen. Tabla del 2026-10-02 (238 comprobaciones
+en verde sin mutar):
+
+| Mutación | Comprobaciones que caen | Lee |
+|---|---|---|
+| No cuadrar `fallos` con las líneas que sobran | 1 | **Muerde**: es el que decide. |
+| No comprobar la clasificación (`mios`/`ajenos`/`sinClasificar`) | 2 | **Muerde**. |
+| Dejar pasar cualquier recuento, tb los que no cuentan rojos | 3 | **Muerde**. |
+| Ignorar `--estricto` | 1 | **Muerde**. |
+| La condición de «un solo lado» escrita al revés | 6 | **Muerde** (fue el fallo del primer intento). |
+| Salir con `0` en vez de con `3` | 3 | **Muerde**. |
+| Perdonar también los `lento` | 0 | **Redundante**: ya los descarta la cuenta de `fallos`. |
+| Perdonar líneas que sobran en los dos lados | 0 | **Redundante**, y por aritmética. |
+
+Las dos últimas se quedan en el código igualmente: son la **explicación en voz
+alta** de lo que la aritmética ya implica. Una regla que se deduce de otra
+cuenta es una regla que se lee en un sitio y se mantiene en otro, que es
+justo lo que `diferencia()` se ha puesto en medio para que las dos mitades sean
+el mismo código y no dos cuentas parecidas.
 
 ## Los rojos conocidos
 

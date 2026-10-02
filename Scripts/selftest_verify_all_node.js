@@ -1653,6 +1653,175 @@ seccion ('14. Los tres por que, uno por caso');
 }
 
 // ============================================================================
+//  15. EL ROJO INTERMITENTE FRENTE A LA DIVERGENCIA DE VERDAD
+// ============================================================================
+seccion ('15. El rojo intermitente no es una divergencia');
+
+// El caso que motive todo esto esta MEDIDO (2026-10-02, en HANDOFF.md): el .sh
+// corrio con NEURONiK_WebUiLocalModeE2e en rojo y el .bat en verde de la misma
+// corrida, con NEURONiK_WorkletSync en rojo en LOS DOS. El check salio con 1
+// diciendo que una regla se habia tocado en un gemelo, y no habia ninguna: lo
+// que habia era un test que va a veces (8 relanzamientos, 6 verdes y 2 rojos).
+//
+// Se monta con la orden `resumen` de verdad y los rojos de verdad, no con dos
+// ficheros escritos a mano: asi lo que se mide es la cadena entera (el `resumen`
+// que escriben los dos gemelos y la `compara` que los juzga), y no una copia
+// de como deberia ser.
+const E2E = 'NEURONiK_WebUiLocalModeE2e';
+const SYNC = 'NEURONiK_WorkletSync';
+const SINCLAS = 'SIN CLASIFICAR: no esta en la lista de conocidos de este script';
+
+{
+    const d = fs.mkdtempSync (path.join (TMP, 'r15'));
+    const lentos = path.join (d, 'lentos.txt');
+    fs.writeFileSync (lentos, '');
+    const rojosSh = path.join (d, 'rojos_sh.txt');
+    const rojosBat = path.join (d, 'rojos_bat.txt');
+    fs.writeFileSync (rojosSh,  '2\t' + SYNC + '\t' + SINCLAS + '\n' +
+                            '2\t' + E2E  + '\t' + SINCLAS + '\n');
+    fs.writeFileSync (rojosBat, '2\t' + SYNC + '\t' + SINCLAS + '\n');
+    const rSh = path.join (d, 'res_sh.txt');
+    const rBat = path.join (d, 'res_bat.txt');
+    corre (['resumen', rojosSh,  rSh,  '0', '53', lentos, '0', '5', '0']);
+    corre (['resumen', rojosBat, rBat, '0', '53', lentos, '0', '5', '0']);
+
+    const c = corre (['compara', rSh, rBat, 'el .sh', 'el .bat']);
+    const texto = pantalla ('EL CASO REAL: WorkletSync en los dos, E2e solo en el .sh', c.out);
+
+    igual ('sale con 3, no con 1', c.rc, 3);
+    ok   ('el texto nombra el test que se ha movido',
+         texto.indexOf (E2E) !== -1, 'salida: ' + texto);
+    ok   ('...y NO nombra el que los dos han visto (eso no se ha movido)',
+         texto.indexOf (SYNC) === -1, 'salida: ' + texto);
+    ok   ('...y dice de que lado lo ha visto',
+         texto.indexOf ('Solo en el .sh') !== -1, 'salida: ' + texto);
+    ok   ('...y no suelta el mensaje de divergencia',
+         texto.indexOf ('NO DICEN LO MISMO') === -1 &&
+         texto.indexOf ('tocado en un gemelo') === -1, 'salida: ' + texto);
+    ok   ('...y dice que se puede relanzar ese test',
+         texto.indexOf ('relanza') !== -1, 'salida: ' + texto);
+    // Con --estricto el mismo caso es una divergencia, y sale con 1. Sin esta
+    // comprobacion, quitar `--estricto` del codigo no se notaria: seguiria
+    // saliendo 3, que es justo el fallo que se quiere poder evitar.
+    igual ('con --estricto el mismo caso sale con 1',
+           corre (['compara', rSh, rBat, 'el .sh', 'el .bat', '--estricto']).rc, 1);
+    // Y el caso de verdad del lado CONTRARIO: el rojo sobrante en el .bat. La
+    // regla es simetrica, y una regla que solo funciona en un sentido es una
+    // regla que sale con 3 cuando no deberia.
+    igual ('tambien en el otro lado (solo en el .bat sale con 3)',
+           corre (['compara', rBat, rSh, 'el .sh', 'el .bat']).rc, 3);
+}
+
+// Y lo que NO es un intermitente. Cada uno de estos salia con 1 antes de este
+// cambio y tiene que seguir saliendo con 1: si alguno pasara a 3, el check
+// habria perdido el diente, que es justo el gasto que hace el `--estricto`.
+//
+// El cuerpo de base es un resumen real: 53 tests, un rojo SIN CLASIFICAR, y sin
+// lentos. Los recuentos van ESCRITOS a mano en cada caso, no calculados: un
+// generador que hiciera la cuenta por nosotros comprobaria que la cuenta cuadra
+// con la cuenta que queremos, y no que el codigo sabecjuzgar una que no cuadra.
+const BASE = 'v\t1\npasos\t5\nconocidos\t0\ntests\t53\n' +
+             'fallos\t1\nmios\t0\najenos\t0\nsinClasificar\t1\n' +
+             'lentos\t0\ntocoTimeout\t0\nhuerfanos\t0\n' +
+             'rojo\t2\t' + SYNC + '\tSIN CLASIFICAR\n';
+const ROJO_E2E = 'rojo\t2\t' + E2E + '\tSIN CLASIFICAR\n';
+// El intermitente que SI cuadra: dos rojos en un lado, los recuentos suben 1.
+const CON_E2E = BASE.replace ('fallos\t1', 'fallos\t2')
+                    .replace ('sinClasificar\t1', 'sinClasificar\t2') + ROJO_E2E;
+
+{
+    const d = fs.mkdtempSync (path.join (TMP, 'r15b'));
+    const par = (nombre, texto) => {
+        const f = path.join (d, nombre);
+        fs.writeFileSync (f, texto);
+        return f;
+    };
+    const ref = par ('ref.txt', BASE);
+    const compara = (nombre, otro) =>
+        corre (['compara', ref, par (nombre + '.txt', otro), 'el .sh', 'el .bat']);
+
+    igual ('el caso que cuadra sale con 3', compara ('ok', CON_E2E).rc, 3);
+
+    // (a) UN LENTO que solo ve uno de los dos. El umbral de lento es una REGLA, y
+    // este script existe para cazar reglas distintas entre gemelos: si se
+    // perdonara, cambiar el umbral en un solo script pasaria desapercibido.
+    //
+    // MEDIDO, y hay que decirlo porque no es lo que parece: quitar la regla que
+    // prohibe los lentos NO hace caer NINGUNA de estas dos comprobaciones. Lo
+    // que las hace caer es la aritmetica de los recuentos: un `lento` no suma en
+    // `fallos`, asi que las lineas que sobran nunca cuadran. Las dos reglas (los
+    // dos lados, y solo-rojo) se han medido y son redundantes con esa cuenta; se
+    // quedan en el codigo porque dicen en voz alta lo que se supone. Estas
+    // comprobaciones, entonces, fijan el RESULTADO (un lento no es un
+    // intermitente), no la regla que lo produce.
+    const conLento = BASE.replace ('lentos\t0', 'lentos\t1') +
+                     'lento\tNEURONiK_Lento\n';
+    const rLento = compara ('lento', conLento);
+    igual ('un lento que solo ve uno sale con 1', rLento.rc, 1);
+    ok   ('...y el texto dice que el umbral de lento NO se perdona',
+         rLento.outR.indexOf ('LENTOS') !== -1 && rLento.outR.indexOf ('no se perdona') !== -1,
+         'salida: ' + rLento.outR);
+    // Y el caso que mas se parece al de verdad: un rojo intermitente PERFECTO
+    // (los recuentos cuadran con la linea que sobra) Y ADEMAS un lento que solo
+    // ve uno. El rojo se perdona; el lento no. Si aqui saliera 3, el lento
+    // estaria pasando por la puerta del rojo, que es justo el agujero.
+    const rojoYLento = CON_E2E.replace ('lentos\t0', 'lentos\t1') +
+                       'lento\tNEURONiK_Lento\n';
+    const rMezcla = compara ('mezcla', rojoYLento);
+    igual ('un rojo intermitente con un lento de mas sale con 1', rMezcla.rc, 1);
+    ok   ('...y el texto avisa de los lentos igualmente',
+         rMezcla.outR.indexOf ('LENTOS') !== -1, 'salida: ' + rMezcla.outR);
+
+    // (b) Lineas que sobran en LOS DOS lados. Aqui no hay "el que fallo mas":
+    // hay dos scripts que cuentan distinto. El caso mas feo de este es un MISMO
+    // test rojo en los dos con distinta clasificacion, y tambien sale con 1.
+    // (Igual que en (a): lo que lo rechaza es la cuenta de `fallos`, no la regla
+    // de "un solo lado", que se ha medido redundante.)
+    const dosLados = CON_E2E + 'rojo\t2\tNEURONiK_Otro\tMIO\n';
+    igual ('lineas que sobran en los dos lados salen con 1', compara ('dos', dosLados).rc, 1);
+    const reclasificado = CON_E2E.replace (SYNC + '\tSIN CLASIFICAR', SYNC + '\tMIO')
+                                .replace ('mios\t0', 'mios\t1')
+                                .replace ('sinClasificar\t2', 'sinClasificar\t1');
+    igual ('el mismo rojo con otra clasificacion sale con 1',
+           compara ('reclas', reclasificado).rc, 1);
+
+    // (c) Las cuentas NO cuadran con las lineas que sobran. Este es el que
+    // importa: si el codigo perdonara cualquier diferencia de rojos, bastaria
+    // con que un gemelo contara mal para que el check saliera con 3 y el
+    // ERROR PASARA POR ALTO. Por eso el intermitente tiene que ser una prueba
+    // aritmetica y no una lista de nombres.
+    const fallosMal = CON_E2E.replace ('fallos\t2', 'fallos\t3');
+    igual ('las lineas sobrantes con un `fallos` que no cuadra salen con 1',
+           compara ('fallos', fallosMal).rc, 1);
+    const miosMal = CON_E2E.replace ('mios\t0', 'mios\t1');
+    igual ('un `mios` que no sube lo que sube la linea MIO sale con 1',
+           compara ('mios', miosMal).rc, 1);
+    const sinClasMal = CON_E2E.replace ('sinClasificar\t2', 'sinClasificar\t1');
+    igual ('un `sinClasificar` que no cuadra sale con 1',
+           compara ('sinc', sinClasMal).rc, 1);
+
+    // (d) Un recuento que NO cuenta rojos se ha movido tambien. Con un rojo
+    // intermitente de por medio, eso es otra causa, y el texto lo dice por su
+    // cuenta para que no haya que adivinarlo.
+    const timeoutMal = CON_E2E.replace ('tocoTimeout\t0', 'tocoTimeout\t1');
+    const rTimeout = compara ('timeout', timeoutMal);
+    igual ('un tocoTimeout que se ha movido sale con 1', rTimeout.rc, 1);
+    ok   ('...y el texto nombra los recuentos que no cuentan rojos',
+         rTimeout.outR.indexOf ('tocoTimeout') !== -1, 'salida: ' + rTimeout.outR);
+    const huerfanosMal = CON_E2E.replace ('huerfanos\t0', 'huerfanos\t3');
+    igual ('unos huerfanos distintos salen con 1', compara ('huerf', huerfanosMal).rc, 1);
+
+    // (e) Y los que ya estaban: iguales, distintos de version, ilegible. No es
+    // que aqui se este tocando nada, es que el 3 nuevo no puede haber movido
+    // de sitio un 0, un 1 ni un 2.
+    igual ('dos resumenes iguales siguen dando 0', compara ('igual', BASE).rc, 0);
+    igual ('versiones distintas siguen dando 1',
+           corre (['compara', ref, par ('v.txt', BASE.replace ('v\t1', 'v\t2')), 'A', 'B']).rc, 1);
+    igual ('un resumen ilegible sigue dando 2',
+           corre (['compara', ref, path.join (d, 'no-existe.txt'), 'A', 'B']).rc, 2);
+}
+
+// ============================================================================
 //  EL RESULTADO
 // ============================================================================
 process.stdout.write ('\n' + '-'.repeat(72) + '\n');

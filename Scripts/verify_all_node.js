@@ -43,7 +43,11 @@
 //               descriptor. Ver `rutaValida`.
 //    bateria    <json> <testdir> <config> [a] [n] [cuenta]
 //               las entradas de la lista cuyo test ya no esta
-//    compara    <resumenA> <resumenB> [nombreA] [nombreB]  0 si dicen lo mismo
+//    compara    <resumenA> <resumenB> [nombreA] [nombreB] [--estricto]
+//               0 si dicen lo mismo, 3 si solo se ha movido un ROJO
+//               INTERMITENTE (ver mas abajo), 1 si no dicen lo mismo y 2 si no
+//               se ha podido comparar. Con `--estricto` el 3 no existe: todo
+//               lo que no cuadra sale con 1.
 //    pidpropio  [destino]                el PID del padre, que es la sesion
 //    leepid     <fichero> [destino]      el PID que hay escrito en un fichero
 //    limpia     <pid> [destino] [ms]    ok|hijos|muertos|resisten, o vivo
@@ -978,6 +982,79 @@ function cmdResumen (entradas, destino, conocidos, tests, lentos, tocoTimeout, p
 //   2. Las LINEAS que sobran en un lado, que es donde esta el nombre del rojo
 //      divergente. Con la cuenta al lado: "solo en el .sh (1)" ya dice bastante
 //      y el nombre lo dice todo.
+//
+// ── EL ROJO INTERMITENTE: LO QUE NO ES UNA DIVERGENCIA ─────────────────────
+//
+// Lo de arriba, tal cual, tiene un fallo que se ha MEDIDO: un test que sale
+// rojo unas veces y verde otras hace que el check diga que los dos scripts no
+// dicen lo mismo, cuando lo que ha pasado es que se ha ejecutado dos veces. El
+// caso de aqui: `NEURONiK_WebUiLocalModeE2e` salio rojo en el .sh y verde en
+// el .bat de la misma corrida (8 relanzamientos: 6 verdes, 2 rojos), y el
+// bloque de abajo solto "una regla se ha tocado en un gemelo y no en el otro".
+// No habia ninguna regla tocada. Y el mensaje que sale es PEOR que un rojo
+// falso: manda a mirar un `diff` que no tiene nada que ver con la causa, y
+// entrena a ignorar el bloque entero.
+//
+// Asi que hay una tercera respuesta, que no es ni "dicen lo mismo" ni "no
+// dicen lo mismo", y sale con 3:
+//
+//   0  dicen lo mismo
+//   1  NO dicen lo mismo: una regla esta en un gemelo y no en el otro
+//   3  dicen lo mismo salvo en un ROJO INTERMITENTE: un test que ha salido
+//      rojo en una de las dos pasadas y verde en la otra
+//
+// LA REGLA, y es una sola pregunta: si se le CUMPLEN al lado que no vio el
+// rojo las lineas que le sobran, los dos vuelven a decir exactamente lo mismo?
+//
+//   - Si vuelven: no hay divergencia, hay una corrida que fallo mas. Se
+//     comprueba solo, con la misma aritmetica que ya se usaba para comparar,
+//     y por eso no es un "me lo parece": la prueba es que los RECUENTOS
+//     cuadran con las lineas. Un `fallos` que no es la diferencia de lineas, o
+//     un `mios` que no sube lo que sube el numero de lineas MIO, NO cuadra, y
+//     eso sale como divergencia.
+//   - Si no: es una divergencia de verdad, y sale con 1 como antes.
+//
+// Y hay tres limites, todos medidos:
+//
+//   1. Las lineas que sobran tienen que estar en UN SOLO lado. Si sobran en los
+//      dos, no es que uno haya visto un rojo mas: es que los dos cuentan
+//      distinto, y de paso se cuela el caso de un mismo test rojo en los dos
+//      con distinta clasificacion (MIO en uno, AJENO en el otro), que es una
+//      divergencia de la regla y no de la maquina.
+//   2. Las lineas que sobran tienen que ser todas `rojo`. Un `lento` que solo
+//      ve uno de los dos NO se perdona, y a proposito: el umbral de "lento" es
+//      una REGLA, y este script existe para cazar reglas distintas entre
+//      gemelos. Un test puede ir rojo a veces (es la maquina); si va lento a
+//      veces, lo que se ha movido es el umbral, y eso hay que verlo.
+//   3. Solo pueden moverse los cuatro recuentos que CUENTAN rojos (`fallos`,
+//      `mios`, `ajenos`, `sinClasificar`). Los demas -- `lentos`,
+//      `tocoTimeout`, `huerfanos`, `pasos`, `conocidos`, `tests` -- no dependen
+//      de que un test salga rojo, asi que si se mueven es que hay otra cosa.
+//
+// QUE LIMITES SON REALES Y CUALES SON REDUNDANTES, MEDIDO (2026-10-02):
+//
+// El (3) y la cuenta de `fallos` son los que de verdad deciden. Se ha medido
+// quitando el (1) y el (2) uno por uno, y NO cae ninguna comprobacion: los dos
+// son implicitos en la aritmetica. La razon del (1) es aritmetica y corta: si
+// `|comunes|` lines tienen los dos, `a` solo las tiene el primero y `b` solo el
+// segundo, entonces `fallos` del primero menos el del segundo es `a - b`, y
+// para que cuadre con las `a` lineas que sobran haria falta `b = 0`.
+//
+// Se quedan los dos, y no por provar nada: dicen EN VOZ ALTA lo que se esta suponiendo.
+// Una regla que se deduce de otra cuenta es una regla que se lee en un sitio y
+// se mantiene en otro, que es justo lo que `diferencia()` se ha puesto aqui
+// para que las dos mitades sean el mismo codigo y no dos cuentas parecidas.
+//
+// Y `--estricto` quita la regla entera, para el caso de que uno quiera el
+// rojo de verdad: no es una opcion decorativa, es la via para no perder el
+// diente. El 3 tampoco se traga nada: dice que tests se han movido y por que
+// no cuenta como divergencia.
+//
+// LO QUE NO SE PUEDE DISTINGUIR, y se dice aqui para que no se piense lo
+// contrario: si un gemelo ve un rojo de verdad y el otro no, por un fallo de
+// parsing y no por una maquina inestable, tambien cuadra. No hay forma de
+// saberlo con dos corridas, y por eso el 3 lista los tests: el que sale en 3
+// hay que relanzarlo, y si vuelve a salir rojo ya no es intermitente.
 function leerResumen (fichero) {
     let texto = '';
     try { texto = fs.readFileSync (fichero, 'utf8'); } catch (e) { return null; }
@@ -993,7 +1070,122 @@ function leerResumen (fichero) {
     return { cabecera, detalle };
 }
 
-function cmdCompara (a, b, nombreA, nombreB) {
+// Lo que NO coincide entre dos resumenes, en las tres piezas que se miran. Sale
+// separado de `cmdCompara` porque lo usan las dos: la que decide y la que
+// comprueba si lo que ha pasado es un intermitente. Si esta comparacion se
+// copiase dentro de cada una, las dos podrian dejar de estar de acuerdo, que es
+// justo lo que este script existe para cazar.
+function diferencia (A, B) {
+    const recuentos = [];
+    const claves = new Set ([...A.cabecera.keys(), ...B.cabecera.keys()]);
+    for (const k of claves) {
+        if (k === 'v') continue;
+        const va2 = A.cabecera.has (k) ? A.cabecera.get (k) : '(ausente)';
+        const vb2 = B.cabecera.has (k) ? B.cabecera.get (k) : '(ausente)';
+        if (va2 !== vb2) recuentos.push ({ clave: k, a: va2, b: vb2 });
+    }
+
+    // Las de detalle, como multiconjuntos: dos rojas del mismo test y paso se
+    // cuentan dos veces, y un Set las fundiria en una.
+    const cuenta = new Map ();
+    for (const l of B.detalle) cuenta.set (l, (cuenta.get (l) || 0) + 1);
+    const soloA = [];
+    for (const l of A.detalle) {
+        const n = cuenta.get (l) || 0;
+        if (n > 0) cuenta.set (l, n - 1); else soloA.push (l);
+    }
+    const soloB = [];
+    for (const [l, n] of cuenta) for (let i = 0; i < n; i++) soloB.push (l);
+    soloA.sort ();
+    soloB.sort ();
+
+    return {
+        recuentos: recuentos,
+        soloA: soloA,
+        soloB: soloB,
+        vacio: recuentos.length === 0 && soloA.length === 0 && soloB.length === 0
+    };
+}
+
+// El codigo de salida de "solo se ha movido un rojo intermitente". Es un 3 y no
+// un 0 a proposito: quien llama tiene que poder distinguirlo del "dicen lo
+// mismo" sin leer el texto, que es lo mismo que se hizo con el 3 del paso 2
+// (lo que no se ha medido no es que este en verde).
+const RC_INTERMITENTE = 3;
+
+// Los cuatro recuentos que dependen de QUE TESTES HAN SALIDO ROJO, y nada mas.
+// Los demas no se mueven por un rojo intermitente, y si se mueven hay otra cosa.
+const CLAVES_DE_ROJO = { fallos: true, mios: true, ajenos: true, sinClasificar: true };
+// El recuento y la etiqueta que pone el `resumen` en cada linea `rojo`. Sin este
+// mapa habria que escribir 'MIO' a pelo en dos sitios, y en cuanto uno se aparta
+// del otro el intermitente se pasa por cuadrar y la divergencia real se tapa.
+const ETIQUETA_DE_CLAVE = {
+    mios: ETIQUETAS.mio,
+    ajenos: ETIQUETAS.ajeno,
+    sinClasificar: ETIQUETAS.desconocido
+};
+
+// La comprobacion del intermitente. Devuelve `null` cuando NO lo es, que es el
+// camino de siempre: entonces el rojo es una divergencia y se dice con 1.
+function comoIntermitente (A, B, d) {
+    // (1) Lineas que sobran en UN SOLO lado, y en UNO. En los dos a la vez no hay un
+    // rojo que se ha escapado: hay dos scripts que cuentan distinto. Y si no
+    // sobra ninguna en ninguno, la diferencia es de recuento y ya se ha visto
+    // antes de llegar aqui. La comparacion es "uno vacio y el otro no": con un
+    // `||` al reves esto devolvia null justo en el caso que queria cazar.
+    if ((d.soloA.length === 0) === (d.soloB.length === 0)) return null;
+    const enA = d.soloA.length > 0;
+    const sobran = (enA ? d.soloA : d.soloB).slice ();
+
+    // (2) Solo `rojo`. Un `lento` que solo ve uno de los dos es el umbral de
+    // lento movido, y el umbral es una regla.
+    if (sobran.some (l => !l.startsWith ('rojo' + '\t'))) return null;
+
+    // (3) Solo los cuatro recuentos que cuentan rojos.
+    for (const r of d.recuentos) if (!CLAVES_DE_ROJO[r.clave]) return null;
+
+    // Cuantas de las lineas que sobran son de cada clasificacion. El cuarto
+    // campo de una linea `rojo` es la etiqueta, y es la misma que escribe
+    // `resumen` con `clasifica()`.
+    const porEtiqueta = new Map ();
+    for (const l of sobran) {
+        const etiqueta = l.split ('\t').slice (3).join ('\t');
+        porEtiqueta.set (etiqueta, (porEtiqueta.get (etiqueta) || 0) + 1);
+    }
+
+    const numero = (res, clave) => {
+        if (!res.cabecera.has (clave)) return null;
+        const n = Number (res.cabecera.get (clave));
+        return Number.isFinite (n) ? n : null;
+    };
+
+    const masRojos = enA ? A : B;
+    const menosRojos = enA ? B : A;
+
+    // `fallos` tiene que ser exactamente la diferencia de lineas. Si el numero
+    // de rojos no se mueve lo mismo que las lineas, los recuentos no estan
+    // contando lo que dicen las lineas, y eso ya no es una maquina inestable:
+    // es una cuenta rota en un gemelo.
+    const fMas = numero (masRojos, 'fallos');
+    const fMenos = numero (menosRojos, 'fallos');
+    if (fMas === null || fMenos === null) return null;
+    if (fMas - fMenos !== sobran.length) return null;
+
+    // Y cada clasificacion tiene que subir lo que le toca. Se mira TODAS, no
+    // solo las que difieren: si de las lineas que sobran hay una MIO y el
+    // `mios` no ha subido, la cuenta no cuadra aunque el `fallos` si.
+    for (const clave of Object.keys (ETIQUETA_DE_CLAVE)) {
+        const cMas = numero (masRojos, clave);
+        const cMenos = numero (menosRojos, clave);
+        if (cMas === null || cMenos === null) return null;
+        const esperado = cMenos + (porEtiqueta.get (ETIQUETA_DE_CLAVE[clave]) || 0);
+        if (cMas !== esperado) return null;
+    }
+
+    return { enA: enA, sobran: sobran, porEtiqueta: porEtiqueta };
+}
+
+function cmdCompara (a, b, nombreA, nombreB, estricto) {
     const etA = String (nombreA || 'A');
     const etB = String (nombreB || 'B');
 
@@ -1018,48 +1210,88 @@ function cmdCompara (a, b, nombreA, nombreB) {
         process.exit (1);
     }
 
-    const recuentos = [];
-    const claves = new Set ([...A.cabecera.keys(), ...B.cabecera.keys()]);
-    for (const k of claves) {
-        if (k === 'v') continue;
-        const va2 = A.cabecera.has (k) ? A.cabecera.get (k) : '(ausente)';
-        const vb2 = B.cabecera.has (k) ? B.cabecera.get (k) : '(ausente)';
-        if (va2 !== vb2) recuentos.push ({ clave: k, a: va2, b: vb2 });
-    }
+    const d = diferencia (A, B);
 
-    // Las de detalle, como multiconjuntos: dos rojas del mismo test y paso se
-    // cuentan dos veces, y un Set las fundiria en una.
-    const cuenta = new Map ();
-    for (const l of B.detalle) cuenta.set (l, (cuenta.get (l) || 0) + 1);
-    const soloA = [];
-    for (const l of A.detalle) {
-        const n = cuenta.get (l) || 0;
-        if (n > 0) cuenta.set (l, n - 1); else soloA.push (l);
-    }
-    const soloB = [];
-    for (const [l, n] of cuenta) for (let i = 0; i < n; i++) soloB.push (l);
-    soloB.sort ();
-
-    if (recuentos.length === 0 && soloA.length === 0 && soloB.length === 0) {
+    if (d.vacio) {
         process.stdout.write ('  Dicen lo mismo: ' + A.detalle.length + ' line(s) de detalle, ' +
                               (A.cabecera.size - 1) + ' recuento(s), sin una sola diferencia.\n');
         process.exit (0);
     }
 
+    // ── EL TERCER VEREDICTO: SOLO SE HA MOVIDO UN ROJO INTERMITENTE ─────────
+    // Va antes del bloque de "NO DICEN LO MISMO" porque es el caso que hay que
+    // EXPLIAR, no el que hay que avisar: un rojo que sale a veces no es una
+    // divergencia y el mensaje de la divergencia manda a mirar un `diff` que no
+    // tiene nada que ver. Y va antes a proposito tambien porque el 1 se queda
+    // exactamente como estaba: lo que no cuadra sigue siendo lo que no cuadra.
+    if (!estricto) {
+        const inter = comoIntermitente (A, B, d);
+        if (inter) {
+            const enQuien = inter.enA ? etA : etB;
+            const enCual  = inter.enA ? etB : etA;
+            process.stdout.write ('\n  ' + etA + ' y ' + etB +
+                                  ' DICEN LO MISMO salvo en un ROJO INTERMITENTE.\n');
+            process.stdout.write ('\n  Estos tests han salido rojos en una de las dos pasadas y verdes\n');
+            process.stdout.write ('  en la otra. Solo en ' + enQuien + ':\n');
+            for (const l of inter.sobran) {
+                const p = l.split ('\t');
+                process.stdout.write ('        ' + (p[2] || l) + '   (paso ' + (p[1] || '?') +
+                                      ', ' + (p[3] || '?') + ')\n');
+            }
+            // El nombre va entre parentesis y NO pegado a una preposicion, porque los dos
+            // nombres que se usan llevan articulo ("el .sh", "el .bat", "el
+            // primero") y sale "a el .bat" en cuanto se le pone algo delante.
+            process.stdout.write ('\n  Por que no cuenta como divergencia: sumadas al lado que no las vio (' +
+                                  enCual + '),\n');
+            process.stdout.write ('  las lineas que sobran hacen que los dos resumenes coincidan linea a linea, y\n');
+            process.stdout.write ('  los recuentos CUADRAN con esas lineas. Un rojo a veces es la maquina; una\n');
+            process.stdout.write ('  regla tocada en un gemelo no cuadra, y sale por la puerta de al lado.\n');
+            process.stdout.write ('\n  Que hacer: relanza esos tests (ctest -R <nombre>, sin el build entero). Si\n');
+            process.stdout.write ('  vuelven a salir verdes, era eso. Si vuelven a salir rojos, ya no es\n');
+            process.stdout.write ('  intermitente: es un fallo de verdad, y lo que hay que arreglar es el test.\n');
+            process.stdout.write ('\n  Esto sale con ' + RC_INTERMITENTE + ', no con 0, para que se distinga del "dicen lo\n');
+            process.stdout.write ('  mismo" sin leer el texto. Con --estricto se ve esto mismo como 1.\n');
+            process.exit (RC_INTERMITENTE);
+        }
+    }
+
     process.stdout.write ('\n  ' + etA + ' y ' + etB + ' NO DICEN LO MISMO sobre el mismo build.\n');
-    if (recuentos.length > 0) {
+    if (d.recuentos.length > 0) {
         process.stdout.write ('\n  estos recuentos no coinciden:\n');
-        for (const r of recuentos) {
+        for (const r of d.recuentos) {
             process.stdout.write ('        ' + r.clave + '        ' + r.a + '  (' + etA + ')   ' + r.b + '  (' + etB + ')\n');
         }
     }
-    if (soloA.length > 0) {
-        process.stdout.write ('\n  solo en ' + etA + ' (' + soloA.length + '):\n');
-        for (const l of soloA.sort ()) process.stdout.write ('        ' + l.replace (/\t/g, '  ') + '\n');
+    if (d.soloA.length > 0) {
+        process.stdout.write ('\n  solo en ' + etA + ' (' + d.soloA.length + '):\n');
+        for (const l of d.soloA) process.stdout.write ('        ' + l.replace (/\t/g, '  ') + '\n');
     }
-    if (soloB.length > 0) {
-        process.stdout.write ('\n  solo en ' + etB + ' (' + soloB.length + '):\n');
-        for (const l of soloB) process.stdout.write ('        ' + l.replace (/\t/g, '  ') + '\n');
+    if (d.soloB.length > 0) {
+        process.stdout.write ('\n  solo en ' + etB + ' (' + d.soloB.length + '):\n');
+        for (const l of d.soloB) process.stdout.write ('        ' + l.replace (/\t/g, '  ') + '\n');
+    }
+
+    // Lo que se ha movido y NO se perdona, dicho por el nombre del campo. Un
+    // rojo intermitente queda fuera del bloque de arriba a proposito, asi que
+    // esto solo sale cuando hay algo mas, y lo que sale es una pista de por
+    // donde mirar. La mas importante es la de los LENTOS: un `lento` que solo ve
+    // uno de los dos NO se perdona, porque el umbral de lento es una regla y este
+    // script existe justo para ver si las dos reglas son iguales.
+    const movidos = d.soloA.concat (d.soloB).filter (l => l.startsWith ('lento' + '\t'));
+    if (movidos.length > 0) {
+        process.stdout.write ('\n  Y ADEMAS se ha movido la lista de LENTOS, que no se perdona: el umbral de\n');
+        process.stdout.write ('  "lento" es una REGLA, y comparar reglas distintas es justo lo que este\n');
+        process.stdout.write ('  script existe. Un test puede salir rojo a veces, que es la maquina; si sale\n');
+        process.stdout.write ('  lento a veces, lo que se ha movido es el umbral, y eso hay que verlo.\n');
+    }
+    const otros = d.recuentos.filter (r => !CLAVES_DE_ROJO[r.clave]).map (r => r.clave);
+    // El `lentos` ya lo ha dicho el bloque de arriba, linea por linea: repetirlo
+    // aqui seria decir dos veces lo mismo, y un bloque que repite se lee como
+    // dos avisos en lugar de como uno.
+    if (otros.length > 0 && movidos.length === 0) {
+        process.stdout.write ('\n  Y ademas los recuentos que NO cuentan rojos tampoco cuadran (' +
+                              otros.join(', ') + '). Un rojo intermitente no los toca:\n');
+        process.stdout.write ('  eso es otra causa, y hay que mirarla antes que el nombre del rojo.\n');
     }
     process.stdout.write ('\n  Los dos scripts tienen que decir lo mismo del MISMO build. Si uno tiene\n');
     process.stdout.write ('  mas rojos, no es que el otro no los vea: es que cada uno lleva su cuenta.\n');
@@ -1399,7 +1631,8 @@ switch (orden) {
 
     case 'resumen':   cmdResumen    (argv[1], argv[2], argv[3], argv[4], argv[5], argv[6], argv[7], argv[8]); break;
     case 'bateria':   cmdBateria    (argv[1], argv[2], argv[3], argv[4], argv[5], argv[6]); break;
-    case 'compara':   cmdCompara    (argv[1], argv[2], argv[3], argv[4]); break;
+    case 'compara':   cmdCompara    (argv[1], argv[2], argv[3], argv[4],
+                                     argv.indexOf ('--estricto') !== -1); break;
 
     case 'conocidos': cmdConocidos  (argv[1], argv[2]); break;
     case 'cuenta':    cmdCuenta     (argv[1], argv[2]); break;
@@ -1433,6 +1666,7 @@ switch (orden) {
         process.stderr.write ('  rancios <testdir> <config> [a] [n] [--sin-build] [--medidos=RUTA] [construidos...]  tests con el .exe mas viejo que el codigo\n');
         process.stderr.write ('  arreglados <json> <rojos> [a] [n] [no-medidos]  los conocidos que ya no fallan; los no medidos salen SIN MEDIR\n');
         process.stderr.write ('  bateria <json> <testdir> <config>\n');
-        process.stderr.write ('  compara | pidpropio | leepid\n');
+        process.stderr.write ('  compara <resumenA> <resumenB> [nombreA] [nombreB] [--estricto]  0 igual, 3 solo intermitente, 1 distinto\n');
+        process.stderr.write ('  pidpropio | leepid\n');
         process.exit (2);
 }

@@ -9181,3 +9181,81 @@ sigue en rojo por esto y solo por esto.
 > Canon: cuando un rojo es de otro hilo, la anotacion que vale es la MEDIDA que lo declara
 > suyo (hashes, bytes, fechas, relanzamientos), no el "ya lo mirara quien lo puso". Con eso el
 > rojo se puede ignorar sin volver a abrirlo.
+
+---
+
+## 2026-10-02 -- el check de gemelos: un rojo intermitente deja de ser una divergencia
+
+**Lo que pasaba.** El check completo dio `rc=1` en 375 s por el
+`NEURONiK_WebUiLocalModeE2e`, que es flaky (8 relanzamientos: 6 verdes, 2 rojos).
+El `.sh` lo corrió en rojo y el `.bat` en verde, y el bloque final del check soltó
+*"una regla se ha tocado en un gemelo y no en el otro"*. No había ninguna regla
+tocada. Ese mensaje es **peor** que un rojo falso: manda a mirar un `diff` que no
+tiene nada que ver con la causa, y entrena a ignorar el bloque entero.
+
+**Lo que hay ahora: TRES veredictos, no dos.**
+
+| Veredicto | Qué ha pasado | Qué hacer |
+|---|---|---|
+| `0` | Dicen lo mismo. | Nada. |
+| `3` | Dicen lo mismo salvo en un **rojo intermitente**. | Relanzar ese test (`ctest -R <nombre>`). |
+| `1` | No dicen lo mismo: hay una regla en un gemelo y no en el otro. | El `diff` del check, y cambiar la regla en los dos. |
+
+El `3` lo pone la orden `compara` (para que quien la llame lo distinga del `0` sin
+leer el texto) y `verify_all_check.sh` lo traduce a un bloque propio y sale en **0**,
+porque comparar dos corridas de un test que a veces falla no dice nada de los dos
+scripts. Con `--comparar` el `3` se propaga tal cual: ese modo se usa para mirar
+logs viejos y preguntar por código.
+
+**La regla no es una lista de nombres: es una prueba aritmetica.** Si se le suman
+al lado que no vio el rojo las lineas que le sobran, los dos resumenes tienen que
+coincidir linea a linea **y los recuentos tienen que cuadrar con esas lineas**. Un
+`fallos` que no es la diferencia de lineas, o un `mios` que no sube lo que sube el
+numero de lineas MIO, no cuadra y sale con `1` como antes. Eso es lo que impide
+que un error de cuenta en un gemelo se esconda de intermitente.
+
+**Dos cosas que no se perdonan**, aunque el otro test cuadre:
+
+- **Un `lento` que solo ve uno de los dos.** El umbral de "lento" es una REGLA y el
+  check existe para cazar reglas distintas: un test puede ir rojo a veces, pero si
+  va lento a veces lo que se ha movido es el umbral. Sale con el texto que lo dice.
+- **Un recuento que no cuenta rojos** (`lentos`, `tocoTimeout`, `huerfanos`,
+  `pasos`, `conocidos`, `tests`). El intermitente no los toca, asi que si se mueven
+  hay otra causa, y el texto nombra los campos.
+
+Y `--estricto` quita el tercer veredicto: todo lo que no cuadra sale con `1`. No se
+pasa a los dos verify (no lo entenderian y se negaria a arrancar): cambia COMO se
+juzga la diferencia, y ese juicio es del check.
+
+**Medido.** Seccion 15 del selftest, 24 comprobaciones nuevas (214 -> **238**, todas
+en verde). Los cuatro caminos del check, con los dos gemelos falseados para no
+pagar dos verificaciones enteras:
+
+| Camino | Resultado medido |
+|---|---|
+| Intermitente (el E2e rojo solo en el .sh) | `rc=0` con el bloque `INTERMITENTE` y los tests nombrados |
+| El mismo con `--estricto` | `rc=1`, mensaje de divergencia sin cambios |
+| Los dos resumenes iguales | `rc=0`, mensaje de siempre |
+| Un `lento` solo en el .bat | `rc=1`, con los dos avisos extra |
+
+**Mutaciones de la regla** (238 comprobaciones en verde sin mutar): no cuadrar
+`fallos` con las lineas **1 FALLA**; no comprobar la clasificacion **2**; perdonar
+cualquier recuento **3**; ignorar `--estricto` **1**; la condicion de "un solo lado"
+escrita al reves **6** (fue el fallo del primer intento, y por eso esta fila vale);
+salir con `0` en vez de con `3` **3**.
+
+Y dos que **no hacen caer ninguna**, con la razon anotada en el codigo:
+perdonar tambien los `lento`, y perdonar lineas que sobran en los dos lados. Las
+dos son redundantes con la cuenta de `fallos`, y la segunda por aritmetica pura: si
+`a` lineas sobran en el primero y `b` en el segundo, la diferencia de `fallos` es
+`a - b`, y para que cuadre con las `a` haria falta `b = 0`. Se quedan en el codigo
+porque son la explicacion en voz alta de lo que la cuenta ya implica.
+
+> Canon: una regla nueva es una puerta que se abre, y lo que hay que probar sobre
+> todo no es que se abra, sino que **no se abra de mas**. Aqui la lista util es la
+> de los casos que tienen que seguir saliendo con 1, y por eso la seccion 15 es mas
+> larga que la del caso bueno.
+
+> Canon: una comprobacion que no cae con ninguna mutacion no esta vigilando nada,
+> aunque el codigo que vigila sea correcto. Se queda, pero anotado como lo que es:
+> una segunda red que la aritmetica ya cubre, no una prueba.
