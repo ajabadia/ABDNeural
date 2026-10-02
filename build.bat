@@ -160,6 +160,27 @@ REM El orden IMPORTA, y ahora va de abajo arriba: el .wasm lo produce la WASM,
 REM la WebUI lo copia a su dist (publicDir = WebUI\public) y el PLUGIN lo
 REM EMBIBE (juce_add_binary_data sobre WebUI\dist/*). Compilar el plugin antes
 REM dejaba dentro el bundle de la pasada ANTERIOR.
+
+REM Los enlaces del WORKSPACE (`@abdsynths/shared` y `@abdsynths/midi-keyb`) no se
+REM bajan: son enlaces a los repos de al lado, y los escribe pnpm con la ruta tal
+REM cual la ve el shell (POSIX), que Node lee como `D:\d\...` y no resuelve. El
+REM paso 4 se para entonces con un "Rollup failed to resolve" que no habla de
+REM enlaces, y los E2E de navegador se caen por el pre-transform error del dev
+REM server. El script los deja como junctions —junction es el unico enlace que
+REM `mklink` hace sin pedir administrador— y sale con 1 si algo se queda sin
+REM resolver. Va antes del paso 3 porque el WASM sincroniza a
+REM WebUI\public\worklet, que es parte del mismo arbol. Detalle medido en
+REM Scripts\COMO-ARREGLAR-EL-BUILD.md (sexto atranco).
+call "%~dp0Scripts\junctions-workspace.bat"
+if !ERRORLEVEL! neq 0 (
+    echo.
+    echo [ERROR] Los enlaces del workspace no resuelven, asi que los pasos que
+    echo         usan la WebUI ^(WASM, export y E2E^) fallarian sin decir por que.
+    echo         El sexto atranco de Scripts\COMO-ARREGLAR-EL-BUILD.md.
+    set "EXIT_CODE=1"
+    goto :finish
+)
+
 echo.
 echo [3/9] Compilando el DSP a WebAssembly (worklet + paridad + smoke)...
 if "%WITH_WASM%"=="0" goto :no_wasm

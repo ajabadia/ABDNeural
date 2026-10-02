@@ -319,6 +319,102 @@ en el informe que los cuenta. Antes salia con 0. Lo cubren las secciones 12, 13
 y 14 de `Scripts/selftest_verify_all_node.js`: la lista que deja `rancios`, el
 choque montado, la pantalla con una entrada real, y los motivos distintos.
 
+## El sexto atranco, este del 2026-10-02: los enlaces del workspace que no resuelven
+
+Este es el que mas caro salio, y no por lo que rompe: por **cuanto** rompe.
+
+### Que falla, exactamente
+
+El paso 4 de `build.bat` (exportar la WebUI) se para con esto:
+
+```
+[vite]: Rollup failed to resolve import "@abdsynths/shared/components/wheel.js" from
+  "D:/desarrollos/ABDSynths/ABDSharedCode/MidiKeyboard/src/keyboard.js".
+```
+
+Es decir: nueve minutos de compilación para un error de un enlace de cuatro
+lineas, en un `node_modules` que no es el de la pagina.
+
+### De donde viene
+
+Los paquetes del workspace (`@abdsynths/shared` y `@abdsynths/midi-keyb`) no se
+bajan: **son enlaces a los repos de al lado**. Los escribe `pnpm`, y los escribe
+con la ruta tal cual la ve el shell, que en esta maquina es POSIX. Medido:
+
+```
+WebUI/node_modules/@abdsynths/shared -> /d/tmp/ws12/ABDSharedAssets
+```
+
+`/d/tmp/ws12` **no existe** (es un arbol de pnpm fantasma de otra sesion), y
+aunque existiera Node leeria `/d/...` como `D:\d\...`. El enlace esta ahi, la
+carpeta parece, y no resuelve.
+
+Lo que lo hace confuso es que **el mismo paquete se resuelve bien y mal segun
+quien mire primero**. La pagina entra por `MidiKeyboard/src`, y ahi el enlace
+roto gana a la junction buena de `WebUI/node_modules`. Un paquete que funcionaba
+desde la pagina se dejo de resolver en el mismo build, sin que nadie tocase una
+linea de codigo: cambio quien gaina el orden de resolucion.
+
+### El rodeo: junctions, y por que junction
+
+`mklink /D` (symlink) **pide privilegios de administrador y falla** en esta
+maquina (medido: "Carece de privilegios suficientes"). `mklink /J` (junction) no
+los pide y es lo que Windows usa de nativo para esto.
+
+Eso es un `Scripts/junctions-workspace.bat`, que hace los tres enlaces que hay
+(WebUI x2, MidiKeyboard x1) y **se ejecuta despues de cada `pnpm install`**, que
+es lo que los vuelve a escribir como symlink. Es idempotente: si ya resuelven, lo
+dice y no toca nada.
+
+```bash
+cd /d/desarrollos/ABDSynths/ABDNeural
+cmd //c "Scripts\junctions-workspace.bat"
+```
+
+```
+  [OK]      shared en ...\WebUI\node_modules ya apunta a D:\...\ABDSharedAssets
+  [OK]      midi-keyb en ...\WebUI\node_modules ya apunta a D:\...\MidiKeyboard
+  [OK]      shared en ...\MidiKeyboard\node_modules ya apunta a D:\...\ABDSharedAssets
+
+RESULTADO: OK, todos los enlaces del workspace resuelven.
+```
+
+Sale con **1** si algo se queda sin resolver, y avisa de cual. Los cuatro casos
+que se midieron: `[OK]` (ya bien), `[NUEVO]` (no estaba), `[ROTO]` (existe pero
+no resuelve) y `[SE PASA]` (aun no hay `node_modules`). En el roto borra el
+enlace con `rmdir` —que quita junctions y symlinks sin pedir nada— y solo si eso
+falla intenta un `ren`; si tampoco, avisa de que la causa probable es el store
+bloqueado del cuarto atranco.
+
+### Que se mide al quitarlo
+
+El rodeo de junctions tapa un sintoma que **tambien aparece en el servidor de
+desarrollo**, y ese no lo arregla:
+
+```
+Pre-transform error: Failed to resolve import "@abdsynths/shared/components/wheel.js"
+  from ".../ABDSharedCode/MidiKeyboard/src/keyboard.js"
+```
+
+Con el enlace roto, el primer GET a `/needle-probe/` tardaba **20 s** (despues
+9 s con las junctions), y los presupuestos de `WebUI/playwright.config.js` son
+**15 s** de navegacion y **120 s** de arranque de servidor. Por ahi se caian
+`NEURONiK_WebUiLocalModeE2e` y `NEURONiK_WebUiVisualRegression`, con un
+"Timed out waiting 120000ms from config.webServer" que no decia nada de
+enlaces. Medido el 2026-10-02: los dos en verde con las junctions puestas.
+
+### Como se comprueba
+
+```bash
+cd /d/desarrollos/ABDSynths/ABDNeural
+
+# Que los tres enlaces resuelven de verdad (tiene que salir 3)
+cmd //c "Scripts\junctions-workspace.bat" | grep -c "\[OK\]"
+
+# Y que el paso 4 del build pasa
+cd WebUI && pnpm build
+```
+
 ## Lo que sigue sin arreglarse
 
 Nada de lo de esta pagina. Los `WebUi*E2e` y los dos vitest estan arreglados, y
@@ -326,5 +422,11 @@ la lista de conocidos (`Scripts/verify_all_known.json`) esta **vacia**: no queda
 ningun rojo conocido.
 
 Lo que queda es el store v10, que sigue ahi y sigue bloqueado. No molesta
-mientras nadie instale con pnpm 10, y seArrange en cuanto se reinstale todo con
+mientras nadie instale con pnpm 10, y se arregla en cuanto se reinstale todo con
 el pnpm del `packageManager`.
+
+Y ahora tambien los enlaces del workspace: `junctions-workspace.bat` los deja
+bien, pero es un paso a mano que hay que recordar **despues de cada
+`pnpm install`**. El arreglo de verdad seria que pnpm los escribiera con
+`--config.symlink=false` o que el build los hiciera solo; hasta entonces, el
+paso manual es lo que hay.
