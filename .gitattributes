@@ -44,6 +44,14 @@ CMakeLists.txt text eol=lf
 *.md text eol=lf
 
 # Herramientas
+
+# El hook de pre-commit lo ejecuta git con sh, y NO lleva extension, asi que sin
+# esto cae en `* text=auto` y un checkout en Windows lo devuelve con CRLF. Un sh
+# con CRLF no arranca: sh se come el retorno de carro como si fuera parte del
+# comando, y el fallo sale como un error de sintaxis que no menciona los .bat.
+# MEDIDO el 2026-10-03 en git for Windows, que es justo donde tiene que funcionar.
+Scripts/hooks/pre-commit text eol=lf
+
 *.py text eol=lf
 *.sh text eol=lf
 # Batch: CRLF, y POR SEPARADO del resto de "Herramientas".
