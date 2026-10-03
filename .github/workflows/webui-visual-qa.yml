@@ -524,15 +524,26 @@ jobs:
 
       # ── JUCE ───────────────────────────────────────────────────────────────
       # Tres caminos, en este orden: la variable de entorno, el `C:/JUCE` que ya
-      # mira CMakeLists, y el mirror publico. La version va FIJADA a 8.0.12, que
+      # mira CMakeLists, y el mirror publico. La version va FIJADA a 9.0.3, que
       # es la que hay en la maquina de desarrollo: sin fijar, `master` del mirror
       # puede mover un `juce::` bajo los pies y el fallo se lee como si fuera
       # del codigo de este repo.
+      #
+      # MEDIDO por que 9.0.3 y no una 8.0.x mas reciente. Las cuatro ultimas
+      # 8.0.x (12, 13, 14 y 15) declaran `JUCE_WASM` en juce_TargetPlatform.h
+      # pero no tienen ninguna entrada para ese caso en
+      # juce_ThreadPriorities_native.h, de modo que la tabla `table` de
+      # ThreadPriorities sale VACIA y el `static_assert (std::size (table) == 5)`
+      # de esa cabecera revienta al compilar juce_core.cpp con em++. La rama
+      # `#if JUCE_WASM` solo existe a partir de 9.x. Reproducido con la linea de
+      # comando exacta del rojo: con 8.0.12 salen 7 errores y exit 1; con 9.0.3
+      # exit 0. Subir de major es lo que cuesta menos: el resto de la serie 8 no
+      # arregla el fallo y esta version es la que ya compila en la maquina.
       - name: Resolve JUCE
         shell: bash
         run: |
           set -euo pipefail
-          JUCE_VERSION='8.0.12'
+          JUCE_VERSION='9.0.3'
 
           if [ -n "${JUCE_PATH:-}" ] && [ -f "${JUCE_PATH}/CMakeLists.txt" ]; then
             echo "JUCE desde la variable de entorno: ${JUCE_PATH}"
