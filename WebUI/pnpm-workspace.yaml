@@ -16,3 +16,27 @@ packages:
   - '.'
   - '../../ABDSharedAssets'
   - '../../ABDSharedCode/MidiKeyboard'
+# allowBuilds, Y POR QUE NO onlyBuiltDependencies. pnpm >= 11 dejo de leer
+# `onlyBuiltDependencies`, ni aqui ni en el campo `pnpm` de package.json. Con la
+# clave vieja el install termina el trabajo y sale con 1: ERR_PNPM_IGNORED_BUILDS,
+# que es el peor resultado posible porque un install que parece hecho y no lo
+# esta. Es la misma tabla que la del workspace raiz de la suite, y con los
+# mismos motivos:
+#
+#   esbuild   -> true: su postinstall deja el binario en su sitio, y sin el no
+#               funcionan ni el vite ni el vitest de esta WebUI.
+#   puppeteer -> false: lo trae ABDSharedCode/MidiKeyboard como devDependency y
+#               solo lo usa `MidiKeyboard/demo/capture.mjs`, que graba el gif de
+#               la demo. NINGUN test de este workspace lo necesita. Su
+#               postinstall descarga ~150 MB de Chromium. Para cuando haga
+#               falta, y solo entonces:
+#               `PUPPETEER_SKIP_DOWNLOAD=0 pnpm rebuild puppeteer`.
+#
+# MEDIDO 2026-10-03 sobre `node_modules/.pnpm` de este workspace: son
+# EXACTAMENTE estos dos los paquetes con `preinstall`/`install`/`postinstall`, y
+# por eso la tabla no cita `core-js` ni `midi` como la del workspace raiz. False
+# NO es lo mismo que no mencionarlo: mencionarlo deja constancia de que se ha
+# revisado, que es justo lo que evita volver a preguntar en el proximo install.
+allowBuilds:
+  esbuild: true
+  puppeteer: false
