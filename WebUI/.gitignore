@@ -2,6 +2,20 @@ node_modules/
 dist/
 *.log
 
+# Carpetas de recuperacion de node. MEDIDO el 2026-10-03: `node_modules.viejo`
+# era una COPIA del arbol de la WebUI que alguien dejo al lado de la buena. De lo
+# que quedaba al intentar borrarla (despues de varios `rm` a medias) se midieron
+# 837 ficheros en 559 directorios, y el tamano real era mayor: no se puede decir
+# cuantos habia antes. No es un symlink al store: son los ficheros, y por eso
+# `pnpm install` no la ve, nada la reclama, y git la ofrece como untracked en
+# cada `git status` de la raiz sin que se entienda de donde ha salido.
+#
+# Es la misma clase de fallo que el `node_modules_ok` de ABDSharedAssets, y por
+# eso la regla es EXPLICITA y no un `node_modules.*`: mencionar cada una deja
+# constancia de que se ha visto, que es lo que evita que la siguiente aparezca
+# sin que nadie mire. Una regla de superficie no dice nada del proximo.
+/node_modules.viejo/
+
 # Salida de Playwright (E2E de navegador, `pnpm test:e2e`).
 test-results/
 playwright-report/
