@@ -12,7 +12,9 @@
  *
  * Ninguna de las dos es un control (no tiene parámetro propio ni gesto), así
  * que no ocupan celda y no entran en el encaje — igual que la curva que
- * sustituyen y el resumen de la matriz.
+ * sustituyen y el resumen de la matriz. Las curvas pintan con la vista
+ * compartida `createEnvelopeCurve` (`@abdsynths/shared/components`); su
+ * geometria y el detalle del gesto editable viven en el paquete.
  *
  * Las rutas NO se copian a mano: se leen del PROPIO estado de la matriz (los
  * doce ids mod1..mod4). El catálogo `envelope-routes` declara ESO (los ids de
@@ -24,7 +26,12 @@
  */
 
 import { choiceIndexFromNormalized, displayText, realFromNormalized } from '../contracts/paramValue.js';
-import { createEnvelopeCurve } from './envelopeCurve.js';
+// La curva ADSR es de la FAMILIA compartida desde el 2026-09-29 (migrada de
+// src/ui/envelopeCurve.js, borrado: cero copia local). El mapeo
+// normalizado->real sigue siendo de aqui (realFromNormalized, el skew del
+// contrato); la vista compartida lo recibe por su `toReal` (default
+// identidad: pintar desde valores REALES es su contrato).
+import { createEnvelopeCurve } from '@abdsynths/shared/components';
 
 /** Ids de los slots de la matriz (orden del reparto): la vista los cruza sola. */
 export const MATRIX_ROUTE_IDS = [
@@ -165,6 +172,12 @@ function createCanvasCurves({ envControls, routeControls, onTelemetry }) {
       label: identity.label,
       title: identity.title,
       aria: identity.aria,
+      // El caption con la CLASE LOCAL de etiqueta de celda: el mismo texto y
+      // el mismo estilo que cuando la curva vivia aqui.
+      captionClass: 'cell__label',
+      // El skew del contrato: la vista compartida pinta desde valores REALES
+      // y el normalizado->real es de aqui (como cuando la curva era local).
+      toReal: realFromNormalized,
     });
 
     const column = document.createElement('div');
@@ -311,6 +324,9 @@ function createDrawerBlocks({ envControls, ids, routeControls = [], onTelemetry 
       label: '',
       title: `Curva de la envolvente ${identity.label.replace('ENV ', '')}`,
       aria: `Curva ADSR de la envolvente ${identity.label.replace('ENV ', '')}`,
+      // El skew del contrato, igual que el lienzo: sin el, la curva se pinta
+      // con los valores NORMALIZADOS y su forma cambia.
+      toReal: realFromNormalized,
     });
 
     const bar = document.createElement('div');

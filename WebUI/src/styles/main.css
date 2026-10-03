@@ -349,39 +349,11 @@ body {
   overflow: visible;
 }
 
-.envelope-curve__line {
-  fill: none;
-  stroke: var(--color-accent, #00c3ff);
-  stroke-width: 1.5;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
-}
-
-.envelope-curve__area {
-  fill: color-mix(in srgb, var(--color-accent, #00c3ff) 18%, transparent);
-  stroke: none;
-}
-
-/*
- * AGUJA de nivel (telemetria en vivo): la senal que la envolvente esta sacando
- * AHORA (frame.envelopes[amp|filter]), como una linea a lo ancho de la curva.
- * Autoiluminada como el LCD del espectral: no cambia con el tema, para que la
- * senal se lea igual en oscuro y en claro. Oculta (opacity 0) por debajo del
- * suelo de silencio — dataset.visible lo conmuta la vista.
- */
-.envelope-curve__level {
-  fill: none;
-  stroke: var(--color-lcd-text, #44ff77);
-  stroke-width: 1;
-  stroke-dasharray: 3 3;
-  opacity: 0;
-  transition: opacity 120ms linear;
-  vector-effect: non-scaling-stroke;
-}
-
-.envelope-curve__level[data-visible="true"] {
-  opacity: 0.9;
-}
+/* El trazo, el relleno y la AGUJA de nivel de la curva ya no viven aqui: la
+   curva pinta con la vista compartida y SU hoja trae esas reglas
+   (@abdsynths/shared, styles/components/envelope.css, importada en app.js).
+   Los valores son los mismos: acento 1.5, relleno 18%, aguja LCD punteada con
+   transicion de 120 ms y opacity 0.9 visible. */
 
 /* --- ENVOLVENTES: dos curvas + rutas de la matriz (lienzo) ---------------- */
 
@@ -421,9 +393,13 @@ body {
 }
 
 /* La curva llena SU fila (sin el centrado de la vista suelta): etiqueta y
-   dibujo a lo ancho de la columna. */
-.env-curves__column .card__visual {
+   dibujo a lo ancho de la columna. La curva pinta con la clase de la FAMILIA
+   compartida (@abdsynths/shared, components/envelopePad.js). El flex-end era
+   de la clase vieja (.card__visual) y se conserva: la curva sigue anclada
+   abajo de su fila como siempre. */
+.env-curves__column .abd-envpad--view {
   align-items: stretch;
+  justify-content: flex-end;
 }
 
 .env-curves__routes {
@@ -596,14 +572,17 @@ body {
   outline-offset: 1px;
 }
 
-.env-block .card__visual {
+.env-block .abd-envpad--view {
   /* ALTURA FIJA (pedido 2026-09-25). Antes era `min-height: 56px` y mandaba la
      proporcion intrinseca del SVG (viewBox 100x48) sobre el ancho del cajon:
      con ~570 px de caja cada curva medIa ~275 px y las dos se comian la
-     pestana. Fija, el SVG la llena (flex) y manda el diseno. */
+     pestana. Fija, el SVG la llena (flex) y manda el diseno. Clase de la
+     FAMILIA compartida (@abdsynths/shared, components/envelopePad.js); el
+     flex-end heredado de la clase vieja (.card__visual) se conserva. */
   height: 120px;
   min-height: 0;
   align-items: stretch;
+  justify-content: flex-end;
 }
 
 /* Los destinos de la envolvente, junto a su grafica: misma fila (destino ->
@@ -1717,4 +1696,112 @@ button.mod-summary__row:focus-visible {
   overflow: hidden;
   font-size: var(--text-2xs, 7px);
   word-break: break-all;
+}
+
+/* --- ejes del S950 --------------------------------------------------------- */
+/*
+ * Seis ejes, cuatro rayados. El rayado es el ESTADO de "aun no se puede
+ * dibujar", y se pinta como rayado y no como hueco en blanco a proposito: un
+ * hueco en blanco se lee como un olvido y un rayado se lee como algo que esta
+ * pendiente a sabiendas.
+ *
+ * La trama va por `repeating-linear-gradient` y no por una imagen: no añade una
+ * peticion, escala con el zoom del panel y no depende de que haya un fichero de
+ * rayas que cargar. Y el color es el de texto apagado, no el de acento, porque
+ * esto no es un boton: es una ausencia, y tiene que tener menos presencia que lo
+ * que si se sabe.
+ */
+
+.s950-axes {
+  display: grid;
+  gap: 4px;
+  padding: 6px 8px;
+  box-sizing: border-box;
+  border-top: 1px solid var(--color-panel-border-dim, rgb(0 195 255 / 10%));
+  font-size: var(--text-2xs, 7px);
+  color: var(--color-text-dim, #4a637a);
+}
+
+.s950-axes__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.s950-axes__title {
+  margin: 0;
+  font-size: var(--text-2xs, 7px);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-dim, #4a637a);
+}
+
+/* El rotulo de cobertura. Cuando esta COMPLETO el color sube, porque es el
+ * unico caso en el que hay algo que celebrar en esta seccion. */
+.s950-axes__coverage[data-s950-completo='si'] {
+  color: var(--color-accent, rgb(0 195 255 / 70%));
+}
+
+.s950-axes__grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.s950-axis {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  padding: 3px 4px;
+  border: 1px solid var(--color-panel-border-dim, rgb(0 195 255 / 10%));
+  border-radius: 2px;
+}
+
+/* El rayado. La trama va en el fondo de la celda entera, no en un hijo, para
+ * que el rayado cubra tambien el hueco entre el nombre y los numeros: rayar
+ * solo el texto deja hueco en blanco, que es justo lo que hay que evitar. */
+.s950-axis--rayado {
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgb(0 195 255 / 7%) 0,
+    rgb(0 195 255 / 7%) 1px,
+    transparent 1px,
+    transparent 5px
+  );
+  border-style: dashed;
+}
+
+.s950-axis__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-main, #f0f7ff);
+}
+
+/* El horizontal se pinta siempre: su rango es de PANEL y lo declara el
+ * contrato aunque no haya ni una medida. */
+.s950-axis__horizontal {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-dim, #4a637a);
+}
+
+.s950-axis__vertical {
+  color: var(--color-text-dim, #4a637a);
+}
+
+/* El estado "sin minimo medido" es el que dice la verdad, asi que no se apaga
+ * mas que el resto: si estuviera al 40% de opacidad, que es lo que se suele
+ * hacer con lo que no se sabe, el dato mas importante de la seccion seria el
+ * menos visible. */
+.s950-axis__vertical--sin-minimo {
+  color: var(--color-warn, rgb(255 176 32 / 75%));
+  font-style: italic;
+}
+
+.s950-axes__note {
+  margin: 0;
+  line-height: 1.35;
+  color: var(--color-text-dim, #4a637a);
 }

@@ -23,6 +23,9 @@
 // Tema, widgets y fondo de la SSOT compartida, más el CSS de esta carpeta.
 import '@abdsynths/shared/styles/tokens.css';
 import '@abdsynths/shared/styles/components/widgets.css';
+// La curva ADSR pinta con la vista compartida: SU hoja trae el trazo, el
+// relleno y la aguja (las reglas de la copia local se retiraron de main.css).
+import '@abdsynths/shared/styles/components/envelope.css';
 import '@abdsynths/shared/styles/components/backgrounds.css';
 // Los temas de los modulos de efecto, por FAMILIA. Van en la hoja compartida y no
 // en `main.css` a proposito: son los MISMOS tokens que el registro `fxTheme.js`

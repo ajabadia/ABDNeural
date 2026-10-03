@@ -17,13 +17,14 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { describeControl } from '../src/contracts/parameters.js';
+// La curva vive en la FAMILIA compartida (cero copia local desde el 2026-09-29).
 import {
   ENVELOPE_VIEWBOX,
   NEEDLE_FLOOR,
   createEnvelopeCurve,
   envelopeNeedlePath,
   envelopePoints,
-} from '../src/ui/envelopeCurve.js';
+} from '@abdsynths/shared/components';
 
 const ENV_IDS = ['envAttack', 'envDecay', 'envSustain', 'envRelease'];
 const ENV_CONTROLS = ENV_IDS.map(describeControl);
@@ -124,9 +125,9 @@ describe('curva ADSR / matemática', () => {
   });
 });
 
-describe('curva ADSR / pintor', () => {
+describe('curva ADSR / pintor (la vista compartida)', () => {
   it('es una VISTA, no una celda de parámetro', () => {
-    const curve = createEnvelopeCurve({ controls: ENV_CONTROLS });
+    const curve = createEnvelopeCurve({ controls: ENV_CONTROLS, captionClass: 'cell__label' });
 
     expect(curve.element.dataset.visual).toBe('amp-envelope');
     expect(curve.element.classList.contains('cell')).toBe(false);
@@ -134,9 +135,15 @@ describe('curva ADSR / pintor', () => {
     expect(curve.parameterIds).toEqual(ENV_IDS);
   });
 
+  it('el caption lleva la clase LOCAL de etiqueta de celda', () => {
+    const curve = createEnvelopeCurve({ controls: ENV_CONTROLS, captionClass: 'cell__label' });
+
+    expect(curve.element.querySelector('.cell__label')).not.toBeNull();
+  });
+
   it('pinta desde el estado NORMALIZADO y cambia con él', () => {
     const curve = createEnvelopeCurve({ controls: ENV_CONTROLS });
-    const line = () => curve.element.querySelector('.envelope-curve__line').getAttribute('d');
+    const line = () => curve.element.querySelector('.abd-envpad__line').getAttribute('d');
 
     curve.paint(envelopeState({ attack: 0.01, decay: 0.1, sustain: 0.7, release: 0.5 }));
     const byDefault = line();
@@ -149,7 +156,7 @@ describe('curva ADSR / pintor', () => {
     expect(byLongAttack).not.toBe(byDefault);
 
     // El área rellena cierra el mismo trazo
-    const area = curve.element.querySelector('.envelope-curve__area').getAttribute('d');
+    const area = curve.element.querySelector('.abd-envpad__area').getAttribute('d');
 
     expect(area.endsWith('Z')).toBe(true);
     expect(area.startsWith(byLongAttack)).toBe(true);
@@ -160,12 +167,12 @@ describe('curva ADSR / pintor', () => {
 
     curve.paint({});
 
-    expect(curve.element.querySelector('.envelope-curve__line').getAttribute('d')).toMatch(/^M0\.00,/);
+    expect(curve.element.querySelector('.abd-envpad__line').getAttribute('d')).toMatch(/^M0\.00,/);
   });
 
   it('la AGUJA de nivel: oculta en silencio, visible y a la altura del nivel con frame', () => {
     const curve = createEnvelopeCurve({ controls: ENV_CONTROLS });
-    const needle = () => curve.element.querySelector('.envelope-curve__level');
+    const needle = () => curve.element.querySelector('.abd-envpad__needle');
 
     // Antes de cualquier frame (y con 0/silencio): OCULTA.
     expect(needle().dataset.visible).toBe('false');

@@ -39,6 +39,11 @@ import { ENV1_SOURCE, ENV2_SOURCE } from './envelopeViews.js';
 // MODELOS (displayableName), y los defaults del contrato (touched) son los que
 // siembra el store: importados, no reescritos.
 import { MODEL_SLOT_LABELS, displayableName as displayableModelName } from './modelSlots.js';
+// Seccion de ejes del S950: seis horizontales, cuatro verticales rayados, y el
+// rotulo de cobertura. Va en el panel y no en una vista aparte porque lo que
+// responde es "que sabe este repo de la maquina", que es una pregunta de estado
+// y no un control: se mira de reojo y tiene que estar a la vista sin abrir nada.
+import { createS950Axes } from './s950Axes.js';
 
 /**
  * Ranuras que expone el motor (`getNumModelSlots() == 4`, cuatro huecos en
@@ -398,6 +403,14 @@ export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = nu
 
   performance.append(keysToolbar, keysRoot);
 
+  // --- la seccion de ejes del S950 -------------------------------------------
+  //
+  // Se fabrica aqui y se anexa al final, DESPUES del teclado y antes del pie.
+  // El orden es el de la lectura: lo que se usa, luego lo que se sabe. Un panel
+  // que enseña primero el estado de la tabla de medicion y despues el teclado
+  // hace que quien lo mira Compare el estado con algo que no tiene delante.
+  const s950Axes = createS950Axes();
+
   // --- pie (el host parsea este <code> como JSON) ---------------------------
 
   const footer = document.createElement('footer');
@@ -408,7 +421,14 @@ export function createPanel({ bands, baselineId, handlers = {}, onTelemetry = nu
 
   footer.append(footerText, footerState);
 
-  element.append(header, ...(lcdRowSlot ? [lcdRowSlot] : []), canvas, performance, footer);
+  element.append(
+    header,
+    ...(lcdRowSlot ? [lcdRowSlot] : []),
+    canvas,
+    performance,
+    s950Axes.element,
+    footer,
+  );
 
   let keysCollapsed = false;
 
