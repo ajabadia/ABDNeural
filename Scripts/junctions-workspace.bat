@@ -147,6 +147,8 @@ if defined NEURONIK_CI (
     set "SOLO_LO_QUE_EXISTE=0"
 )
 set "SALTADOS=0"
+set "HOOKS_PUESTOS=0"
+set "HOOKS_YA_ESTABAN=0"
 
 call :repos "%RAIZ%\WebUI"
 call :repos "%SUITE%\ABDSharedAssets"
@@ -154,6 +156,13 @@ call :repos "%SUITE%\ABDSharedCode\MidiKeyboard"
 call :repos "%SUITE%\ABDMS2000"
 call :repos "%SUITE%\ABDCZ101"
 call :repos "%SUITE%\ABDEep"
+
+call :hook_bat "%RAIZ%"
+call :hook_bat "%SUITE%\ABDSharedAssets"
+call :hook_bat "%SUITE%\ABDSharedCode\MidiKeyboard"
+call :hook_bat "%SUITE%\ABDMS2000"
+call :hook_bat "%SUITE%\ABDCZ101"
+call :hook_bat "%SUITE%\ABDEep"
 
 echo.
 REM Sin parentesis en NINGUN texto de este bloque, y el comentario que hay aqui
@@ -173,6 +182,9 @@ echo RESULTADO: OK, %REVISADOS% repos revisados y todos los enlaces del
 echo          workspace resuelven.
 if "%SALTADOS%"=="0" goto resumen_ok
 echo          %SALTADOS% repos saltados por NEURONIK_CI: no estaban en esta maquina.
+if "%HOOKS_PUESTOS%"=="0" goto resumen_sin_hooks
+echo          %HOOKS_PUESTOS% hook(s) de .bat instalados en esta corrida.
+:resumen_sin_hooks
 :resumen_ok
 endlocal
 exit /b 0
@@ -181,6 +193,59 @@ exit /b 0
 echo RESULTADO: %FALLOS% problemas sin resolver. Mira las lineas de arriba.
 endlocal
 exit /b 1
+
+:hook_bat
+REM %1 = la raiz de un repo. Le instala el hook de los .bat si lo trae.
+REM
+REM QUE HACE Y POR QUE
+REM
+REM `core.hooksPath` es config LOCAL de cada clon: no se commitea y no viaja
+REM con el repositorio. MEDIDO el 2026-10-03: con el hook puesto en el repo y
+REM sin esto, un clon nuevo se commitea igual, y el `.bat` con LF se cuela sin
+REM que nadie se entere, que es justo el fallo que el hook existe para cazar.
+REM
+REM Solo se instala donde el repo trae Scripts\hooks\pre-commit versionado.
+REM En este workspace solo ABDNeural lo trae hoy; el resto no imprime nada y
+REM no es un fallo. Instalar el hooksPath en un repo sin hook no rompe nada,
+REM pero tampoco vigila nada, asi que se comprueba y se sale.
+REM
+REM IDEMPOTENTE, que es lo que tiene que ser un script que se puede correr mil
+REM veces: si ya apunta ahi, no se repite nada.
+set "HR=%~1"
+if not exist "!HR!\Scripts\hooks\pre-commit" exit /b 0
+if not exist "!HR!\.git" exit /b 0
+
+set "HACTUAL="
+for /f "usebackq delims=" %%H in (`git -C "!HR!" config --get core.hooksPath 2^>nul`) do set "HACTUAL=%%H"
+if "!HACTUAL!"=="Scripts/hooks" goto hook_ya_estaba
+
+git -C "!HR!" config core.hooksPath Scripts/hooks >nul 2>&1
+if errorlevel 1 goto hook_no_puesto
+
+REM Se vuelve a LEER, no se da por hecho. MEDIDO el 2026-10-03 que un config
+REM puede salir con 0 y no haber escrito nada, y un hook que se dice puesto y
+REM no lo esta es peor que uno que no dice nada.
+set "HACTUAL="
+for /f "usebackq delims=" %%H in (`git -C "!HR!" config --get core.hooksPath 2^>nul`) do set "HACTUAL=%%H"
+if not "!HACTUAL!"=="Scripts/hooks" goto hook_no_puesto
+
+set /a HOOKS_PUESTOS+=1
+echo   [HOOK]    El hook de los .bat instalado en !HR!
+exit /b 0
+
+:hook_ya_estaba
+set /a HOOKS_YA_ESTABAN+=1
+exit /b 0
+
+:hook_no_puesto
+REM El repo trae el hook y no se ha podido instalar: es un FALLO y no un aviso.
+REM A partir de aqui los .bat de ese repo entran sin vigilancia, y el rojo
+REM sale despues, en el build, sin que nadie lo relacione con esto.
+echo   [ERROR]   !HR! trae el hook de los .bat y no se ha podido instalar.
+echo             git config core.hooksPath Scripts/hooks dentro de ese repo.
+set /a FALLOS+=1
+exit /b 1
+
 
 :repos
 REM %1 = la raiz de un repo
