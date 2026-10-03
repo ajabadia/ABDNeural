@@ -23,10 +23,13 @@ project(NEURONiK_WASM LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-# gnu++17 (no c++17 estricto): juce_ThreadPriorities_native.h sin rama WASM deja
-# la tabla vacia (Entry[0], extension GNU de array de longitud cero) y el modo
-# estricto la rechaza. Con extensiones GNU compila y el comportamiento en
-# runtime es inocuo (sin prioridades de hilo en WASM).
+# gnu++17 (no c++17 estricto). MEDIDO: esto NO es lo que arregla la tabla de
+# prioridades, aunque durante un tiempo lo pareciese. Con la tabla vacia el
+# compilador dice `no matching function for call to 'size'` TAMBIEN en modo GNU:
+# lo que falla es que `std::size` no tiene candidato para `Entry[0]`, y el error
+# es de sobrecarga, no de longitud de array. Lo que de verdad rellena la tabla
+# esta mas abajo, en el parche de `juce_ThreadPriorities_native.h`. La extension
+# GNU se queda porque no hace dano y hay TUs que la usan.
 set(CMAKE_CXX_EXTENSIONS ON)
 
 get_filename_component(NEURONIK_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
@@ -43,6 +46,63 @@ if(NOT JUCE_PATH)
     message(FATAL_ERROR "JUCE_PATH no encontrado (define JUCE_PATH o instala en C:/JUCE)")
 endif()
 message(STATUS "NEURONiK WASM: JUCE en ${JUCE_PATH}")
+
+# ============================================================================
+# JUCE NO PARCHEADO: EL ARREGLO ESTA AQUI, EN EL CODIGO DEL PROYECTO
+# ============================================================================
+#
+# MEDIDO. Compilando `neuronik_dsp` con em++ sale, en `juce_core.cpp`:
+#
+#   juce_ThreadPriorities_native.h:94: error: no matching function for call
+#   to 'size'   (static_assert (std::size (table) == 5, ...))
+#
+# Y la nota del compilador dice `_Cont = Entry[0]`, o sea que la tabla `table`
+# de `juce::ThreadPriorities` sale VACIA. La causa: `juce_TargetPlatform.h`
+# declara `JUCE_WASM` para `__wasm__`, pero el `table` de esa cabecera solo
+# tiene entradas para ANDROID, LINUX/BSD, MAC/IOS y WINDOWS. Con Emscripten no
+# se cumple ninguna, la tabla se queda con cero elementos y el `static_assert`
+# de "exactamente cinco" revienta.
+#
+# MEDIDO TAMBIEN que esto no lo arregla subir de version: se comprobo en
+# 8.0.12, 8.0.13, 8.0.14, 8.0.15, 9.0.0, 9.0.2, 9.0.3 y en `master` del
+# mirror. NINGUNA tiene la rama `JUCE_WASM`. El unico sitio donde estaba
+# resuelto era un JUCE parcheado a mano en la maquina, y por eso el fallo
+# salia solo en el CI, que clona el mirror.
+#
+# Que se parezca JUCE NO se toca: ni fork, ni rama, ni commit. Lo que se hace es
+# anadir CINCO entradas al `table` del checkout que ya esta en disco, desde este
+# fichero, que es codigo del proyecto. WebAssembly no tiene prioridades de hilo
+# nativas --Emscripten corre de un solo hilo salvo que se linkee con pthreads, y
+# este proyecto no lo hace-- asi que las cinco van en cero, igual que hace la
+# rama de JUCE_LINUX con las suyas.
+#
+# IDEMPOTENTE: el `string(FIND)` mira si la rama ya esta y no hace nada. Cuando
+# JUCE meta una entrada para WASM, esto deja de tocar el fichero, y lo que
+# sobre es este bloque, que se puede borrar en un commit.
+set(_juce_tp "${JUCE_PATH}/modules/juce_core/native/juce_ThreadPriorities_native.h")
+if(EXISTS "${_juce_tp}")
+    file(READ "${_juce_tp}" _juce_tp_txt)
+    string(FIND "${_juce_tp_txt}" "#if JUCE_WASM" _juce_tp_ya)
+    if(_juce_tp_ya EQUAL -1)
+        set(_juce_tp_ancla "THREAD_PRIORITY_IDLE },\n       #endif\n    };")
+        string(FIND "${_juce_tp_txt}" "${_juce_tp_ancla}" _juce_tp_col)
+        if(_juce_tp_col GREATER -1)
+            string(REPLACE
+                "${_juce_tp_ancla}"
+                "THREAD_PRIORITY_IDLE },\n       #endif\n\n       #if JUCE_WASM\n        { Thread::Priority::highest,    0 },\n        { Thread::Priority::high,       0 },\n        { Thread::Priority::normal,     0 },\n        { Thread::Priority::low,        0 },\n        { Thread::Priority::background, 0 },\n       #endif\n    };"
+                _juce_tp_txt2
+                "${_juce_tp_txt}")
+            file(WRITE "${_juce_tp}" "${_juce_tp_txt2}")
+            message(STATUS "NEURONiK WASM: anadidas las cinco entradas de JUCE_WASM")
+        else()
+            message(WARNING "juce_ThreadPriorities_native.h no tiene el cierre esperado del table; no se toca")
+        endif()
+    else()
+        message(STATUS "NEURONiK WASM: JUCE ya trae la rama JUCE_WASM; no se toca")
+    endif()
+else()
+    message(WARNING "no se encuentra ${_juce_tp}; el build wasm puede no compilar")
+endif()
 
 # El proyecto raiz (wasm/CMakeLists) se consume con emcmake -S wasm: la
 # source dir ES este fichero; JUCE entra con nombre de binario dedicado.
