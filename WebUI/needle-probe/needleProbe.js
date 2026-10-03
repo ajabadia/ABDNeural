@@ -47,6 +47,9 @@ import {
   createEnvelopeCurves,
 } from '../src/ui/envelopeViews.js';
 import '../src/styles/main.css';
+// La curva pinta con la vista compartida: SU hoja trae el trazo, el relleno
+// y la aguja (el lienzo del plugin la importa en app.js; el probe tambien).
+import '@abdsynths/shared/styles/components/envelope.css';
 
 /** Las fichas del contrato (BANDS es un array de ARRAYS de fichas). */
 const sections = BANDS.flat();
@@ -96,7 +99,9 @@ if (!envSection || !matrixSection) {
   // Lectura del test: las cuatro agujas con la escala del arnes.
   const readNeedle = (host, prefix) => {
     const column = host.querySelector(`[data-envelope="${prefix}"]`);
-    const needle = column?.querySelector('.envelope-curve__level');
+    // La aguja pinta con la clase de la FAMILIA compartida
+    // (@abdsynths/shared, components/envelopeCurve.js).
+    const needle = column?.querySelector('.abd-envpad__needle');
 
     if (!needle) return { visible: false, y: -1, level: 0 };
 

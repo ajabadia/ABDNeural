@@ -1129,8 +1129,10 @@ describe('panel / vista de la ficha ENVOLVENTES (dos curvas + rutas)', () => {
 
     // Tres vistas con cuerpo propio en el lienzo: las dos curvas de
     // ENVOLVENTES (una ficha, un visual compuesto) y el pad de MODELOS.
-    // El resumen de la matriz es otra vista (`.mod-summary`), no un `card__visual`.
-    expect(document.querySelectorAll('.card__body .card__visual')).toHaveLength(2);
+    // El resumen de la matriz es otra vista (`.mod-summary`), no un visual.
+    // Las curvas pinta con la clase de la FAMILIA compartida
+    // (@abdsynths/shared, components/envelopePad.js).
+    expect(document.querySelectorAll('.card__body .abd-envpad--view')).toHaveLength(2);
     expect(document.querySelectorAll('.mod-summary')).toHaveLength(1);
 
     // Y el lienzo sigue teniendo 70 celdas de PARAMETRO (las ocho ADSR están
@@ -1630,7 +1632,9 @@ describe('panel / vista de la ficha ENVOLVENTES (dos curvas + rutas)', () => {
   it('se repinta con el snapshot: otro ataque, otro trazo', () => {
     const panel = mountPanel();
     const line = () => document
-      .querySelector('[data-visual="amp-envelope"] .envelope-curve__line')
+      // La curva pinta con las clases de la FAMILIA compartida
+      // (@abdsynths/shared, components/envelopePad.js).
+      .querySelector('[data-visual="amp-envelope"] .abd-envpad__line')
       .getAttribute('d');
 
     panel.paint(makeState());
@@ -1757,7 +1761,7 @@ describe('panel / vista de la ficha ENVOLVENTES (dos curvas + rutas)', () => {
     mountPanel();
 
     for (const visual of document.querySelectorAll('[data-visual="amp-envelope"], [data-visual="filter-envelope"]'))
-      expect(visual.querySelector('.envelope-curve__level').dataset.visible).toBe('false');
+      expect(visual.querySelector('.abd-envpad__needle').dataset.visible).toBe('false');
   });
 
   it('con frames de telemetria la aguja de CADA curva sigue SU nivel del frame', () => {
@@ -1776,7 +1780,7 @@ describe('panel / vista de la ficha ENVOLVENTES (dos curvas + rutas)', () => {
     document.body.append(curve.element);
 
     const needle = (env) => curve.element
-      .querySelector(`.env-curves__column[data-envelope="${env}"] .envelope-curve__level`);
+      .querySelector(`.env-curves__column[data-envelope="${env}"] .abd-envpad__needle`);
 
     // frame.envelopes es [amp, filter] en ESE orden (contrato del puente).
     emit({ envelopes: [0.25, 0.9] });
@@ -1803,7 +1807,7 @@ describe('panel / vista de la ficha ENVOLVENTES (dos curvas + rutas)', () => {
     mountPanel();
 
     const needle = (env) => document
-      .querySelector(`.env-block[data-envelope="${env}"] .envelope-curve__level`);
+      .querySelector(`.env-block[data-envelope="${env}"] .abd-envpad__needle`);
     expect(needle('env')).not.toBeNull();
     expect(needle('filter')).not.toBeNull();
 
