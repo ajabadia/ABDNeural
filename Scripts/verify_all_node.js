@@ -1,5 +1,20 @@
 // ============================================================================
 //
+//  SIN-GUARDIA: este script no elige sus destinos de escritura; los RECIBE en la
+//  linea de comandos (`--destino`, `--cuenta`) y escribe ahi o no escribe. Ahi lo
+//  que protege no es una pregunta previa sino `destinoEsEntrada()`, que ya se
+//  niega a escribir encima de cualquiera de los ficheros que el propio script
+//  esta leyendo. Un `--check` aqui no responderia «va a estar al dia», que es la
+//  pregunta de un generador: responderia «no he escrito», que ya se sabe.
+//
+//  Que lo diga el propio codigo y no una convencion es lo que hace falta: si
+//  alguno de los dos envoltorios (`verify_all.sh` / `verify_all.bat`) dejara de
+//  pasar el destino y el script se lo dedujera, esta linea dejaria de ser verdad y
+//  habria que darle `--check` como a los demas. WebUI/tests/guardasDeEscritura.test.js
+//  es quien lo comprueba: si aparece un `--check` aqui, la exencion se puede quitar.
+//
+// ============================================================================
+//
 //  verify_all_node.js -- LA PARTE DE NODE DE LOS DOS VERIFY, EN UN SOLO FICHERO
 //
 //  verify_all.sh y verify_all.bat hacen exactamente lo mismo, y para eso

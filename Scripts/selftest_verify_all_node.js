@@ -1,5 +1,10 @@
 #!/usr/bin/env node
 //
+//  SIN-GUARDIA: este script escribe unicamente dentro del directorio que crea el
+//  mismo con `mkdtemp` en el temporal del sistema, y lo borra al salir. No toca el
+//  repositorio, ni un fichero de el: sus escrituras son el montaje de sus propios
+//  casos de prueba, que es lo unico que hace.
+//
 //  USO:  node Scripts/selftest_verify_all_node.js
 //
 // ============================================================================
