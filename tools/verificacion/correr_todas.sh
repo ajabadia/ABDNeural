@@ -11,8 +11,8 @@
 #   banco_convenciones.py  El banco de los dos verificadores. Primero, porque
 #                          si un verificador no detecta lo que debe, lo que salga
 #                          despues no vale como medida de nada.
-#   selftest_pre_commit_bats.py
-#                          El banco del hook de pre-commit, con `git commit` de
+#   selftest_pre_commit_scripts.py
+#                          El banco del hook de pre-commit (.bat, .ps1 y .sh), con `git commit` de
 #                          verdad. Va el ultimo de los automaticos porque crea
 #                          repos temporales y es el mas lento.
 #   selftest_post_checkout_bats.py
@@ -78,8 +78,8 @@ correr "convenciones.py (los ficheros trackeados)" \
 correr "banco_convenciones.py (los verificadores detectan)" \
         "$PYTHON" "$AQUI/banco_convenciones.py"
 
-correr "selftest_pre_commit_bats.py (el hook de los .bat)" \
-        "$PYTHON" "$RAIZ/Scripts/selftest_pre_commit_bats.py"
+correr "selftest_pre_commit_scripts.py (los .bat, .ps1 y .sh)" \
+        "$PYTHON" "$RAIZ/Scripts/selftest_pre_commit_scripts.py"
 
 correr "selftest_post_checkout_bats.py (el hook del checkout)" \
         "$PYTHON" "$RAIZ/Scripts/selftest_post_checkout_bats.py"

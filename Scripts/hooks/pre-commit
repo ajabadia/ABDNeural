@@ -1,5 +1,5 @@
 #!/bin/sh
-# pre-commit: el lanzador del hook que vigila los .bat.
+# pre-commit: el lanzador del hook que vigila los scripts (.bat, .ps1 y .sh).
 #
 # POR QUE ESTE FICHERO ES SH Y NO PYTHON
 #
@@ -18,7 +18,7 @@
 # Por eso este sh busca el que exista. sh lo entiende git for Windows de serie,
 # porque los hooks de ejemplo que trae son sh.
 #
-# La logica vive al lado, en vigilar_bats.py. Repartido asi, cambiar lo que se
+# La logica vive al lado, en vigilar_scripts.py. Repartido asi, cambiar lo que se
 # vigila no obliga a tocar el lanzador, que es la parte que hay que revisar con
 # mas cuidado cuando algo se rompe en un runner.
 #
@@ -29,13 +29,13 @@ AQUI=$(dirname "$0")
 
 for INTERPRETE in python python3 py; do
     if command -v "$INTERPRETE" >/dev/null 2>&1; then
-        exec "$INTERPRETE" "$AQUI/vigilar_bats.py" "$@"
+        exec "$INTERPRETE" "$AQUI/vigilar_scripts.py" "$@"
     fi
 done
 
 # Ninguno de los tres. Se avisa y se deja pasar: bloquear todos los commits
 # porque falta un interprete es peor que dejar entrar un .bat con LF, que es lo
 # que este hook existe para cazar y se caza en el proximo commit.
-echo "pre-commit: no hay python, python3 ni py en el PATH; los .bat NO se han" >&2
-echo "            vigilado en este commit. Sin esto, un .bat con LF pasa." >&2
+echo "pre-commit: no hay python, python3 ni py en el PATH; los scripts NO se han" >&2
+echo "            vigilado en este commit. Sin esto, un .bat o un .sh con LF pasa." >&2
 exit 0
