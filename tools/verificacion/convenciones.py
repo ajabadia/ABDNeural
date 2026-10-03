@@ -19,14 +19,15 @@ QUE MIDE, Y POR QUE CADA COSA
              ninguno: son los que se cuelan al copiar texto de una pagina.
 
   no ASCII   Cuantos bytes van por encima de 127, y cuales. En un fichero ASCII
-             es cero, y en un `.bat` tambien. En un `.md` con tildes no.
+             es cero, y en un `.bat` tambien: los `.bat` son ASCII PURO, sin
+             lista blanca. En un `.md` con tildes no.
 
 LA LISTA DE CONVENCIONES, Y DONDE ESTA
 
 La fuente de estas reglas es el `.gitattributes` y las cabeceras de los
 ficheros. En la practica son tres:
 
-  · los `.bat` van en CRLF, ASCII con la excepcion de lo que ya traia;
+  · los `.bat` van en CRLF y en ASCII puro, sin excepciones;
   · los `.sh` y `.py` van en LF;
   · los `.md` con tildes van en LF y con vallas parejas.
 
@@ -78,12 +79,14 @@ TEXTO = {".bat", ".cmd", ".sh", ".py", ".md", ".js", ".mjs", ".cjs", ".ts",
          ".json", ".yml", ".yaml", ".txt", ".cpp", ".h", ".hpp", ".cmake",
          ".gitignore", ".gitattributes", ".css", ".html", ".xml", ".ps1"}
 
-# Los tres bytes que los .bat del repo traian de mas y que funcionan: el signo
-# de interrogacion, la caja de dibujo del panel y la raya. Se miden aparte.
-PERMITIDOS_EN_BAT = {0xBF: "interrogacion", 0x2014: "raya", 0x2500: "caja"}
-# Las dos ultimas vienen en UTF-8 como dos bytes, asi que se comparan por el
-# texto ya decodificado y no byte a byte.
-PERMITIDOS_EN_BAT_TEXTO = {"¿", "—", "─"}
+# Los .bat NO tienen lista blanca: ASCII puro, sin excepciones. MEDIDO el
+# 2026-10-04 que los 102 caracteres no ASCII que traian los tres .bat estaban
+# todos en lineas REM y se han podido quitar sin tocar una sola orden. Antes
+# habia una lista con U+00BF, U+2500 y U+2014, y existia porque el hook de
+# pre-commit todavia no estaba: sin hook que lo impidiera, la lista era la
+# unica barrera, y era una barrera blanda. MEDIDO ademas que un caracter de
+# esos DENTRO de un `Write-Host "..."` no sale mal impreso, rompe el
+# interprete, igual que en un .ps1.
 
 CJK = re.compile("[\u3000-\u9fff\uff00-\uffef]")
 
@@ -143,10 +146,12 @@ def revisa(ruta):
         problemas.append("CJK: %s" % ascii("".join(cjk[:8])))
 
     if ext == ".bat":
-        raros = sorted(set(c for c in texto if ord(c) > 127
-                           and c not in PERMITIDOS_EN_BAT_TEXTO))
+        # ASCII puro. Sin lista, sin excepciones: cmd.exe lee con la pagina de
+        # codigos de la consola y un caracter UTF-8 multibyte se come el que
+        # viene detras.
+        raros = sorted(set(c for c in texto if ord(c) > 127))
         if raros:
-            problemas.append("fuera de los tres permitidos: %s"
+            problemas.append("fuera de ASCII: %s (los .bat son ASCII puro)"
                              % ascii("".join(raros[:8])))
 
     # 3. Vallas de un .md.

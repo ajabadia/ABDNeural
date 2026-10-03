@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================================
-REM  verify_all_check.bat -- ¿DICEN LO MISMO EL .sh Y EL .bat?
+REM  verify_all_check.bat -- ?DICEN LO MISMO EL .sh Y EL .bat?
 REM
 REM  Este fichero NO reimplementa el check: lo delega en verify_all_check.sh.
 REM
@@ -35,7 +35,7 @@ if not exist "%CHECK%" (
     exit /b 2
 )
 
-REM ── BUSCAR UN BASH QUE SEPA LEER RUTAS DE WINDOWS ─────────────────────────
+REM -- BUSCAR UN BASH QUE SEPA LEER RUTAS DE WINDOWS -------------------------
 REM En este orden:
 REM   1. el `bash` del PATH, si NO es el de System32 (que es el de WSL);
 REM   2. el de Git, en los dos sitios donde se instala.
@@ -75,7 +75,7 @@ if not defined BASH (
     exit /b 2
 )
 
-REM ── LANZAR ─────────────────────────────────────────────────────────────────
+REM -- LANZAR -----------------------------------------------------------------
 REM La ruta del .sh va en formato Windows porque se la pasa a un bash de
 REM Windows, que no entiende de /d/... aunque venga del mismo disco.
 REM

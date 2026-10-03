@@ -58,10 +58,13 @@ TILDE = "á".encode("utf-8")        # U+00E1, NO esta en la lista de .ps1
 CJK = chr(0x5730).encode("utf-8")   # U+5730, por codigo y no a mano
 CIRILICO = "о".encode("utf-8")     # U+043E
 
-# Los que cada interprete SI aguanta, MEDIDOS.
-INVERTIDA = "¿".encode("utf-8")    # U+00BF, en la lista de .bat
-RAYA = "—".encode("utf-8")         # U+2014, en las tres
-CAJA = "─".encode("utf-8")          # U+2500, solo en la de .bat
+# Los que cada interprete SI aguanta, MEDIDOS. Y los que en .bat ya no aguanta
+# nadie: los .bat son ASCII puro desde el 2026-10-04, cuando se quitaron los 102
+# caracteres no ASCII que traian. Por eso invertida y caja salen aqui como
+# "esto tiene que avisar", y no como "esto tiene que pasar".
+INVERTIDA = "¿".encode("utf-8")    # U+00BF, fuera de ASCII en .bat
+RAYA = "—".encode("utf-8")         # U+2014, en la lista de .ps1
+CAJA = "─".encode("utf-8")          # U+2500, fuera de ASCII en .bat
 DOBLE = "═".encode("utf-8")        # U+2550, rompe el parser de .ps1
 TRIANGULO = "▶".encode("utf-8")    # U+25B6, fuera de la de .ps1
 ANGULO = "«".encode("utf-8")       # U+00AB, en la lista de .ps1
@@ -81,9 +84,9 @@ def limpio(extra=b""):
 CASOS = [
     # --- .bat: lo que ya habia, sin cambios ---
     ("bat limpio, ASCII y CRLF", [pista("x.bat", limpio())], False),
-    ("bat con los tres permitidos",
+    ("bat con los que antes estaban permitidos, y ya no",
      [pista("x.bat", limpio(b"REM " + INVERTIDA + CRLF + b"REM " + RAYA + CRLF
-                            + b"REM " + CAJA + CRLF))], False),
+                            + b"REM " + CAJA + CRLF))], True),
     ("bat con LF sin CR", [pista("x.bat", limpio().replace(CRLF, LF))], True),
     ("bat con vertical tab", [pista("x.bat", b"@echo off" + CRLF + b"REM a" + VT + b"b" + CRLF)], True),
     ("bat con tilde", [pista("x.bat", b"@echo off" + CRLF + b"REM est" + TILDE + CRLF)], True),
@@ -97,6 +100,8 @@ CASOS = [
     ("ps1 con los permitidos",
      [pista("x.ps1", b"# " + ANGULO + PUNTO + ANGULO + LF
             + b"Write-Output '" + RAYA + N_TILDE + b"'" + LF)], False),
+    ("ps1 con la caja, que tampoco esta en su lista",
+     [pista("x.ps1", b"# " + CAJA + LF)], True),
     ("ps1 con CRLF, que aqui no vale", [pista("x.ps1", b"Write-Output 'hola'" + CRLF)], True),
     ("ps1 con vertical tab",
      [pista("x.ps1", b"Write-Output 'a" + VT + b"b'" + LF)], True),

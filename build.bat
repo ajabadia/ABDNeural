@@ -28,7 +28,7 @@ REM  aplicable" se fue con el piloto (ticket 8.4). Exit code != 0 si alguna
 REM  direccion no se mueve.
 REM
 REM  Al final, :finish imprime el resumen del selftest por direccion, con UN
-REM  bloque por superficie —PLUGIN (Standalone) y BANCADA (WebPilotHost)—, cada
+REM  bloque por superficie -PLUGIN (Standalone) y BANCADA (WebPilotHost)-, cada
 REM  uno con su veredicto, su exit y su transcript: se distinguen porque las dos
 REM  corrian el mismo arnes sobre la misma pagina y sus fallos no se parecen en
 REM  nada (la bancada no escribe en el log del plugin, asi que antes su veredicto
@@ -61,7 +61,7 @@ set "WITH_WASM=1"
 REM ---- Estado de las dos superficies del selftest ----
 REM Se inicializan AQUI, no en el paso 9: cualquier `goto :finish` anterior
 REM (una compilacion que cae, un ctest en rojo) llega al resumen final, y sin
-REM estos valores el bloque de cada superficie saldria con el motivo vacio —
+REM estos valores el bloque de cada superficie saldria con el motivo vacio -
 REM "no se ejecuto ()" en vez de decir por que.
 set "PLUGIN_RAN=0"
 set "PILOT_RAN=0"
@@ -166,8 +166,8 @@ REM bajan: son enlaces a los repos de al lado, y los escribe pnpm con la ruta ta
 REM cual la ve el shell (POSIX), que Node lee como `D:\d\...` y no resuelve. El
 REM paso 4 se para entonces con un "Rollup failed to resolve" que no habla de
 REM enlaces, y los E2E de navegador se caen por el pre-transform error del dev
-REM server. El script los deja como junctions —junction es el unico enlace que
-REM `mklink` hace sin pedir administrador— y sale con 1 si algo se queda sin
+REM server. El script los deja como junctions -junction es el unico enlace que
+REM `mklink` hace sin pedir administrador- y sale con 1 si algo se queda sin
 REM resolver. Va antes del paso 3 porque el WASM sincroniza a
 REM WebUI\public\worklet, que es parte del mismo arbol. Detalle medido en
 REM Scripts\COMO-ARREGLAR-EL-BUILD.md (sexto atranco).

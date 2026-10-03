@@ -966,13 +966,13 @@ REM  rojo desconocido NO es un error del script: sale como SIN CLASIFICAR, que
 REM  es lo que tiene que pasar cuando no se sabe de quien es un rojo.
 REM ---------------------------------------------------------------------------
 REM ---------------------------------------------------------------------------
-REM  VIVO: ¿existe todavia ese proceso?
+REM  VIVO: ?existe todavia ese proceso?
 REM
 REM  La pregunta se hace a `tasklist` con filtro por PID. Ver la subrutina:
 REM  `process.kill(pid, 0)`, que es la forma habitual, NO funciona en Windows.
 REM ---------------------------------------------------------------------------
 REM ---------------------------------------------------------------------------
-REM  VIVO: ¿existe todavia ese proceso?
+REM  VIVO: ?existe todavia ese proceso?
 REM
 REM  Es lo que decide si el lock es de un verify que esta corriendo o de una
 REM  sesion muerta. Con esta mal, el script quita el lock de un verify en

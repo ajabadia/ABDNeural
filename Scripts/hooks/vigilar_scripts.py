@@ -14,10 +14,14 @@ Es lo importante de aqui, y no es una regla que se pueda copiar de un sitio a
 otro. Cada interprete lee los bytes de otra manera, asi que lo que es inofensivo
 en uno es un fallo en otro. MEDIDO el 2026-10-04 en esta maquina:
 
-  .bat  cmd.exe lee con la pagina de codigos de la consola. MEDIDO: los tres
-       caracteres que ya traian los 7 .bat (U+00BF, U+2014, U+2500) funcionan, y
-       un acento o un CJK se come el caracter siguiente. Y el EOL tiene que ser
-       CRLF, que es lo que espera cmd.exe.
+  .bat  cmd.exe lee con la pagina de codigos de la consola, y un caracter UTF-8
+       multibyte se come el siguiente. MEDIDO el 2026-10-04 que los 102
+       caracteres no ASCII que traian los tres .bat (U+00BF x3, U+2500 x94 y
+       U+2014 x5) estaban todos en lineas REM, asi que se han podido quitar sin
+       tocar una sola orden. MEDIDO que antes de quitarlos, los que estaban
+       DENTRO de un Write-Host con comillas rompian el interprete, igual que
+       en un .ps1. Por eso la lista de .bat esta ahora VACIA: ASCII puro, sin
+       excepciones. Y el EOL tiene que ser CRLF, que es lo que espera cmd.exe.
 
   .ps1  Windows PowerShell 5.1, que es el instalado aqui. MEDIDO:
        - Un `Write-Host "═══"` con U+2550 (3 bytes UTF-8) NO PARSEA. El parser
@@ -92,15 +96,21 @@ import sys
 # interprete puede leer. Ver la cabecera antes de tocar nada.
 #
 #   eol        "crlf" o "lf": lo que TIENE que ser en el arbol de trabajo.
-#   permitidos None = todos pasan. Un conjunto = solo esos, mas el ASCII.
+#   permitidos None = todos pasan (medido que no rompen). Un conjunto = solo
+#              esos pasan, mas el ASCII; el conjunto VACIO es ASCII puro.
 REGLAS = {
     ".bat": {
         "eol": "crlf",
-        "permitidos": {
-            0x00BF: "inicio de interrogacion (va en verify_all.bat y verify_all_check.bat)",
-            0x2014: "raya (va en build.bat)",
-            0x2500: "caja de dibujo del panel (va en verify_all_check.bat)",
-        },
+        # ASCII PURO, sin excepciones. MEDIDO el 2026-10-04: los 102 caracteres
+        # no ASCII que traian los tres .bat estaban en lineas REM y se han
+        # podido quitar sin tocar una orden. Antes habia una lista con U+00BF,
+        # U+2500 y U+2014, y existia porque hooks NO existian todavia; ahora que
+        # el hook esta, la lista es una excusa para no quitarlos.
+        #
+        # Ojo al vacio vs None: un conjunto vacio significa "ningun caracter de
+        # mas pasa", y None significa "todos pasan". El de .sh es None a
+        # proposito, y confundirlos dejaria a los .bat abiertos de par en par.
+        "permitidos": {},
     },
     ".ps1": {
         "eol": "lf",
@@ -253,9 +263,9 @@ def main():
         "  inocuo en uno rompe en otro, asi que la lista blanca es POR\n"
         "  EXTENSION y esta medida, no inventada:\n"
         "\n"
-        "    .bat  cmd.exe. Le pasa CRLF, y de los caracteres raros solo los tres\n"
-        "          que ya usaban los .bat del repo: U+00BF, U+2014 y U+2500.\n"
-        "          Los demas, U+2500 aparte, salen mal leidos por la consola.\n"
+        "    .bat  cmd.exe. Le pasa CRLF y ASCII PURO, sin excepciones: un\n"
+        "          caracter UTF-8 multibyte se come el siguiente cuando la\n"
+        "          consola lo lee con su pagina de codigos.\n"
         "    .ps1  Windows PowerShell 5.1. Le pasa LF. MEDIDO: un '═' (U+2550)\n"
         "          dentro de un Write-Host \"...\" hace que el fichero NO PARSEE,\n"
         "          con TerminatorExpectedAtEndOfString. Sin BOM, ademas, un 'ñ'\n"
