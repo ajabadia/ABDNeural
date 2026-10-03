@@ -105,6 +105,9 @@ funciona, pero ningún envío sale al plugin ni se pinta estado nativo.
 | `src/contracts/paramStore.js` | `WebPilot/lib/useParameterControls.js` | El pegamento del hook convertido en store vainilla: `getState()` / `subscribe()`, gestos, presets, MIDI y modelos. |
 | `src/contracts/sections.js` | nuevo | **Reparto y geometría del lienzo**: fichas, ids de cada una, bandas y la cuenta del encaje (`canvasHeight()`). |
 | `src/contracts/screens.js` | nuevo | Ids del lienzo (`SCREEN_PARAMETER_IDS`) y los anclajes del host (`GENERAL_PARAMETER_IDS`, `KEYS_TAB_SELECTOR`). |
+| `src/contracts/s950PatchFields.js` | nuevo | Los 38 campos de keygroup del S950, desde el catálogo que genera el motor. Se **importa**, no se descarga: un `fetch` haría el panel asíncrono, y un mando que nace en 0..1 y se corrige un frame después es un mando que se ve saltar. |
+| `src/contracts/s950Calibration.js` | nuevo | **Los ejes del S950, y los cuatro que no se pueden pintar.** Delega la regla en el paquete compartido en vez de repetirla, porque la respuesta a "qué me falta" tiene que ser la misma en todos los paneles. |
+| `src/contracts/s950Bridge.js` | nuevo | **La frontera, y por qué no se puede escribir el importador todavía.** Empareja ocho conceptos del S950 con ocho parámetros del motor, con la conversión declarada `null`. |
 | `src/bridge/bridgeCore.js` | `WebPilot/lib/bridge.js` | Transporte del bridge WebView2 (contrapartida JS de `WebUI/contracts/bridge-protocol.json`). |
 | `src/wasm/audioParams.js` | `WebPilot/lib/audioParams.js` | Contrato → índices de `GlobalParams` del motor WASM y del ADSR de la voz (página **fuera** del plugin). |
 | `src/audio/audioWorkletEngine.js` | `WebPilot/lib/audioWorkletEngine.js` | Ciclo de vida del `AudioContext` + worklet y los mensajes al DSP, **con la guarda de la política de audio**. |
@@ -114,6 +117,7 @@ funciona, pero ningún envío sale al plugin ni se pinta estado nativo.
 | `src/ui/drawer.js` | nuevo | El cajón lateral deslizante (patrón ABDMS2000/ABDEep): abrir/cerrar es una clase, el contenido NO se reconstruye. |
 | `src/ui/modSummary.js` | nuevo | Resumen de las 4 rutas de modulación: la vista que queda en el lienzo mientras los controles viven en el cajón. |
 | `src/ui/visuals.js` | nuevo | Fábrica de vistas de ficha (ADSR, resumen de la matriz), compartida por `app.js` y la suite del panel. |
+| `src/ui/envelopeViews.js` | nuevo | Las DOS superficies de envolvente (la curva del lienzo y los bloques del cajón) montadas sobre la vista compartida. Aquí vive su SSOT: qué ids, qué matriz de skew y qué captionClass; el dibujo NO es de aquí. |
 | `src/ui/keyboard.js` | nuevo | El teclado compartido (`@abdsynths/midi-keyb`) y su API de feedback desde el host. |
 | `src/app.js` | nuevo | Arranque: monta panel y teclado, conecta el store. |
 
@@ -126,6 +130,90 @@ antes vivía en `WebPilot/generated/` y el import atravesaba el repo.
 `contracts/bridge-protocol.json` (el contrato versionado del protocolo) y `public/` (los assets
 compartidos y el worklet) llegaron en la misma mudanza; `public/` es el `publicDir` de Vite, así
 que el worklet que compila `build_wasm.bat` acaba en `dist/worklet/` sin pasos intermedios.
+
+## El catálogo del S950 llega al panel, y se para justo antes del puente
+
+Los 38 campos de keygroup del S950 (qué byte es cuál, cómo se codifica, cómo se
+llama) viven en C++, en `ABDSharedCode/SynthCore/S950PatchFields.h`, y el mismo
+motor los vuelca a `ABDSharedAssets/contracts/s950_patch_fields.json` con
+`pnpm generate:s950-contract`. Un panel de esta WebUI los lee de ahí. El C++ manda y
+el JSON se genera; un contrato editado a mano se queda viejo sin que nadie lo note.
+
+Lo que **no** llega es el valor de cada posición, porque para eso haría falta una
+tabla de calibración medida que hoy está vacía a propósito
+(`S950Calibration.h` declara la forma de las seis curvas y ni un punto).
+
+Lo que **sí** llega es la **otra mitad**, y es `src/contracts/s950Calibration.js`:
+el mismo C++ se vuelca a `ABDSharedAssets/contracts/s950_calibration.json` con
+`pnpm generate:s950-cal`, y un panel pinta sus ejes de ahí. La distinción es la que
+importa: el catálogo de patches dice **qué byte es cuál**, y esto dice **en qué
+unidad está** y sobre qué rango. Un mando de attack va de 0 a 99 porque es lo que
+el byte da; el eje que lo acompaña va en segundos, y ese segundo número no está en
+ninguna parte de este repo.
+
+Y sale de ahí el número que faltaba, que es el que decide un panel: de las seis
+curvas, **solo dos tienen eje vertical dibujable**. Las otras cuatro son
+logarítmicas, y un eje en log necesita un mínimo **real** —y ese mínimo es un valor
+medido—. Sin él, `Math.log(0)` es `-Infinity` y la curva se va a menos infinito; y
+con un `0.001` inventado el log no falla, que es peor: produce una curva con toda
+la pinta de medida. El eje **horizontal** sí se dibuja en las seis, porque sale
+del dominio del panel. Así que un panel puede pintar los ejes hoy y rayar cuatro.
+
+Ese hueco está escrito en `src/contracts/s950Bridge.js`, y sus tests lo mantienen
+escrito:
+
+- **"Coinciden los rangos del panel y del motor" no es una pregunta que se pueda
+  hacer.** `vcaAttack` es 0..99 y `envAttack` es 0.001..5 s; `softFilter` es 0..99 y
+  `filterCutoff` es 20..20000 Hz. No están en el mismo dominio, así que no hay nada
+  que comparar. Un test así pasaría siempre o fallaría siempre: en los dos casos no
+  miraría nada.
+- `s950ToNeuronik()` devuelve un **símbolo** `UNKNOWN`, nunca un número, para
+  cualquier valor de panel. Un 0 sería un ataque instantáneo —un click— y, peor, un
+  0 *es* un número, así que el motor no tendría nada de qué sospechar. Convertir un
+  símbolo a número **lanza**: un `?? 0` en el llamante no lo puede camuflar.
+- Lo que sí se compara, y con contenido, son las dos mitades por separado: el
+  `panelUnit` de cada fila tiene que ser carácter a carácter el del catálogo, y el
+  `realUnit` tiene que coincidir con el rango que declara el APVTS real. Ese segundo
+  test **se rompe solo** si el motor cambia un rango, porque lee
+  `parameters.generated.js`, que lo emite el exportador C++ del plugin.
+
+Cuando haya medición, los tests que hoy comprueban que las ocho conversiones siguen
+siendo `null` se pondrán en rojo **nombrando las ocho filas** que hay que revisar a
+mano. Eso es lo que se quiere: un hueco que se llena sin que nadie mire es un hueco
+con números inventados dentro.
+
+## La envolvente vive en el paquete compartido (migración del 2026-09-29)
+
+Antes esta WebUI tenía su propio `src/ui/envelopeCurve.js`. **Ya no existe**: el dibujo lo
+pinta `@abdsynths/shared`, y este repo no guarda copia. Es la misma regla Zero-Copy del resto
+del paquete, aplicada a un componente y no a un asset.
+
+**Lo que se consume** (desde `src/ui/envelopeViews.js`):
+
+| Import | Para qué |
+|---|---|
+| `createEnvelopeCurve` | La vista de fábrica: monta el `<svg>`, el trazo, el relleno y la aguja. Es la MISMA función para el lienzo y para el cajón. |
+| `@abdsynths/shared/styles/components/envelope.css` | La hoja de la familia (`.abd-envpad*`). La importa `src/app.js`. |
+
+**Lo que NO se consume, y sigue siendo SSOT de aquí**: qué ids pinta cada vista, la matriz de
+skew entre parámetros, y el `captionClass: 'cell__label'` que hace que el título de la curva
+use la clase de la ficha y no la del paquete. Eso es de este synth; el trazo no.
+
+**Dos cosas que hay que saber antes de tocar esto.** Las dos costaron una referencia visual:
+
+- **`toReal: realFromNormalized` en las DOS llamadas** (lienzo y cajón). Sin él, la vista
+  compartida pinta con valores normalizados en vez de segundos reales y la forma de la curva
+  cambia — sin que nada falle, que es lo peor.
+- **El caption se monta siempre, aunque esté vacío.** Un `<span>` sin texto mide 0, pero el
+  `gap: 2px` del flex-column no; quitarlo bajaba el alto del SVG en 2 px dentro del cajón.
+
+**Lo que comprueba que no se ha roto** (además de `pnpm test`):
+
+- `tests/envelopeCurve.test.js` — la geometría y las clases de la familia, importando del
+  paquete, no de un fichero local.
+- `tests/panel.test.js` — el montaje en su celda.
+- `e2e/visual.spec.js` — `ficha envelopes` y `cajon envelopes` (pixel a pixel), y el bloque
+  `las agujas (needle-probe)`, que lee `.abd-envpad__needle` y compara con `maxDiffPixels: 0`.
 
 ## El contrato con el host (no "simplificar")
 
@@ -240,9 +328,12 @@ falta: caben, y se comprobó antes de escribirlo.
   de la matriz) viven en `contracts/sections.js` y las resuelve `src/ui/visuals.js`; el panel solo
   pinta lo que recibe. Esa fábrica vive en su módulo, y no dentro de `app.js`, porque el harness de
   `tests/panel.test.js` la duplicaba y montaba una curva para cualquier vista declarada.
-- **La curva ADSR** (`src/ui/envelopeCurve.js`) ocupa la celda LIBRE de su ficha (11 controles en
-  6x2), así que no mueve la geometría; no es una celda de parámetro (`.card__visual`), y comprime
-  los tiempos con √ para que 1 ms y 5 s se lean en el mismo ancho.
+- **La curva ADSR** la pinta el **paquete compartido**, no este repo: `src/ui/envelopeViews.js`
+  llama a `createEnvelopeCurve` de `@abdsynths/shared/components` y no hay copia local (la que
+  hubo, `src/ui/envelopeCurve.js`, se borró; esto es Zero-Copy, no una gcd que serokea). La
+  curva ocupa la celda LIBRE de su ficha (11 controles en 6x2), así que no mueve la
+  geometría; no es una celda de parámetro (`.card__visual`), y comprime los tiempos con √ para
+  que 1 ms y 5 s se lean en el mismo ancho. Ver "La envolvente vive en el paquete" más abajo.
 - **Las ranuras de modelo A–D** (`src/ui/modelSlots.js`, ficha MODELOS) no son parámetros: una
   ranura es del MOTOR (un preset lleva `modelPath<slot>`, no una copia de los parciales), así que la
   ficha no ocupa celda. El nombre cargado llega en `modelsState.name` (la página no puede leer el
