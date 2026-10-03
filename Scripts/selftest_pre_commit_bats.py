@@ -55,7 +55,7 @@ CAJA = "─".encode("utf-8")        # U+2500
 # "o" cirilica escrita a mano en un fuente es indistinguible de una normal, y
 # este fichero tiene que poder decir "esto es cirilico" sin mirar los bytes.
 TILDE = "á".encode("utf-8")       # U+00E1
-CJK = "地".encode("utf-8")   # U+5730
+CJK = chr(0x5730).encode("utf-8")   # U+5730, por codigo y no a mano, sin el caracter aqui
 CIRILICO = "о".encode("utf-8")     # U+043E
 
 
