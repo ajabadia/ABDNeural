@@ -778,34 +778,28 @@ jobs:
           # el target `NEURONiK_VST3` enlaza y produce `NEURONiK.vst3`, exit 0.
           _LIBS="${_BD}/Release/NEURONiK_FactoryModels.lib"
 
-          # Y EL TARGET QUE `master` DECLARA EN EL .BAT Y NO EN EL CMakeLists.
-          # MEDIDO: `build_wasm.bat` (lineas 143 y 148 de master) hace
+          # NADA MAS QUE LOS ENLACES. Este fichero solo lleva `add_link_options`.
           #
-          #   cmake --build build-reference --config Release --target NEURONiK_LayoutExport
+          # MEDIDO por que ya NO esta el `add_custom_target(NEURONiK_LayoutExport)`
+          # de guarda que AQUI iba antes. `master` DECLARA ese target de verdad,
+          # en el `CMakeLists.txt` (linea 890), asi que el stub era peor que
+          # inutil: `CMAKE_PROJECT_INCLUDE` se ejecuta justo despues de `project()`,
+          # o sea ANTES de esa linea, de modo que el custom target quedaba
+          # declarado primero y el `add_executable` de verdad reventaba con
           #
-          # y el `CMakeLists.txt` de `master` no declara ese target, asi que el
-          # paso sale con
+          #   add_executable cannot create target "NEURONiK_LayoutExport"
+          #   because another target with the same name already exists.
+          #   The existing target is a custom target created in source directory
+          #   .../ABDNeural.  (policy CMP0002)
           #
-          #   MSBUILD : error MSB1009: Project file does not exist.
-          #   Switch: NEURONiK_LayoutExport.vcxproj
-          #
-          # MEDIDO tambien que es `master` roto y no cosa del workflow: lo
-          # introdujo `d09be8b` en el .bat sin meter el target en el CMakeLists,
-          # o sea que el .bat falla igual en la maquina de trabajo.
-          #
-          # Un custom target vacio hace que el `--target` del .bat salga con 0 en
-          # vez de reventar, y el `if exist` del paso de mas abajo hace que no
-          # se intente ejecutar un `.exe` que no se ha construido. Es un
-          # guard, no un disfraz: si el target aparece de verdad (cuando la otra
-          # sesion commitee su CMakeLists), el `if (NOT TARGET ...)` no hace
-          # nada y el .bat corre entero y de verdad.
+          # MEDIDO el origen del error: `master` no lo declaraba y el `.bat` se
+          # comia un MSB1009; cuando el `CMakeLists.txt` lo declaro de verdad, el
+          # stub paso de tapar ese fallo a provocarlo. Con el target real el
+          # `--target NEURONiK_LayoutExport` del `.bat` construye el
+          # exportador de verdad y el `if exist` del paso de mas abajo lo
+          # ejecuta, que es lo que el propio `.bat` quiere.
           cat > "$RUNNER_TEMP/neural-factorymodels.cmake" <<CMAKEEOF
           add_link_options("$_LIBS")
-          if(NOT TARGET NEURONiK_LayoutExport)
-              add_custom_target(NEURONiK_LayoutExport
-                  COMMAND \${CMAKE_COMMAND} -E echo "NEURONiK_LayoutExport no lo declara este CMakeLists; la firma se usa versionada"
-              )
-          endif()
           CMAKEEOF
 
           cmake -S . -B build-reference -A x64 \
