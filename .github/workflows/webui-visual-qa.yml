@@ -30,6 +30,11 @@ on:
       - "wasm/**"
       - "build_wasm.bat"
       - "build.bat"
+      # El rodeo de junctions y su documentacion. MEDIDO: sin esta linea, cambiar
+      # el script no dispara este workflow, o sea que un arreglo en el no se
+      # prueba nunca en CI - que es justo lo que pasa si se arregla para que CI
+      # deje de depender de que los enlaces se escriban solos.
+      - "Scripts/junctions-workspace.bat"
       - "start.bat"
       - "sync_wasm.bat"
       - "watch_then_rebuild_wasm.sh"
@@ -120,6 +125,42 @@ jobs:
       # El fallo de este bootstrap es silencioso: `pnpm install` puede salir en
       # verde y dejar los `workspace:*` sin enlazar, y el error sale veinte
       # pasos mas tarde, en Vite, sin mencionar el workspace. Se comprueba aqui.
+      #
+      # LOS ENLACES COMO JUNCTIONS, con el MISMO rodeo que en local. Va justo
+      # despues de la comprobacion de arriba y antes de cualquier paso de la
+      # WebUI, porque los dos miran lo mismo desde dos lados: el paso de arriba
+      # dice que el enlace EXISTE, y este dice que ademas RESUELVE.
+      #
+      # MEDIDO el 2026-10-03, y por que hace falta aunque `pnpm install` deberia
+      # escribirlos bien. En el runner de Windows, `pnpm` deja los `workspace:*`
+      # como enlaces de pnpm, y hay un caso MEDIDO en local en el que eso no
+      # resuelve: si el enlace se escribe con la ruta tal cual la ve el shell
+      # (POSIX), Node la lee como `D:\d\...` y apunta a un sitio que no existe.
+      # El sintoma no lo dice el enlace -el paquete parece estar- y sale en Vite
+      # con un "Rollup failed to resolve import" veinte pasos mas tarde, sin
+      # mencionar el workspace. Este paso convierte eso en un rojo que dice
+      # cual es, en el sitio donde se puede arreglar.
+      #
+      # `NEURONIK_SUITE` es OBLIGATORIO aqui y no opcional: el script trae
+      # `D:\desarrollos\ABDSynths` como valor por defecto para que en local
+      # funcione sin configurar nada, y en el runner ese sitio NO existe. Sin
+      # la variable el script se iria ahi, no encontraria a los hermanos, y
+      # MEDIDO: aun asi imprimia "RESULTADO: OK, 6 repos revisados", o sea un
+      # verde que no habia mirado nada. Por eso el script ahora CUENTA como
+      # fallo un repo de su lista que no exista, que es lo que hacia posible
+      # ese falso verde.
+      #
+      # OJO con el orden: este paso va DESPUES del `pnpm install` de mas arriba,
+      # que es el que deja los enlaces. Antes de un install no hay nada que
+      # arreglar, y el script se saldria en verde sin haber mirado un enlace.
+      - name: Fix the workspace links as junctions (junctions-workspace.bat)
+        shell: cmd
+        working-directory: ABDNeural
+        run: |
+          set NEURONIK_SUITE=%GITHUB_WORKSPACE%
+          set NEURONIK_CI=1
+          Scripts\junctions-workspace.bat
+
       - name: Verify the workspace layout
         shell: bash
         working-directory: ABDNeural/WebUI
@@ -353,6 +394,19 @@ jobs:
           set -euo pipefail
           pnpm install --frozen-lockfile
 
+      # Los enlaces del workspace como junctions, antes de los vitest. Mismo
+      # rodeo y mismo motivo que en el job de la regresion visual: `pnpm` puede
+      # dejar un `workspace:*` que existe y no resuelve, y entonces el vitest de
+      # la WebUI lee un arbol vacio y sale en verde sin haber comprobado nada.
+      # `NEURONIK_SUITE` es obligatorio por lo mismo que ahi.
+      - name: Fix the workspace links as junctions (junctions-workspace.bat)
+        shell: cmd
+        working-directory: ABDNeural
+        run: |
+          set NEURONIK_SUITE=%GITHUB_WORKSPACE%
+          set NEURONIK_CI=1
+          Scripts\junctions-workspace.bat
+
       # ── La WebUI ───────────────────────────────────────────────────────────
       # 504 tests, 32 ficheros. Corre contra el arbol de ABDSharedAssets que se
       # acaba de descargar, que es justo el punto: si el hermano no exporta lo
@@ -393,9 +447,17 @@ jobs:
   native-tests:
     name: ctest (motor nativo + guards del .wasm)
     runs-on: windows-latest
-    # El build nativo con JUCE y despues emscripten es largo. 60 min es margen
-    # de sobra para hoy y el sitio donde Mirar si alguna vez se queda corto.
-    timeout-minutes: 60
+    # MEDIDO, y el comentario que estaba aqui se equivoco: decia "60 min es
+    # margen de sobra". La corrida 37081769101 llego por primera vez hasta este
+    # job (antes moria en el configure) y se CANCELO a los 60 minutos con unos
+    # 35 de los 38 ejecutables de test ya enlazados, sin el plugin, sin el
+    # `.wasm` y sin ctest. No era un margen corto: era la primera vez que se
+    # llegaba a medirlo.
+    #
+    # El build entero a proposito, plugin incluido, es decision del workflow y
+    # no un descuido: es la bateria que vigila que no haya un segundo sitio donde
+    # anadir un test y olvidarlo.
+    timeout-minutes: 150
 
     env:
       CI: true
@@ -446,6 +508,19 @@ jobs:
         shell: bash
         working-directory: ABDNeural/WebUI
         run: pnpm exec playwright install chromium
+
+      # Los enlaces del workspace como junctions. En este job todavia no corre
+      # ningun paso de navegador, pero SI corre `build_wasm.bat` y los guards de
+      # ctest que leen la WebUI, asi que un enlace roto aqui sale como un fallo
+      # de Vite o del worklet, muy lejos de su causa. `NEURONIK_SUITE` es
+      # obligatorio por lo mismo que en los otros dos jobs.
+      - name: Fix the workspace links as junctions (junctions-workspace.bat)
+        shell: cmd
+        working-directory: ABDNeural
+        run: |
+          set NEURONIK_SUITE=%GITHUB_WORKSPACE%
+          set NEURONIK_CI=1
+          Scripts\junctions-workspace.bat
 
       # ── JUCE ───────────────────────────────────────────────────────────────
       # Tres caminos, en este orden: la variable de entorno, el `C:/JUCE` que ya
