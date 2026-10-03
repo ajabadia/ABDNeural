@@ -324,10 +324,16 @@ echo.
 echo [8/9] Compilando y ejecutando la suite de pruebas...
 REM La lista debe cubrir TODOS los tests registrados en ctest: si falta uno,
 REM ctest falla al no encontrar el ejecutable (no se construye solo).
-REM La lista sale de los add_test de CMakeLists.txt (38 + ABDShared_DspCore_Tests).
-REM Para regenerarla tras anadir un test:
-REM   grep "^add_test" CMakeLists.txt | cut -d: -f2- | sed "s/add_test(NAME //; s/ COMMAND.*//"
-cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_DSPReferenceTest NEURONiK_ModulationMatrixTest NEURONiK_ModulationDest17DriveTest NEURONiK_PresetMigrationParityTest NEURONiK_ModulationContractTest NEURONiK_MidiChannelFilterTest NEURONiK_MidiPortTest NEURONiK_DspReverbParityTest NEURONiK_DspReverbJucePolicyTest NEURONiK_FxSlotsTest NEURONiK_FxCatalogueTest NEURONiK_WasmLayoutOrderTest NEURONiK_AudioBufferParityTest NEURONiK_VelocityCurveTest NEURONiK_LfoSyncTest NEURONiK_ParameterDescriptorTest NEURONiK_PresetRoundTripTest NEURONiK_StatePersistenceTest NEURONiK_ModelSlotTest NEURONiK_MemoryBudgetTest NEURONiK_Vst3LoadTest NEURONiK_ModelMakerRoundTripTest NEURONiK_FactoryPresetAudioTest NEURONiK_SpectralAnalyzerTest NEURONiK_LeastSquaresGridTest NEURONiK_OctaveFamilyTest NEURONiK_Cz101ResidualRangesTest NEURONiK_LayerClusteringTest NEURONiK_LayerViewTest NEURONiK_GridIndicatorTest NEURONiK_TemporalAnalysisTest NEURONiK_FrameSamplerTest NEURONiK_LayerEngineTest NEURONiK_TransposableOffsetsTest NEURONiK_NeurotikBowTest NEURONiK_ParameterBridgeTest NEURONiK_ParameterRandomizerTest NEURONiK_BridgeProtocolContractTest ABDShared_DspCore_Tests
+REM La lista sale de los add_test de CMakeLists.txt. OJO: es EXPLICITA a proposito
+REM (la regenera el grep de abajo), y NO se autogenera al vuelo: asi el paso 8
+REM compila exactamente los mismos targets aunque el CMakeLists cambie, y el
+REM diff de la linea se ve cuando se anade un test. Un target que se olvide aqui
+REM NO se compila, y ctest falla al no encontrar el ejecutable.
+REM
+REM Para regenerarla tras anadir un test, y comprobar que no falta ninguna:
+REM   ctest --test-dir build-reference -C Release -N
+REM que da "Total Tests: 54" (las 53 de antes + NEURONiK_OutputBusDeclaredTest).
+cmake --build "%BUILD_DIR%" --config Release --target NEURONiK_DSPReferenceTest NEURONiK_ModulationMatrixTest NEURONiK_ModulationDest17DriveTest NEURONiK_PresetMigrationParityTest NEURONiK_ModulationContractTest NEURONiK_MidiChannelFilterTest NEURONiK_MidiPortTest NEURONiK_DspReverbParityTest NEURONiK_DspReverbJucePolicyTest NEURONiK_FxSlotsTest NEURONiK_FxCatalogueTest NEURONiK_WasmLayoutOrderTest NEURONiK_AudioBufferParityTest NEURONiK_VelocityCurveTest NEURONiK_LfoSyncTest NEURONiK_ParameterDescriptorTest NEURONiK_PresetRoundTripTest NEURONiK_StatePersistenceTest NEURONiK_OutputBusDeclaredTest NEURONiK_ModelSlotTest NEURONiK_MemoryBudgetTest NEURONiK_Vst3LoadTest NEURONiK_ModelMakerRoundTripTest NEURONiK_FactoryPresetAudioTest NEURONiK_SpectralAnalyzerTest NEURONiK_LeastSquaresGridTest NEURONiK_OctaveFamilyTest NEURONiK_Cz101ResidualRangesTest NEURONiK_LayerClusteringTest NEURONiK_LayerViewTest NEURONiK_GridIndicatorTest NEURONiK_TemporalAnalysisTest NEURONiK_FrameSamplerTest NEURONiK_LayerEngineTest NEURONiK_TransposableOffsetsTest NEURONiK_NeurotikBowTest NEURONiK_ParameterBridgeTest NEURONiK_ParameterRandomizerTest NEURONiK_BridgeProtocolContractTest ABDShared_DspCore_Tests
 if !ERRORLEVEL! neq 0 (
     echo.
     echo [ERROR] Fallo al compilar las pruebas.

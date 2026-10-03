@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.21)
-project(NEURONiK_Synthesizer VERSION 0.1.0 LANGUAGES CXX)
+# LANGUAGES: C y CXX, y no solo CXX. JUCE (D:\desarrollos\JUCE) aborta la
+# configuración si C no está habilitado, con "A C compiler is required to build
+# targets that depend on JUCE". Medido al reconfigurar con el JUCE actual.
+project(NEURONiK_Synthesizer VERSION 0.1.0 LANGUAGES C CXX)
 
 # ============================================================================
 # PROJECT SETUP
@@ -470,23 +473,73 @@ target_link_libraries(NEURONiK_ModulationMatrixTest PRIVATE
 
 add_test(NAME NEURONiK_ModulationMatrixTest COMMAND NEURONiK_ModulationMatrixTest)
 
+# El destino 17 dice `fx1Param1` y el contrato compartido lo comprueba. Que el
+# motor de verdad lo MUEVA es otra pregunta, y la responde este test: renderiza
+# el motor entero tres veces y compara las muestras. Va aparte del de arriba
+# porque el de arriba prueba las FUENTES y la POLITICA de la tabla con un solo
+# bloque; este necesita una cola de muestras para ver el drive ya asentado,
+# porque `SaturationFx` lo suaviza 5 ms. Un destino que escribiera en el hueco
+# equivocado o en el mando equivocado pasaría el de arriba y falla este.
+#
+# Es el mismo montaje que ModulationMatrixTest a propósito: motor real, gesto
+# MIDI real y matriz real. Un aserto sobre la tabla sería la versión barata, y
+# la versión barata es la que no oye nada.
+add_executable(NEURONiK_ModulationDest17DriveTest
+    Tests/ModulationDest17DriveTest.cpp
+    ${NEURONIK_DSP_SOURCES}
+)
+
+target_include_directories(NEURONiK_ModulationDest17DriveTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/State"
+)
+
+target_link_libraries(NEURONiK_ModulationDest17DriveTest PRIVATE
+    juce::juce_audio_basics
+    juce::juce_audio_formats
+    juce::juce_core
+    juce::juce_data_structures
+    juce::juce_dsp
+    juce::juce_events
+    juce::juce_graphics
+    NEURONiK_Common
+)
+
+add_test(NAME NEURONiK_ModulationDest17DriveTest COMMAND NEURONiK_ModulationDest17DriveTest)
+
+
 # ── La red de paridad de la matriz: una HERRAMIENTA, no un test ─────────────
-# Vuelca un hash por escenario de modulacion (41, con audio real). Se ejecuta
-# antes y despues de tocar el motor y se diffa: si las dos salidas coinciden, el
-# cambio no ha movido ni un ULP.
+# Rinde 41 escenarios de modulación con audio real y vuelca un hash de cada uno.
+# Cada escenario se rinde DOS VECES: los que dan lo mismo dos veces se comparan
+# contra un fichero de referencia, y los que no, se listan aparte como NO
+# REPRODUCIBLE. El motivo es que el motor no es reproducible entre instancias
+# (medido en ModulationDest17DriveTest: 2 de cada 10 tiradas divergen), y con
+# un solo render uno de cada cinco escenarios entraría en la comparación con un
+# hash que no lo identifica, y el "ha cambiado" se confundiría con "ha salido el
+# valor raro".
 #
-# NO entra en ctest, y por las dos razones que estan en la cabecera del
+# NO entra en ctest, y por las TRES razones que están en la cabecera del
 # fichero: el hash es de bytes CRUDOS (mismo codigo, distinto hash en Debug que
-# en Release) y cuesta alrededor de un minuto. Un golden que solo vale para una
-# configuracion, en un target que aparece en todas, es una bomba de reloja.
+# en Release), cuesta alrededor de un minuto en Debug (41 motores x 2 renders),
+# y un golden que hay que actualizar cada vez que el motor cambia a propósito
+# acabaría siendo algo que se re-acepta sin mirar.
 #
-#   NEURONiK_ModulationParityDump > antes.txt
-#   <cambia el motor>
-#   NEURONiK_ModulationParityDump > despues.txt && diff antes.txt despues.txt
+#   NEURONiK_ModulationParityDump                      # crea la referencia si no existe
+#   NEURONiK_ModulationParityDump Tests/mi-ref.txt     # contra otra ruta
+#
+# El $<CONFIG> de más abajo es lo que hace que el fichero de referencia se
+# resuelva SOLO por configuración, sin que nadie tenga que acordarlo: un Debug y
+# un Release con el mismo código dan floats distintos, y un solo fichero para
+# los dos no compara nada, parece que compara.
 add_executable(NEURONiK_ModulationParityDump
     Tests/ModulationParityDump.cpp
     ${NEURONIK_DSP_SOURCES}
 )
+target_compile_definitions(NEURONiK_ModulationParityDump PRIVATE
+    NEURONiK_PARITY_CONFIG="$<CONFIG>"
+)
+
 
 target_include_directories(NEURONiK_ModulationParityDump PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/Source"
@@ -823,6 +876,27 @@ target_include_directories(NEURONiK_WasmLayoutOrderTest PRIVATE
 
 add_test(NAME NEURONiK_WasmLayoutOrderTest COMMAND NEURONiK_WasmLayoutOrderTest)
 
+# Regenerates WebUI/generated/gp-layout.generated.js
+#
+# La firma del layout del espejo, que es lo que permite que la página sepa al
+# arrancar si el `.wasm` que tiene delante es de ESTA compilación. La escribe
+# el mismo header que construye el layout que publica el puente, de modo que
+# la página no lleva el número escrito a mano --que sería una copia del struct
+# y se quedaría vieja sin avisar-- sino generado.
+#
+# SIN JUCE, como NEURONiK_FxExport: la cabecera del layout es JUCE-free y un
+# exportador que necesitara JUCE para leer un FNV sería el primer sitio donde
+# el módulo dejaría de compilar solo.
+add_executable(NEURONiK_LayoutExport
+    Tests/LayoutFingerprintExportTool.cpp
+)
+
+target_include_directories(NEURONiK_LayoutExport PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Wasm"
+)
+
 # Regenerates WebUI/generated/fx-catalog.generated.{json,js}
 add_executable(NEURONiK_FxExport
     Tests/FxCatalogExportTool.cpp
@@ -992,6 +1066,54 @@ target_link_libraries(NEURONiK_StatePersistenceTest PRIVATE
 )
 
 add_test(NAME NEURONiK_StatePersistenceTest COMMAND NEURONiK_StatePersistenceTest)
+
+# El bus de salida del processor. Un guard de UNA pregunta que decide si el
+# plugin suena o no: sin `BusesProperties().withOutput(...)`,
+# `getMainBusNumOutputChannels()` vale 0, el Standalone pide 0 salidas al
+# AudioDeviceManager, `initialise (0, 0, ...)` no abre dispositivo, no hay
+# processBlock y el motor no suena (medido el 2026-10-02).
+#
+# Va con el processor REAL y no con un grep del fuente a propósito: un
+# `withOutput` en un comentario haria pasar el grep con el plugin igual de mudo,
+# y el día que el bus se declare en otro sitio (una fábrica, una clase base, un
+# .h) el grep pasa en verde con el bus sin declarar otra vez. Aquí se PREGUNTA
+# al objeto, así que da 0 canales y falla se declare donde se declare.
+add_executable(NEURONiK_OutputBusDeclaredTest
+    Tests/OutputBusDeclaredTest.cpp
+    Source/WebUI/ParameterBridge.cpp
+    ${NEURONIK_STATE_TEST_SOURCES}
+)
+
+target_include_directories(NEURONiK_OutputBusDeclaredTest PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Main"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/UI"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/UI/Panels"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/DSP"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/State"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Serialization"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/WebUI"
+)
+
+target_compile_definitions(NEURONiK_OutputBusDeclaredTest PRIVATE
+    JucePlugin_Name="NEURONiK"
+)
+
+target_link_libraries(NEURONiK_OutputBusDeclaredTest PRIVATE
+    NEURONiK_FactoryModels
+    juce::juce_audio_basics
+    juce::juce_audio_processors
+    juce::juce_audio_utils
+    juce::juce_core
+    juce::juce_data_structures
+    juce::juce_dsp
+    juce::juce_graphics
+    juce::juce_gui_basics
+    juce::juce_gui_extra
+    NEURONiK_Common
+)
+
+add_test(NAME NEURONiK_OutputBusDeclaredTest COMMAND NEURONiK_OutputBusDeclaredTest)
 
 # Model slots A-D (ticket 8.2): el formato de un .neuronikmodel (el que escribe el
 # ModelMaker contra el que leia el plugin), la carga por ranura, el preset que las
@@ -1847,20 +1969,20 @@ if(NEURONIK_NODE_EXECUTABLE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/WebUI/node_m
         # fallo aparece a los 13 s hablando de puertos, no de pintura. Ver la
         # nota de E2E_PORT en WebUI/playwright.config.js.
         #
-        # EL SEGUNDO (el probe) LE FALTABA, y por eso este test era el Ãºnico que
-        # se caÃ­a en una corrida en la que nada mÃ¡s estaba roto. El `webServer`
+        # EL SEGUNDO (el probe) LE FALTABA, y por eso este test era el único que
+        # se caía en una corrida en la que nada más estaba roto. El `webServer`
         # de `playwright.config.js` es una LISTA y SIEMPRE levanta los dos
-        # servidores, use o no este spec la pÃ¡gina de la aguja: poniendo solo el
+        # servidores, use o no este spec la página de la aguja: poniendo solo el
         # del preview, el de la aguja se quedaba en el 5237 de POR DEFECTO, que es
         # el de la corrida `pnpm test:e2e` a mano. Con `reuseExistingServer` (que
-        # estÃ¡ activo salvo en CI) el visual se enganchaba ahÃ­ al servidor de
+        # está activo salvo en CI) el visual se enganchaba ahí al servidor de
         # quien estuviera probando a mano, y su fallo no era suyo.
         #
         # El reparto, medido: 5236/5237 son de la corrida A MANO y no se tocan;
-        # de ahÃ­ para arriba, un par por test de ctest â€” localMode 5242/5243,
-        # visual 5239/5244, aguja 5240/5241. El 5238 se deja libre a propÃ³sito:
+        # de ahí para arriba, un par por test de ctest — localMode 5242/5243,
+        # visual 5239/5244, aguja 5240/5241. El 5238 se deja libre a propósito:
         # queda pegado al 5237 de la corrida manual, que es justo el par que este
-        # arreglo querÃ­a dejar intacto.
+        # arreglo quería dejar intacto.
         RESOURCE_LOCK "neuronik_webui_dist"
         ENVIRONMENT "NEURONIK_E2E_PORT=5239;NEURONIK_E2E_PROBE_PORT=5244"
     )
