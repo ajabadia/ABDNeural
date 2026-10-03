@@ -12,9 +12,13 @@
 #                          si un verificador no detecta lo que debe, lo que salga
 #                          despues no vale como medida de nada.
 #   selftest_pre_commit_bats.py
-#                          El banco del hook de los .bat, con `git commit` de
+#                          El banco del hook de pre-commit, con `git commit` de
 #                          verdad. Va el ultimo de los automaticos porque crea
 #                          repos temporales y es el mas lento.
+#   selftest_post_checkout_bats.py
+#                          El banco del hook de post-checkout, con `git checkout`
+#                          de verdad. Detras del otro porque tambien crea repos
+#                          temporales.
 #
 # NO ejecuta `suite_bajo_carga.sh`, y es a proposito: esa satura la maquina y
 # su resultado depende de lo que se le pase. Se lanza a mano, cuando la pregunta
@@ -76,6 +80,9 @@ correr "banco_convenciones.py (los verificadores detectan)" \
 
 correr "selftest_pre_commit_bats.py (el hook de los .bat)" \
         "$PYTHON" "$RAIZ/Scripts/selftest_pre_commit_bats.py"
+
+correr "selftest_post_checkout_bats.py (el hook del checkout)" \
+        "$PYTHON" "$RAIZ/Scripts/selftest_post_checkout_bats.py"
 
 echo ""
 echo "############################################################"

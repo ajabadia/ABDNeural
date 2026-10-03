@@ -1,0 +1,42 @@
+#!/bin/sh
+# post-checkout: el lanzador del hook que avisa de como ha quedado el checkout.
+#
+# POR QUE ESTE FICHERO ES SH Y NO PYTHON
+#
+# El mismo motivo que en pre-commit, y MEDIDO el 2026-10-03 en git for Windows:
+# un hook con `#!/usr/bin/env python3` no arranca, da "Python was not found" de
+# la Microsoft Store, y el unico mensaje que ve el que hace checkout es un fallo
+# de Python que no menciona los .bat. En Windows esta `python` y no `python3`; en
+# los runners de ubuntu que usa el CI al reves. Un shebang fijo deja uno de los
+# dos lados sin hook, que es peor que no tener hook.
+#
+# La logica vive al lado, en revisar_checkout.py, por el mismo reparto que en
+# pre-commit: el lanzador es la parte que tiene que arrancar en Windows y en
+# Linux, y ya se ha visto que es donde se rompe.
+#
+# NUNCA DEVUELVE UN CODIGO DISTINTO DE 0, Y ESO ES A PROPOSITO
+#
+# post-checkout NO puede parar un checkout: git ya ha cambiado de rama cuando
+# este script se ejecuta, y un codigo de salida aqui se traduce en un aviso de
+# git que no va a ningun sitio y en un exit code que rompe scripts que solo
+# wanted cambiar de rama. Este hook AVISA. Quien lo para es pre-commit, que aun
+# esta a tiempo.
+#
+# Sin `set -e`: el bucle tiene que poder seguir cuando uno de los tres
+# interpretes no esta.
+
+AQUI=$(dirname "$0")
+
+for INTERPRETE in python python3 py; do
+    if command -v "$INTERPRETE" >/dev/null 2>&1; then
+        "$INTERPRETE" "$AQUI/revisar_checkout.py" "$@"
+        exit 0
+    fi
+done
+
+# Ninguno de los tres. Se dice una vez y se deja pasar, porque bloquear todos los
+# checkout porque falta un interprete es peor que avisar de menos.
+echo "post-checkout: no hay python, python3 ni py en el PATH; los .bat de este" >&2
+echo "               checkout NO se han revisado. Sin esto, un .bat con LF se" >&2
+echo "               cuela hasta el build, que es donde sale el rojo de verdad." >&2
+exit 0
