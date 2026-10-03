@@ -83,29 +83,29 @@ jobs:
       # `ABDNeural/WebUI/node_modules/@abdsynths/*` y el install va ahi. Copiar
       # el layout a mano es lo que hace falta, no adaptar la accion.
       - name: Checkout ABDNeural (este repo)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           path: ABDNeural
 
       - name: Checkout ABDSharedCode (@abdsynths/midi-keyb)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: ajabadia/ABDSharedCode
           path: ABDSharedCode
 
       - name: Checkout ABDSharedAssets (@abdsynths/shared)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: ajabadia/ABDSharedAssets
           path: ABDSharedAssets
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@v6.1.0
         with:
           version: '10'
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
 
@@ -245,7 +245,7 @@ jobs:
       # revisar un fallo de referencia, asi que se suben siempre.
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: |
@@ -295,18 +295,18 @@ jobs:
         run: git config --global core.autocrlf false
 
       - name: Checkout ABDNeural (este repo)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           path: ABDNeural
 
       - name: Checkout ABDSharedCode (@abdsynths/midi-keyb)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: ajabadia/ABDSharedCode
           path: ABDSharedCode
 
       - name: Checkout ABDSharedAssets (@abdsynths/shared)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: ajabadia/ABDSharedAssets
           path: ABDSharedAssets
@@ -328,13 +328,13 @@ jobs:
       # esta, y con ella estos tests pasarian en verde SIN comprobar nada. Un
       # verde que no ha mirado nada es peor que un rojo, asi que se clonan.
       - name: Checkout ABDEep (generador de presets y registro)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: ajabadia/ABDEep
           path: ABDEep
 
       - name: Checkout ABDMS2000 (generador de registro y contratos)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: ajabadia/ABDMS2000
           path: ABDMS2000
@@ -356,18 +356,18 @@ jobs:
       # que lo que importa es leer el `.cpp`: un `--check` en verde no dice que el
       # C++ deje de teclear literales.
       - name: Checkout ABDAudioLab (el laboratorio que leen esos tests)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: ajabadia/ABDAudioLab
           path: ABDAudioLab
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@v6.1.0
         with:
           version: '10'
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
 
@@ -468,29 +468,29 @@ jobs:
 
     steps:
       - name: Checkout ABDNeural (este repo)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           path: ABDNeural
 
       - name: Checkout ABDSharedCode (@abdsynths/midi-keyb)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: ajabadia/ABDSharedCode
           path: ABDSharedCode
 
       - name: Checkout ABDSharedAssets (@abdsynths/shared)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: ajabadia/ABDSharedAssets
           path: ABDSharedAssets
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@v6.1.0
         with:
           version: '10'
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
 
@@ -906,7 +906,7 @@ jobs:
 
       - name: Upload ctest log
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ctest-log
           path: |
