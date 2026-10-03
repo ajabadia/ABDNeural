@@ -97,7 +97,7 @@ bash Scripts/verify_all.sh 2>&1 | tail -3
 Y en cada paso, la cuenta de rojos con su clasificación:
 
 ```
-  53 tests, 8 en rojo (los verdes no se listan: taparian los rojos)
+  54 tests, 8 en rojo (los verdes no se listan: taparian los rojos)
   ROJO    NEURONiK_PresetMigrationParityTest
           ROTO DE ORIGEN AJENO: ajeno: del modulo compartido a medias...
 ```
@@ -417,7 +417,7 @@ ningún resultado de la batería.
 El paso 1 compila **los 39 tests nativos que ve `ctest`**, más los dos
 programas que la propia verificación usa para sus fixtures (`FxExport` y
 `ModulationParityDump`, que no son tests y por eso no salen de la lista). De los
-53 tests que ve `ctest`, 39 son nativos (los otros 14 son de Node: Playwright y
+54 tests que ve `ctest`, 40 son nativos (los otros 14 son de Node: Playwright y
 contratos). Al compilar los 39, **el encabezado dice `39 reconstruidos` y `0
 rancios`**, y el aviso de binarios rancios **no dice nada**: es la señal de que
 la batería ha medido el código de ahora.
@@ -433,7 +433,7 @@ La lista de targets **no está escrita en el script**: sale de
 proyecto no obliga a tocar el verify, y si la lista se queda corta el aviso lo
 dice en vez de dejarlo pasar en silencio.
 
-Y los 41 targets van en **una sola invocación** de `cmake --build`, no una por
+Y los 42 targets van en **una sola invocación** de `cmake --build`, no una por
 target: el generador de Visual Studio recompila la librería de JUCE cuando algo
 la toca, y con 41 invocaciones eso se paga 41 veces. Medido en esta máquina, un
 target solo tarda 20 s en frío (por `juce_core_CompilationTime.cpp`, que se
@@ -454,41 +454,83 @@ antes de tocar código:
 cmake --build build-reference --config Release --target NOMBRE
 ```
 
+## La última vez que se midió el check de gemelos
+
+**Medido el 2026-10-03 contra el build de ese momento, que estaba en `FIN_1`, no
+en `FIN_0`** (el paso 9 falla por `AGUJA`, trabajo de otro hilo; ver más abajo).
+El check **no mira el código de salida de los verify**, así que se puede correr
+igual y su veredicto sigue siendo válido:
+
+```
+  Dicen lo mismo: 1 linea(s) de detalle, 10 recuento(s), sin una sola diferencia.
+  Salidas de los verify: .sh 1, .bat 1
+FIN_GEMELOS_0
+```
+
+Es decir: **veredicto `0`, no el `4`**. El `4` (DEGRADADO) sigue sin verse, y ahora
+se sabe por que: el intermitente del `webServer` del probe que lo producia era el
+`server.warmup` que faltaba en `WebUI/vite.config.js`, arreglado el mismo día. Con
+los E2E estables (LocalModeE2e de 130 s a 40 s) ya no hay una vuelta que vaya peor
+que la otra, así que el veredicto se queda en `0`.
+
+Lo que el check **midió de los dos verify**, y lo que dice la tabla de arriba:
+
+| | Medido 2026-10-03 |
+|---|---|
+| ctest | 54 tests, 0 en rojo |
+| Targets construidos | 42 |
+| vitest de WebUI | PASA |
+| vitest de ABDSharedAssets | ROJO, `check:guardas` |
+| Contratos cruzados | los tres PASA |
+
+Y el rojo que queda es **el mismo de siempre** y **no es de este repo**: paso 4,
+`check:guardas no esta en ningún inventario del preflight`.
+
 ## Lo que hoy está rojo, y por qué
 
 **El paso 4: `vitest` de ABDSharedAssets. Uno de 1736 tests.** Los otros cuatro
-pasos están en verde: 41 targets, los 53 de ctest, el vitest de WebUI y los tres
+pasos están en verde: 42 targets, los 54 de ctest, el vitest de WebUI y los tres
 contratos cruzados. La lista de conocidos (`Scripts/verify_all_known.json`) sigue
 vacía, y eso no es que no haya rojos: es que el paso 4 **no tiene lista**, a
 propósito, porque su rojo pide decisión aunque el motivo esté escrito.
 
-**Medido el 2026-10-02**, y la causa no es la que el verify escribe:
+**Medido el 2026-10-02**. Para el rojo que queda hoy, el verify y este doc
+coinciden: el motivo está en el log del paso y es
+`check:guardas no esta en ningún inventario del preflight`. Lo que sigue es el
+historial de cómo se llegó hasta aquí:
 
-- `ABDSharedAssets/node_modules` era un **symlink POSIX** a
-  `node_modules_ok/node_modules`, una copia del proyecto entero, no la carpeta
-  de módulos. Node lo leía como `D:\...` y ahí **no estaba vitest**: no existía
-  ni la carpeta ni `.pnpm/vitest*`, aunque `.bin/vitest` sí. Instalación
-  incompleta, no bloqueada: **0 `.js` ilegibles**, que es la comprobación del
-  cuarto atranco.
-- El rojo que queda **no es de este repo**: `check:guardas no esta en ningun
-  inventario del preflight`. El `package.json` de ABDSharedAssets declara
-  `check:guardas` (modificado sin commitear) y el preflight exige que todo
-  `check:` del manifiesto esté en `CONTRATOS`, en `GENERADOS_FUERA` o sea un
-  agregado. **Pendiente de quien lo añadió**, no arreglado aqui.
+Primero, `ABDSharedAssets/node_modules` era un **symlink POSIX** a
+`node_modules_ok/node_modules`, una copia del proyecto entero, no la carpeta de
+módulos. Node lo leía como `D:\...` y ahí **no estaba vitest**: no existía ni la
+carpeta ni `.pnpm/vitest*`, aunque `.bin/vitest` sí. Instalación incompleta, no
+bloqueada: **0 `.js` ilegibles**, que es la comprobación del cuarto atranco. Al
+quitar el enlace y reinstalar, vitest apareció y el rojo pasó a ser **otro**: el
+`package.json` de ABDSharedAssets declara `check:guardas` (modificado sin
+commitear) y el preflight exige que todo `check:` del manifiesto esté en
+`CONTRATOS`, en `GENERADOS_FUERA` o sea un agregado. **Pendiente de quien lo
+añadió**, no arreglado aquí.
 
-**Y el motivo que escribe el verify es FALSO**, y conviene saberlo porque es el
-tercer motivo falso seguido que lleva este proyecto. `verify_all.sh:993` dice,
-para cualquier rc distinto de cero del paso 4:
+**El motivo que escribe el verify ya NO es falso, y conviene saber por qué.**
+Durante un rato lo fue, y era el tercer motivo falso seguido del proyecto:
+`verify_all.sh` decía para cualquier rc distinto de cero del paso 4
 
 > `vitest no arranca. Misma causa que el paso 3: .js de node_modules que dan EPERM`
 
-Ese texto es el de la rama `else` de `ejecutar_vitest`, así que sale **también
-cuando vitest arranca y falla un test**. Con el paso 4 ya instalado, `pnpm test`
-corre 40 ficheros y falla 1, y el verify sigue diciendo que no arranca. El
-comentario de 20 líneas que hay justo encima en el mismo fichero cuenta los dos
-motivos falsos anteriores; este es el tercero, y repite exactamente el fallo que
-allí se denuncia: un motivo escrito es una hipótesis, y basta con que sea
-plausible para que el rojo parezca que no tiene arreglo.
+que es el texto de la rama `else` de `ejecutar_vitest`, y salía **también cuando
+vitest arrancaba y fallaba un test**: con el paso 4 ya instalado, `pnpm test` corría
+40 ficheros y fallaba 1, y el verify seguía diciendo que no arrancaba.
+
+**Arreglado el 2026-10-02** (commit `51f8c5b`): el texto ya no afirma ninguna causa
+y manda a leer el log del paso. Ahora mismo dice, en `verify_all.sh:1004`:
+
+> `vitest sale con rc distinto de cero. Puede ser que no arranque o que tenga tests en rojo: el motivo está en el log del paso, y un motivo escrito es una hipótesis hasta que se mira.`
+
+**Comprobado contra el build `FIN_0` de hoy**: el verify wrote exactamente eso, y
+`pnpm test` en ABDSharedAssets dio `Test Files 1 failed | 39 passed (40)`,
+`Tests 1 failed | 1735 passed (1736)`. El motivo del doc y el texto del verify
+**coinciden**, que es justo lo que no pasaba antes. Sigue siendo cierto lo que se
+decía del motivo escrito: una hipótesis hasta que se mira el log, y por eso el
+paso 4 no tiene lista de conocidos y su rojo pide decisión.
 
 Los otros tres están arreglados. Lo que interesa de ellos es **por qué estaban**,
 porque eran dos fallos encimados y el segundo estaba tapado por el primero:

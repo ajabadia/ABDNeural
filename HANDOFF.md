@@ -9115,6 +9115,61 @@ arriba, y las dos se pueden comprobar.
 
 ---
 
+## 2026-09-29 — la curva ADSR deja de ser codigo de este repo
+
+`WebUI/src/ui/envelopeCurve.js` (matematica pura + pintor SVG, el fichero que el
+handoff anterior vio borrar a medias) esta **fuera**: el dibujo lo pinta ahora
+`@abdsynths/shared`, y aqui no queda copia. Cero copias locales, el mismo contrato que
+el resto del paquete, aplicado a un componente en vez de a un asset.
+
+**Donde vive.** En `ABDSharedAssets`: `components/envelopeCurve.js` (geometria pura +
+la vista de fabrica), `components/envelopeGestures.js` (el gesto), `components/envelopePad.js`
+(el control) y `styles/components/envelope.css`. El barrel exporta la geometria y el pad;
+el gesto no, porque solo lo consume el pad. Se parte en tres porque el contrato de CI de
+este repo pone 300 lineas por `components/*.js`.
+
+**Lo que se enriquecio, y de donde.** El editor del S950 (`_RESOURCES/Mz950-main`, AGPLv3)
+arrastra **tres** esquinas, no cuatro: el sustain no tiene asa propia, es la ALTURA de la
+esquina del decay, y arrastra las dos cosas a la vez. Eso -- mas el teclado completo de las
+asas (`role=slider`, flechas, `Shift` x10, `PageUp/Down` x10, `Home/End`) -- esta reescrito
+limpio, sin una linea del original.
+
+**Lo que se queda aqui, y es SSOT de este synth:** que ids pinta cada vista, la matriz de
+skew entre parametros y el `captionClass: 'cell__label'` para que el titulo use la clase de
+la ficha. `src/ui/envelopeViews.js` es el consumidor; el dibujo no es suyo.
+
+**Dos trampas, las dos medidas, las dos documentadas** (en `COMPONENTS.md`,
+`docs/STYLES_GUIDE.md` §4.6 y el README de la WebUI):
+
+- **El caption se monta SIEMPRE, aunque este vacio.** Un `span` sin texto mide 0, pero el
+  `gap: 2px` de su flex-column no. Quitandolo, el alto del `svg` baja 2 px DENTRO del cajon
+  y la referencia visual se aparta, sin que ninguna asercion de texto falle.
+- **`toReal` en las DOS llamadas** (lienzo y cajon). Sin el, la vista compartida pinta con
+  valores normalizados en vez de segundos reales: se ve bien y con otra forma. El mapeo
+  normalizado->segundos es del host, no puede vivir en el paquete.
+
+**El `nan is not defined` del needle-probe no era de aqui.** Era el parche temporal de la
+otra sesion en el worklet; `grep nan` en `public/worklet/*.js` da 0 y el bloque `las
+agujas` pasa con `maxDiffPixels: 0`. Lo que si era de aqui: el probe leia
+`.envelope-curve__level`, la clase de la copia borrada, y por eso no encontraba la aguja.
+
+**Estado.** ABDSharedAssets **28 ficheros / 1293 tests** verdes. WebUI **32 ficheros / 504
+tests** verdes. Regresion visual: **14 verdes de 18**; `ficha envelopes` y `cajon
+envelopes` pixel a pixel contra su referencia, y el bloque de las agujas con umbral 0. Los
+4 rojos (`ficha fx`, `cajon fx` y las dos del lienzo entero, que los contienen) son del
+trabajo en curso sobre `FxCatalogue.h`: el diff esta **acotado a la caja (859,46)-(1414,754)**,
+que es la ficha fx (`x 844-1430`), mientras que la ficha de envolventes ocupa `x 10-596` y no
+tiene **un** pixel distinto.
+
+> Canon: un componente que se dibuja en un sitio, se dibuja en el paquete. La copia local
+> no es una version anterior: es una segunda fuente de la verdad que se aparta sola, y
+> nadie se entera hasta que una referencia visual se aparta con ella.
+
+> Canon: el paquete dibuja la FORMA; las unidades son del host. Un componente que las
+> suponga pinta bien y pinta otra cosa, y no hay ninguna asercion que lo note.
+
+---
+
 ## 2026-10-02 -- los dos rojos del check completo son de `WebUI/`: uno esta desincronizado y el otro sigue flaky
 
 El check completo (`verify_all_check.sh`) termino en **rc=1 en 375 s** con

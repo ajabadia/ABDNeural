@@ -361,10 +361,35 @@ linea de codigo: cambio quien gaina el orden de resolucion.
 maquina (medido: "Carece de privilegios suficientes"). `mklink /J` (junction) no
 los pide y es lo que Windows usa de nativo para esto.
 
-Eso es un `Scripts/junctions-workspace.bat`, que hace los tres enlaces que hay
-(WebUI x2, MidiKeyboard x1) y **se ejecuta despues de cada `pnpm install`**, que
-es lo que los vuelve a escribir como symlink. Es idempotente: si ya resuelven, lo
-dice y no toca nada.
+Eso es un `Scripts/junctions-workspace.bat`, que recorre los seis repos del
+workspace y **se ejecuta después de cada `pnpm install`**, que es lo que los
+vuelve a escribir como symlink. `build.bat` ya lo llama solo antes del paso 3, y
+corta si sale con un código distinto de 0.
+
+Es idempotente: si un enlace ya resuelve, no lo toca. Solo crea los enlaces que
+el `package.json` de cada repo **declara como dependencia**, y esos son (medido
+el 2026-10-02):
+
+| repo | `@abdsynths/shared` | `@abdsynths/midi-keyb` |
+|---|---|---|
+| `ABDNeural/WebUI` | si | si |
+| `ABDSharedAssets` | no | no |
+| `ABDSharedCode/MidiKeyboard` | si | no |
+| `ABDMS2000` | si | si |
+| `ABDCZ101` | si | si |
+| `ABDEep` | si | si |
+
+Que el filtro se base en el `package.json` y no en una lista de enlaces a mano no
+es cosmético. Sin el, el script se enlazaba a sí mismo: `ABDSharedAssets` (que
+**es** `@abdsynths/shared`) se ponía un enlace a sí mismo, y `MidiKeyboard` (que
+**es** `@abdsynths/midi-keyb`) otro. Un repo enlazado a sí mismo a través de su
+`node_modules` es un bucle de resolución de módulos esperando a que algo lo
+recorra. Los dos casos se notaron al medir, y se quitaron a mano.
+
+El detalle fino está en cómo se busca la dependencia: el nombre se busca como
+clave, o sea `"@abdsynths/shared":` **con los dos puntos de detrás**. Sin ellos
+`findstr` encuentra también el campo `"name"` del propio repo, que es el mismo
+texto, y el filtro no filtra nada.
 
 ```bash
 cd /d/desarrollos/ABDSynths/ABDNeural
@@ -372,19 +397,132 @@ cmd //c "Scripts\junctions-workspace.bat"
 ```
 
 ```
-  [OK]      shared en ...\WebUI\node_modules ya apunta a D:\...\ABDSharedAssets
-  [OK]      midi-keyb en ...\WebUI\node_modules ya apunta a D:\...\MidiKeyboard
-  [OK]      shared en ...\MidiKeyboard\node_modules ya apunta a D:\...\ABDSharedAssets
+=== Enlaces del workspace como junctions ===
 
-RESULTADO: OK, todos los enlaces del workspace resuelven.
+  [REPO]   D:\desarrollos\ABDSynths\ABDNeural\WebUI
+  [REPO]   D:\desarrollos\ABDSynths\ABDSharedAssets
+  [REPO]   D:\desarrollos\ABDSynths\ABDSharedCode\MidiKeyboard
+  [REPO]   D:\desarrollos\ABDSynths\ABDMS2000
+  [REPO]   D:\desarrollos\ABDSynths\ABDCZ101
+  [REPO]   D:\desarrollos\ABDSynths\ABDEep
+
+RESULTADO: OK, 6 repos revisados y todos los enlaces del
+         workspace resuelven.
 ```
 
-Sale con **1** si algo se queda sin resolver, y avisa de cual. Los cuatro casos
-que se midieron: `[OK]` (ya bien), `[NUEVO]` (no estaba), `[ROTO]` (existe pero
-no resuelve) y `[SE PASA]` (aun no hay `node_modules`). En el roto borra el
-enlace con `rmdir` —que quita junctions y symlinks sin pedir nada— y solo si eso
-falla intenta un `ren`; si tampoco, avisa de que la causa probable es el store
-bloqueado del cuarto atranco.
+Cuando todo está bien **no imprime nada por repo**: seis líneas de `[REPO]` y el
+resultado. El ruido se paga solo, porque los que se quedan con avisos son los
+que hay que mirar.
+
+Sale con **1** si algo se queda sin resolver, y avisa de cuál. Los casos que se
+midieron: `[NUEVO]` (no estaba, se crea), `[ROTO]` (existe pero no resuelve) y
+`[LISTO]` (creado). En el roto borra el enlace con `rmdir` —que quita junctions
+y symlinks sin pedir nada— y solo si eso falla intenta un `ren`; si tampoco,
+avisa de que la causa probable es el store bloqueado del cuarto atranco.
+
+Los repos que aun no tienen `node_modules` se saltan en silencio: todavía no se
+ha instalado, y eso no es un problema. Lo que **no** se salta en silencio es un
+`node_modules` que existe pero no es una carpeta de módulos; ese caso es el
+siguiente.
+
+### Y ahora también en CI, desde el 2026-10-03
+
+El workflow (`.github/workflows/webui-visual-qa.yml`) llama al script en **los tres
+jobs** (`visual-regression`, `js-tests` y `native-tests`), justo después de su
+`pnpm install` y antes de cualquier paso de la WebUI:
+
+```yaml
+- name: Fix the workspace links as junctions (junctions-workspace.bat)
+  shell: cmd
+  working-directory: ABDNeural
+  run: |
+    set NEURONIK_SUITE=%GITHUB_WORKSPACE%
+    set NEURONIK_CI=1
+    Scripts\junctions-workspace.bat
+```
+
+Tres cosas que hicieron falta, y las tres se midieron probando el script contra un
+layout de CI antes de meterlo:
+
+**1. `NEURONIK_SUITE`**, porque el layout de CI no es el de local. En local la suite
+está en `D:\desarrollos\ABDSynths` y ese valor es el que trae el script por
+defecto. En el runner los hermanos son subdirectorios sueltos de
+`$GITHUB_WORKSPACE`. MEDIDO sin la variable: el script resolvía `%SUITE%` a la ruta
+local, no encontraba a los hermanos del runner, **y aun así imprimía
+`RESULTADO: OK, 6 repos revisados`**. Un verde que no ha mirado nada.
+
+**2. `NEURONIK_CI=1`**, porque CI clona solo los hermanos que cada job necesita. En
+`visual-regression` no están `ABDMS2000`, `ABDCZ101` ni `ABDEep`. Con el modo
+estricto el paso habría fallado **siempre**, con un rojo de "falta el repo" en un
+job donde ese repo no hace falta: un rojo siempre es un job caído. En modo CI los
+que faltan se **saltan y se cuentan** (`3 repos saltados por NEURONIK_CI`), que es
+distinto de no aparecer. Los que **están** se comprueban igual que en local, que es
+lo que importa: el enlace roto es del repo que está.
+
+**3. Un repo ausente ahora es un ROJO en el modo de por defecto.** Eso se cambio
+justo al medir lo de arriba: sin ello, un layout equivocado se pasaba en verde.
+
+**Lo que el paso hace de verdad**, medido sobre un enlace roto hecho a propósito
+(`mklink /J` a un destino inexistente, que es como queda un enlace cuando la ruta
+que se escribió no era la de Windows):
+
+```
+  ANTES: NO_RESUELVE
+  [ROTO]    shared en ...\node_modules no resuelve.
+  [LISTO]   shared en ...\node_modules -> ...\ABDSharedAssets
+  DESPUES: RESUELVE
+  RC_EN_MODO_CI=0
+```
+
+Y el modo por defecto, en el mismo layout equivocado, da `RC=1` diciendo que
+`ABDCZ101` y `ABDEep` no están. Las dos cosas que se querían: en CI arregla, y si
+la máquina no es la que cree, lo dice.
+
+### La otra mitad: el `node_modules` entero era un symlink
+
+El mismo día, en `ABDSharedAssets`, el symlink POSIX no había caído donde tocaba
+el paquete: había caído sobre la **carpeta `node_modules` completa**, y apuntaba
+a `node_modules_ok/node_modules`, o sea una **copia del proyecto entero**. Todo
+parecia en su sitio y no había ni vitest dentro, así que el paso 4 del
+`verify_all` caía con un rojo que no señalaba ni al enlace ni al store.
+
+Un enlace de esa clase **no lo arregla el script**: arreglarlo es reinstalar. Lo
+que si se puede, y es lo que hace, es **avisar antes de que cueste**. El testigo
+no es buscar un `package.json` dentro de `node_modules` —no lo tiene ninguna
+instalación buena; pnpm deja ahí `.pnpm`, `.modules.yaml` y `.bin`—, sino si la
+carpeta **en sí** es un punto de reanálisis:
+
+```bash
+fsutil reparsepoint query "D:\ruta\node_modules"
+# 0  -> es un enlace (junction o symlink, los dos)
+# error 4390 -> es una carpeta de verdad
+```
+
+Medido el 2026-10-02 sobre los seis repos: los seis dan 4390, o sea ninguno
+tiene el `node_modules` enlazado. El aviso **cuenta como fallo a propósito**, y
+por eso `build.bat` corta: cuando se llega al paso 4 ya se han gastado nueve
+minutos, y un corte aquí con el motivo a la vista sale más barato que un rojo sin
+pistas al final. Y el script **no** intenta meter junctions dentro de ese
+`node_modules`: se harian en un sitio que no es el que parece, y el fallo
+seguiente ("la junction no ha quedado bien") no señalaría la causa.
+
+El rodeo a mano, si aparece:
+
+```bash
+# 1. Quitar el enlace. rmdir quita junctions y symlinks sin pedir nada.
+rmdir /q "D:\desarrollos\ABDSynths\ABDSharedAssets\node_modules"
+
+# 2. Reinstalar SIN tocar el store de la raiz, que esta bloqueado (cuarto
+#    atranco), y con el store propio que ya se sabe que funciona.
+cd /d/desarrollos/ABDSynths/ABDSharedAssets
+pnpm install --ignore-workspace \
+  --store-dir "D:\tmp\pnpm-store-ok" \
+  --config.node-linker=hoisted
+
+# 3. Volver a poner los enlaces y comprobar que el paso 4 pasa.
+cd /d/desarrollos/ABDSynths/ABDNeural
+cmd //c "Scripts\junctions-workspace.bat"
+```
 
 ### Que se mide al quitarlo
 
@@ -408,12 +546,226 @@ enlaces. Medido el 2026-10-02: los dos en verde con las junctions puestas.
 ```bash
 cd /d/desarrollos/ABDSynths/ABDNeural
 
-# Que los tres enlaces resuelven de verdad (tiene que salir 3)
-cmd //c "Scripts\junctions-workspace.bat" | grep -c "\[OK\]"
+# Que los seis repos están revisados y sin avisos (tiene que salir 6)
+cmd //c "Scripts\junctions-workspace.bat" | grep -c "^  \[REPO\]"
+
+# Que ningun node_modules es un enlace (no tiene que salir nada)
+for r in WebUI ../ABDSharedAssets ../ABDSharedCode/MidiKeyboard \
+         ../ABDMS2000 ../ABDCZ101 ../ABDEep; do
+  fsutil reparsepoint query "$r/node_modules" 2>&1 | grep -c "0xa0"
+done
 
 # Y que el paso 4 del build pasa
 cd WebUI && pnpm build
 ```
+
+Ojo al medir el código de salida desde Git Bash: `cmd //c "algo.bat & echo
+RC=%ERRORLEVEL%"` **miente**, porque `%ERRORLEVEL%` se expande al analizar la
+línea, antes de que el `.bat` corra, y siempre sale 0. Para el código real hace
+falta un `call` con expansión retardada.
+
+## El intermitente del webServer del probe, este del 2026-10-03
+
+Este es el único que **no rompia nada**: el test pasaba. Lo que hacia era pasar a
+veces, y por eso costaba más que los otros.
+
+### Que pasaba, exactamente
+
+`NEURONiK_WebUiLocalModeE2e` tardaba **130 s** en una pasada y **56 s** en la
+siguiente, con los 11 tests del spec sumando **54 s en los dos casos**. Es decir,
+lo que variaba no eran los tests: eran los ~76 s de más de una pasada. El budget
+del `webServer` del probe son 120 s, y un GET en frío medido a mano eran 7-9 s, que
+no cuadra con ninguno de los dos números — y por ahí se empezó.
+
+### De donde venía (medido, no supuesto)
+
+Cuatro mediciones, cada una descartando una causa:
+
+| Sospecha | Medido | Veredicto |
+|---|---|---|
+| `npx` por delante del binario | 2,65 s con `npx` contra 1,31 s directo | 1,3 s. No es el caso. |
+| `vite build` del webServer 1 | 3,4-3,7 s | Descartado. |
+| Transformar el árbol de `src/` | `vite:transform` de cada fichero: 0,1-20 ms | Descartado. |
+| **Leer los ficheros** | `vite:load [fs]` del MISMO fichero: **1,5 s** | **Aquí está.** |
+
+El `cat` de un `.js` de 10 KB, sin vite de por medio, tarda **88-121 ms** en esta
+máquina. Es un disco lento, y vite hace 83 cargas (`load`) de ficheros de `src/`.
+
+**Y el disco lento es solo la mitad.** La otra mitad es **CUÁNDO** se paga: sin
+`warmup`, vite transforma cada módulo la primera vez que algo lo pide, y la primera
+petición que llega es la del propio arranque de playwright (el `url` del
+`webServer`). O sea que **el arranque espera a un GET en frío que tiene que
+transformar el árbol entero de la página**. El GET de `/needle-probe/` con el
+servidor recién arrancado, tres veces seguidas:
+
+```
+vuelta 1:  62238 ms
+vuelta 2:  11406 ms
+vuelta 3:   8958 ms
+```
+
+La primera es **7 veces** la tercera. Esa dispersión ES el intermitente: la primera
+vez el disco y la cache de OS están fríos, y las siguientes ya están calientes.
+
+### El rodeo: `server.warmup` en `WebUI/vite.config.js`
+
+Pre-transformar los ficheros **al arrancar el servidor**, que es donde hay
+presupuesto de sobra, en vez de en el primer GET, que es donde no lo hay:
+
+```js
+warmup: {
+  clientFiles: ['needle-probe/**/*.js', 'src/**/*.js'],
+},
+```
+
+El presupuesto de 120 s **no se toca**, y esa es la parte importante: el problema
+no era el presupuesto, era que se le cobraba al primero que preguntaba, que es el
+que decidía si el test pasaba. Con el warmup el trabajo se paga en el arranque y el
+GET en frío sale caliente.
+
+### Que se mide al quitarlo
+
+El mismo presupuesto (tiempo hasta el primer 200 del probe), con y sin warmup, con
+el mismo método y tres vueltas cada uno:
+
+| | vuelta 1 | vuelta 2 | vuelta 3 |
+|---|---|---|---|
+| **Sin warmup** | 56,4 s | 13,2 s | 13,9 s |
+| **Con warmup** | 12,3 s | 12,2 s | 12,2 s |
+
+La primera vuelta baja de 56 s a 12 s y la **dispersión se va de 43 s a 0,09 s**.
+
+Y el test de verdad, tres veces seguidas:
+
+```
+vuelta 1: 41 s, rc=0
+vuelta 2: 43 s, rc=0
+vuelta 3: 41 s, rc=0
+```
+
+contra los 130 s / 56 s de antes. Los otros dos specs que arrancan el mismo
+servidor (`NEURONiK_WebUiVisualRegression` 43 s y
+`NEURONiK_WebUiNeedleProbeE2e` 153 s) siguen en verde.
+
+**Sobre el de las agujas (153 s):** es el que de verdad carga el motor WASM y
+levanta la página entera con las dos vistas de ADSR, y su trabajo es otro. No se
+ha tocado su presupuesto y **no está medido** que 153 s sea su valor estable; si
+alguna vez se pasa de los 600 s de `TIMEOUT` del test, el sitio a mirar es este y
+no el warmup.
+
+### Como se comprueba
+
+```bash
+cd /d/desarrollos/ABDSynths/ABDNeural/build-reference
+
+# El test que era intermitente, tres veces seguidas
+for i in 1 2 3; do
+  export PATH="/d/desarrollos/cmake/bin:$PATH"
+  ctest -C Release -R NEURONiK_WebUiLocalModeE2e
+done
+```
+
+En VERDE ctest **no imprime las líneas del webServer**, y por ahí el intermitente
+no se veía: hay que correrlo con `-V` para ver cuándo arranca cada servidor.
+
+## El séptimo atranco, este del 2026-10-03: el Standalone mudo por no declarar buses
+
+Este no rompia el build: lo hacia **sonar mal**, que es peor porque el build
+sale en verde y el rojo es de oídos.
+
+### Que falla, exactamente
+
+El Standalone no suena. Las agujas se quedan en 0, la nota MIDI no arranca ninguna
+voz y el arco del LFO sobre Morph Z no se mueve. En el selftest del paso 9 se
+manifestaba como «tres direcciones no se mueven», sin decir de donde.
+
+### De donde viene
+
+El processor **no declaraba buses de salida**. Sin
+`BusesProperties().withOutput(...)`, `getMainBusNumOutputChannels()` vale CERO
+—JUCE no inventa buses: sale de `getChannelCountOfBus`, que es null si no hay
+bus— y ahí sale el mudo:
+
+```
+StandalonePluginHolder  ->  pide getMainBusNumOutputChannels() salidas = 0
+AudioDeviceManager      ->  initialise (0, 0, ...) no abre NINGUN dispositivo
+                          ->  no hay processBlock
+                          ->  el motor no suena
+```
+
+Sin device no hay `processBlock`, y sin `processBlock` el motor no arranca. Todo
+lo demás estaba en verde: 53/53 en ctest, la export de la WebUI bien, los E2E en
+verde. El único síntoma era que no sonaba.
+
+### El rodeo que se puso
+
+`BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)`
+en el inicializador del processor. Es stereo de salida y SIN entrada, que es lo
+que es un synth.
+
+### Y ahora el guard, que es lo que evita que vuelva: `NEURONiK_OutputBusDeclaredTest`
+
+Un test que **pregunta al processor real**, no un grep del fuente, y esa
+diferencia es el motivo de que sea un test y no una línea de script:
+
+- Un `withOutput` escrito en un **comentario** haria pasar el grep con el plugin
+  igual de mudo. El fallo que se caza es de comportamiento y un grep no lo ve.
+- El día que el bus se declare en otro sitio (una fábrica de buses, una clase
+  base, un `.h`), el grep sigue buscando en el `.cpp` y pasa **en verde con el
+  bus sin declarar otra vez**. Ese es el bucle que el test corta.
+
+El test instancia el `NEURONiKProcessor` de verdad (compila las mismas fuentes
+que `StatePersistenceTest`) y comprueba cuatro cosas:
+
+| Que mira | Por que |
+|---|---|
+| `getMainBusNumOutputChannels() > 0` | La pregunta que hace el host. Es el aserto que cierra el fallo. |
+| Que sea **stereo**, no mono | No habría cazado este fallo, pero un bus mono donde el host espera stereo es la misma sorpresa un día más tarde. |
+| Que `getBus(false, 0)` exista | El bus está declarado y el processor lo describe. |
+| Que se pueda **escribir** en el, tras `prepareToPlay` | Declarar el bus y no poder escribir en el es el mismo mudo con otro nombre: el host abre el dispositivo y el `processBlock` escribe en la nada. |
+
+No comprueba el AUDIO, y a propósito: que suene de verdad lo dice el selftest del
+paso 9, que corre el arnés real contra la página. Este guard solo afirma el
+**contrato de canales**, que se puede comprobar en 30 líneas y sin abrir un
+dispositivo.
+
+**La prueba negativa.** Un guard que solo se ha visto en verde no prueba nada:
+puede que nunca llegue a fallar. Este se comprobó quitando el `BusesProperties`,
+recompilando y ejecutándolo:
+
+```
+[FAIL] el bus principal declara salidas (ahora: 0) — con 0 el Standalone pide 0 salidas, no abre dispositivo y el plugin sale mudo
+[FAIL] el bus de salida es stereo (ahora: 0) ...
+  RESULT: FAIL (3)
+TEST_NEGATIVO_RC=1
+```
+
+y tras restaurar el processor, `RESULT: OK` y `rc=0`. El fallo sale con el
+**motivo del mudo escrito en el mensaje**, que es lo que un rojo de este tipo
+necesita: no basta con que falle, tiene que decir que sin esto el plugin no abre
+dispositivo.
+
+### Que se mide al quitarlo
+
+El rojo del paso 8 con el mensaje del bus, en vez de un Standalone que carga y no
+suena. Y el propio `build.bat` compila el target en su paso 8, así que un
+`BusesProperties` borrado rompe la compilación de las pruebas antes de que nadie
+tenga que escuchar nada.
+
+### Como se comprueba
+
+```bash
+cd /d/desarrollos/ABDSynths/ABDNeural
+
+# El guard, solo (0,04 s)
+ctest --test-dir build-reference -C Release -R OutputBusDeclaredTest --output-on-failure
+
+# Y que esta en la bateria
+ctest --test-dir build-reference -C Release -N | tail -2   # Total Tests: 54
+```
+
+Ojo al contar: paso de 53 a 54 tests al añadir este. Si `ctest -N` dice 53, el
+`add_test` no está, o el build no se ha reconfigurado.
 
 ## Lo que sigue sin arreglarse
 
@@ -421,12 +773,34 @@ Nada de lo de esta pagina. Los `WebUi*E2e` y los dos vitest estan arreglados, y
 la lista de conocidos (`Scripts/verify_all_known.json`) esta **vacia**: no queda
 ningun rojo conocido.
 
+**El intermitente del `webServer` del probe también está cerrado** (medido el
+2026-10-03): era el `server.warmup` que faltaba en `vite.config.js`, y con el
+arreglo el `LocalModeE2e` da 41/43/41 s en tres pasadas seguidas contra los 130 s
+y 56 s de antes. El budget de 120 s no se toco.
+
+Lo que queda por debajo es **el disco**: un `cat` de un `.js` de 10 KB tarda
+88-121 ms en esta máquina, y vite hace 83 cargas de ficheros al arrancar el
+servidor de desarrollo. El warmup quita la intermitencia (mueve el coste al
+arranque y elimina la dispersión), pero no hace el disco más rápido. Si alguna
+vez un E2E se acerca a su `TIMEOUT` de 600 s, la causa más probable es esto y no
+el código del test.
+
 Lo que queda es el store v10, que sigue ahi y sigue bloqueado. No molesta
 mientras nadie instale con pnpm 10, y se arregla en cuanto se reinstale todo con
 el pnpm del `packageManager`.
 
+Y el Store del Standalone mudo, que ya no es pendiente pero conviene no perder de
+vista: el bus de salida está declarado y `NEURONiK_OutputBusDeclaredTest` falla en
+rojo si vuelve a desaparecer. La causa de fondo —JUCE no inventa buses y el
+Standalone pide exactamente los que el processor declara— no se arregla, se
+vigila.
+
 Y ahora tambien los enlaces del workspace: `junctions-workspace.bat` los deja
-bien, pero es un paso a mano que hay que recordar **despues de cada
-`pnpm install`**. El arreglo de verdad seria que pnpm los escribiera con
-`--config.symlink=false` o que el build los hiciera solo; hasta entonces, el
-paso manual es lo que hay.
+bien, pero hay que acordarse de el **después de cada `pnpm install`**. El
+`build.bat` se encarga solo (lo llama antes del paso 3 y corta si falla), así que
+un build normal ya no lo necesita; lo que lo necesita es el `pnpm install` por
+separado, que es justo el movimiento que rompe el paso 4.
+
+El arreglo de verdad sería que pnpm los escribiera con `--config.symlink=false`.
+Mientras no, el script es el rodeo reproducible, y para eso está: se puede
+ejecutar las veces que haga falta sin consecuencias.

@@ -915,6 +915,13 @@ sigue siendo la salida natural si una sección crece una fila de más (el repart
       `.cell`), así que "70 celdas" sigue significando lo mismo. Los tiempos se comprimen con √
       (1 ms a 5 s en el mismo ancho) y el sostenido tiene tramo propio. `EnvelopeVisualizer` nativo
       ya no existe: la web es la única que lo dibuja.
+- [x] **La curva ADSR pasa al paquete compartido (2026-09-29).** `src/ui/envelopeCurve.js` se
+      **borró**: el dibujo lo da `@abdsynths/shared` (`createEnvelopeCurve` +
+      `styles/components/envelope.css`) y esta web no guarda copia — Zero-Copy aplicado a un
+      componente, no a un asset. Enriquecida con el editor de tres esquinas del Mz950
+      (AGPLv3, reescrito limpio: el sustain es la altura de la esquina del decay, y arrastra
+      las dos cosas). Aquí se queda su SSOT: que ids, la matriz de skew y el `captionClass`.
+      `ficha envelopes` y `cajon envelopes` quedan pixel a pixel contra su referencia.
 - [x] **Gating de destinos por motor en el CONTRATO (2026-09-19).** La página ya no ofrece los 28
       destinos siempre: los 4 `mod*Destination` deshabilitan las opciones que el motor activo no
       consume, con el motivo en la opción (`title`), y **nunca reescriben el valor** — una selección
