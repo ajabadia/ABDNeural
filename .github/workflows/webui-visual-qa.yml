@@ -632,10 +632,51 @@ jobs:
           # `-I` solos y sin `MSYS2_ARG_CONV_EXCL` el mismo target sale con
           # cuatro `error C1083` de "no se puede abrir el archivo origen
           # C:\Program" y el `C1189` de excepciones.
+          # Y LAS LIBS EN EL ENLAZADOR, por la misma causa que los `-I`: los
+          # mismos targets, enlazados por nombre antes de que existieran, no
+          # arrastran `NEURONiK_FactoryModels.lib`. MEDIDO en los `.vcxproj` de
+          # un clon limpio: `NEURONiK_Standalone` y `NEURONiK_VST3` salen con
+          # CERO apariciones de esa lib, y `NEURONiK_WebPilotHost` y todos los
+          # ejecutables de test salen con cuatro, que son justo los que se
+          # declaran despues de los `juce_add_binary_data`.
+          #
+          # Con la cabecera ya encontrada, el rojo era el de enlace:
+          #
+          #   NEURONiK_SharedCode.lib(NEURONiKProcessor.obj) : error LNK2019:
+          #   unresolved external symbol "char const * const Neuronik..."
+          #
+          # MEDIDO de punta a punta en local, sobre el clon limpio: con esto el
+          # target `NEURONiK_VST3` compila, enlaza y produce `NEURONiK.vst3`,
+          # exit 0.
+          #
+          # SOLO `FactoryModels`, y no `SelftestAssets` tambien: MEDIDO que
+          # poner las dos da
+          #
+          #   LINK : fatal error LNK1181: no se puede abrir el archivo de
+          #   entrada ...NEURONiK_SelftestAssets.lib
+          #
+          # porque este target no construye esa lib, que es la misma falta de
+          # dependencia de orden un nivel mas abajo. El VST3 no la necesita: el
+          # simbolo que daba el `LNK2019` se llama `NeuronikFactoryModels`, y eso
+          # ya dice de que lib sale.
+          #
+          # Son las TRES variables de enlazador y no una porque cada tipo de
+          # target se traga la suya: el VST3 de `juce_add_plugin` es MODULE (su
+          # `/machine:x64` salia de `CMAKE_MODULE_LINKER_FLAGS`, medido), el
+          # Standalone es EXECUTABLE, y SHARED queda por si aparece uno.
+          #
+          # Con la ruta COMPLETA de la lib y no con `/LIBPATH:` porque CMake se
+          # come el `/LIBPATH:` de una variable de la cache: medido, con
+          # `/LIBPATH:` el `.vcxproj` receive las libs pero sin el path, que es
+          # no resolver nada.
+          _LIBS="${_BD}/Release/NEURONiK_FactoryModels.lib"
           cmake -S . -B build-reference -A x64 \
             -DJUCE_PATH="$JUCE_PATH" \
             -DJUCE_WEBVIEW2_PACKAGE_LOCATION="$_WEBVIEW2" \
-            -DCMAKE_CXX_FLAGS="/DWIN32 /D_WINDOWS /EHsc -I${_BD}/juce_binarydata_NEURONiK_FactoryModels/JuceLibraryCode -I${_BD}/juce_binarydata_NEURONiK_SelftestAssets/JuceLibraryCode -I${_BD}/juce_binarydata_NEURONiK_WebUIAssets/JuceLibraryCode"
+            -DCMAKE_CXX_FLAGS="/DWIN32 /D_WINDOWS /EHsc -I${_BD}/juce_binarydata_NEURONiK_FactoryModels/JuceLibraryCode -I${_BD}/juce_binarydata_NEURONiK_SelftestAssets/JuceLibraryCode -I${_BD}/juce_binarydata_NEURONiK_WebUIAssets/JuceLibraryCode" \
+            -DCMAKE_EXE_LINKER_FLAGS="$_LIBS" \
+            -DCMAKE_SHARED_LINKER_FLAGS="$_LIBS" \
+            -DCMAKE_MODULE_LINKER_FLAGS="$_LIBS /machine:x64"
 
       # Se compila TODO lo que hay configurado, plugin incluido. El target
       # NEURONiK es un VST3 y `cmake --build` sin `--target` lo construye igual:
