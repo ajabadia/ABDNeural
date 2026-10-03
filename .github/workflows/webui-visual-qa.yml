@@ -660,23 +660,44 @@ jobs:
           # simbolo que daba el `LNK2019` se llama `NeuronikFactoryModels`, y eso
           # ya dice de que lib sale.
           #
-          # Son las TRES variables de enlazador y no una porque cada tipo de
-          # target se traga la suya: el VST3 de `juce_add_plugin` es MODULE (su
-          # `/machine:x64` salia de `CMAKE_MODULE_LINKER_FLAGS`, medido), el
-          # Standalone es EXECUTABLE, y SHARED queda por si aparece uno.
+          # `add_link_options` a secas, y no las tres variables de la cache,
+          # porque cada tipo de target se traga la suya: el VST3 de
+          # `juce_add_plugin` es MODULE (su `/machine:x64` salia de
+          # `CMAKE_MODULE_LINKER_FLAGS`, medido) y el Standalone es EXECUTABLE.
+          # Con `add_link_options` los dos los cogen, y tambien los subdirectorios
+          # que se anadan.
           #
           # Con la ruta COMPLETA de la lib y no con `/LIBPATH:` porque CMake se
           # come el `/LIBPATH:` de una variable de la cache: medido, con
-          # `/LIBPATH:` el `.vcxproj` receive las libs pero sin el path, que es
-          # no resolver nada.
+          # `/LIBPATH:` el `.vcxproj` recibe las libs pero sin el path, que es no
+          # resolver nada.
+          # Y POR QUE VAN EN UN SCRIPT Y NO EN LAS VARIABLES DE LA CACHE.
+          # MEDIDO: con `-DCMAKE_MODULE_LINKER_FLAGS` el propio `configure` sale
+          # con
+          #
+          #   LINK : fatal error LNK1104: cannot open file ...Release\
+          #   NEURONiK_FactoryModels.lib
+          #   CMakeFiles/CMakeScratch/TryCompile-pree.../cmTC_9d2c4.vcxproj
+          #
+          # o sea el try-compile del propio compilador. CMake le pasa las
+          # variables de enlazador de la cache a los subproyectos que compila
+          # para saber si el toolchain funciona, y ese try-compile ocurre dentro
+          # de `project()`, cuando la lib todavia no existe (nada la ha
+          # generado: se genera al final del propio configure).
+          #
+          # `CMAKE_PROJECT_INCLUDE` se ejecuta justo DESPUES de `project()`, o
+          # sea cuando los try-compile ya han pasado, y `add_link_options` es
+          # una propiedad de directorio, que los try_compile de CMake no
+          # heredan. MEDIDO de punta a punta en local: el configure sale con 0 y
+          # el target `NEURONiK_VST3` enlaza y produce `NEURONiK.vst3`, exit 0.
           _LIBS="${_BD}/Release/NEURONiK_FactoryModels.lib"
+          printf 'add_link_options("%s")\n' "$_LIBS" > "$RUNNER_TEMP/neural-factorymodels.cmake"
+
           cmake -S . -B build-reference -A x64 \
             -DJUCE_PATH="$JUCE_PATH" \
             -DJUCE_WEBVIEW2_PACKAGE_LOCATION="$_WEBVIEW2" \
-            -DCMAKE_CXX_FLAGS="/DWIN32 /D_WINDOWS /EHsc -I${_BD}/juce_binarydata_NEURONiK_FactoryModels/JuceLibraryCode -I${_BD}/juce_binarydata_NEURONiK_SelftestAssets/JuceLibraryCode -I${_BD}/juce_binarydata_NEURONiK_WebUIAssets/JuceLibraryCode" \
-            -DCMAKE_EXE_LINKER_FLAGS="$_LIBS" \
-            -DCMAKE_SHARED_LINKER_FLAGS="$_LIBS" \
-            -DCMAKE_MODULE_LINKER_FLAGS="$_LIBS /machine:x64"
+            -DCMAKE_PROJECT_INCLUDE="$(cygpath -m "$RUNNER_TEMP")/neural-factorymodels.cmake" \
+            -DCMAKE_CXX_FLAGS="/DWIN32 /D_WINDOWS /EHsc -I${_BD}/juce_binarydata_NEURONiK_FactoryModels/JuceLibraryCode -I${_BD}/juce_binarydata_NEURONiK_SelftestAssets/JuceLibraryCode -I${_BD}/juce_binarydata_NEURONiK_WebUIAssets/JuceLibraryCode"
 
       # Se compila TODO lo que hay configurado, plugin incluido. El target
       # NEURONiK es un VST3 y `cmake --build` sin `--target` lo construye igual:
