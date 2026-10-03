@@ -267,7 +267,13 @@ ejecutar_vitest() {
         return 1
     fi
 
-    salida="$(cd "$dir" && npx vitest run 2>&1)"
+    # `--no-color` NO ES COSMÉTICO: sin él, vitest escribe secuencias ANSI y el
+    # `grep` de abajo no encuentra ni el resumen ni las líneas de los tests en
+    # rojo. Medido: la línea del resumen sale como
+    # `ESC[1mESC[30mESC[46m Test Files ESC[49m...`, así que `^ +(Test Files|Tests) `
+    # no casa con nada y el resumen salía vacío. Con `--no-color` la salida es
+    # texto plano y los dos `grep` vuelven a encontrar lo que buscan.
+    salida="$(cd "$dir" && npx vitest run --no-color 2>&1)"
     codigo=$?
     registrar "$salida"
 
@@ -287,8 +293,33 @@ ejecutar_vitest() {
         return 0
     fi
 
-    printf '  %sROJO%s    %-22s %s\n' "$R" "$N" "$etiqueta" "$resumen"
-    printf '%s' "$salida" | grep -E '^ *×|FAIL ' | head -15 | sed 's/^/          /' || true
+    # ── VITEST NO ARRANCÓ, O ARRANCÓ Y HAY TESTS EN ROJO ──
+    #
+    # Hasta aquí los dos casos salían por el mismo `ROJO` y con el mismo motivo
+    # genérico, que es justo lo que había que dejar de hacer. La distinción no
+    # es una hipótesis sobre la causa: es un hecho que está en la salida. vitest
+    # imprime su resumen (las líneas `Test Files` y `Tests`) SIEMPRE que llega a
+    # correr los tests; si no están, es que no los corrió.
+    #
+    # POR QUÉ IMPORTA MÁS QUE ACERTAR LA CAUSA. Los tres motivos concretos que
+    # se han puesto aquí uno detrás de otro fueron los tres falsos, y el último
+    # se encontró exactamente en un día en que vitest arrancaba y fallaba UN
+    # test (medido el 2026-10-02: 1735 en verde, 1 en rojo). Con "puede que no
+    # arranque" en el informe, ese rojo se descartaba entero por una causa vieja
+    # y el test que estaba mal se iba con él. Los dos casos ahora se distinguen
+    # porque cada uno manda a mirar un sitio distinto: el resumen de vitest o el
+    # log de arranque.
+    if [ -n "$resumen" ]; then
+        printf '  %sROJO%s    %-22s %s\n' "$R" "$N" "$etiqueta" "$resumen"
+        printf '%s' "$salida" | grep -E '^ *×|FAIL ' | head -15 | sed 's/^/          /' || true
+        VITEST_MOTIVO_TEXTO="vitest ha arrancado y ha corrido los tests, y hay tests en rojo. El rojo es de un test concreto, y su nombre está en el log del paso."
+    else
+        printf '  %sNO ARRANCA%s %-22s vitest no ha llegado a correr los tests\n' \
+            "$R" "$N" "$etiqueta"
+        printf '%s' "$salida" | head -15 | sed 's/^/          /' || true
+        VITEST_MOTIVO_TEXTO="vitest NO ha llegado a correr los tests: no ha impreso su resumen, así que esto no es un test en rojo sino un vitest que no arranca. El motivo está en el log del paso."
+    fi
+
     return 1
 }
 
@@ -957,7 +988,10 @@ fi
 if [[ " $PASOS " == *" 3 "* ]]; then
     empezar_paso 3 "vitest de WebUI"
     if ejecutar_vitest "$RAIZ/WebUI" "WebUI"; then :; else
-        anotar 3 "WebUI" "vitest sale con rc distinto de cero. Puede ser que no arranque o que tenga tests en rojo: el motivo está en el log del paso, y un motivo escrito es una hipótesis hasta que se mira. Si vuelve a ser el node_modules, el rodeo está en Scripts/COMO-ARREGLAR-EL-BUILD.md"
+        # El diagnóstico lo deja `ejecutar_vitest`, que es quien ha mirado si
+        # vitest llegó a correr los tests o no. Aquí solo se añade lo que es de
+        # este paso: dónde está el rodeo de ESTA carpeta.
+        anotar 3 "WebUI" "$VITEST_MOTIVO_TEXTO Si vuelve a ser el node_modules, el rodeo está en Scripts/COMO-ARREGLAR-EL-BUILD.md"
     fi
     terminar_paso
 fi
@@ -1001,7 +1035,11 @@ if [[ " $PASOS " == *" 4 "* ]]; then
         # motivo estaba equivocado es peor que no ponerlo: el que lo lee
         # descarta el rojo entero por una causa que ya no existe. El texto de
         # arriba ahora no afirma ninguna causa, y manda a leer el log del paso.
-        anotar 4 "ABDSharedAssets" "vitest sale con rc distinto de cero. Puede ser que no arranque o que tenga tests en rojo: el motivo está en el log del paso, y un motivo escrito es una hipótesis hasta que se mira. Este paso no tiene lista de conocidos a propósito, así que el rojo sigue pidiendo decisión aunque el motivo esté escrito"
+        # Y el diagnóstico del `VITEST_MOTIVO_TEXTO` es el mismo que en el paso
+        # 3, y por el mismo motivo: lo pone quien ha mirado la salida, no quien
+        # recibe el codigo. Aquí la cola es la de este paso, que es que no hay
+        # lista de conocidos a propósito.
+        anotar 4 "ABDSharedAssets" "$VITEST_MOTIVO_TEXTO Este paso no tiene lista de conocidos a propósito, así que el rojo sigue pidiendo decisión aunque el motivo esté escrito"
     fi
     terminar_paso
 fi

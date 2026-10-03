@@ -1231,41 +1231,72 @@ if not exist "%VDIR%" (
     exit /b 0
 )
 pushd "%VDIR%"
-call npx vitest run > "%TEMP%\verify_vt.txt" 2>&1
+REM `--no-color` NO ES COSMETICO: sin el, vitest escribe secuencias ANSI y este
+REM fichero deja de ser texto plano. Medido: las lineas del resumen salen como
+REM `ESC[1mESC[30mESC[46m Test Files ESC[49m...`, o sea que el `findstr` de
+REM "^ *Test Files" no casa con nada y el resumen NO SE IMPRIMIA. Lo mismo
+REM pasaba con el `findstr` de las lineas `x` y `FAIL` de un rojo: sin acierto,
+REM la lista de tests en rojo salia vacia. Los dos `findstr` llevaban anos
+REM asi, y con `--no-color` los dos vuelven a encontrar lo que buscan. El
+REM fichero de aqui es para que un `grep` lo lea, no para que se mire en color.
+call npx vitest run --no-color > "%TEMP%\verify_vt.txt" 2>&1
 set "VCOD=%ERRORLEVEL%"
 popd
+REM SI VITEST LLEGO A CORRER LOS TESTS O NO. Y no es una hipotesis sobre la
+REM causa: es un hecho que esta en la salida. vitest imprime su resumen (las
+REM lineas `Test Files` y `Tests`) SIEMPRE que llega a correr los tests, asi que
+REM si no estan, es que no los corrio.
+REM
+REM Hasta aqui los dos casos salian por el mismo ROJO con el mismo motivo
+REM generico, y ese motivo generico era lo que hacia que todo se llamara rojo.
+REM Los tres motivos concretos que se han puesto aqui uno detras de otro fueron
+REM los tres falsos (el antivirus, que no detectaba nada; el EPERM de
+REM node_modules; el node_modules de la WebUI). Un rojo al que se le anade "puede
+REM que no arranque" se descarta entero en cuanto se ve que si arranco, y el test
+REM que de verdad esta en rojo se va con el. Distinguir los dos casos no es
+REM adivinar la causa: es decir cual de los dos ha pasado, y cada uno manda a
+REM mirar un sitio distinto.
+set "VARRANCO=0"
+set "VRESUMEN="
+for /f "usebackq delims=" %%L in (`findstr /r /c:"^ *Test Files" /c:"^ *Tests" "%TEMP%\verify_vt.txt" 2^>nul`) do (
+    set "VARRANCO=1"
+    if not defined VRESUMEN set "VRESUMEN=%%L"
+)
 if "%VCOD%"=="0" (
     echo   %V%PASA%N%    %VETI%
-    for /f "usebackq delims=" %%L in (`findstr /r /c:"^ *Test Files" /c:"^ *Tests" "%TEMP%\verify_vt.txt"`) do echo             %%L
+    REM `!VRESUMEN!` Y NO `%VRESUMEN%`: dentro de un bloque parenthesizado `%VAR%`
+    REM se expande AL MONTAR el bloque, que es antes de que el `for` de arriba
+    REM la haya asignado, y salia siempre vacio. Medido: el paso 4 de verdad
+    REM imprimia `PASA ABDSharedAssets` y sin el resumen que si existe.
+    if defined VRESUMEN echo                 !VRESUMEN!
 ) else (
-    echo   %R%ROJO%N%    %VETI%
     set "SALIR_POR_ROJOS=1"
-    set /a MOSTRAR=0
-    for /f "usebackq delims=" %%L in (`findstr /r /c:"^ *x " /c:"^ *FAIL" "%TEMP%\verify_vt.txt"`) do (
-        if !MOSTRAR! LSS 15 (
-            echo             %%L
-            set /a MOSTRAR+=1
+    if "!VARRANCO!"=="1" (
+        echo   %R%ROJO%N%    %VETI%   ^(vitest ha arrancado^)
+        set /a MOSTRAR=0
+        for /f "usebackq delims=" %%L in (`findstr /r /c:"^ *x " /c:"^ *FAIL" "%TEMP%\verify_vt.txt"`) do (
+            if !MOSTRAR! LSS 15 (
+                echo             %%L
+                set /a MOSTRAR+=1
+            )
         )
+        call :anotar %VSTEP% "%VETI%" "vitest ha arrancado y ha corrido los tests, y hay tests en rojo. El rojo es de un test concreto, y su nombre esta en el log del paso."
+    ) else (
+        echo   %R%NO ARRANCA%N% %VETI%   ^(vitest no ha llegado a correr los tests^)
+        echo             lo que dice vitest, que aqui es el motivo y no un fallo de test:
+        set /a MOSTRAR=0
+        for /f "usebackq delims=" %%L in (`findstr /r /c:"." "%TEMP%\verify_vt.txt" 2^>nul`) do (
+            if !MOSTRAR! LSS 15 (
+                echo               %%L
+                set /a MOSTRAR+=1
+            )
+        )
+        call :anotar %VSTEP% "%VETI%" "vitest NO ha llegado a correr los tests: no ha impreso su resumen, asi que esto no es un test en rojo sino un vitest que no arranca. El motivo esta en el log del paso."
     )
-    REM Este paso NO tiene lista de conocidos, y es deliberado: es la suite
-    REM entera del repositorio de contratos, y una lista de "tests que no cuentan"
-    REM aqui seria justo lo que este script no debe hacer.
-    REM
-    REM El motivo ya no culpa al antivirus, porque medido no era el antivirus.
-    REM Get-MpThreatDetection y Get-MpThreat salian VACIOS: no habia ninguna
-    REM deteccion. Lo que habia era que algunos .js de node_modules no se podian
-    REM abrir (error 5 de Win32, ACCESS_DENIED) en esta maquina, y el rodeo esta
-    REM en Scripts/COMO-ARREGLAR-EL-BUILD.md.
-    REM
-    REM Y despues ese mismo motivo quedo viejo: era el texto de la rama `else`,
-    REM o sea que salia con CUALQUIER rc distinto de cero, tambien cuando
-    REM vitest arranca y falla un solo test (medido el 2026-10-02: 1735 en verde,
-    REM 1 en rojo, y el motivo de EPERM que ya no era la causa de nada).
-    REM Un motivo que senala la causa equivocada es peor que uno generico:
-    REM ensena a mirar donde no esta. Asi que el texto de abajo ya no afirma
-    REM ninguna causa y manda a leer el log del paso.
-    call :anotar %VSTEP% "%VETI%" "vitest sale con rc distinto de cero. Puede ser que no arranque o que tenga tests en rojo: el motivo esta en el log del paso, y un motivo escrito es una hipotesis hasta que se mira. Este paso no tiene lista de conocidos a proposito, asi que el rojo sigue pidiendo decision aunque el motivo este escrito"
 )
+REM Este paso NO tiene lista de conocidos, y es deliberado: es la suite
+REM entera del repositorio de contratos, y una lista de "tests que no cuentan"
+REM aqui seria justo lo que este script no debe hacer.
 exit /b 0
 
 :paso5
