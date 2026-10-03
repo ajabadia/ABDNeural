@@ -62,18 +62,37 @@ if not defined EMSDK_ROOT (
 REM --- 2. Localizar Visual Studio y preparar entorno ---------------------------
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 set "VSROOT="
-if exist "%VSWHERE%" (
-    for /f "usebackq delims=" %%i in (`"%VSWHERE%" -latest -property installationPath`) do set "VSROOT=%%i"
-)
+REM  `-products *` NO es opcional: sin el, vswhere solo lista los productos con
+REM  licencia completa y las Build Tools NO aparecen. Medido el 2026-10-02 en esta
+REM  maquina, donde lo unico instalado son las Visual Studio Build Tools 2026: la
+REM  llamada sin el flag devolvia VACIO, y con rc 0, que es lo que hace que esto
+REM  parezca un "no hay Visual Studio" en vez de un "no se que versions hay".
+REM
+REM  Y el `for /f` va FUERA del `if exist`, y no dentro como estaba, porque DENTRO
+REM  de un bloque el asterisco no llega al comando que se ejecuta: batch lo expande
+REM  antes y el .bat deja de analizar entero con un "No se esperaba \Microsoft en
+REM  este momento" que no senala la linea culpable. Medido en este fichero real: el
+REM  mismo `for /f` con el asterisco FUERA del bloque funciona y devuelve la ruta de
+REM  las Build Tools; DENTRO, el .bat ni siquiera llega a ejecutar la linea. Con
+REM  `-products MSBuildProduct` en vez del asterisco no hay error de analisis pero
+REM  tampoco lista nada, porque esta instalacion no se registra con ese producto.
+REM
+REM  Por eso aqui ya no hay ningun `if`: si el vswhere no esta, el `for /f` falla
+REM  y deja VSROOT vacio, que es justo lo que mira el `if not defined` de abajo.
+REM
+REM  Y el vcvars64 se `call` con comillas, como estaba: la ruta de las Build Tools
+REM  lleva "Program Files (x86)" con un parentesis dentro, y eso dentro de un bloque
+REM  if rompe el analisis de la linea. Medido: el `if not exist "%VCVARS%"` de abajo
+REM  con esa ruta dentro del bloque deja el .bat sin analizar con un "No se esperaba
+REM  \Microsoft en este momento". Por eso las comprobaciones de ruta van FUERA del
+REM  bloque, con el `if ... else` en una linea, que si aguanta el parentesis.
+for /f "usebackq delims=" %%i in (`"%VSWHERE%" -latest -products * -property installationPath`) do set "VSROOT=%%i"
 if not defined VSROOT (
     echo [ERROR] Visual Studio no encontrado via vswhere
     goto :fail
 )
 set "VCVARS=%VSROOT%\VC\Auxiliary\Build\vcvars64.bat"
-if not exist "%VCVARS%" (
-    echo [ERROR] No existe %VCVARS%
-    goto :fail
-)
+if not exist "%VCVARS%" echo [ERROR] No existe %VCVARS% & goto :fail
 
 echo [1/7] Preparando entorno Visual Studio + emsdk ...
 call "%VCVARS%" >nul 2>&1

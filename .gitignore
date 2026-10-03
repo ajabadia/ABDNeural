@@ -91,6 +91,13 @@ build-wasm/
 /_*.part.txt
 /_*.md5
 /_t*.sh
+
+# La referencia de la red de paridad de la matriz: un GOLDEN por configuracion,
+# y por definicion depende de la maquina que lo genero. Commitearlo es meter en
+# el repositorio un hash de bytes crudos de MI Release, y la siguiente build en
+# otra maquina dira '41 diferencias' sin que el motor haya cambiado. Se escribe
+# en cuanto se ejecuta la herramienta y no se versiona.
+/Tests/ModulationParity-*.txt
 /WebUI/_*.py
 /Tests/_*probe*
 /.freebuff/
