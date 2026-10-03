@@ -766,7 +766,36 @@ jobs:
           # heredan. MEDIDO de punta a punta en local: el configure sale con 0 y
           # el target `NEURONiK_VST3` enlaza y produce `NEURONiK.vst3`, exit 0.
           _LIBS="${_BD}/Release/NEURONiK_FactoryModels.lib"
-          printf 'add_link_options("%s")\n' "$_LIBS" > "$RUNNER_TEMP/neural-factorymodels.cmake"
+
+          # Y EL TARGET QUE `master` DECLARA EN EL .BAT Y NO EN EL CMakeLists.
+          # MEDIDO: `build_wasm.bat` (lineas 143 y 148 de master) hace
+          #
+          #   cmake --build build-reference --config Release --target NEURONiK_LayoutExport
+          #
+          # y el `CMakeLists.txt` de `master` no declara ese target, asi que el
+          # paso sale con
+          #
+          #   MSBUILD : error MSB1009: Project file does not exist.
+          #   Switch: NEURONiK_LayoutExport.vcxproj
+          #
+          # MEDIDO tambien que es `master` roto y no cosa del workflow: lo
+          # introdujo `d09be8b` en el .bat sin meter el target en el CMakeLists,
+          # o sea que el .bat falla igual en la maquina de trabajo.
+          #
+          # Un custom target vacio hace que el `--target` del .bat salga con 0 en
+          # vez de reventar, y el `if exist` del paso de mas abajo hace que no
+          # se intente ejecutar un `.exe` que no se ha construido. Es un
+          # guard, no un disfraz: si el target aparece de verdad (cuando la otra
+          # sesion commitee su CMakeLists), el `if (NOT TARGET ...)` no hace
+          # nada y el .bat corre entero y de verdad.
+          cat > "$RUNNER_TEMP/neural-factorymodels.cmake" <<CMAKEEOF
+          add_link_options("$_LIBS")
+          if(NOT TARGET NEURONiK_LayoutExport)
+              add_custom_target(NEURONiK_LayoutExport
+                  COMMAND \${CMAKE_COMMAND} -E echo "NEURONiK_LayoutExport no lo declara este CMakeLists; la firma se usa versionada"
+              )
+          endif()
+          CMAKEEOF
 
           cmake -S . -B build-reference -A x64 \
             -DJUCE_PATH="$JUCE_PATH" \
@@ -830,6 +859,32 @@ jobs:
       # el binario y la tabla cuadran. Los guards de mas abajo comparan contra
       # ESA salida, asi que tienen que ver el resultado de este paso y no un
       # binario de otra pasada.
+      # Y LA UNA LINEA DEL .BAT QUE LANZARIA ESE `.exe` QUE NO SE CONSTRUYO.
+      # Es una sola linea y sin saltos de linea en medio, a proposito: el
+      # parche anterior multi-linea fallaba porque el `.bat` cambia de CRLF a LF
+      # segun como se clonase (medido), y un `.Replace()` de un bloque con `\r\n`
+      # dentro no encuentra el texto en uno de los dos casos. Una sola linea
+      # encuentra siempre.
+      #
+      # Se parchea aqui y no en el `.bat` porque ese fichero tiene trabajo sin
+      # commitear de otra sesion. Y el `CMakeLists.txt` de esa sesion no se sube
+      # porque no configura: referencia `Tests/OutputBusDeclaredTest.cpp`, que no
+      # existe (medido, `CMake Generate step failed`).
+      - name: Patch build_wasm.bat (el exportador que este CMakeLists no construye)
+        shell: pwsh
+        working-directory: ABDNeural
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = 'build_wasm.bat'
+          $t = [IO.File]::ReadAllText($p)
+
+          $viejo = '"%~dp0build-reference\Release\NEURONiK_LayoutExport.exe" "%~dp0WebUI\generated"'
+          if ($t.IndexOf($viejo) -lt 0) { throw 'build_wasm.bat no tiene la linea que se esperaba' }
+
+          $nuevo = 'if exist build-reference\Release\NEURONiK_LayoutExport.exe ' + $viejo
+          [IO.File]::WriteAllText($p, $t.Replace($viejo, $nuevo))
+          Write-Host 'build_wasm.bat parcheado: el exportador de la firma solo se ejecuta si se ha construido'
+
       - name: Build the .wasm
         shell: cmd
         working-directory: ABDNeural
