@@ -176,13 +176,47 @@ def revisa(ruta):
     return problemas
 
 
+def ignorados_por_git(raiz):
+    """Las rutas que git ya ignora, en la forma en que las escribe git.
+
+    MEDIDO el 2026-10-04 que el modo ARBOL entero salia con rc=1 por
+    `_fix_paso2.py`, un temporal sin trackear de otra sesion, con CJK. El banco
+    esquivaba el problema evitando este modo y pasandole a mano la lista de
+    trackeados, que es una forma de no mirar el fallo.
+
+    No es que `_fix_paso2.py` este bien: es que un fichero que git IGNORA no
+    puede formar parte del proyecto, porque la regla que vigila esta es que lo
+    que se versiona cumple las convenciones. Revisar tambien lo ignorado
+   _avisa_ de cosas que nadie puede arreglar sin borrar un fichero suyo_, y en
+    un repo donde el .gitignore crece (temporales, artefactos, scratch) eso
+    convierte el modo arbol en un rojo permanente.
+
+    `--directory` colapsa cada directorio ignorado en una entrada terminada en
+    `/`, que es lo que hace falta para no walkear `node_modules` fichero a
+    fichero. `-z` porque las rutas del repo tienen espacios y tambien pueden
+    tener acentos: con salto de linea, una ruta con salto improbable partiria la
+    lista, y con las comillas de `quotePath` la ruta ya no existe.
+    """
+    salida = subprocess.run(
+        ["git", "-c", "core.quotePath=false", "ls-files", "--others",
+         "--ignored", "--exclude-standard", "--directory", "-z"],
+        cwd=raiz, capture_output=True, text=True, encoding="utf-8")
+    if salida.returncode != 0:
+        return set()
+    return set(r for r in salida.stdout.split("\0") if r)
+
+
 def ficheros(raiz):
+    ignorados = ignorados_por_git(raiz)
     for carpeta, dirs, nombres in os.walk(raiz):
         dirs[:] = [d for d in dirs if d not in FUERA]
         for nombre in nombres:
             ruta = os.path.join(carpeta, nombre)
             ext = os.path.splitext(nombre)[1].lower()
             if ext in BINARIOS or ext in LOGS:
+                continue
+            rel = os.path.relpath(ruta, raiz).replace(os.sep, "/")
+            if rel in ignorados or (rel + "/") in ignorados:
                 continue
             yield ruta
 
@@ -211,10 +245,25 @@ def trackeados():
 
 
 def main():
-    if "--trackeados" in sys.argv[1:]:
+    argv = sys.argv[1:]
+    if "--trackeados" in argv:
         rutas = trackeados()
+    elif "--arbol" in argv:
+        # `--arbol RUTA` existe para que el banco pueda montar un arbol propio y
+        # comprobar que se salta lo ignorado, y para no tener que anadir mas
+        # nombres a `FUERA` cada vez que aparece un temporal.
+        #
+        # MEDIDO el 2026-10-04 que `convenciones.py .` no hacia lo que parece:
+        # sin banderas, todo argumento que no empieza por `--` se tomaba como
+        # RUTA DE FICHERO, y `revisa(".")` intenta abrir un directorio, que no
+        # es un fichero: el verificador decia "no se ha podido leer" y Revisados
+        # 1 ficheros. El error era del que lo llamaba, y el mensaje de verdad que
+        # aparecia era el equivocado.
+        despues = argv[argv.index("--arbol") + 1:]
+        raiz = despues[0] if despues and not despues[0].startswith("--") else RAIZ
+        rutas = list(ficheros(raiz))
     else:
-        rutas = [a for a in sys.argv[1:] if not a.startswith("--")] or list(ficheros(RAIZ))
+        rutas = [a for a in argv if not a.startswith("--")] or list(ficheros(RAIZ))
     malos = []
     for ruta in rutas:
         problemas = revisa(ruta)

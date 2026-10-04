@@ -200,15 +200,70 @@ def banco_tildes():
     return fallos == 0
 
 
+def banco_arbol():
+    """El modo ARBOL tiene que saltarse lo que git ignora, y solo eso.
+
+    MEDIDO el 2026-10-04 que salia con rc=1 por `_fix_paso2.py`, un temporal
+    sin trackear de otra sesion. Saltarselo con una lista de nombres es cambiar
+    el sintoma cada vez que aparece un temporal nuevo, asi que se salto lo que
+    git ya ignora, y este banco monta las DOS mitades para que el salto no se
+    convierta en un verde que no mira:
+
+      - lo ignorado con CJK, que NO se puede quejar (no es fuente de nadie);
+      - lo NO ignorado y sin trackear con CJK, que SI tiene que quejarse, que
+        es justo el fichero que alguien esta a punto de commitear.
+
+    Si alguna vez la segunda dejara de quejarse, esto estaria:callando ante un
+    fichero que puede entrar en el repo, que es el fallo que importa.
+    """
+    print("  El modo ARBOL, con lo que git ignora y con lo que no:")
+    fallos = 0
+    d = tempfile.mkdtemp(prefix="banco_arbol_")
+    try:
+        subprocess.run(["git", "init", "-q", d], capture_output=True)
+        escribir(d, ".gitignore", b"ignorado_*.py\n")
+        cjk = ("# " + ch(0x5730, 0x4E00) + "\n").encode("utf-8")
+        escribir(d, "ignorado_malo.py", cjk)
+        escribir(d, "suelto_malo.py", cjk)
+
+        r = correr(CONVENCIONES, ["--arbol", d])
+        vio_suelto = "suelto_malo.py" in r.stdout
+        vio_ignorado = "ignorado_malo.py" in r.stdout
+        bien = r.returncode == 1 and vio_suelto and not vio_ignorado
+        if not bien:
+            fallos += 1
+        print("    [%s] ve el suelto y no ve el ignorado (rc=%d)"
+              % ("PASA" if bien else "FALLA", r.returncode))
+        if not bien:
+            print("        %s" % (r.stdout or r.stderr).strip()[:300])
+
+        # Y ya sin el suelto: solo queda el ignorado, y ahi tiene que CALLARSE.
+        os.remove(os.path.join(d, "suelto_malo.py"))
+        r2 = correr(CONVENCIONES, ["--arbol", d])
+        bien = r2.returncode == 0
+        if not bien:
+            fallos += 1
+        print("    [%s] solo con lo ignorado se calla (rc=%d)"
+              % ("PASA" if bien else "FALLA", r2.returncode))
+        if not bien:
+            print("        %s" % (r2.stdout or r2.stderr).strip()[:300])
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+    return fallos == 0
+
+
 def main():
     print("convenciones.py:")
     a = banco_convenciones()
     print("")
+    print("modo ARBOL:")
+    c = banco_arbol()
+    print("")
     print("detectar_tildes.py:")
     b = banco_tildes()
     print("")
-    print("Banco: %s" % ("los dos bien" if a and b else "ALGO FALLA"))
-    return 0 if (a and b) else 1
+    print("Banco: %s" % ("los tres bien" if a and b and c else "ALGO FALLA"))
+    return 0 if (a and b and c) else 1
 
 
 if __name__ == "__main__":
