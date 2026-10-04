@@ -7,25 +7,25 @@
     Un script que escribe en el repo no se puede probar sin ensuciarlo. Este tiene
     doseffects sobre ficheros del arbol:
 
-      · `-Task build`bumpea la version: escribe `build_no.txt` e
+      - `-Task build`bumpea la version: escribe `build_no.txt` e
         `Source/Core/BuildVersion.h`. El segundo esta VERSIONADO y lleva un timestamp,
         asi que cada build deja el repo modificado con algo que no es un cambio real.
-      · `-Task clean` borra `build_neuronik/` entero, con `Remove-Item -Recurse -Force`.
+      - `-Task clean` borra `build_neuronik/` entero, con `Remove-Item -Recurse -Force`.
 
     `-Check` cubre los dos y no toca nada:
 
-      · Con `-Task build`, dice que numero pondria y que ficheros dejaria
+      - Con `-Task build`, dice que numero pondria y que ficheros dejaria
         modificados, y sale 1 si lo que hay en disco no es lo que este script
-        produjo —que es el unico fallo comprobable, porque el numero y el timestamp
+        produjo -que es el unico fallo comprobable, porque el numero y el timestamp
         cambian por diseno.
-      · Con `-Task clean`, dice QUE BORRARIA y cuanto ocupa, y sale 0. Borrar no se
+      - Con `-Task clean`, dice QUE BORRARIA y cuanto ocupa, y sale 0. Borrar no se
         puede "verificar": se avisa, y quien quiera borrar, lo borra a proposito.
 
     Lo que `-Check` NO hace, y conviene no creer sin mirar:
 
-      · No compila. Ni cmake ni el resto del build se ejecutan con `-Check`; lo que
+      - No compila. Ni cmake ni el resto del build se ejecutan con `-Check`; lo que
         se comprueba son los ficheros, no el motor, que tiene su propio CI.
-      · No dice si el numero de version "esta al dia". Este script INCREMENTA, no
+      - No dice si el numero de version "esta al dia". Este script INCREMENTA, no
         genera: el 28 vale si el bump no se ha hecho y vale si se ha hecho y se ha
         commiteado. Lo unico que dice es que haria ahora, y eso se lee en voz alta
         para que no se confunda con un veredicto.
@@ -68,7 +68,7 @@ param (
 $ErrorActionPreference = "Stop"
 
 # Las funciones de PowerShell no heredan el ambito del script, asi que `-Check` se
-# guarda a nivel de script para que `Update-BuildVersion` y `Invoke-TaskClean` —que
+# guarda a nivel de script para que `Update-BuildVersion` y `Invoke-TaskClean` -que
 # no reciben parametros- puedan leerlo. Sin esto, el flag se quedaria en el ambito
 # principal y las funciones harian exactamente lo que harian sin el.
 $script:Check = $Check
@@ -386,8 +386,8 @@ Show-Header
 
 # Sin esto, un `-Task` desconocido no hacia NADA y salia con 0: un pipeline que
 # escribiera `manage.ps1 -Task deploy` creeria que habia hecho un deploy. Y el 2 es
-# el codigo que usan los scripts de este repo para «me has llamado mal», distinto del
-# 1 de «he intentado hacerlo y ha fallado».
+# el codigo que usan los scripts de este repo para "me has llamado mal", distinto del
+# 1 de "he intentado hacerlo y ha fallado".
 $VALID_TASKS = @("build", "clean", "test", "sign")
 $VALID_CONFIGS = @("Release", "Debug")
 

@@ -9,7 +9,7 @@
 #
 # El fichero que escribe, `Source/ModelMaker/Version.h`, esta VERSIONADO. Cada vez
 # que corre sin `-Check` deja el repo modificado con un numero nuevo dentro, y el
-# siguiente `git status` lo enseña como un cambio cualquiera: imposible de distinguir
+# siguiente `git status` lo ensena como un cambio cualquiera: imposible de distinguir
 # de una edicion real, y facil de commitear sin querer. Con `-Check` se puede
 # preguntar antes, que es lo unico que evita el `git checkout` a posteriori.
 #
@@ -27,7 +27,7 @@
 # `ABDSynths/Source/ModelMaker/Version.h`, que no existe. Y lo peor no era que no
 # encontrase el fichero: `Resolve-Path` escribe un error no terminante, `$path` se
 # queda en `$null`, y el script SEGUIDO adelante con el contenido vacio, hasta el
-# punto de terminar por el camino de «no he encontrado el define que incrementar» y
+# punto de terminar por el camino de "no he encontrado el define que incrementar" y
 # salir 1 con un motivo que no era el motivo.
 #
 # Con `$PSScriptRoot` la ruta depende del script y no de quien lo llama. Es lo que
@@ -39,20 +39,20 @@
 # Este script NO genera un fichero: lo INCREMENTA. Eso cambia lo que un check puede
 # decir, y conviene decirlo antes que fabricarlo:
 #
-#   · NO puede decir «el Version.h esta al dia», porque «al dia» no tiene un valor
+#   - NO puede decir "el Version.h esta al dia", porque "al dia" no tiene un valor
 #     derivable. El 28 esta al dia si aun no se ha corrido, y desfasado si se ha
 #     corrido y el resultado no se ha commiteado. Un check que saliera en rojo
 #     siempre (porque siempre falta el +1) seria un rojo perpetuo, que es como un
 #     check deja de mirarse. Y uno que saliera verde siempre no miraria nada.
 #
-#   · SI puede decir las dos cosas que si son un fallo real y no una consecuencia
+#   - SI puede decir las dos cosas que si son un fallo real y no una consecuencia
 #     del incremento: que el fichero no este donde debe, y que no contenga la linea
 #     que este script tiene que tocar. De ahi son los dos unicos exit 1.
 #
 # Asi que `-Check` es un DRY-RUN HONESTO: dice el numero que hay y el que se Pondria, y
 # avisa de que subir el numero es un acto manual, no algo que un pipeline pueda
-# verificar por su cuenta. Quien necesite el veredicto de «se ha bumpingado y
-# commiteado», lo tiene en `git status`, que es donde esta la verdad.
+# verificar por su cuenta. Quien necesite el veredicto de "se ha bumpingado y
+# commiteado", lo tiene en `git status`, que es donde esta la verdad.
 #
 # Cuando el nombre del parametro sea `-Check` y no `--check`, y por que no da igual:
 # PowerShell acepta CUALQUIER cosa delante del guion como nombre de parametro, asi
@@ -64,8 +64,8 @@ param (
     # Si se deja vacio, se calcula mas abajo a partir de `$PSScriptRoot`. NO lleva
     # valor por defecto aqui a proposito: en PowerShell 5.1 `$PSScriptRoot` todavia no
     # esta poblado mientras se evaluan los valores por defecto, y si el script se
-    # invoca con ruta RELATIVA —`.\Scripts\update_version.ps1`, que es como se llama a
-    # los scripts de este repo— sale vacio y la ruta queda en `\..\Source\...`,
+    # invoca con ruta RELATIVA -`.\Scripts\update_version.ps1`, que es como se llama a
+    # los scripts de este repo- sale vacio y la ruta queda en `\..\Source\...`,
     # que no existe. En el cuerpo del script si esta poblado siempre.
     [string]$VersionFile,
 
@@ -102,8 +102,8 @@ if ($Help) {
 if ($env:NEURONIK_MM_RELEASE -ne "1") {
     if ($Check) {
         # Se dice en voz alta, y no con un "OK" a secas. Sin la marca de release este
-        # script no haria NADA, asi que un verde aqui no significa «el Version.h esta
-        # al dia» sino «no hay nada que comprobar». Son dos cosas distintas, y quien lea
+        # script no haria NADA, asi que un verde aqui no significa "el Version.h esta
+        # al dia" sino "no hay nada que comprobar". Son dos cosas distintas, y quien lea
         # el log en un pipeline tiene que poder distinguirlas.
         Write-Host "ModelMaker version bump: SIN MARCA DE RELEASE (NEURONIK_MM_RELEASE!=1)."
         Write-Host "Este script no incrementaria nada, asi que -Check NO HA COMPROBADO NADA."
@@ -155,7 +155,7 @@ if ($Check) {
     Write-Host "  se pondria           : $newSub"
     Write-Host "  fichero en git       : $(if (git ls-files --error-unmatch $path 2>$null) { 'si' } else { 'NO - versionado? revisalo antes de escribir' })"
     Write-Host ""
-    Write-Host "-Check NO ha escrito nada, y NO es un veredicto de «desfasado»."
+    Write-Host "-Check NO ha escrito nada, y NO es un veredicto de "desfasado"."
     Write-Host "Este script incrementa; no genera. Que el numero sea el de ahora o el de despues"
     Write-Host "depende de si el bump anterior llego a commitearse, y eso no lo puede decir un"
     Write-Host "script que lee el numero antes de incrementarlo. Si lo que quieres es saber si"
