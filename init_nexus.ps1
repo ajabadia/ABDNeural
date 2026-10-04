@@ -1,13 +1,13 @@
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "═══════════════════════════════════════════════════════════════════"
+Write-Host "==================================================================="
 Write-Host "          NEXUS Synthesizer Plugin - Auto-Setup (PowerShell)"
-Write-Host "═══════════════════════════════════════════════════════════════════"
+Write-Host "==================================================================="
 Write-Host ""
 
 # 1. Directory Structure
-Write-Host "▶ Creating directory structure..."
+Write-Host "> Creating directory structure..."
 $dirs = @(
     "LOGS/build", "LOGS/compilation", "LOGS/runtime", "LOGS/profiling", "LOGS/tests", "LOGS/blockers",
     "Source/Main", "Source/DSP/CoreModules", "Source/DSP/Synthesis", "Source/DSP/Filters",
@@ -16,10 +16,10 @@ $dirs = @(
     "Tests", "Models", "Resources", "Documentation", "build"
 )
 foreach ($d in $dirs) { New-Item -ItemType Directory -Force -Path $d | Out-Null }
-Write-Host "✓ Directory structure created"
+Write-Host "OK Directory structure created"
 
 # 2. .gitignore
-Write-Host "▶ Creating .gitignore..."
+Write-Host "> Creating .gitignore..."
 @'
 # Build artifacts
 build/
@@ -68,10 +68,10 @@ __pycache__/
 *.pyc
 *.pyo
 '@ | Set-Content -Path ".gitignore" -Encoding UTF8
-Write-Host "✓ .gitignore created"
+Write-Host "OK .gitignore created"
 
 # 3. CMakeLists.txt
-Write-Host "▶ Creating CMakeLists.txt..."
+Write-Host "> Creating CMakeLists.txt..."
 @'
 cmake_minimum_required(VERSION 3.21)
 project(NEXUS_Synthesizer VERSION 0.1.0 LANGUAGES CXX)
@@ -149,10 +149,10 @@ target_link_libraries(NEXUS PRIVATE
     juce::juce_parameters
 )
 '@ | Set-Content -Path "CMakeLists.txt" -Encoding UTF8
-Write-Host "✓ CMakeLists.txt created"
+Write-Host "OK CMakeLists.txt created"
 
 # 4. build.ps1
-Write-Host "▶ Creating build.ps1..."
+Write-Host "> Creating build.ps1..."
 @'
 param (
     [string]$BuildType = "Release"
@@ -186,10 +186,10 @@ if ($LASTEXITCODE -ne 0) { Write-Error "Build failed"; exit 1 }
 Write-Host "Build complete."
 Set-Location ..
 '@ | Set-Content -Path "build.ps1" -Encoding UTF8
-Write-Host "✓ build.ps1 created"
+Write-Host "OK build.ps1 created"
 
 # 5. README.md
-Write-Host "▶ Creating README.md..."
+Write-Host "> Creating README.md..."
 @'
 # NEXUS Synthesizer Plugin
 
@@ -203,13 +203,13 @@ See `Documentation/` for more details.
 '@ | Set-Content -Path "README.md" -Encoding UTF8
 
 # 6. Documentation Stubs
-Write-Host "▶ Creating documentation stubs..."
+Write-Host "> Creating documentation stubs..."
 "See NEXUS_Architecture_Specification.md" | Set-Content -Path "Documentation/QUICK_START.md" -Encoding UTF8
 "See NEXUS_Architecture_Specification.md" | Set-Content -Path "Documentation/ARCHITECTURE_QUICK_REF.md" -Encoding UTF8
 "Use this checklist everyday." | Set-Content -Path "Documentation/DAILY_CHECKLIST.md" -Encoding UTF8
 
 # 7. Source Files
-Write-Host "▶ Creating Source files..."
+Write-Host "> Creating Source files..."
 
 # PluginProcessor.h
 @'
@@ -385,17 +385,17 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
 '@ | Set-Content -Path "Source/State/ParameterDefinitions.h" -Encoding UTF8
 
 # 8. Git Init
-Write-Host "▶ Initializing Git..."
+Write-Host "> Initializing Git..."
 if (-not (Test-Path ".git")) {
     git init
     git add .
     git commit -m "[Phase1] [INIT] Initial project setup (via PowerShell)"
-    Write-Host "✓ Git initialized and first commit created"
+    Write-Host "OK Git initialized and first commit created"
 }
 else {
-    Write-Host "✓ Git already initialized"
+    Write-Host "OK Git already initialized"
 }
 
-Write-Host "═══════════════════════════════════════════════════════════════════"
-Write-Host "✓ NEXUS SETUP COMPLETE (PowerShell)"
-Write-Host "═══════════════════════════════════════════════════════════════════"
+Write-Host "==================================================================="
+Write-Host "OK NEXUS SETUP COMPLETE (PowerShell)"
+Write-Host "==================================================================="

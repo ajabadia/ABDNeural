@@ -47,6 +47,18 @@ REM    VERIFY_TIMEOUT  segundos que un test puede tardar antes de que ctest lo
 REM                    mate (600 por defecto). Sube el TECHO, no los avisos.
 REM    VERIFY_LENTO    segundos a partir de los cuales un test que pasa se avisa
 REM                    por lento (60 por defecto).
+REM    JUCE_PATH       donde esta el JUCE. MEDIDO el 2026-10-04: el paso 1 solo
+REM                    hace `cmake --build`, que NO reconfigura... pero CMake
+REM                    reconfigura solo, sin que se lo pidan, cuando el
+REM                    CMakeLists.txt es mas nuevo que el generate.stamp. Pasa
+REM                    con cualquier `git checkout` o `git stash`, que tocan los
+REM                    ficheros. Y al reconfigurar, CMakeLists.txt solo busca
+REM                    $JUCE_PATH y C:/JUCE, que aqui no existen: el build entero
+REM                    cae con "Could not find a package configuration file
+REM                    provided by JUCE". No es un rojo de codigo, es que falta la
+REM                    variable. Por eso el rojo sale en el paso 1 y el 2 se ve
+REM                    verde con los .exe de una pasada anterior, que es justo lo
+REM                    que el script avisa con "el build ha fallado a medias".
 REM
 REM ============================================================================
 
@@ -1185,7 +1197,7 @@ REM  Y va en una subrutina, no en el bloque del paso 1: un `for /f` dentro de
 REM  un `do ( ... )` con `EnableDelayedExpansion` tiene el problema ya medido con
 REM  :arreglados. Ademas asi el `set /a` ve `!` expandido, que en la linea de un
 REM  bucle se expande al entrar.
-REMREM El `if not exist` va ANTES del `set /a` del cero, y eso es lo que hace que
+REM El `if not exist` va ANTES del `set /a` del cero, y eso es lo que hace que
 REM con `--only=2` (donde el paso 1 no se ha ejecutado y el fichero no existe)
 REM la cuenta se quede en -1, que es "no se ha podido saber". Cero significa
 REM "el paso 1 se ha ejecutado y no habia nada rancio", que es otra cosa, asi

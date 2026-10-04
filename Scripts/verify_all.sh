@@ -46,6 +46,18 @@
 #                   (600 por defecto). Sube el TECHO: no cambia los avisos.
 #   VERIFY_LENTO    segundos a partir de los cuales un test que pasa se avisa
 #                   por lento (60 por defecto).
+#   JUCE_PATH       donde esta el JUCE. MEDIDO el 2026-10-04: el paso 1 solo
+#                   hace `cmake --build`, que NO reconfigura... pero CMake
+#                   reconfigura solo, sin que se lo pidan, cuando el
+#                   CMakeLists.txt es mas nuevo que el generate.stamp. Pasa
+#                   con cualquier `git checkout` o `git stash`, que tocan los
+#                   ficheros. Y al reconfigurar, CMakeLists.txt solo busca
+#                   $JUCE_PATH y C:/JUCE, que aqui no existen: el build entero
+#                   cae con "Could not find a package configuration file
+#                   provided by JUCE". No es un rojo de codigo, es que falta la
+#                   variable. Por eso el rojo sale en el paso 1 y el 2 se ve
+#                   verde con los .exe de una pasada anterior, que es justo lo
+#                   que el script avisa con "el build ha fallado a medias".
 #
 # `verify_all.bat` hace EXACTAMENTE lo mismo en Windows, con los mismos codigos.
 
