@@ -1,0 +1,370 @@
+name: Poner en pie el build nativo de ABDNeural
+description: >-
+  Configura y construye el arbol nativo de ABDNeural en un runner de Windows, y
+  deja JUCE y emsdk resueltos para el resto del job. Es lo que necesita
+  cualquier cosa que vaya a correr ctest o verify_all.sh en CI, y no lo hace
+  ninguna: hace falta antes de los dos.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# POR QUE ESTO ES UNA ACCION Y NO ESTA DENTRO DEL JOB
+#
+# El job `native-tests` de webui-visual-qa.yml llevaba dentro unos 200 lineas
+# de puesta en pie, con su medicion escrita: que JUCE 9.0.3 y no una 8.0.x, por
+# que el `table` de ThreadPriorities sale vacio y revienta al compilar con
+# em++, por que `MSYS2_ARG_CONV_EXCL` es obligatorio, por que los tres
+# `juce_add_binary_data` van al FINAL del CMakeLists y hay que generarlos antes
+# de compilar. Y verify_all.sh necesita EXACTAMENTE lo mismo, porque su paso 1
+# solo hace `cmake --build` y su paso 2 es ctest.
+#
+# Con la puesta en pie copiada en dos sitios, el dia que el CMakeLists declare
+# los `juce_add_binary_data` donde toca y el parche sea innecesario, habra que
+# acordarse de quitarlo de los dos, y el que se quede puesto no falla: el job
+# sigue en verde por el otro camino. Eso es un segundo sitio donde arreglar
+# algo y olvidarse, que es justo lo que este mismo bloque denuncia mas abajo
+# al hablar de las tres `juce_add_binary_data`.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# Y POR QUE SIGUE SIENDO UN PARCHE, Y POR QUE NO SE ARREGLA AQUI
+#
+# El arreglo de raiz de casi todo esto es el CMakeLists, y no se toca: el
+# `CMakeLists.txt` de este repo tiene trabajo sin commitear de otra sesion, y
+# meterse en el seria mezclarse en el. Lo que hace esta accion es medir lo
+# mismo sin invadir.
+#
+# LO QUE ESTA ACCION NO HACE, Y HAY QUE HACER EN EL JOB ANTES DE LLAMARLA:
+#   - los checkouts (esta accion no sabe cuantos hermanos hay);
+#   - node y pnpm, y los `pnpm install` de la WebUI y de ABDSharedAssets;
+#   - `Scripts/junctions-workspace.bat`, que es lo que enlaza los
+#     `workspace:*`. Los enlaces como junctions van DESPUES del install, y
+#     `NEURONIK_SUITE` es obligatorio en los dos: el script trae
+#     `D:\desarrollos\ABDSynths` por defecto, ese sitio NO existe en el runner,
+#     y MEDIDO que sin la variable aun asi imprimia "RESULTADO: OK", o sea un
+#     verde que no habia mirado nada.
+#
+# SALIDA por `GITHUB_ENV`: `JUCE_PATH`, `EMSDK_ROOT` y `JUCE_WEBVIEW2_PACKAGE_LOCATION`.
+
+inputs:
+  juce-download-dir:
+    description: Donde se deja JUCE si hay que descargarla. Variable de entorno y no constante, para que cambiarla no sea editar el workflow.
+    required: false
+    default: 'C:\JUCE'
+  juce-version:
+    description: La version de JUCE que se clona si el runner no la trae.
+    required: false
+    default: '9.0.3'
+
+runs:
+  using: composite
+  steps:
+    # ── JUCE ────────────────────────────────────────────────────────────────
+    # Tres caminos, en este orden: la variable de entorno, el `C:/JUCE` que ya
+    # mira CMakeLists, y el mirror publico. La version va FIJADA a 9.0.3, que es
+    # la que hay en la maquina de desarrollo: sin fijar, `master` del mirror
+    # puede mover un `juce::` bajo los pies y el fallo se lee como si fuera del
+    # codigo de este repo.
+    #
+    # MEDIDO por que 9.0.3 y no una 8.0.x mas reciente. Las cuatro ultimas 8.0.x
+    # (12, 13, 14 y 15) declaran `JUCE_WASM` en juce_TargetPlatform.h pero no
+    # tienen ninguna entrada para ese caso en juce_ThreadPriorities_native.h, de
+    # modo que la tabla `table` de ThreadPriorities sale VACIA y el
+    # `static_assert (std::size (table) == 5)` de esa cabecera revienta al
+    # compilar juce_core.cpp con em++. La rama `#if JUCE_WASM` solo existe a
+    # partir de 9.x. Reproducido con la linea de comando exacta del rojo: con
+    # 8.0.12 salen 7 errores y exit 1; con 9.0.3 exit 0.
+    - name: Resolve JUCE
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        # `RESUELTA` en local, y no solo en `GITHUB_ENV`: lo que se escribe ahi
+        # solo afecta a los pasos SIGUIENTES, asi que la comprobacion de abajo,
+        # que va en este mismo paso, no lo veria. Con el input de
+        # `juce-download-dir` cambiado, leer la variable de entorno aqui
+        # comprobaria `C:\JUCE`, que no existe, y la linea se traga el fallo
+        # con `|| true` sin decir nada. La ruta que se acaba de clonar es la que
+        # hay que comprobar.
+        RESUELTA=""
+
+        if [ -n "${JUCE_PATH:-}" ] && [ -f "${JUCE_PATH}/CMakeLists.txt" ]; then
+          echo "JUCE desde la variable de entorno: ${JUCE_PATH}"
+          RESUELTA="$JUCE_PATH"
+        elif [ -f 'C:\JUCE\CMakeLists.txt' ]; then
+          echo "JUCE desde el fallback de CMakeLists: C:\JUCE"
+          echo "JUCE_PATH=C:\JUCE" >> "$GITHUB_ENV"
+          RESUELTA='C:\JUCE'
+        else
+          echo "JUCE no esta en el runner: se descarga el mirror ${{ inputs.juce-version }}"
+          git clone --depth 1 --branch "${{ inputs.juce-version }}" https://github.com/juce-framework/JUCE.git "${{ inputs.juce-download-dir }}"
+          echo "JUCE_PATH=${{ inputs.juce-download-dir }}" >> "$GITHUB_ENV"
+          RESUELTA="${{ inputs.juce-download-dir }}"
+        fi
+
+        echo "--- comprobacion: la version que se va a usar"
+        grep -m1 'project(JUCE' "$(cygpath -m "$RESUELTA")/CMakeLists.txt" || true
+
+    # ── emsdk ──────────────────────────────────────────────────────────────
+    # Mismo criterio: si ya esta, se usa; si no, se instala. `emsdkup` es el
+    # instalador oficial y el que ya se usa en la maquina de desarrollo.
+    - name: Resolve emsdk
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        if [ -f 'C:\emsdk\emsdk_env.bat' ]; then
+          echo "emsdk desde C:\emsdk"
+          echo "EMSDK_ROOT=C:\emsdk" >> "$GITHUB_ENV"
+        else
+          echo "emsdk no esta en el runner: se instala"
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git C:\emsdk
+          cmd //c "C:\emsdk\emsdk.bat install latest"
+          cmd //c "C:\emsdk\emsdk.bat activate latest"
+          echo "EMSDK_ROOT=C:\emsdk" >> "$GITHUB_ENV"
+        fi
+
+    # ── Configure ───────────────────────────────────────────────────────────
+    # Release, y no Debug: es la configuracion en la que se compila el `.wasm`,
+    # y los hashes de bytes de la red de paridad de la matriz SOLO son
+    # comparables dentro de una misma configuracion.
+    #
+    # MEDIDO sin este paso el configure sale con 1 y con este motivo, que no es
+    # del codigo de este repo:
+    #
+    #   CMake Error at CMakeLists.txt:2 (project):
+    #     Generator
+    #       Visual Studio 17 2022
+    #     could not find any instance of Visual Studio.
+    #
+    # `microsoft/setup-msbuild` NO es lo que arregla el configure, aunque lo
+    # parezca. MEDIDO en el log de una corrida: el paso sale con 0 y `vswhere`
+    # responde con Visual Studio 18, y un paso mas abajo el configure sigue con
+    # "could not find any instance of Visual Studio" porque el generador que se
+    # le pide es "Visual Studio 17 2022" y esa version no esta. El runner trae
+    # VS 18. Por eso el `-G` no se fija: sin el, CMake usa el mas reciente que
+    # haya, que es justo el que existe.
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v3
+
+    # EL SDK DE WEBVIEW2. El plugin declara `NEEDS_WEBVIEW2 TRUE`, y eso hace
+    # que `FindWebView2.cmake` busque el paquete NuGet `Microsoft.Web.WebView2`.
+    # MEDIDO sin este paso el configure sale con
+    #
+    #   Could NOT find WebView2 (missing: WebView2_include_dir WebView2_library)
+    #
+    # que es un `CMake Error`, no un aviso, asi que el job para antes de
+    # compilar nada.
+    #
+    # Se descarga el `.nupkg` (que es un zip) y se descomprime en vez de usar
+    # `Install-Package` por dos razones que se han medido en el propio paquete:
+    # `Install-Package` escribe en un sitio que depende de como este configurado
+    # el PowerShell del runner, y no hace falta esa indireccion porque la
+    # variable `JUCE_WEBVIEW2_PACKAGE_LOCATION` dice donde esta.
+    #
+    # Y el nombre de la carpeta lleva la version porque el `find` de JUCE no
+    # recibe el directorio del paquete sino el que lo CONTIENE, y lo localiza
+    # con un glob `*Microsoft.Web.WebView2*`. Sin la version en el nombre, el
+    # glob no casa.
+    - name: Fetch the WebView2 SDK
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $version = '1.0.3485.44'
+        $root = Join-Path $env:GITHUB_WORKSPACE 'webview2'
+        $dest = Join-Path $root "Microsoft.Web.WebView2.$version"
+        New-Item -ItemType Directory -Force -Path $dest | Out-Null
+        # `Expand-Archive` no acepta la extension `.nupkg`, y con PowerShell 5.1
+        # el error que da no dice nada de la extension. Se descarga como `.zip`.
+        $zip = Join-Path $env:RUNNER_TEMP 'webview2.zip'
+        Invoke-WebRequest -Uri "https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/$version" -OutFile $zip
+        Expand-Archive -Path $zip -DestinationPath $dest -Force
+        if (-not (Test-Path (Join-Path $dest 'build/native/include/WebView2.h'))) {
+          Write-Error "el paquete se ha descargado pero no trae build/native/include/WebView2.h; revisa la version $version"
+        }
+        Write-Host "WebView2 $version en $dest"
+
+    - name: Configure (Release)
+      shell: bash
+      working-directory: ABDNeural
+      run: |
+        set -euo pipefail
+
+        # MSYS NO PUEDE TOCAR LOS ARGUMENTOS DE ESTE PASO. MEDIDO: sin esto,
+        # `/EHsc` llegaba a `cmake` como `C:\Program Files\Git\EHsc`, y la cache
+        # del `configure` guardaba
+        #
+        #   CMAKE_CXX_FLAGS: C:\Program Files\Git\DWIN32 \D_WINDOWS \EHsc
+        #
+        # o sea los `/` de las flags de MSVC convertidos en rutas de Windows,
+        # que es lo que hace MSYS2 con cualquier cosa que parece un path POSIX.
+        # El sintoma era de C, dos capas mas abajo:
+        #
+        #   juce_BasicNativeHeaders.h(92,4): error C1189:
+        #   "You're compiling without exceptions enabled"
+        #
+        # porque `/EHsc` nunca llego.
+        export MSYS2_ARG_CONV_EXCL='*'
+
+        # `cygpath -m` porque el CMake de Windows y el bash de Git no cuentan
+        # igual: `$(pwd)` devuelve `/d/a/...` y Windows lo lee como `\d\a\...`
+        # desde la unidad actual. MEDIDO: con `$(pwd)` a secas las tres rutas
+        # salian en el `.vcxproj` como `\d\tmp\...`, que aqui daba la casualidad
+        # de ser el mismo sitio y en el runner habria sido otra unidad.
+        _WEBVIEW2="$(cygpath -m "$GITHUB_WORKSPACE")/webview2"
+        _BD="$(cygpath -m "$(pwd)")/build-reference"
+
+        # LOS INCLUDE DE LOS CABECEROS GENERADOS, Y POR QUE SON UN PARCHE.
+        # Los tres `juce_add_binary_data` de este repo se declaran al FINAL del
+        # CMakeLists, DESPUES de que los targets que los enlazan los hayan
+        # enlazado POR NOMBRE. CMake no ve ahi ninguna dependencia: un nombre que
+        # todavia no es un target se resuelve como una libreria, o sea que no se
+        # aporta ni el orden de compilacion ni el `include` que el target daria
+        # con `target_include_directories(... INTERFACE ...)`.
+        #
+        # MEDIDO, no deducido. Sobre un clon limpio, con el CMakeLists de
+        # `master`, `NEURONiK.vcxproj` sale con 22 `include` y NINGUNO de
+        # `juce_binarydata`. Con estos `-I` salen los tres, y el rojo de
+        #
+        #   error C1083: Cannot open include file: 'NeuronikFactoryModels.h'
+        #
+        # se va. Que en la maquina de trabajo no salga es lo que lo hace pasar por
+        # una broma del runner: `build-reference` conserva la configuracion de una
+        # corrida anterior. Un arbol recien clonado no ha estado nunca.
+        #
+        # Se pasan los TRES, y no solo los dos que existen en esta configuracion,
+        # porque `NEURONiK_WebUIAssets` depende de `WebUI/dist`. Un `-I` a una
+        # carpeta que no esta no molesta al preprocesador, y asi el include ya
+        # esta el dia que este job construya la WebUI.
+        #
+        # `/DWIN32 /D_WINDOWS /EHsc` no son inventos: son lo que tiene
+        # `build-reference/CMakeCache.txt` en la maquina donde este proyecto
+        # compila, y sin `/EHsc` JUCE no compila (el `#error` de arriba). CMake
+        # 4.4 ya no los pone por su cuenta en MSVC.
+        #
+        # Y LAS LIBS EN EL ENLAZADOR, por la misma causa que los `-I`: los
+        # mismos targets, enlazados por nombre antes de que existieran, no
+        # arrastran `NEURONiK_FactoryModels.lib`. MEDIDO en los `.vcxproj` de un
+        # clon limpio: `NEURONiK_VST3` sale con CERO apariciones de esa lib.
+        # Con la cabecera ya encontrada, el rojo era de enlace:
+        #
+        #   NEURONiK_SharedCode.lib(NEURONiKProcessor.obj) : error LNK2019:
+        #   unresolved external symbol "char const * const Neuronik..."
+        #
+        # MEDIDO de punta a punta en local, sobre el clon limpio: con esto el
+        # target `NEURONiK_VST3` compila, enlaza y produce `NEURONiK.vst3`, exit 0.
+        #
+        # SOLO `FactoryModels`, y no `SelftestAssets` tambien: MEDIDO que poner
+        # las dos da LNK1181, porque ese target no construye esa lib. El VST3 no
+        # la necesita: el simbolo que daba el LNK2019 se llama
+        # `NeuronikFactoryModels`, y eso ya dice de que lib sale.
+        #
+        # `add_link_options` a secas, y no las variables de la cache, porque cada
+        # tipo de target se traga la suya: el VST3 de `juce_add_plugin` es MODULE
+        # (su `/machine:x64` salia de `CMAKE_MODULE_LINKER_FLAGS`, medido) y el
+        # Standalone es EXECUTABLE. Con `add_link_options` los dos los cogen.
+        #
+        # Y POR QUE VAN EN UN SCRIPT Y NO EN LAS VARIABLES DE LA CACHE. MEDIDO:
+        # con `-DCMAKE_MODULE_LINKER_FLAGS` el propio `configure` sale con
+        #
+        #   LINK : fatal error LNK1104: cannot open file ...Release\
+        #   NEURONiK_FactoryModels.lib
+        #
+        # o sea el try-compile del propio compilador: CMake le pasa las variables
+        # de enlazador de la cache a los subproyectos que compila para saber si el
+        # toolchain funciona, y ese try-compile ocurre dentro de `project()`,
+        # cuando la lib todavia no existe. `CMAKE_PROJECT_INCLUDE` se ejecuta
+        # justo DESPUES de `project()`, y `add_link_options` es una propiedad de
+        # directorio, que los try_compile de CMake no heredan.
+        _LIBS="${_BD}/Release/NEURONiK_FactoryModels.lib"
+
+        # NADA MAS QUE LOS ENLACES. Este fichero solo lleva `add_link_options`.
+        #
+        # MEDIDO por que ya NO esta el `add_custom_target(NEURONiK_LayoutExport)`
+        # de guarda que AQUI iba antes. `master` DECLARA ese target de verdad, y
+        # el stub era peor que inutil: `CMAKE_PROJECT_INCLUDE` se ejecuta justo
+        # despues de `project()`, o sea ANTES de esa linea, de modo que el custom
+        # target quedaba declarado primero y el `add_executable` de verdad
+        # reventaba con
+        #
+        #   add_executable cannot create target `NEURONiK_LayoutExport`
+        #   because another target with the same name already exists.
+        #
+        # MEDIDO el origen del error: el stub tapaba el fallo del `.bat` con un
+        # MSB1009; cuando el CMakeLists lo declaro de verdad, el stub paso de
+        # tapar ese fallo a provocarlo.
+        cat > "$RUNNER_TEMP/neural-factorymodels.cmake" <<CMAKEEOF
+        add_link_options("$_LIBS")
+        CMAKEEOF
+
+        cmake -S . -B build-reference -A x64 \
+          -DJUCE_PATH="$(cygpath -m "${JUCE_PATH:-C:\JUCE}")" \
+          -DJUCE_WEBVIEW2_PACKAGE_LOCATION="$_WEBVIEW2" \
+          -DCMAKE_PROJECT_INCLUDE="$(cygpath -m "$RUNNER_TEMP")/neural-factorymodels.cmake" \
+          -DCMAKE_CXX_FLAGS="/DWIN32 /D_WINDOWS /EHsc -I${_BD}/juce_binarydata_NEURONiK_FactoryModels/JuceLibraryCode -I${_BD}/juce_binarydata_NEURONiK_SelftestAssets/JuceLibraryCode -I${_BD}/juce_binarydata_NEURONiK_WebUIAssets/JuceLibraryCode"
+
+    # LOS CABECEROS GENERADOS, ANTES DE COMPILAR NADA. MEDIDO en la corrida
+    # 37075288609: el build para a los once segundos con
+    #
+    #   Source/Main/NEURONiKProcessor.cpp(8,10): error C1083:
+    #   Cannot open include file: 'NeuronikFactoryModels.h'
+    #
+    # Ese header lo escribe `juce_add_binary_data`, y los tres de este repo se
+    # declaran al FINAL del CMakeLists. CMake no ve por eso ninguna dependencia
+    # de orden, y con `--parallel` el plugin entra a compilar antes de que el
+    # target que genera el header haya llegado a generarlo.
+    #
+    # Que en local no salga es justo lo que lo hace parecer cosa de maquina:
+    # `build-reference` ya tenia los cabeceres de una corrida anterior. En un
+    # arbol recien clonado, que es lo unico que ve el runner, no estan, y el
+    # rojo sale como error de C, que es la ultima capa.
+    - name: Generate the binary-data headers (el orden que CMake no ve)
+      shell: bash
+      working-directory: ABDNeural
+      run: |
+        set -euo pipefail
+        for _t in NEURONiK_WebUIAssets NEURONiK_SelftestAssets NEURONiK_FactoryModels; do
+          # `NEURONiK_WebUIAssets` no existe en esta configuracion: depende de
+          # `WebUI/dist`, que este job no construye. Por eso se avisa y se sigue
+          # en vez de romper la lista entera.
+          if cmake --build build-reference --config Release --target "$_t"; then
+            echo "::notice::$_t generado antes de compilar"
+          else
+            echo "::warning::el target $_t no existe en esta configuracion"
+          fi
+        done
+
+    # Se compila TODO lo que hay configurado, plugin incluido. El target
+    # NEURONiK es un VST3 y `cmake --build` sin `--target` lo construye igual:
+    # suprimirlo exigiria listar los 38 targets de test a mano, y esa lista se
+    # quedaria vieja en cuanto se anada uno. Pagar el plugin es el precio de no
+    # tener un segundo sitio donde anadir un test y olvidarlo.
+    - name: Build test targets (Release)
+      shell: bash
+      working-directory: ABDNeural
+      run: |
+        set -euo pipefail
+        cmake --build build-reference --config Release --parallel
+
+    # ── El .wasm ────────────────────────────────────────────────────────────
+    # build_wasm.bat es el unico camino que produce el binario que la pagina
+    # sirve, y ademas es el que regenera la firma del layout y comprueba que el
+    # binario y la tabla cuadran. Los guards de mas abajo comparan contra ESA
+    # salida, asi que tienen que ver el resultado de este paso y no un binario
+    # de otra pasada.
+    - name: Patch build_wasm.bat (el exportador que este CMakeLists no construye)
+      shell: pwsh
+      working-directory: ABDNeural
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $p = 'build_wasm.bat'
+        $t = [IO.File]::ReadAllText($p)
+
+        $viejo = '"%~dp0build-reference\Release\NEURONiK_LayoutExport.exe" "%~dp0WebUI\generated"'
+        if ($t.IndexOf($viejo) -lt 0) { throw 'build_wasm.bat no tiene la linea que se esperaba' }
+
+        $nuevo = 'if exist build-reference\Release\NEURONiK_LayoutExport.exe ' + $viejo
+        [IO.File]::WriteAllText($p, $t.Replace($viejo, $nuevo))
+        Write-Host 'build_wasm.bat parcheado: el exportador de la firma solo se ejecuta si se ha construido'
+
+    - name: Build the .wasm
+      shell: cmd
+      working-directory: ABDNeural
+      run: build_wasm.bat nopause

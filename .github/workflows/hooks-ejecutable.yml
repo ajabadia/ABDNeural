@@ -1,0 +1,123 @@
+name: Hooks ejecutables
+
+# El bit +x de los lanzadores del hook, medido donde el bit existe.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# POR QUE ESTO NO ESTA EN verify-all.yml NI EN webui-visual-qa.yml
+#
+# Porque los dos son de `windows-latest`, y en Windows el bit de ejecutable no
+# se puede comprobar. MEDIDO en git for Windows, y escrito en el propio
+# `revisar_checkout.py`:
+#
+#   · un hook commiteado como 100644 SE EJECUTA IGUAL. X_OK ahi es "existe", no
+#     "tiene el bit", porque git.exe delega en el emulador de rutas POSIX. El
+#     mensaje sale, el hook corre, y no hay ni aviso ni problema.
+#
+#   · con `core.fileMode=false`, que es el defecto en Windows, el bit ni se
+#     rastrea.
+#
+# O sea que un job en Windows que "comprueba" el bit esta haciendo dos cosas
+# mal a la vez: no mira nada, y sale en verde. Por eso este workflow es
+# Linux y macOS, y por eso es aparte: no es un paso mas de los que ya hay.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# QUE PASA SI ESTO NO ESTA
+#
+# Un hook commiteado sin el bit no da error, ni mensaje, ni codigo de salida: en
+# un clon de Linux o macOS git se lo salta EN SILENCIO, el hook no corre nunca,
+# y un .bat con LF pasa a limpio porque nadie lo miraba. El rojo sale tres pasos
+# despues, en el build, y sin senalar ni la linea ni la causa. Es la clase de
+# fallo que un CI en verde puede tener meses.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# QUE EJECUTA, Y POR QUE EL SCRIPT DEL REPO Y NO UN SNIPPET DE YAML
+#
+# `Scripts/selftest_post_checkout_bats.py`, el mismo que corre la suite en
+# local, con los dos casos que se anadieron para esto:
+#
+#   · `pre-commit` y `post-checkout` commiteados como 100755. El indice no
+#     depende del sistema, asi que este caso mira en cualquier lado.
+#   · los mismos, EJECUTABLES EN EL DISCO. Solo en un sistema con bits de
+#     permiso; en Windows se salta y no cuenta para el total, porque ahi
+#     `os.access(X_OK)` daria bueno siempre.
+#
+# Un paso de shell aqui seria una SEGUNDA regla para lo mismo, y el repo ya
+# tiene la regla, con sus casos, en el sitio donde se ejecuta.
+#
+# El script ademas hace un `git checkout` de verdad y comprueba que git LLAMA al
+# hook. Eso, en un sistema con bits, solo puede pasar si el lanzador es
+# ejecutable: es la prueba de punta a punta, y no solo del modo del indice.
+
+on:
+  workflow_dispatch:
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hooks-ejecutable-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # La matriz es el contenido de este workflow: el mismo caso, en los dos
+  # sistemas donde el bit se comprueba. Un solo `runs-on` seria medir la mitad
+  # de lo que el aviso dice.
+  #
+  # macOS va aparte y no por moda: su permisos son POSIX como los de Linux pero
+  # los publica CoreCLR de otra forma, y `os.access` consulta el permiso de
+  # ejecucion de otra manera. Un caso que pasa en Linux y no en macOS es un
+  # caso que no sabe lo que mide.
+  hook-bits:
+    name: bit +x del hook (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout ABDNeural (este repo)
+        uses: actions/checkout@v7
+        with:
+          path: ABDNeural
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      # `core.fileMode` NO se toca, y esa es la gracia: aqui su defecto es
+      # `true`, de modo que el checkout APLICA el modo del indice al disco, que
+      # es exactamente el comportamiento que hay que medir. Ponerlo a `false`
+      # haria que el checkout ignorase el bit y el caso pasaria sin mirar nada:
+      # un verde que no mide, en el fichero cuyo unico trabajo es medir el bit.
+      #
+      # El `core.hooksPath` si se instala, porque es lo que hace un clon de
+      # verdad (`Scripts/junctions-workspace.bat` lo pone en cada clon aqui) y
+      # sin el el hook no llega a ejecutarse nunca en este repo. Es config local
+      # y no se commitea.
+      - name: Instalar los hooks en este clon
+        shell: bash
+        working-directory: ABDNeural
+        run: |
+          set -euo pipefail
+          git config core.hooksPath Scripts/hooks
+          echo "core.hooksPath = $(git config --get core.hooksPath)"
+          echo "core.fileMode   = $(git config --get core.fileMode || echo '(sin valor: true)')"
+          echo "--- modos en el indice"
+          git ls-files -s -- Scripts/hooks
+
+      # Los modos del indice Y del disco, y el `git checkout` de verdad. Los
+      # tres en la misma corrida: por separado, un indice en 755 con el fichero
+      # sin el bit en disco sale en verde y el hook no corre.
+      - name: Medir el bit de ejecutable de los lanzadores
+        shell: bash
+        working-directory: ABDNeural
+        run: |
+          set -euo pipefail
+          echo "--- como ve el disco este runner"
+          ls -l Scripts/hooks/pre-commit Scripts/hooks/post-checkout
+          python3 Scripts/selftest_post_checkout_bats.py

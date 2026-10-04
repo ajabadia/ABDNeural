@@ -1,0 +1,224 @@
+name: Verify All
+
+# verify_all.sh en cada push, que es lo que en local se ejecuta a mano.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# POR QUE UN WORKFLOW APARTE Y NO UN JOB MAS DE webui-visual-qa.yml
+#
+# Porque este corre en CADA push, y ese filtra por `paths:`. Anadir aqui el job
+# haria que un cambio solo de codigo (Source/**, WebUI/src/**) no llegara nunca
+# a medir la bateria completa, que es justo lo que este job mide. Filtrar por
+# rutas para un verify que se supone que verifica es la forma de tener un verify
+# que no verifica.
+#
+# El workflow ese no se toca en su `name:`, y sus jobs no se renombran: cambiar
+# un nombre de job cambia el nombre de los REQUIRED STATUS CHECKS, y las reglas
+# de proteccion de rama que lo nombran se quedan apuntando a un check que ya no
+# existe, con lo que la rama deja de proteger en silencio.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# Y POR QUE `windows-latest`, Y NO UN LINUX MAS BARATO
+#
+# Porque verify_all.sh no es un script portable: su paso 1 construye con
+# CMake/Visual Studio, sus pasos 3 y 4 son `npx vitest` sobre los `node_modules`
+# de dos repos, y `build_wasm.bat` es un `.bat`. En ubuntu el paso 1 no compila.
+# Y el codigo del repo es de Windows: `junctions-workspace.bat` escribe los
+# enlaces del workspace como junctions.
+
+on:
+  workflow_dispatch:
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-all-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-all:
+    name: verify_all.sh (los cinco pasos)
+    runs-on: windows-latest
+    # MEDIDO en la corrida de `native-tests`: el build entero, plugin incluido,
+    # mas el `.wasm` y los ctest, se llegaron a medir a los 60 minutos con unos
+    # 35 de los 38 ejecutables ya enlazados. Este job hace ademas los dos vitest
+    # y la comparacion de contratos, asi que el margen es de esa misma clase.
+    timeout-minutes: 150
+
+    env:
+      CI: true
+
+    steps:
+      # ── Layout de HERMANOS, Y POR QUE ESTE NECESITA SEIS ───────────────────
+      # verify_all.sh calcula sus rutas como `<raiz>/..` colgando del sitio donde
+      # este el repo, o sea el layout del monorepo: es el mismo que el de
+      # local, y por eso los checkout van como hermanos en la raiz del workspace.
+      #
+      # Los seis, y no solo los tres que el script nombra: el paso 4 corre la
+      # suite de ABDSharedAssets, y esa suite mira lo que sus generadores
+      # producen en ABDDEep, ABDMS2000 y ABDAudioLab. MEDIDO en el job
+      # `js-tests`: sin ellos salen 6 tests en rojo, y no por lo que dicen:
+      #
+      #   - "el catalogo de verdad tiene toda fuente en su sitio": 8 fuentes que
+      #     no existen, porque son de estos repos.
+      #   - "cada evidencia declarada existe": ABDEep declara una evidencia que
+      #     no esta a mano.
+      #   - "una salida que no esta en el disco es un FALLO".
+      #
+      # Y `check-generated-contracts.mjs` tiene una funcion `hermanoDisponible`
+      # que se salta al generador cuando el repositorio no esta, con la que esos
+      # tests PASARIAN en verde sin comprobar nada. Un verde que no ha mirado
+      # nada es peor que un rojo, asi que se clonan.
+      - name: Pin the line endings of the clone
+        shell: bash
+        run: git config --global core.autocrlf false
+
+      - name: Checkout ABDNeural (este repo)
+        uses: actions/checkout@v7
+        with:
+          path: ABDNeural
+
+      - name: Checkout ABDSharedCode (@abdsynths/midi-keyb)
+        uses: actions/checkout@v7
+        with:
+          repository: ajabadia/ABDSharedCode
+          path: ABDSharedCode
+
+      - name: Checkout ABDSharedAssets (@abdsynths/shared)
+        uses: actions/checkout@v7
+        with:
+          repository: ajabadia/ABDSharedAssets
+          path: ABDSharedAssets
+
+      - name: Checkout ABDEep (generador de presets y registro)
+        uses: actions/checkout@v7
+        with:
+          repository: ajabadia/ABDEep
+          path: ABDEep
+
+      - name: Checkout ABDMS2000 (generador de registro y contratos)
+        uses: actions/checkout@v7
+        with:
+          repository: ajabadia/ABDMS2000
+          path: ABDMS2000
+
+      - name: Checkout ABDAudioLab (el laboratorio que leen esos tests)
+        uses: actions/checkout@v7
+        with:
+          repository: ajabadia/ABDAudioLab
+          path: ABDAudioLab
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6.1.0
+        with:
+          version: '10'
+
+      # verify_all.sh llama a `node Scripts/verify_all_node.js` para la lista de
+      # conocidos, la de targets y el resumen. Sin node en el PATH, el script
+      # PARA con un mensaje y sale con 2, antes de mirar nada.
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+
+      - name: Install WebUI dependencies
+        shell: bash
+        working-directory: ABDNeural/WebUI
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: '1'
+        run: pnpm install --frozen-lockfile
+
+      # ABDSharedAssets tiene SU PROPIO lock y NO es miembro del workspace de la
+      # WebUI: es un paquete de la suite, no una dependencia de este repo. Sin
+      # este install aparte, su vitest ni existe.
+      - name: Install ABDSharedAssets dependencies
+        shell: bash
+        working-directory: ABDSharedAssets
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        shell: bash
+        working-directory: ABDNeural/WebUI
+        run: pnpm exec playwright install chromium
+
+      # Los enlaces del workspace como junctions, DESPUES del install y antes de
+      # nada que lea la WebUI. `pnpm` puede salir en verde y dejar un
+      # `workspace:*` que existe y no resuelve, y entonces el vitest de la WebUI
+      # lee un arbol vacio y sale en verde sin haber comprobado nada.
+      # `NEURONIK_SUITE` es obligatorio: el script trae `D:\desarrollos\ABDSynths`
+      # por defecto, ese sitio NO existe en el runner, y MEDIDO que sin la
+      # variable aun asi imprimia "RESULTADO: OK", o sea un falso verde.
+      - name: Fix the workspace links as junctions (junctions-workspace.bat)
+        shell: cmd
+        working-directory: ABDNeural
+        run: |
+          set NEURONIK_SUITE=%GITHUB_WORKSPACE%
+          set NEURONIK_CI=1
+          Scripts\junctions-workspace.bat
+
+      # ── JUCE, EMSDK Y EL BUILD ─────────────────────────────────────────────
+      # La misma puesta en pie que usa el job `native-tests`. Va en una accion
+      # compuesta y no copiada aqui por dos razones que estan escritas en la
+      # propia accion: el CMakeLists tiene trabajo sin commitear de otra sesion
+      # y el arreglo de raiz va ahi, y con el bloque copiado en dos sitios, el
+      # dia que el parche sea innecesario habra que acordarse de quitarlo de los
+      # dos y el que se quede puesto no falla.
+      #
+      # `JUCE_PATH` sale de aqui, escrito en `GITHUB_ENV` por la accion: sin el,
+      # el configure cae con "Could not find a package configuration file
+      # provided by JUCE", que es lo que documentan las cabeceras de
+      # verify_all.sh y verify_all.bat.
+      - name: Poner en pie el build nativo
+        uses: ./ABDNeural/.github/actions/configure-native
+
+      # Que la variable exista de verdad se comprueba AQUI y no se supone. El
+      # rojo de un JUCE que no esta no lo dice el cmake del paso siguiente de
+      # forma que se entienda: dice que no encuentra un paquete, que tambien
+      # puede ser que el CMakeLists este mal. Este paso dice cual de las dos.
+      - name: Comprobar JUCE_PATH
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${JUCE_PATH:-}" ]; then
+            echo "::error::JUCE_PATH vacia: la accion no la escribio en GITHUB_ENV"
+            exit 1
+          fi
+          echo "JUCE_PATH=${JUCE_PATH}"
+          test -f "$(cygpath -m "${JUCE_PATH}")/CMakeLists.txt" || {
+            echo "::error::JUCE_PATH=${JUCE_PATH} no contiene un CMakeLists.txt de JUCE"
+            exit 1
+          }
+          grep -m1 'project(JUCE' "$(cygpath -m "${JUCE_PATH}")/CMakeLists.txt" || true
+
+      # ── LA VERIFICACION ────────────────────────────────────────────────────
+      # Los cinco pasos en un comando y con un unico codigo de salida. Se deja
+      # que el paso ROJO el job, y no se captura el codigo para relanzarlo: el
+      # propio script dice que sale en rojo si hay CUALQUIER fallo, y relanzar
+      # con `|| true` seria un workflow que puede estar en verde con el script
+      # en rojo, que es el fallo mas caro que puede tener un verify.
+      #
+      # `--no-build` NO se pasa, aunque la accion acabo de construir: el paso 1
+      # tambien es el UNICO que sabe que se ha compilado en esta pasada, y sin
+      # el la cuenta de tests sin medir es "no lo se", que sale con 3. El build
+      # ya hecho hace que el paso 1 sea incremental y cueste poco.
+      - name: verify_all.sh
+        shell: bash
+        working-directory: ABDNeural
+        run: |
+          set -euo pipefail
+          bash Scripts/verify_all.sh
+
+      # El resumen que escribe el script y el log de ctest. El resumen es lo
+      # comparable entre los dos gemelos, asi que es lo que se lee primero
+      # cuando el script y el .bat dejan de decir lo mismo.
+      - name: Upload verify output
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: verify-all-output
+          path: |
+            ABDNeural/build-reference/Testing/**
+            ABDNeural/wasm-last-run.log
+          if-no-files-found: ignore
+          retention-days: 14
