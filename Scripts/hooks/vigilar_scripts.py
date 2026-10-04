@@ -8,7 +8,7 @@ Python y le pasa el trabajo. El reparto no es estetico: el lanzador es la parte
 que tiene que funcionar en Windows y en Linux, y ya se ha visto que es donde se
 rompe. Este fichero solo necesita un Python.
 
-UNA LISTA BLANCA POR EXTENSION, Y NO UNA
+UNA REGLA POR EXTENSION, Y NO UNA
 
 Es lo importante de aqui, y no es una regla que se pueda copiar de un sitio a
 otro. Cada interprete lee los bytes de otra manera, asi que lo que es inofensivo
@@ -24,17 +24,22 @@ en uno es un fallo en otro. MEDIDO el 2026-10-04 en esta maquina:
        excepciones. Y el EOL tiene que ser CRLF, que es lo que espera cmd.exe.
 
   .ps1  Windows PowerShell 5.1, que es el instalado aqui. MEDIDO:
+       - NO LEE UTF-8. Sin BOM lee con la pagina de codigos ANSI del sistema,
+         que en esta maquina es cp1252. MEDIDO: una enye (U+00F1) llega como
+         DOS caracteres, con los puntos de codigo 195 y 179 en vez del 243; y un
+         U+00AB se ve como DOS caracteres de control, no como unas comillas.
        - Un `Write-Host "═══"` con U+2550 (3 bytes UTF-8) NO PARSEA. El parser
          devuelve TerminatorExpectedAtEndOfString en la linea 401 de
          init_nexus.ps1, porque uno de los 3 bytes leidos como cp1252 se come la
          comilla de cierre. Eso no es un texto feo: es un script que no arranca.
-       - Sin BOM, un `ñ` (2 bytes UTF-8) se lee como DOS caracteres: MEDIDO que
-         el literal `canci<o-acento>n` mide 8 en vez de 7, con los puntos de
-         codigo 195 y 179 en vez del 243. Con BOM mide 7 y da 243. El BOM se
-         calma solo; no se vigila.
-       - Con BOM, el fichero entero va bien. MEDIDO que las seis .ps1 del repo
-         son sin BOM, y que cinco de las seis parsean sin un solo error.
-       El EOL tiene que ser LF, que es lo que declara el .gitattributes.
+       - Y el fallo es de CODIFICACION, no del CARACTER: puesto como UTF-8 de
+         verdad, ese mismo fichero da 0 errores. Un BOM lo tapaba porque cambia
+         la decodificacion, pero no arregla nada: deja el resto de los
+         caracteres no ASCII en pie.
+       Por eso la lista de .ps1 esta ahora VACIA tambien: ASCII puro, y no por
+       purismo. Los seis .ps1 del repo son ASCII puro desde el 2026-10-04 y
+       parsean sin un error. El EOL tiene que ser LF, que es lo que declara el
+       .gitattributes.
 
   .sh   sh NO decodifica: pasa los bytes de largo. MEDIDO que un .sh en UTF-8
        sin BOM, con tilde en un comentario y con caja en un `echo`, imprime
@@ -43,20 +48,22 @@ en uno es un fallo en otro. MEDIDO el 2026-10-04 en esta maquina:
        Lo que si se vigila es el EOL, que tiene que ser LF como en el
        .gitattributes, y las vertical tabs, que si rompen (abajo).
 
-POR QUE LA LISTA DE .ps1 ES LA DE LOS QUE PARSEAN
+POR QUE .ps1 NO TIENE LISTA BLANCA, Y .bat TAMPOCO
 
-La union medida de lo que usan las cinco .ps1 que parsean sin errores:
+Antes los .ps1 traian una lista de cinco caracteres que usaban las cinco .ps1
+que parseaban: U+00AB, U+00BB, U+00B7, U+00F1 y U+2014. MEDIDO el 2026-10-04
+que esa lista era una EXCUSA, no una medicion: los cinco son precisamente los
+que PowerShell 5.1 lee mal sin BOM. La enye se parte en dos, y los angulos
+Franceses se ven como caracteres de control. Autorizarlos era dejar en pie
+justo lo que no se lee bien, y en un Write-Host eso lo ve el usuario.
 
-    U+00AB  <<   U+00BB  >>   U+00B7  (punto medio)   U+00F1  (n con tilde)
-    U+2014  raya
+Se sustituyeron por su equivalente ASCII y la lista se fue. Los .bat ya
+habian llegado a lo mismo antes, y por el mismo motivo: su lista tambien era
+una excusa.
 
-Los otros tres que aparecen en el repo, U+2550, U+25B6 y U+2713, salen solo de
-init_nexus.ps1, que es justo el que no parsea. No se pueden meter en la lista
-blanca porque estarian autorizando justo lo que se ha medido que rompe.
-
-Y no se ha intentado ser mas fino: distinguir un comentario de una cadena no es
-fiable de forma automatica, y MEDIDO que equivocarse en ese caso no es un texto
-malo, es un script que no arranca. Ante esa duda, la lista corta.
+Y no se ha intentado ser mas fino, ni aqui ni ahi: distinguir un comentario de
+una cadena no es fiable de forma automatica, y MEDIDO que equivocarse en ese
+caso no es un texto feo, es un script que no arranca. Ante esa duda, ASCII.
 
 LAS VERTICAL TABS, PARA TODOS
 
@@ -114,13 +121,16 @@ REGLAS = {
     },
     ".ps1": {
         "eol": "lf",
-        "permitidos": {
-            0x00AB: "doble angulo de apertura",
-            0x00BB: "doble angulo de cierre",
-            0x00B7: "punto medio",
-            0x00F1: "n con tilde (salva al parser, aunque se ve como dos letras)",
-            0x2014: "raya",
-        },
+        # ASCII PURO, sin excepciones, y no por purismo. MEDIDO el 2026-10-04:
+        # PowerShell 5.1 lee un .ps1 SIN BOM con la ANSI del sistema, no con
+        # UTF-8. Una enye (U+00F1) llega como DOS caracteres, 195 y 179, y en la
+        # linea 158 de update_version.ps1, que es un Write-Host que ve el
+        # usuario, un U+00AB se veian DOS caracteres de control donde deberia
+        # haber unas comillas. Aqui habia una lista con esos cinco caracteres de
+        # excepcion, y lo que hacia era dejar en pie justo lo que PowerShell no
+        # lee bien. Los cinco se sustituyeron por su equivalente ASCII el
+        # 2026-10-04 y los seis .ps1 del repo son ahora ASCII puro.
+        "permitidos": {},
     },
     ".sh": {
         "eol": "lf",
@@ -260,16 +270,19 @@ def main():
 
     sys.stderr.write(
         "  Que es esto. Cada interprete lee los bytes a su manera y lo que es\n"
-        "  inocuo en uno rompe en otro, asi que la lista blanca es POR\n"
-        "  EXTENSION y esta medida, no inventada:\n"
+        "  inocuo en uno rompe en otro, asi que la regla es POR EXTENSION y esta\n"
+        "  medida, no inventada:\n"
         "\n"
         "    .bat  cmd.exe. Le pasa CRLF y ASCII PURO, sin excepciones: un\n"
         "          caracter UTF-8 multibyte se come el siguiente cuando la\n"
         "          consola lo lee con su pagina de codigos.\n"
-        "    .ps1  Windows PowerShell 5.1. Le pasa LF. MEDIDO: un '═' (U+2550)\n"
-        "          dentro de un Write-Host \"...\" hace que el fichero NO PARSEE,\n"
-        "          con TerminatorExpectedAtEndOfString. Sin BOM, ademas, un 'ñ'\n"
-        "          se lee como dos letras. Con BOM el fichero va bien.\n"
+        "    .ps1  Windows PowerShell 5.1. Le pasa LF, y ASCII PURO. MEDIDO que\n"
+        "          sin BOM NO lee UTF-8, sino la pagina ANSI del sistema (cp1252\n"
+        "          aqui): una enye se lee como DOS letras y un '<' frances se ve\n"
+        "          como caracteres de control. Y un '=' doble (U+2550) dentro de\n"
+        "          un Write-Host \"...\" hace que el fichero NO PARSEE, con\n"
+        "          TerminatorExpectedAtEndOfString. Un BOM lo tapaba sin\n"
+        "          arreglar nada: por eso aqui no hay lista blanca.\n"
         "    .sh   sh no decodifica: pasa los bytes de largo. MEDIDO que un .sh\n"
         "          con UTF-8 imprime bien, asi que aqui solo se vigila el EOL y\n"
         "          las vertical tabs, que si parten el comando.\n"

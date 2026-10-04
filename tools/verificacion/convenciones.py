@@ -19,8 +19,8 @@ QUE MIDE, Y POR QUE CADA COSA
              ninguno: son los que se cuelan al copiar texto de una pagina.
 
   no ASCII   Cuantos bytes van por encima de 127, y cuales. En un fichero ASCII
-             es cero, y en un `.bat` tambien: los `.bat` son ASCII PURO, sin
-             lista blanca. En un `.md` con tildes no.
+             es cero, y en un `.bat` y un `.ps1` tambien: los dos son ASCII
+             PURO, sin lista blanca. En un `.md` con tildes no.
 
 LA LISTA DE CONVENCIONES, Y DONDE ESTA
 
@@ -28,6 +28,9 @@ La fuente de estas reglas es el `.gitattributes` y las cabeceras de los
 ficheros. En la practica son tres:
 
   · los `.bat` van en CRLF y en ASCII puro, sin excepciones;
+  · los `.ps1` van en LF y en ASCII puro, sin excepciones, y no porque sea
+    purismo: PowerShell 5.1 sin BOM lee con la ANSI del sistema, y MEDIDO que
+    una enye llega partida en dos;
   · los `.sh` y `.py` van en LF;
   · los `.md` con tildes van en LF y con vallas parejas.
 
@@ -79,14 +82,24 @@ TEXTO = {".bat", ".cmd", ".sh", ".py", ".md", ".js", ".mjs", ".cjs", ".ts",
          ".json", ".yml", ".yaml", ".txt", ".cpp", ".h", ".hpp", ".cmake",
          ".gitignore", ".gitattributes", ".css", ".html", ".xml", ".ps1"}
 
-# Los .bat NO tienen lista blanca: ASCII puro, sin excepciones. MEDIDO el
-# 2026-10-04 que los 102 caracteres no ASCII que traian los tres .bat estaban
-# todos en lineas REM y se han podido quitar sin tocar una sola orden. Antes
-# habia una lista con U+00BF, U+2500 y U+2014, y existia porque el hook de
+# Los .bat y los .ps1 NO tienen lista blanca: ASCII PURO, sin excepciones.
+#
+# MEDIDO el 2026-10-04 que los 102 caracteres no ASCII que traian los tres .bat
+# estaban todos en lineas REM y se han podido quitar sin tocar una sola orden.
+# Antes habia una lista con U+00BF, U+2500 y U+2014, y existia porque el hook de
 # pre-commit todavia no estaba: sin hook que lo impidiera, la lista era la
 # unica barrera, y era una barrera blanda. MEDIDO ademas que un caracter de
 # esos DENTRO de un `Write-Host "..."` no sale mal impreso, rompe el
 # interprete, igual que en un .ps1.
+#
+# Los .ps1 llegaron a lo mismo por su cuenta. PowerShell 5.1 SIN BOM no lee
+# UTF-8: lee con la ANSI del sistema, que aqui es cp1252. MEDIDO que una enye
+# llega como DOS caracteres (195 y 179 en vez de 243) y que en la linea 158 de
+# update_version.ps1, un Write-Host que ve el usuario, un U+00AB se veia como
+# dos caracteres de control. Los cinco que estaban en la lista
+# (U+00AB, U+00BB, U+00B7, U+00F1, U+2014) son justo los que no se leen bien,
+# asi que eran una excusa y no una medicion. Se sustituyeron por ASCII.
+ASCII_PURO = {".bat", ".ps1"}
 
 CJK = re.compile("[\u3000-\u9fff\uff00-\uffef]")
 
@@ -145,14 +158,15 @@ def revisa(ruta):
     if cjk:
         problemas.append("CJK: %s" % ascii("".join(cjk[:8])))
 
-    if ext == ".bat":
-        # ASCII puro. Sin lista, sin excepciones: cmd.exe lee con la pagina de
-        # codigos de la consola y un caracter UTF-8 multibyte se come el que
-        # viene detras.
+    if ext in ASCII_PURO:
+        # ASCII puro, sin lista y sin excepciones. En .bat porque cmd.exe lee
+        # con la pagina de codigos de la consola y un caracter UTF-8 multibyte
+        # se come el que viene detras; en .ps1 porque PowerShell 5.1 sin BOM
+        # hace lo mismo con la ANSI del sistema. Ver ASCII_PURO, arriba.
         raros = sorted(set(c for c in texto if ord(c) > 127))
         if raros:
-            problemas.append("fuera de ASCII: %s (los .bat son ASCII puro)"
-                             % ascii("".join(raros[:8])))
+            problemas.append("fuera de ASCII: %s (los %s son ASCII puro)"
+                             % (ascii("".join(raros[:8])), ext))
 
     # 3. Vallas de un .md.
     if ext == ".md":

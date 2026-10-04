@@ -64,8 +64,16 @@ CASOS = [
     ("vallas_impares.md", b"# Titulo\n\n```js\ncode\n", True),
     ("tilde_en_bat.bat", ("@echo off" + chr(13) + chr(10) + "REM aqu" + ch(0xED) + " est" + ch(0xE1) + chr(13) + chr(10)).encode("utf-8"), True),
     ("ansi_en_bat.bat", b"@echo off\r\nREM \xA1\xE9\r\n", True),
-    # Los tres que tienen que estar callados.
+    # Los .ps1 tambien son ASCII PURO. MEDIDO el 2026-10-04: PowerShell 5.1
+    # sin BOM lee con la ANSI del sistema, y una enye llega partida en dos.
+    # Antes los .ps1 tenian lista blanca en el hook y aqui no se comprobaba
+    # nada, que es como se colaron 66 caracteres.
+    ("tilde_en_ps1.ps1", ("Write-Output 'asi" + chr(0xF1) + "'" + chr(10)).encode("utf-8"), True),
+    ("angulo_en_ps1.ps1", ("# " + chr(0xAB) + chr(0xBB) + chr(10)).encode("utf-8"), True),
+    ("raya_en_ps1.ps1", ("Write-Output 'a" + chr(0x2014) + "b'" + chr(10)).encode("utf-8"), True),
+    # Los cuatro que tienen que estar callados.
     ("bat_limpio.bat", b"@echo off\r\nREM ok\r\n", False),
+    ("ps1_limpio.ps1", b"Write-Output 'hola'\n", False),
     ("sh_limpio.sh", b"#!/bin/sh\necho ok\n", False),
     ("md_limpio.md", b"# Titulo\n\n```\ncode\n```\n", False),
 ]

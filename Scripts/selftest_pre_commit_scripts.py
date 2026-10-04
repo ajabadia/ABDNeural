@@ -111,25 +111,30 @@ CASOS = [
     ("bat en ANSI, que no decodifica como UTF-8",
      [pista("x.bat", b"@echo off" + CRLF + b"REM " + bytes([0xA1, 0xE9]) + CRLF)], True),
 
-    # --- .ps1: LF, y una lista blanca medida sobre las que parsean ---
+    # --- .ps1: LF y ASCII PURO, y ya sin lista blanca. MEDIDO el 2026-10-04:
+    # PowerShell 5.1 sin BOM lee con la ANSI del sistema, con lo que una
+    # enye llega partida en dos y un angulo frances se ve como un caracter
+    # de control. La lista que los excusaba dejaba en pie justo lo que no
+    # se lee bien, asi que los cinco se sustituyeron por ASCII y la lista se
+    # va.
     ("ps1 limpio, ASCII y LF", [pista("x.ps1", b"Write-Output 'hola'" + LF)], False),
-    ("ps1 con los permitidos",
+    ("ps1 con los que antes estaban permitidos, y ya no",
      [pista("x.ps1", b"# " + ANGULO + PUNTO + ANGULO + LF
-            + b"Write-Output '" + RAYA + N_TILDE + b"'" + LF)], False),
-    ("ps1 con la caja, que tampoco esta en su lista",
+            + b"Write-Output '" + RAYA + N_TILDE + b"'" + LF)], True),
+    ("ps1 con la caja, que tampoco estaba permitida",
      [pista("x.ps1", b"# " + CAJA + LF)], True),
     ("ps1 con CRLF, que aqui no vale", [pista("x.ps1", b"Write-Output 'hola'" + CRLF)], True),
     ("ps1 con vertical tab",
      [pista("x.ps1", b"Write-Output 'a" + VT + b"b'" + LF)], True),
     ("ps1 con doble caja, que rompe el parser",
      [pista("x.ps1", b'Write-Output "' + DOBLE * 3 + b'"' + LF)], True),
-    ("ps1 con triangulo, fuera de la lista",
+    ("ps1 con triangulo, que no es ASCII",
      [pista("x.ps1", b"# " + TRIANGULO + LF)], True),
-    ("ps1 con palomita, fuera de la lista",
+    ("ps1 con palomita, que no es ASCII",
      [pista("x.ps1", b"# " + PALOMITA + LF)], True),
     ("ps1 con la doble caja dentro de un Write-Host, como estaba init_nexus.ps1",
      [pista("x.ps1", b'Write-Host "' + DOBLE * 67 + b'"' + LF)], True),
-    ("ps1 con tilde, que no esta en la lista",
+    ("ps1 con tilde, que no es ASCII",
      [pista("x.ps1", b"Write-Output 'est" + TILDE + b"'" + LF)], True),
     ("ps1 con CJK", [pista("x.ps1", b"Write-Output '" + CJK + b"'" + LF)], True),
 
