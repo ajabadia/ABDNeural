@@ -102,3 +102,14 @@ build-wasm/
 /Tests/_*probe*
 /.freebuff/
 /.agents/
+
+# El undo de un .docx que alguien abrio para leer, del 2026-09-20. MEDIDO que
+# son 13 ficheros y 314 KB de los que NADA del repo depende: lo unico que los
+# menciona es la exclusion de `temp_docx_extract` en convenciones.py, que
+# estaba ahi para que al revisarlos no saliera el japones del documento por la
+# ventana. Es decir, lo unico que sostenia era la excepcion.
+#
+# Se saco del indice el 2026-10-04 y no se borro del arbol, con `git rm --cached`:
+# asi sigue en el disco de quien lo tenga, sin dejar de estar, y en el indice
+# no queda. Decidir esto no es de esta suite: es de quien lo commiteo.
+/temp_docx_extract/

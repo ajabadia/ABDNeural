@@ -68,13 +68,12 @@ BINARIOS = {".png", ".jpg", ".jpeg", ".gif", ".wasm", ".exe", ".dll", ".lib",
 LOGS = {".log"}
 FUERA = {".git", "node_modules", "build-reference", "build-wasm", "dist",
          ".freebuff", ".agents",
-         # `temp_docx_extract` esta VERSIONADO y trae el undo de un .docx con
-         # el japones del documento. El nombre dice lo que es: temporal. No es
-         # fuente del proyecto y no se revisa. MEDIDO el 2026-10-03: sin esta
-         # linea, revisar el repo entero salia en rojo por dos XML suyos.
-         # Lo que hay que hacer con el es sacarlo del indice y ponerlo en el
-         # .gitignore, y eso no lo hace esta suite: es decision de quien lo
-         # commiteo.
+         # `temp_docx_extract` es el undo de un .docx: no es fuente del proyecto.
+         # MEDIDO el 2026-10-04 que ya NO esta versionado (se salio del indice
+         # con `git rm --cached` y esta en el .gitignore), pero sigue en el disco
+         # de quien lo tenga, y revisar el ARBOL entero se lo encontraria. Se
+         # queda la exclusion por eso, no porque este versionado: si vuelve a
+         # aparecer en el arbol, el sitio para quejarse es el .gitignore.
          "temp_docx_extract"}
 # Las extensiones que SI se revisan enteras, y en las que no decodificar como
 # UTF-8 es un problema y no la prueba de que el fichero sea binario.
