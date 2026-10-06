@@ -1405,6 +1405,16 @@ private:
     {
         stage = Stage::needle;
 
+        // El PANIC mide el corte de una voz RE-ARMADA en sostenido, y el
+        // allNotesOff nativo suelta la voz con COLA (su release natural,
+        // anti-click): la muerte desde el sustain tarda ~release x 9 s. El
+        // RANDOM de la sesion puede haber dejado envRelease en hasta 2 s
+        // (~18 s de cola), con semilla de reloj: la direccion saldria
+        // intermitente. Fijarlo BAJO y CONOCIDO vuelve el caso determinista
+        // (cola de ~1 s, dentro del presupuesto de tomas) sin debilitar lo
+        // que se mide: el corte del gesto doble sigue siendo real.
+        setParameterReal (State::IDs::envRelease, 0.10f);
+
         // En silencio las agujas tienen que estar ocultas: el frame existe (a ~15
         // Hz desde el arranque) pero su nivel <= NEEDLE_FLOOR y la vista lo esconde.
         evaluate (scriptReadNeedles(), [this] (const juce::String& silentRaw)
@@ -1658,9 +1668,11 @@ private:
                                         // El sondeo: exito = medidor APAGADO y las cuatro agujas
                                         // ocultas en el MISMO frame. El panic nativo es un
                                         // allNotesOff: la voz muere dentro de su cola natural
-                                        // (release aleatorio de la sesion), asi que 400 tomas
-                                        // x 30 ms son 12 s de TECHO para el peor caso, no la
-                                        // duracion normal. needleSample sale en el primer
+                                        // (release aleatorio de la sesion), asi que 700 tomas
+                                        // x 30 ms son 21 s de TECHO: el release maximo del
+                                        // randomizador (2 s) tarda ~18 s en matar la voz
+                                        // desde el sustain, y 12 s se quedaban cortos.
+                                        // needleSample sale en el primer
                                         // frame que cumple y deja la lectura RETENIDA ahi:
                                         // medidor y agujas se juzgan del mismo instante (lo
                                         // que evita cazar el corte de una con la cola de la
@@ -1668,7 +1680,7 @@ private:
                                         // ya mudo, porque `meterBefore` exige que el
                                         // medidor estuviera ENCENDIDO antes del clic.
                                         needlePanicPhase = true;
-                                        needleSample ((int) std::lround (400.0 * budgetFactor), [this, ok, armedOk, pressError, meterWasHidden, meterWasActive]
+                                        needleSample ((int) std::lround (700.0 * budgetFactor), [this, ok, armedOk, pressError, meterWasHidden, meterWasActive]
                                         {
                                             needlePanicPhase = false;
                                             const auto panic = parseNeedles (needlePanicReading);
