@@ -1,0 +1,190 @@
+name: Pluginval CI
+
+# pluginval (Fase 7 del plan familiar) — validación del VST3 de NEURONiK con
+# la herramienta de facto de la industria (Tracktion/pluginval), con la
+# invocación canónica de la familia:
+#   pluginval --strictness-level 5 --seed 42 --validate "<vst3>"
+#
+# POR QUE UN WORKFLOW APARTE Y NO UN JOB MAS DE verify-all.yml
+# -----------------------------------------------------------
+# verify-all.yml ya construye el plugin entero y corre los ctest y los vitest
+# en cada push, pero no VALIDA el VST3 con pluginval, que es la puerta que
+# comprueba que un host de verdad puede cargarlo, abrir y cerrar su editor y
+# no morir en el proceso. Los dos se complementan; ninguno sustituye al otro.
+#
+# DEPENDENCIAS, TODO FIJADO
+# -------------------------
+# - JUCE se clona y se le pasa con -DJUCE_PATH: la cadena de discovery de
+#   este CMakeLists es JUCE_PATH (CLI o env) -> C:/JUCE -> find_package, y en
+#   el runner no hay ninguno de los dos. La version es 9.0.3, la misma con la
+#   que esta medido el build local de la familia.
+# - ABDSharedCode como hermano del workspace (el CMakeLists usa
+#   ../ABDSharedCode con fallback a FetchContent de `master` SIN FIJAR, que
+#   no es determinista). SHA fijo, como en el resto de la suite.
+# - La WebUI se compila con pnpm (mismo gestor que verify-all) porque el
+#   plugin EMBBEDE WebUI/dist via juce_add_binary_data: sin dist el plugin
+#   compilaria, pero seria un plugin sin editor, que no es lo que se valida.
+# - pluginval se pinnea a v1.0.4.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "Source/**"
+      - "CMakeLists.txt"
+      - "WebUI/**"
+      - "Scripts/**"
+      - ".github/workflows/pluginval.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Source/**"
+      - "CMakeLists.txt"
+      - "WebUI/**"
+      - "Scripts/**"
+      - ".github/workflows/pluginval.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neural-pluginval-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JUCE_TAG: '9.0.3'
+  SHA_SHARED: '180cf7866fca43fdc5035ebab9d4cc7f9713ff80'  # ABDSharedCode master
+
+jobs:
+  pluginval:
+    name: Pluginval — VST3 strictness 5 (seed 42)
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      CI: true
+    defaults:
+      run:
+        shell: bash
+        working-directory: ABDNeural
+
+    steps:
+    # Layout del monorepo: ABDNeural y su hermano al mismo nivel, porque el
+    # CMakeLists resuelve ../ABDSharedCode.
+    - name: Checkout ABDNeural
+      uses: actions/checkout@v7
+      with:
+        path: ABDNeural
+
+    - name: Checkout ABDSharedCode (hermano, SHA fijo)
+      uses: actions/checkout@v7
+      with:
+        repository: ajabadia/ABDSharedCode
+        ref: ${{ env.SHA_SHARED }}
+        path: ABDSharedCode
+        fetch-depth: 1
+
+    - name: Fetch JUCE ${{ env.JUCE_TAG }}
+      run: |
+        git clone --depth 1 --branch "$JUCE_TAG" https://github.com/juce-framework/JUCE.git "$GITHUB_WORKSPACE/JUCE"
+
+    - name: Install WebView2 SDK
+      shell: pwsh
+      run: |
+        $version = "1.0.4258.31"
+        $root = Join-Path $env:RUNNER_TEMP "webview2"
+        $pkg = Join-Path $root "Microsoft.Web.WebView2"
+        New-Item -ItemType Directory -Force -Path $pkg | Out-Null
+        $zip = Join-Path $env:RUNNER_TEMP "webview2.zip"
+        Invoke-WebRequest -Uri "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/$version/microsoft.web.webview2.$version.nupkg" -OutFile $zip
+        Expand-Archive -Path $zip -DestinationPath $pkg -Force
+        if (-not (Test-Path (Join-Path $pkg "build/native/include/WebView2.h"))) {
+          Write-Error "Falta WebView2.h: la descarga del SDK ha fallado"
+          exit 1
+        }
+        "WEBVIEW2_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v3
+
+    # WebUI/dist se embebe en el binario (juce_add_binary_data): el plugin se
+    # valida con su editor dentro, no sin el.
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v6.1.0
+      with:
+        version: '10'
+
+    - name: Build WebUI (pnpm)
+      defaults:
+        run:
+          working-directory: ABDNeural/WebUI
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm build
+
+    - name: Configure CMake
+      run: |
+        cmake -B build -G "Visual Studio 17 2022" -A x64 \
+          -DJUCE_PATH="$GITHUB_WORKSPACE/JUCE" \
+          -DJUCE_WEBVIEW2_PACKAGE_LOCATION="${WEBVIEW2_ROOT:-}"
+
+    - name: Build VST3 target (NEURONiK_VST3)
+      run: |
+        cmake --build build --config Release --target NEURONiK_VST3
+
+    - name: Download pluginval v1.0.4 (pinned)
+      shell: pwsh
+      run: |
+        $pvZip = "$env:RUNNER_TEMP\pluginval_Windows.zip"
+        Invoke-WebRequest -Uri "https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_Windows.zip" -OutFile $pvZip
+        Expand-Archive -Path $pvZip -DestinationPath "$env:RUNNER_TEMP\pluginval" -Force
+        Get-ChildItem "$env:RUNNER_TEMP\pluginval" -Recurse -Filter "pluginval.exe" | Select-Object -First 1 -ExpandProperty FullName
+
+    - name: Run pluginval validation (strictness 5, seed 42)
+      shell: pwsh
+      run: |
+        $vst3 = Get-ChildItem "build\*_artefacts\Release\VST3\*.vst3" -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $vst3) {
+          Write-Host "::error::pluginval — no se encontro VST3 en build/*_artefacts/Release/VST3/"
+          exit 1
+        }
+        $pv = Get-ChildItem "$env:RUNNER_TEMP\pluginval" -Recurse -Filter "pluginval.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $pv) {
+          Write-Host "::error::pluginval — no se encontro pluginval.exe en RUNNER_TEMP\pluginval"
+          exit 1
+        }
+        Write-Host "Validando: $($vst3.FullName)"
+        & $pv.FullName --strictness-level 5 --seed 42 --validate $vst3.FullName *> pluginval.log
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "::error::pluginval — validacion fallida (strictness 5, seed 42). Ver pluginval.log"
+          Get-Content pluginval.log
+          exit $LASTEXITCODE
+        }
+        Write-Host "pluginval: ALL TESTS PASSED (strictness 5, seed 42)"
+        Get-Content pluginval.log | Select-String -Pattern "ALL TESTS PASSED|PASSED" | Select-Object -First 3
+
+    - name: Publish pluginval log (on failure diagnostics)
+      if: failure()
+      uses: actions/upload-artifact@v7
+      with:
+        name: neural-pluginval-log-${{ github.run_id }}
+        path: ABDNeural/pluginval.log
+        if-no-files-found: ignore
+        retention-days: 30
+
+  cppcheck:
+    name: cppcheck (informativo, no bloqueante)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Static analysis (cppcheck) - informativo
+      run: |
+        set +e
+        sudo apt-get update -qq && sudo apt-get install -y -qq cppcheck
+        salida=$(cppcheck --enable=warning,performance,portability --std=c++20 --suppress=missingIncludeSystem --template='{severity}|{file}|{line}|{message}' Source/ 2>&1)
+        hallazgos=$(printf '%s\n' "$salida" | grep -cE '^(warning|performance|portability|error)\|')
+        printf '%s\n' "$salida" | grep -E '^(warning|performance|portability|error)\|' | sed -n '1,30p'
+        echo "::warning title=cppcheck::${hallazgos} hallazgos en Source/ (MEDIDO en local con cppcheck 2.21: 0; informativo hasta que CI lo confirme y pase a bloquear)."
+        exit 0
