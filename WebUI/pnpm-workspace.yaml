@@ -14,7 +14,7 @@
 # con la retirada del piloto (ticket 8.4) y la WebUI se queda con el suyo.
 packages:
   - '.'
-  - '../../ABDSharedAssets'
+  - '../../ABDShared'
   - '../../ABDSharedCode/MidiKeyboard'
 # allowBuilds, Y POR QUE NO onlyBuiltDependencies. pnpm >= 11 dejo de leer
 # `onlyBuiltDependencies`, ni aqui ni en el campo `pnpm` de package.json. Con la

@@ -1,0 +1,11 @@
+# Baseline cppcheck de ABDNeural — generado midiendo HEAD (1fb695f) con el comando
+# exacto de la CI y cppcheck 2.21. Firma: severidad|archivo|mensaje (sin linea,
+# paths con /). El gate solo bloquea hallazgos que NO esten aqui.
+performance|Source/Main/NEURONiKEditor.cpp|Variable 'webView' is assigned in constructor body. Consider performing initialization in initialization list.
+performance|Source/WebUI/ParameterBridge.h|Function 'getStats()' should return member 'stats' by const reference.
+warning|Source/DSP/CoreModules/ResonatorBank.cpp|Member variable 'ResonatorBank::partialAmplitudes' is not initialized in the constructor.
+warning|Source/DSP/Synthesis/AdditiveVoice.cpp|Uninitialized variable: tempBuffer
+warning|Source/DSP/Synthesis/NeurotikVoice.cpp|Uninitialized variable: tempBuffer
+warning|Source/Main/NEURONiKProcessor.h|Member variable 'Command::slot' has no initializer.
+warning|Source/Main/NEURONiKProcessor.h|Member variable 'Command::type' has no initializer.
+warning|Source/Main/NEURONiKProcessor.h|Member variable 'QueuedMidi::sampleOffset' has no initializer.

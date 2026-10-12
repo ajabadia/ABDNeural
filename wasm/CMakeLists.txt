@@ -118,13 +118,17 @@ add_subdirectory("${JUCE_PATH}" "${CMAKE_BINARY_DIR}/JUCE")
 # A proposito NO se hace add_subdirectory(ABDSharedCode): seria cross-compilar
 # con em++ targets de este repo que no tienen nada que ver con el motor
 # (AutoUpdater, HardwareMidiDetect + sus assets embebidos) a cambio de nada.
-set(ABDSHARED_CODE_DIR "${NEURONIK_ROOT}/../ABDSharedCode")
-if(NOT EXISTS "${ABDSHARED_CODE_DIR}/CMakeLists.txt")
+if(EXISTS "${NEURONIK_ROOT}/../ABDShared/Code/CMakeLists.txt")
+    set(ABDSHARED_CODE_DIR "${NEURONIK_ROOT}/../ABDShared/Code")
+    message(STATUS "NEURONiK WASM: ABDShared en ${ABDSHARED_CODE_DIR}")
+elseif(EXISTS "${NEURONIK_ROOT}/../ABDSharedCode/CMakeLists.txt")
+    set(ABDSHARED_CODE_DIR "${NEURONIK_ROOT}/../ABDSharedCode")
+    message(STATUS "NEURONiK WASM: ABDSharedCode en ${ABDSHARED_CODE_DIR}")
+else()
     message(FATAL_ERROR
-        "ABDSharedCode no encontrado en ${ABDSHARED_CODE_DIR}: el motor toma de ahi "
-        "el sustrato DSP (DspCore). Clona ABDSharedCode como hermano de ABDNeural.")
+        "ABDShared no encontrado en ${NEURONIK_ROOT}/../ABDShared/Code ni ABDSharedCode en ${NEURONIK_ROOT}/../ABDSharedCode: "
+        "el motor toma de ahi el sustrato DSP (DspCore).")
 endif()
-message(STATUS "NEURONiK WASM: ABDSharedCode en ${ABDSHARED_CODE_DIR}")
 
 # Lista DSP compartida con el raiz (single-source, anti-drift). El puente
 # wasm es el unico fichero exclusivo de este build.

@@ -55,30 +55,39 @@ endif()
 # shims que lo re-exportan con el nombre antiguo (`namespace dsp = abd::dsp;`),
 # de modo que el motor no cambia una sola linea.
 #
-# DEBE ir despues de JUCE: los modulos de ABDSharedCode que NEURONiK no usa
+# DEBE ir despues de JUCE: los modulos de ABDShared que NEURONiK no usa
 # (AutoUpdater, HardwareDrivers) enlazan juce_core/juce_audio_basics.
-set(ABDSHARED_CODE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../ABDSharedCode")
+set(ABDSHARED_BUILD_DSPCORE_TESTS ON)
+set(ABDSHARED_BUILD_SYNTHCORE_TESTS OFF)
+set(ABDSHARED_BUILD_DSPEFFECTS_TESTS OFF)
+set(ABDSHARED_BUILD_LUTDSP_TESTS OFF)
+set(ABDSHARED_BUILD_HARDWAREDRIVERS OFF)
+set(ABDSHARED_BUILD_BANKMANAGER OFF)
 
-# Se apagan los modulos y los tests que no se consumen. Los tests de DspCore SI
-# se construyen: son 2 s (header-only, sin JUCE) y son el guard de regresion del
-# sustrato compartido (incluido el bug de HeapBlock que descubrio el port de la
-# reverb); se registran en ctest unas lineas mas abajo.
+# Opciones heredadas para compatibilidad:
+set(ABDSHAREDCODE_BUILD_DSPCORE_TESTS ON)
 set(ABDSHAREDCODE_BUILD_SYNTHCORE_TESTS OFF)
 set(ABDSHAREDCODE_BUILD_AUTOUPDATER OFF)
 set(ABDSHAREDCODE_BUILD_HARDWAREDRIVERS OFF)
 set(ABDSHAREDCODE_BUILD_HARDWAREMIDIDETECT OFF)
 
-if(EXISTS "${ABDSHARED_CODE_DIR}/CMakeLists.txt")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../ABDShared/Code/CMakeLists.txt")
+    set(ABDSHARED_CODE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../ABDShared/Code")
+    message(STATUS "ABDShared: usando el local en ${ABDSHARED_CODE_DIR}")
+    add_subdirectory("${ABDSHARED_CODE_DIR}" "${CMAKE_BINARY_DIR}/ABDShared_build")
+elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../ABDSharedCode/CMakeLists.txt")
+    set(ABDSHARED_CODE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../ABDSharedCode")
     message(STATUS "ABDSharedCode: usando el local en ${ABDSHARED_CODE_DIR}")
     add_subdirectory("${ABDSHARED_CODE_DIR}" "${CMAKE_BINARY_DIR}/ABDSharedCode")
 else()
     include(FetchContent)
     FetchContent_Declare(
-      ABDSharedCode
-      GIT_REPOSITORY https://github.com/ajabadia/ABDSharedCode.git
-      GIT_TAG        master
+      ABDShared
+      GIT_REPOSITORY https://github.com/ajabadia/ABDShared.git
+      GIT_TAG        main
+      GIT_SHALLOW    TRUE
     )
-    FetchContent_MakeAvailable(ABDSharedCode)
+    FetchContent_MakeAvailable(ABDShared)
 endif()
 
 # DspCore y DspEffects son INTERFACE (todo inline/template): no hay nada que
@@ -610,7 +619,13 @@ add_test(NAME NEURONiK_PresetMigrationParityTest COMMAND NEURONiK_PresetMigratio
 # porque un argumento se puede olvidar en un ctest: ejecutandose sin el, el
 # guard pasaria en verde sin comparar nada. Con la definicion, si el repo no esta
 # el test lo dice y falla.
-set(NEURONiK_SIBLING_ASSETS "${CMAKE_CURRENT_SOURCE_DIR}/../ABDSharedAssets")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../ABDShared/Contracts/neuronik_modulation_matrix.json")
+    set(NEURONiK_SIBLING_ASSETS "${CMAKE_CURRENT_SOURCE_DIR}/../ABDShared")
+elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../ABDSharedAssets/contracts/neuronik_modulation_matrix.json")
+    set(NEURONiK_SIBLING_ASSETS "${CMAKE_CURRENT_SOURCE_DIR}/../ABDSharedAssets")
+else()
+    set(NEURONiK_SIBLING_ASSETS "${CMAKE_CURRENT_SOURCE_DIR}/../ABDShared")
+endif()
 
 add_executable(NEURONiK_ModulationContractDump
     Tests/ModulationContractDump.cpp

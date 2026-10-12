@@ -10,7 +10,7 @@ export default defineConfig({
     include: ['tests/**/*.test.js'],
     // El setup es compartido con el resto de la suite (polyfill de PointerEvent
     // para los controles): vive fuera de esta raíz y Vite necesita permiso.
-    setupFiles: ['../../ABDSharedAssets/tests/setup.js'],
+    setupFiles: ['../../ABDShared/tests/setup.js'],
   },
   server: {
     fs: { allow: [root, path.resolve(root, '../..')] },

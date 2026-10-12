@@ -222,3 +222,86 @@ jobs:
             ABDNeural/wasm-last-run.log
           if-no-files-found: ignore
           retention-days: 14
+  # ---------------------------------------------------------------------------
+  # FORMATO (clang-format) — INFORMATIVO, no bloqueante.
+  #
+  # No compila nada: lee .clang-format y comprueba que todos los .h/.cpp
+  # trackeados obedecen el estilo. Lo hace ejecutando EL HOOK del repo en
+  # modo VERIFY_ONLY (VERIFY_ONLY=1 bash .githooks/pre-commit), que usa
+  # --dry-run --Werror sobre `git ls-files` y no toca disco. Asi esta puerta
+  # valida DOS cosas: que el estilo cuadra, y que EL HOOK funciona — el mismo
+  # reparto que usa ABDSharedCode en shared-code-ci.yml.
+  #
+  # INFORMATIVO, Y LA CUENTA VA ESCRITA AQUI porque es la razon de que no
+  # bloquee: MEDIDO en local con clang-format 18.1.8 sobre los .h/.cpp
+  # trackeados: 8356 avisos de estilo en 90 ficheros. Con esa
+  # deuda un paso bloqueante dejaria el CI rojo permanente por un motivo que
+  # no es un rojo nuevo — el mismo calculo con el que el cppcheck de la
+  # familia quedo informativo. Cuando se pague la deuda (PR de reformato),
+  # se quita el `exit 0` del final y pasa a bloquear.
+  #
+  # Y DOS COSAS SI BLOQUEAN, porque no son deuda: que la comprobacion no
+  # llegue a medir (clang-format ausente, o un VERIFY_ONLY que falla sin
+  # reportar ni un aviso), y el test NEGATIVO de abajo, que exige que el
+  # hook NOMBRE el fichero mal formateado en su salida.
+  clang-format:
+    name: Clang-format (estilo C++, informativo)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      # El `command -v` es una puerta, no un eco: sin clang-format en el PATH
+      # el hook NO falla (imprime un aviso y sale con 0), y el paso de abajo
+      # reportaria "sin deuda" sin haber mirado nada. Un verde que no ha medido
+      # es el peor de todos.
+      - name: Install clang-format 18+
+        run: |
+          pip install clang-format==18.*
+          command -v clang-format
+          clang-format --version
+
+      - name: Check formatting (clang-format via hook) - informativo, no bloqueante
+        shell: bash
+        run: |
+          set +e
+          VERIFY_ONLY=1 bash .githooks/pre-commit > "$RUNNER_TEMP/fmt.log" 2>&1
+          codigo=$?
+          set -e
+          if [ "$codigo" -eq 0 ]; then
+            echo "::notice title=clang-format::sin deuda de formato en los .h/.cpp trackeados."
+            exit 0
+          fi
+          avisos=$(grep -c 'code should be clang-formatted' "$RUNNER_TEMP/fmt.log" || true)
+          # Un VERIFY_ONLY que sale con != 0 SIN ningun aviso de formato no es
+          # deuda: es que la comprobacion no llego a hacerse (config rota,
+          # hook roto,clang-format de otra version). Eso SI bloquea.
+          if [ "$avisos" -eq 0 ]; then
+            echo "::error title=clang-format::el hook VERIFY_ONLY fallo (codigo $codigo) sin reportar ni un aviso de formato. No es deuda historica: es un fallo de la comprobacion. Log completo abajo."
+            cat "$RUNNER_TEMP/fmt.log"
+            exit 1
+          fi
+          echo "::warning title=clang-format::${avisos} avisos de formato en 90 ficheros (deuda historica medida en local: gate informativo hasta el PR de reformato). Ultimas lineas del log abajo."
+          tail -30 "$RUNNER_TEMP/fmt.log"
+          exit 0
+
+      # NEGATIVO, Y QUE MIRE EL NOMBRE Y NO EL CODIGO DE SALIDA. Con la deuda
+      # actual el hook VERIFY_ONLY sale con 1 aunque el fichero malo no
+      # exista, asi que esperar "!= 0" probaria nada. Lo que prueba es que el
+      # NOMBRE del fichero aparece en la salida del hook.
+      - name: Hook catches unformatted code (negative test)
+        shell: bash
+        run: |
+          printf 'int main(){return 0;}\n' > .hook_test_bad.cpp
+          git add .hook_test_bad.cpp
+          set +e
+          VERIFY_ONLY=1 bash .githooks/pre-commit > "$RUNNER_TEMP/neg.log" 2>&1
+          set -e
+          git reset -q .hook_test_bad.cpp
+          rm -f .hook_test_bad.cpp
+          if ! grep -q 'hook_test_bad.cpp' "$RUNNER_TEMP/neg.log"; then
+            echo "::error::el hook no ha nombrado el archivo mal formateado .hook_test_bad.cpp en su salida. VERIFY_ONLY puede estar roto."
+            head -30 "$RUNNER_TEMP/neg.log"
+            exit 1
+          fi
+          echo "El hook detecto y nombro el archivo mal formateado."

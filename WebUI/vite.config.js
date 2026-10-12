@@ -21,7 +21,7 @@ export default defineConfig({
   // `dist/` (y de ahi los embebe el plugin).
   publicDir: path.resolve(root, 'public'),
   server: {
-    fs: { allow: [root, repoRoot, path.resolve(repoRoot, '../ABDSharedAssets')] },
+    fs: { allow: [root, repoRoot, path.resolve(repoRoot, '../ABDShared'), path.resolve(repoRoot, '../ABDSharedAssets')] },
 
     // EL CALENTAMIENTO, y por que sin esto el webServer del probe se pasa de
     // presupuesto (medido el 2026-10-03).

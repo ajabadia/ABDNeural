@@ -17,7 +17,7 @@
  *     este mal, y por eso hace falta una asercion que lo compare con la hoja.
  */
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -250,10 +250,11 @@ describe('fx-modules / el tema por FAMILIA', () => {
     // `data-fx-theme` perfectamente valido y salir GRIS: `fx.css` no tiene regla
     // para esa familia, cae a los tokens neutros y no se ve por ningun lado.
     // El fallo es silencioso por construccion, asi que se compara contra la hoja.
-    const css = readFileSync(
-      resolve(root, 'node_modules', '@abdsynths', 'shared', 'styles', 'components', 'fx.css'),
-      'utf8',
-    );
+    const sharedDir = resolve(root, 'node_modules', '@abdsynths', 'shared');
+    const cssPath = existsSync(resolve(sharedDir, 'Assets', 'styles', 'components', 'fx.css'))
+      ? resolve(sharedDir, 'Assets', 'styles', 'components', 'fx.css')
+      : resolve(sharedDir, 'styles', 'components', 'fx.css');
+    const css = readFileSync(cssPath, 'utf8');
 
     const themed = new Set(
       [...css.matchAll(/\.fx-module\[data-fx-theme='([a-z-]+)'\]/g)].map((m) => m[1]),
